@@ -1,0 +1,3 @@
+[submodule "sotools/enlib"]
+	path = sotools/enlib
+	url = git@github.com:amaurea/enlib.git
