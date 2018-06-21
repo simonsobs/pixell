@@ -1,0 +1,3 @@
+*.pyc
+sotools.egg-info
+demo/testmap_out.fits
