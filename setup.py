@@ -33,6 +33,7 @@ setup(
         'Programming Language :: Python :: 3.6',
     ],
     description="sotools",
+    package_dir={"sotools": "python"},
     entry_points={
         'console_scripts': [
             'sotools=sotools.cli:main',
