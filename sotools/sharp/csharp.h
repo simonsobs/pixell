@@ -1,4 +1,4 @@
-#include <sharp.h>
+#include <_build/libsharp/sharp.h>
 //#include <sharp_mpi.h>
-#include <sharp_almhelpers.h>
-#include <sharp_geomhelpers.h>
+#include <_build/libsharp/sharp_almhelpers.h>
+#include <_build/libsharp/sharp_geomhelpers.h>
