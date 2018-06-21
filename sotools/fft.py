@@ -1,6 +1,6 @@
 """This is a convenience wrapper of pyfftw."""
 from __future__ import division
-import numpy as np, multiprocessing, os, enlib.utils
+import numpy as np, multiprocessing, os, sotools.utils
 engines = {}
 
 # Define our engines. First a baseline numpy-based engine
@@ -163,7 +163,7 @@ def ichebt(a, b=None, nthread=0):
 
 def fft_len(n, direction="below", factors=None):
 	if factors is None: factors = [2,3,5,7,11,13]
-	return enlib.utils.nearest_product(n, factors, direction)
+	return sotools.utils.nearest_product(n, factors, direction)
 
 def asfcarray(a):
 	a = np.asarray(a)
