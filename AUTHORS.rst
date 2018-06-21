@@ -10,5 +10,5 @@ Development Lead
 Contributors
 ------------
 
-Sigurd Naess
-Mathew Madhavacheril
+* Sigurd Naess (@amaurea)
+* Mathew Madhavacheril (@msyriac)
