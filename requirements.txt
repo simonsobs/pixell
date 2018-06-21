@@ -1,0 +1,7 @@
+numpy==1.14.3
+astropy==2.0.5
+setuptools==39.2.0
+h5py==2.7.1
+click==6.7
+scipy==1.0.1
+python_dateutil==2.7.3

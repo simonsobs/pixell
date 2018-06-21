@@ -16,8 +16,8 @@ sotools
 
 
 
-sotools
 
+This is an early development repository for a CMB map analysis library. The API for core modules will likely remain the same as in amaurea/enlib, but module and repository names are very likely to change!
 
 * Free software: BSD license
 * Documentation: https://sotools.readthedocs.io.
