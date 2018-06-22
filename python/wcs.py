@@ -6,7 +6,6 @@ but bounding boxes include the whole pixels, not just their centers, which
 is where the 0.5 stuff comes from."""
 import numpy as np
 from astropy.wcs import WCS
-from sotools import slice
 
 # The origin argument used in the wcs pix<->world routines seems to
 # have to be 1 rather than the 0 one would expect. For example,

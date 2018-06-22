@@ -1,5 +1,5 @@
 import numpy as np
-from sotools import utils
+from . import utils
 
 def sym_compress(mat, which=None, n=None, scheme=None, axes=[0,1]):
 	"""Extract the unique elements of a symmetric matrix, and

@@ -1,4 +1,5 @@
-import numpy as np, scipy.ndimage, warnings, sotools.utils, sotools.wcs, sotools.slice, sotools.fft, sotools.powspec, astropy.io.fits, sys, time
+import numpy as np, scipy.ndimage, warnings, astropy.io.fits, sys, time
+from . import utils, wcs as wcsutils, slice as sliceutils, powspec
 
 # Things that could be improved:
 #  1. We assume exactly 2 WCS axes in spherical projection in {dec,ra} order.
@@ -38,7 +39,7 @@ class ndmap(np.ndarray):
 		if obj is None: return
 		self.wcs = getattr(obj, "wcs", None)
 	def __repr__(self):
-		return "ndmap(%s,%s)" % (np.asarray(self), sotools.wcs.describe(self.wcs))
+		return "ndmap(%s,%s)" % (np.asarray(self), wcsutils.describe(self.wcs))
 	def __str__(self): return repr(self)
 	def __getitem__(self, sel):
 		return np.ndarray.__getitem__(self, sel)
@@ -74,7 +75,7 @@ class ndmap(np.ndarray):
 	def apod(self, width, profile="cos", fill="zero"): return apod(self, width, profile=profile, fill=fill)
 	def stamps(self, pos, shape, aslist=False): return stamps(self, pos, shape, aslist=aslist)
 	@property
-	def plain(self): return ndmap(self, sotools.wcs.WCS(naxis=2))
+	def plain(self): return ndmap(self, wcsutils.WCS(naxis=2))
 	def padslice(self, box, default=np.nan): return padslice(self, box, default=default)
 	def downgrade(self, factor): return downgrade(self, factor)
 	def upgrade(self, factor): return upgrade(self, factor)
@@ -84,7 +85,7 @@ class ndmap(np.ndarray):
 	def to_flipper(self, omap=None, unpack=True): return to_flipper(self, omap=omap, unpack=unpack)
 	def __getitem__(self, sel):
 		# Split sel into normal and wcs parts.
-		sel1, sel2 = sotools.slice.split_slice(sel, [self.ndim-2,2])
+		sel1, sel2 = sliceutils.split_slice(sel, [self.ndim-2,2])
 		# No index creation supported in the wcs part
 		if any([s is None for s in sel2]):
 			raise IndexError("None-indices not supported for the wcs part of an ndmap.")
@@ -118,7 +119,7 @@ class ndmap(np.ndarray):
 			inside the bounding box. Default: False."""
 
 		ibox   = self.subinds(box, inclusive, cap=False)
-		#islice = sotools.utils.sbox2slice(ibox.T)
+		#islice = utils.sbox2slice(ibox.T)
 		#return self[islice]
 		def helper(b):
 			if b[2] >= 0: return False, slice(b[0],b[1],b[2])
@@ -169,7 +170,7 @@ def slice_geometry(shape, wcs, sel, nowrap=False):
 	oshape = np.array(shape)
 	# The wcs object has the indices in reverse order
 	for i,s in enumerate(sel[-2:]):
-		s = sotools.slice.expand_slice(s, shape[i], nowrap=nowrap)
+		s = sliceutils.expand_slice(s, shape[i], nowrap=nowrap)
 		j = -1-i
 		start = s.start if s.step > 0 else s.start + 1
 		wcs.wcs.crpix[j] -= start+0.5
@@ -182,13 +183,13 @@ def slice_geometry(shape, wcs, sel, nowrap=False):
 
 def scale_geometry(shape, wcs, scale):
 	scale  = np.zeros(2)+scale
-	oshape = tuple(shape[:-2])+tuple(sotools.utils.nint(shape[-2:]*scale))
-	owcs   = sotools.wcs.scale(wcs, scale, rowmajor=True)
+	oshape = tuple(shape[:-2])+tuple(utils.nint(shape[-2:]*scale))
+	owcs   = wcsutils.scale(wcs, scale, rowmajor=True)
 	return oshape, owcs
 
 def get_unit(wcs):
-	if sotools.wcs.is_plain(wcs): return 1
-	else: return sotools.utils.degree
+	if wcsutils.is_plain(wcs): return 1
+	else: return utils.degree
 
 def box(shape, wcs, npoint=10, corner=True):
 	"""Compute a bounding box for the given geometry."""
@@ -197,11 +198,11 @@ def box(shape, wcs, npoint=10, corner=True):
 	pix = np.array([np.linspace(0,shape[-2],num=npoint,endpoint=True),
 		np.linspace(0,shape[-1],num=npoint,endpoint=True)])
 	if corner: pix -= 0.5
-	coords = sotools.wcs.nobcheck(wcs).wcs_pix2world(pix[1],pix[0],0)[::-1]
-	if sotools.wcs.is_plain(wcs):
+	coords = wcsutils.nobcheck(wcs).wcs_pix2world(pix[1],pix[0],0)[::-1]
+	if wcsutils.is_plain(wcs):
 		return np.array(coords).T[[0,-1]]
 	else:
-		return sotools.utils.unwind(np.array(coords)*sotools.utils.degree).T[[0,-1]]
+		return utils.unwind(np.array(coords)*utils.degree).T[[0,-1]]
 
 def enmap(arr, wcs=None, dtype=None, copy=True):
 	"""Construct an ndmap from data.
@@ -223,7 +224,7 @@ def enmap(arr, wcs=None, dtype=None, copy=True):
 		elif isinstance(arr, list) and len(arr) > 0 and isinstance(arr[0], ndmap):
 			wcs = arr[0].wcs
 		else:
-			wcs = sotools.wcs.WCS(naxis=2)
+			wcs = wcsutils.WCS(naxis=2)
 	if copy:
 		arr = np.asanyarray(arr, dtype=dtype).copy()
 	return ndmap(arr, wcs)
@@ -257,10 +258,10 @@ def pix2sky(shape, wcs, pix, safe=True, corner=False):
 	pix = np.asarray(pix).astype(float)
 	if corner: pix -= 0.5
 	pflat = pix.reshape(pix.shape[0], -1)
-	coords = np.asarray(sotools.wcs.nobcheck(wcs).wcs_pix2world(*(tuple(pflat)[::-1]+(0,)))[::-1])*get_unit(wcs)
+	coords = np.asarray(wcsutils.nobcheck(wcs).wcs_pix2world(*(tuple(pflat)[::-1]+(0,)))[::-1])*get_unit(wcs)
 	coords = coords.reshape(pix.shape)
-	if safe and not sotools.wcs.is_plain(wcs):
-		coords = sotools.utils.unwind(coords)
+	if safe and not wcsutils.is_plain(wcs):
+		coords = utils.unwind(coords)
 	return coords
 
 def sky2pix(shape, wcs, coords, safe=True, corner=False):
@@ -273,9 +274,9 @@ def sky2pix(shape, wcs, coords, safe=True, corner=False):
 	coords = np.asarray(coords)/get_unit(wcs)
 	cflat  = coords.reshape(coords.shape[0], -1)
 	# Quantities with a w prefix are in wcs ordering (ra,dec)
-	wpix = np.asarray(sotools.wcs.nobcheck(wcs).wcs_world2pix(*tuple(cflat)[::-1]+(0,)))
+	wpix = np.asarray(wcsutils.nobcheck(wcs).wcs_world2pix(*tuple(cflat)[::-1]+(0,)))
 	if corner: wpix += 0.5
-	if safe and not sotools.wcs.is_plain(wcs):
+	if safe and not wcsutils.is_plain(wcs):
 		wshape = shape[-2:][::-1]
 		# Put the angle cut as far away from the map as possible.
 		# We do this by putting the reference point in the middle
@@ -285,9 +286,9 @@ def sky2pix(shape, wcs, coords, safe=True, corner=False):
 		for i in range(len(wpix)):
 			wn = np.abs(360./wcs.wcs.cdelt[i])
 			if safe == 1:
-				wpix[i] = sotools.utils.rewind(wpix[i], wrefpix[i], wn)
+				wpix[i] = utils.rewind(wpix[i], wrefpix[i], wn)
 			else:
-				wpix[i] = sotools.utils.unwind(wpix[i], period=wn, ref=wrefpix[i])
+				wpix[i] = utils.unwind(wpix[i], period=wn, ref=wrefpix[i])
 	return wpix[::-1].reshape(coords.shape)
 
 def skybox2pixbox(shape, wcs, skybox, npoint=10, corner=False, include_direction=False):
@@ -310,11 +311,11 @@ def box(shape, wcs, npoint=10, corner=True):
 	pix = np.array([np.linspace(0,shape[-2],num=npoint,endpoint=True),
 		np.linspace(0,shape[-1],num=npoint,endpoint=True)])
 	if corner: pix -= 0.5
-	coords = sotools.wcs.nobcheck(wcs).wcs_pix2world(pix[1],pix[0],0)[::-1]
-	if sotools.wcs.is_plain(wcs):
+	coords = wcsutils.nobcheck(wcs).wcs_pix2world(pix[1],pix[0],0)[::-1]
+	if wcsutils.is_plain(wcs):
 		return np.array(coords).T[[0,-1]]
 	else:
-		return sotools.utils.unwind(np.array(coords)*sotools.utils.degree).T[[0,-1]]
+		return utils.unwind(np.array(coords)*utils.degree).T[[0,-1]]
 
 
 def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, prefilter=True, mask_nan=True, safe=True):
@@ -326,12 +327,12 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 	map  = map.copy()
 	# Skip expensive operation is map is compatible
 	if not force:
-		if sotools.wcs.equal(map.wcs, wcs) and tuple(shape[-2:]) == tuple(shape[-2:]):
+		if wcsutils.equal(map.wcs, wcs) and tuple(shape[-2:]) == tuple(shape[-2:]):
 			return map
-		elif sotools.wcs.is_compatible(map.wcs, wcs) and mode == "constant":
+		elif wcsutils.is_compatible(map.wcs, wcs) and mode == "constant":
 			return extract(map, shape, wcs, cval=cval)
 	pix  = map.sky2pix(posmap(shape, wcs), safe=safe)
-	pmap = sotools.utils.interpol(map, pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
+	pmap = utils.interpol(map, pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
 	return ndmap(pmap, wcs)
 
 def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b,
@@ -348,15 +349,15 @@ def extract_generic(map, ishape, iwcs, shape, wcs, omap=None, wrap="auto", op=la
 	"""Like extract, but accepts maps that might not be ndmaps as long as shape
 	and wcs are specified separately."""
 	# First check that our wcs is compatible
-	assert sotools.wcs.is_compatible(iwcs, wcs), "Incompatible wcs in enmap.extract: %s vs. %s" % (str(iwcs), str(wcs))
+	assert wcsutils.is_compatible(iwcs, wcs), "Incompatible wcs in enmap.extract: %s vs. %s" % (str(iwcs), str(wcs))
 	# Find the bounding box of the output in terms of input pixels.
 	# This is simple because our wcses are compatible, so they
 	# can only differ by a simple pixel offset. Here pixoff is
 	# pos_input - pos_output
 	if omap is None:
 		omap = full(ishape[:-2]+tuple(shape[-2:]), wcs, cval, map.dtype)
-	nphi   = sotools.utils.nint(360/np.abs(iwcs.wcs.cdelt[0]))
-	pixoff = sotools.utils.nint((wcs.wcs.crpix-iwcs.wcs.crpix) - (wcs.wcs.crval-iwcs.wcs.crval)/iwcs.wcs.cdelt)[::-1]
+	nphi   = utils.nint(360/np.abs(iwcs.wcs.cdelt[0]))
+	pixoff = utils.nint((wcs.wcs.crpix-iwcs.wcs.crpix) - (wcs.wcs.crval-iwcs.wcs.crval)/iwcs.wcs.cdelt)[::-1]
 	if wrap: pixoff[1] %= nphi
 	# Get bounding boxes in output map coordinates
 	obox = np.array([[0,0],[shape[-2],shape[-1]]])
@@ -377,7 +378,7 @@ def extract_generic(map, ishape, iwcs, shape, wcs, omap=None, wrap="auto", op=la
 
 def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=True, safe=True):
 	if unit != "pix": pos = sky2pix(map.shape, map.wcs, pos, safe=safe)
-	return sotools.utils.interpol(map, pos, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
+	return utils.interpol(map, pos, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
 
 def argmax(map, unit="coord"):
 	"""Return the coordinates of the maximum value in the specified map.
@@ -525,7 +526,7 @@ def pixsizemap(shape, wcs):
 	Heavy for big maps."""
 	# First get the coordinates of all the pixel corners
 	pix  = np.mgrid[:shape[-2]+1,:shape[-1]+1]
-	with sotools.utils.nowarn():
+	with utils.nowarn():
 		y, x = pix2sky(shape, wcs, pix, safe=True, corner=True)
 	del pix
 	dy   = y[1:,1:]-y[:-1,:-1]
@@ -592,12 +593,12 @@ def lrmap(shape, wcs, oversample=1):
 
 def fft(emap, omap=None, nthread=0, normalize=True):
 	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap."""
-	res = samewcs(sotools.fft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
+	res = samewcs(fft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
 	if normalize: res /= np.prod(emap.shape[-2:])**0.5
 	return res
 def ifft(emap, omap=None, nthread=0, normalize=True):
 	"""Performs the 2d iFFT of the complex enmap given, and returns a pixel-space enmap."""
-	res = samewcs(sotools.fft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
+	res = samewcs(fft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
 	if normalize: res /= np.prod(emap.shape[-2:])**0.5
 	return res
 
@@ -702,11 +703,11 @@ def geometry(pos, res=None, shape=None, proj="cea", deg=False, pre=(), **kwargs)
 	# We use radians by default, while wcslib uses degrees, so need to rescale.
 	# The exception is when we are using a plain, non-spherical wcs, in which case
 	# both are unitless. So undo the scaling in this case.
-	scale = 1 if deg else 1/sotools.utils.degree
-	if proj == "plain": scale *= sotools.utils.degree
+	scale = 1 if deg else 1/utils.degree
+	if proj == "plain": scale *= utils.degree
 	pos = np.asarray(pos)*scale
 	if res is not None: res = np.asarray(res)*scale
-	wcs = sotools.wcs.build(pos, res, shape, rowmajor=True, system=proj, **kwargs)
+	wcs = wcsutils.build(pos, res, shape, rowmajor=True, system=proj, **kwargs)
 	if shape is None:
 		# Infer shape. WCS does not allow us to wrap around the
 		# sky, so shape mustn't be large enough to make that happen.
@@ -715,7 +716,7 @@ def geometry(pos, res=None, shape=None, proj="cea", deg=False, pre=(), **kwargs)
 		# assured the former. Our job is to find shape that puts
 		# the top edge close to the requested value, while still
 		# being valied. If we always round down, we should be safe:
-		faredge = sotools.wcs.nobcheck(wcs).wcs_world2pix(pos[1:2,::-1],0)[0,::-1]
+		faredge = wcsutils.nobcheck(wcs).wcs_world2pix(pos[1:2,::-1],0)[0,::-1]
 		shape = tuple(np.floor(faredge+0.5).astype(int))
 	return pre+tuple(shape), wcs
 
@@ -730,7 +731,7 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
 		shape[0] += 1
 	ny,nx = shape
 	ny   -= 1
-	wcs   = sotools.wcs.WCS(naxis=2)
+	wcs   = wcsutils.WCS(naxis=2)
 	wcs.wcs.crval = [0,0]
 	wcs.wcs.cdelt = [-360./nx,180./ny]
 	wcs.wcs.crpix = [nx/2.+1,ny/2.+1]
@@ -740,8 +741,8 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
 def create_wcs(shape, box=None, proj="cea"):
 	if box is None:
 		box = np.array([[-1,-1],[1,1]])*0.5*10
-		if proj != "plain": box *= sotools.utils.degree
-	return sotools.wcs.build(box, shape=shape, rowmajor=True, system=proj)
+		if proj != "plain": box *= utils.degree
+	return wcsutils.build(box, shape=shape, rowmajor=True, system=proj)
 
 def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="auto"):
 	"""Given a (ncomp,ncomp,l) power spectrum, expand it to harmonic map space,
@@ -778,7 +779,7 @@ def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="a
 	cov   = cov[:oshape[-3],:oshape[-3]]
 	# Use order 1 because we will perform very short interpolation, and to avoid negative
 	# values in spectra that must be positive (and it's faster)
-	res = ndmap(sotools.utils.interpol(cov, np.reshape(ls,(1,)+ls.shape),mode=mode, mask_nan=False, order=1),wcs)
+	res = ndmap(utils.interpol(cov, np.reshape(ls,(1,)+ls.shape),mode=mode, mask_nan=False, order=1),wcs)
 	res = downgrade(res, oversample)
 	return res
 
@@ -794,14 +795,14 @@ def spec2flat_corr(shape, wcs, cov, exp=1.0, mode="constant"):
 	res  = np.max(ext/shape[-2:])
 	nr   = rmax/res
 	r    = np.arange(nr)*rmax/nr
-	corrfun = sotools.powspec.spec2corr(cov, r)
+	corrfun = powspec.spec2corr(cov, r)
 	# Interpolate it 2d. First get the pixel positions
 	# (remember to move to the corner because this is
 	# a correlation function)
 	dpos = posmap(shape, wcs)
 	dpos -= dpos[:,None,None,dpos.shape[-2]//2,dpos.shape[-1]//2]
 	ipos = np.arccos(np.cos(dpos[0])*np.cos(dpos[1]))*nr/rmax
-	corr2d = sotools.utils.interpol(corrfun, ipos.reshape((-1,)+ipos.shape), mode=mode, mask_nan=False, order=1)
+	corr2d = utils.interpol(corrfun, ipos.reshape((-1,)+ipos.shape), mode=mode, mask_nan=False, order=1)
 	corr2d = np.roll(corr2d, -corr2d.shape[-2]//2, -2)
 	corr2d = np.roll(corr2d, -corr2d.shape[-1]//2, -1)
 	corr2d = ndmap(corr2d, wcs)
@@ -845,15 +846,15 @@ def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 def _convolute_sym(a,b):
 	sa = np.concatenate([a,a[:,-2:0:-1]],-1)
 	sb = np.concatenate([b,b[:,-2:0:-1]],-1)
-	fa = sotools.fft.rfft(sa)
-	fb = sotools.fft.rfft(sb)
-	sa = sotools.fft.ifft(fa*fb,sa,normalize=True)
+	fa = fft.rfft(sa)
+	fb = fft.rfft(sb)
+	sa = fft.ifft(fa*fb,sa,normalize=True)
 	return sa[:,:a.shape[-1]]
 
 def multi_pow(mat, exp, axes=[0,1]):
 	"""Raise each sub-matrix of mat (ncomp,ncomp,...) to
 	the given exponent in eigen-space."""
-	return samewcs(sotools.utils.eigpow(mat, exp, axes=axes), mat)
+	return samewcs(utils.eigpow(mat, exp, axes=axes), mat)
 
 def downgrade(emap, factor):
 	"""Returns enmap "emap" downgraded by the given integer factor
@@ -950,7 +951,7 @@ def autocrop(m, method="plain", value="auto", margin=0, factors=None, return_inf
 	if method == "plain":
 		goodshape = minshape
 	elif method == "fft":
-		goodshape = np.array([sotools.fft.fft_len(l, direction="above", factors=None) for l in minshape])
+		goodshape = np.array([fft.fft_len(l, direction="above", factors=None) for l in minshape])
 	else:
 		raise ValueError("Unknown autocrop method %s!" % method)
 	# Pad if necessary
@@ -1094,7 +1095,7 @@ def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000, destroy_input=Fa
 	import healpy
 	if not destroy_input and order > 1: imap = imap.copy()
 	if order > 1:
-		imap = sotools.utils.interpol_prefilter(imap, order=order, inplace=True)
+		imap = utils.interpol_prefilter(imap, order=order, inplace=True)
 	if omap is None:
 		# Generate an output map
 		if not nside:
@@ -1152,7 +1153,7 @@ def from_flipper(imap, omap=None):
 	first  = imap.reshape(-1)[0]
 	# flipper and enmap wcs objects come from different wcs libraries, so
 	# they must be converted
-	wcs    = sotools.wcs.WCS(first.wcs.header).sub(2)
+	wcs    = wcsutils.WCS(first.wcs.header).sub(2)
 	if omap is None:
 		omap = empty(imap.shape + first.data.shape, wcs, first.data.dtype)
 	# Copy over all components
@@ -1222,7 +1223,7 @@ def read_map_geometry(fname, fmt=None, hdu=None):
 	else:
 		raise ValueError
 	if len(toks) > 1:
-		sel = eval("sotools.utils.sliceeval"+":".join(toks[1:]))[-2:]
+		sel = eval("utils.sliceeval"+":".join(toks[1:]))[-2:]
 		shape, wcs = slice_geometry(shape, wcs, sel)
 	return shape, wcs
 
@@ -1258,7 +1259,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, inclusive=False, sel_threshol
 		raise ValueError("%s is not an enmap (only %d axes)" % (fname, hdu.header["NAXIS"]))
 	if wcs_override is None:
 		with warnings.catch_warnings():
-			wcs = sotools.wcs.WCS(hdu.header).sub(2)
+			wcs = wcsutils.WCS(hdu.header).sub(2)
 	else:
 		wcs = wcs_override
 	# Slice if requested. Slicing at this point avoids unneccessary
@@ -1266,12 +1267,12 @@ def read_fits(fname, hdu=None, sel=None, box=None, inclusive=False, sel_threshol
 	if sel is not None:
 		assert box is None
 		# First slice the wcs
-		sel1, sel2 = sotools.slice.split_slice(sel, [len(hdu.shape)-2,2])
+		sel1, sel2 = sliceutils.split_slice(sel, [len(hdu.shape)-2,2])
 		_, wcs = slice_geometry(hdu.shape, wcs, sel2)
 		# hdu.section is pretty slow. Work around that by not applying it
 		# for small maps, and by not applying it along the last axis for the rest.
 		if hdu.size > sel_threshold:
-			sel1, sel2 = sotools.slice.split_slice(sel, [len(hdu.shape)-1,1])
+			sel1, sel2 = sliceutils.split_slice(sel, [len(hdu.shape)-1,1])
 			data = hdu.section[sel1]
 			data = data[(Ellipsis,)+sel2]
 		else:
@@ -1305,7 +1306,7 @@ def read_fits_geometry(fname, hdu=None):
 	if hdu.header["NAXIS"] < 2:
 		raise ValueError("%s is not an enmap (only %d axes)" % (fname, hdu.header["NAXIS"]))
 	with warnings.catch_warnings():
-		wcs = sotools.wcs.WCS(hdu.header).sub(2)
+		wcs = wcsutils.WCS(hdu.header).sub(2)
 	shape = tuple([hdu.header["NAXIS%d"%(i+1)] for i in range(hdu.header["NAXIS"])[::-1]])
 	return shape, wcs
 
@@ -1337,11 +1338,11 @@ def read_hdf(fname, sel=None):
 		header = astropy.io.fits.Header()
 		for key in hwcs:
 			header[key] = hwcs[key].value
-		wcs = sotools.wcs.WCS(header).sub(2)
+		wcs = wcsutils.WCS(header).sub(2)
 		# Slice if requested. Slicing at this point avoids unneccessary
 		# data actually being read
 		if sel:
-			sel1, sel2 = sotools.slice.split_slice(sel, [data.ndim-2,2])
+			sel1, sel2 = sliceutils.split_slice(sel, [data.ndim-2,2])
 			_, wcs = slice_geometry(data.shape, wcs, sel2)
 			data   = data[sel]
 		res = fix_endian(ndmap(data.value, wcs))
@@ -1355,7 +1356,7 @@ def read_hdf_geometry(fname):
 		header = astropy.io.fits.Header()
 		for key in hwcs:
 			header[key] = hwcs[key].value
-		wcs   = sotools.wcs.WCS(header).sub(2)
+		wcs   = wcsutils.WCS(header).sub(2)
 		shape = hfile["data"].shape
 	return shape, wcs
 

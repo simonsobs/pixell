@@ -1,6 +1,6 @@
 """This module is intended to make it easier to implement slicing."""
 import numpy as np
-from sotools.utils import cumsplit, listsplit, moveaxis
+from .utils import cumsplit, listsplit, moveaxis
 
 def expand_slice(sel, n, nowrap=False):
 	"""Expands defaults and negatives in a slice to their implied values.
