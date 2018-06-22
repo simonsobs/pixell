@@ -1,7 +1,7 @@
 """This is a convenience wrapper of pyfftw."""
 from __future__ import division
 import numpy as np, multiprocessing, os
-from . utils
+from . import utils
 engines = {}
 
 # Define our engines. First a baseline numpy-based engine
