@@ -3,7 +3,8 @@
 
 """The setup script."""
 
-from setuptools import setup, find_packages
+from setuptools import setup, Extension
+
 
 with open('README.rst') as readme_file:
     readme = readme_file.read()
@@ -16,6 +17,29 @@ requirements = ['Click>=6.0', ]
 setup_requirements = [ ]
 
 test_requirements = [ ]
+
+compile_opts = {
+    'compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing'],
+    'extra_link_args': ['-fopenmp']
+    }
+
+
+def process_cython_file(item):
+    """Compile a cython file into a .c, including any fixes for complex
+    data types.
+
+    Returns the filename of the .c file.
+    """
+    import subprocess as sp
+    c_file = item[:-4] + '.c'
+    tmp_file = item + '.fixed.c'
+    sp.call('cython %s || rm %s' % (item, c_file), shell=True)
+    sp.call("sed 's/typedef npy_float64 _Complex/typedef double _Complex/;s/typedef npy_float32 _Complex/typedef float _Complex/' %s > %s && mv %s %s" % (
+        c_file, tmp_file, tmp_file, c_file), shell=True)
+    return c_file
+
+sharp_src = process_cython_file('python/sharp/sharp.pyx')
+
 
 setup(
     author="Simons Observatory Collaboration Analysis Library Task Force",
@@ -39,13 +63,21 @@ setup(
             'sotools=sotools.cli:main',
         ],
     },
+    ext_modules=[
+        Extension('sotools.sharp', sources=[sharp_src],
+                  libraries=['sharp','c_utils', 'fftpack'],
+                  library_dirs=['_deps/libsharp/auto/lib'],
+                  **compile_opts),
+    ],
+    include_dirs = ['_deps/libsharp/auto/include'],
+    library_dirs = ['_deps/libsharp/auto/lib'],
     install_requires=requirements,
     license="BSD license",
     long_description=readme + '\n\n' + history,
     include_package_data=True,
     keywords='sotools',
     name='sotools',
-    packages=find_packages(include=['sotools']),
+    packages=['sotools'],
     setup_requires=setup_requirements,
     test_suite='tests',
     tests_require=test_requirements,
