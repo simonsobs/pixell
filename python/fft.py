@@ -1,5 +1,5 @@
 """This is a convenience wrapper of pyfftw."""
-from __future__ import division
+from __future__ import print_function, division
 import numpy as np, multiprocessing, os
 from . import utils
 engines = {}

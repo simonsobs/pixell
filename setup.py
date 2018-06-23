@@ -4,7 +4,9 @@
 """The setup script."""
 
 from setuptools import setup, Extension
-
+from setuptools.command.install import install
+import os
+import numpy as np
 
 with open('README.rst') as readme_file:
     readme = readme_file.read()
@@ -41,6 +43,14 @@ def process_cython_file(item):
 sharp_src = process_cython_file('python/sharp/sharp.pyx')
 
 
+
+class CustomInstall(install):
+
+    def run(self):
+        os.system('./scripts/install_libsharp.sh') 
+        install.run(self)
+        
+        
 setup(
     author="Simons Observatory Collaboration Analysis Library Task Force",
     author_email='',
@@ -67,6 +77,7 @@ setup(
         Extension('sotools.sharp', sources=[sharp_src],
                   libraries=['sharp','c_utils', 'fftpack'],
                   library_dirs=['_deps/libsharp/auto/lib'],
+                  include_dirs=[np.get_include()],
                   **compile_opts),
     ],
     include_dirs = ['_deps/libsharp/auto/include'],
@@ -84,4 +95,5 @@ setup(
     url='https://github.com/simonsobs/sotools',
     version='0.1.0',
     zip_safe=False,
+    cmdclass={'install': CustomInstall}
 )

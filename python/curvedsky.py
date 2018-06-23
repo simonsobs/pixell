@@ -1,5 +1,6 @@
 """This module provides functions for taking into account the curvature of the
 full sky."""
+from __future__ import print_function
 import numpy as np
 from . import sharp, enmap, powspec, utils, wcs as wcsutils
 

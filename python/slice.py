@@ -1,4 +1,5 @@
 """This module is intended to make it easier to implement slicing."""
+from __future__ import print_function
 import numpy as np
 from .utils import cumsplit, listsplit, moveaxis
 

@@ -4,6 +4,7 @@ the same ordering as WCS, i.e. column major (so {ra,dec} rather than
 {dec,ra}). Coordinates are assigned to pixel centers, as WCS does natively,
 but bounding boxes include the whole pixels, not just their centers, which
 is where the 0.5 stuff comes from."""
+from __future__ import division
 import numpy as np
 from astropy.wcs import WCS
 

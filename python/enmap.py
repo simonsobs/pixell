@@ -1,3 +1,4 @@
+from __future__ import print_function
 import numpy as np, scipy.ndimage, warnings, astropy.io.fits, sys, time
 from . import utils, wcs as wcsutils, slice as sliceutils, powspec
 
