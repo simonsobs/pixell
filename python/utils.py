@@ -1,4 +1,3 @@
-from __future__ import print_function
 import numpy as np, scipy.ndimage, os, errno, scipy.optimize, time, datetime, warnings, re, sys
 
 degree = np.pi/180
@@ -24,7 +23,7 @@ def lines(file_or_fname):
 		with open(file_or_fname,"r") as file:
 			for line in file: yield line
 	else:
-		for line in file: yield line
+		for line in file_or_fname: yield line
 
 def listsplit(seq, elem):
 	"""Analogue of str.split for lists.
@@ -1102,9 +1101,9 @@ def sbox_mul(a,b):
 	res[flip] = sbox_flip(res[flip])
 	return res
 
-def sbox_flip(a):
+def sbox_flip(sbox):
 	sbox = sbox_fix0(sbox)
-	return np.stack([a[...,1]-a[...,2],a[...,0]-a[...,2],-a[...,2]],-1)
+	return np.stack([sbox[...,1]-sbox[...,2],sbox[...,0]-sbox[...,2],-sbox[...,2]],-1)
 
 def sbox2slice(sbox):
 	sbox = sbox_fix0(sbox)
@@ -1136,6 +1135,87 @@ def sbox_fix(sbox):
 	# from the start
 	sbox[...,1] = sbox[...,0] + sbox_size(sbox)*sbox[...,2]
 	return sbox
+
+def sbox_wrap(sbox, wrap=0, cap=0):
+	""""Given a single sbox representing a slice of an N-dim array,
+	wraps and caps the sbox, returning a list of sboxes for each
+	contiguous section of the slice.
+
+	The wrap argument, which can be scalar or a length N array-like,
+	indicates the wrapping length along each dimension. Boxes that
+	extend beyond the wrapping length will be split into two at the
+	wrapping position, with the overshooting part wrapping around
+	to the beginning of the array. The speical value 0 disables wrapping
+	for that dimension.
+
+	The cap argument, which can also be a scalar or length N array-like,
+	indicates the physical length of each array dimension. The sboxes will
+	be truncated to avoid accessing any data beyond this length, after wrapping
+	has been taken into account.
+
+	The function returns a list of the form [(ibox1,obox1),(ibox2,obox2)...],
+	where the iboxes are sboxes representing slices into the input array
+	(the array the original sbox refers to), while the oboxes represent slices
+	into the output array. These sboxes can be turned into actual slices using
+	sbox2slice.
+
+	A typical example of the use of this function would be a sky map that wraps
+	horizontally after 360 degrees, where one wants to support extracting subsets
+	that straddle the wrapping point."""
+	# This function was surprisingly complicated. If I had known it would be
+	# this long I would have built it from the sbox-stuff above. But at least
+	# this one should have lower overhead than that would have had.
+	sbox = sbox_fix(sbox)
+	ndim = sbox.shape[0]
+	wrap = np.zeros(ndim,int)+wrap
+	cap  = np.zeros(ndim,int)+cap
+	dim_boxes = []
+	for d, w in enumerate(wrap):
+		ibox = sbox[d]
+		ilen = sbox_size(ibox)
+		c = cap[d]
+		# Things will be less redundant if we ensure that a has a positive stride
+		flip = ibox[2] < 0
+		if flip:
+			ibox = sbox_flip(ibox)
+		if w:
+			# move starting point to first positive loop
+			ibox[:2] -= ibox[0]//w*w
+			boxes_1d = []
+			i = 0
+			while ibox[1] > 0:
+				npre = max((-ibox[0])//ibox[2],0)
+				# ibox slice assuming all of the logical ibox is available
+				isub = sbox_fix([ibox[0]+npre*ibox[2],min(ibox[1],w),ibox[2]])
+				nsub = sbox_size(isub)
+				# the physical array may be smaller than the logical one
+				if c:
+					isub = sbox_fix([ibox[0]+npre*ibox[2],min(ibox[1],c),ibox[2]])
+					ncap = sbox_size(isub)
+				else: ncap = nsub
+				if not flip: osub = [i, i+ncap, 1]
+				else:        osub = [ilen-1-i, ilen-1-(i+ncap), -1]
+				boxes_1d.append((list(isub),osub))
+				i += nsub
+				ibox[:2] -= w
+		else:
+			# No wrapping, but may want to cap. In this case we will have both
+			# upwards and downwards capping. Find the number of samples to
+			# crop on each side
+			npre  = max((-ibox[0])//ibox[2],0)
+			if c: npost = max((ibox[1]-ibox[2]-(c-1))//ibox[2],0)
+			else: npost = 0
+			isub = [ibox[0]+npre*ibox[2], ibox[1]-npost*ibox[2], ibox[2]]
+			if not flip: osub = [npre, ilen-npost, 1]
+			else:        osub = [ilen-1-npre, npost-1, -1]
+			boxes_1d = [(isub,osub)]
+		dim_boxes.append(boxes_1d)
+	# Now create the outer product of all the individual dimensions' box sets
+	nper    = tuple([len(p) for p in dim_boxes])
+	iflat   = np.arange(np.product(nper))
+	ifull   = np.array(np.unravel_index(iflat, nper)).T
+	res     = [[[p[i][io] for i,p in zip(inds,dim_boxes)] for io in [0,1]] for inds in ifull]
+	return res
 
 def gcd(a, b):
 	"""Greatest common divisor of a and b"""
@@ -1532,7 +1612,7 @@ def eigpow(A, e, axes=[-2,-1], rlim=None, alim=None):
 
 def nint(a):
 	"""Return a rounded to the nearest integer, as an integer."""
-	return np.int0(np.round(a))
+	return np.round(a).astype(int)
 
 format_regex = r"%(\([a-zA-Z]\w*\)|\(\d+)\)?([ +0#-]*)(\d*|\*)(\.\d+|\.\*)?(ll|[lhqL])?(.)"
 def format_to_glob(format):
