@@ -138,7 +138,7 @@ def subinds(shape, wcs, box, mode=None, cap=True):
 	"""Helper function for submap. Translates the bounding
 	box provided into a pixel units. Assumes rectangular
 	coordinates.
-	
+
 	When translated to box into pixels, the result will in general have
 	fractional pixels, which need to be rounded before we can do any slicing.
 	To get as robust results as possible, we want
@@ -423,7 +423,7 @@ def rand_map(shape, wcs, cov, scalar=False, seed=None,pixel_units=False,iau=Fals
 	if seed is not None: np.random.seed(seed)
 	kmap = rand_gauss_iso_harm(shape, wcs, cov, pixel_units)
 	if scalar:
-		return ifft(kmap).real
+		return ifft_map(kmap).real
 	else:
 		return harm2map(kmap,iau=iau)
 
@@ -440,7 +440,7 @@ def rand_gauss_harm(shape, wcs):
 
 def rand_gauss_iso_harm(shape, wcs, cov, pixel_units=False):
 	"""Generates a random map with component covariance
-	cov in harmonic space, where cov is a (comp,comp,l) array or a 
+	cov in harmonic space, where cov is a (comp,comp,l) array or a
 	(comp,comp,Ny,Nx) array. Despite the name, the map doesn't need
 	to be isotropic since 2D power spectra are allowed.
 
@@ -608,12 +608,12 @@ def lrmap(shape, wcs, oversample=1):
 	of a map with the given shape and wcs."""
 	return lmap(shape, wcs, oversample=oversample)[...,:shape[-1]//2+1]
 
-def fft(emap, omap=None, nthread=0, normalize=True):
+def fft_map(emap, omap=None, nthread=0, normalize=True):
 	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap."""
 	res = samewcs(fft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
 	if normalize: res /= np.prod(emap.shape[-2:])**0.5
 	return res
-def ifft(emap, omap=None, nthread=0, normalize=True):
+def ifft_map(emap, omap=None, nthread=0, normalize=True):
 	"""Performs the 2d iFFT of the complex enmap given, and returns a pixel-space enmap."""
 	res = samewcs(fft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
 	if normalize: res /= np.prod(emap.shape[-2:])**0.5
@@ -625,7 +625,7 @@ def ifft(emap, omap=None, nthread=0, normalize=True):
 # use real transforms.
 def map2harm(emap, nthread=0, normalize=True,iau=False):
 	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap."""
-	emap = samewcs(fft(emap,nthread=nthread,normalize=normalize), emap)
+	emap = samewcs(fft_map(emap,nthread=nthread,normalize=normalize), emap)
 	if emap.ndim > 2 and emap.shape[-3] > 1:
 		rot = queb_rotmat(emap.lmap(),iau=iau)
 		emap[...,-2:,:,:] = map_mul(rot, emap[...,-2:,:,:])
@@ -635,7 +635,7 @@ def harm2map(emap, nthread=0, normalize=True,iau=False):
 		rot = queb_rotmat(emap.lmap(), inverse=True,iau=iau)
 		emap = emap.copy()
 		emap[...,-2:,:,:] = map_mul(rot, emap[...,-2:,:,:])
-	return samewcs(ifft(emap,nthread=nthread,normalize=normalize), emap).real
+	return samewcs(ifft_map(emap,nthread=nthread,normalize=normalize), emap).real
 
 def queb_rotmat(lmap, inverse=False, iau=False):
 	# atan2(x,y) instead of (y,x) because Qr points in the
@@ -693,7 +693,7 @@ def apply_window(emap, pow=1.0):
 	"""Apply the pixel window function to the specified power to the map,
 	returning a modified copy. Use pow=-1 to unapply the pixel window."""
 	wy, wx = calc_window(emap.shape)
-	return ifft(fft(emap) * wy[:,None]**pow * wx[None,:]**pow).real
+	return ifft_map(fft_map(emap) * wy[:,None]**pow * wx[None,:]**pow).real
 
 def samewcs(arr, *args):
 	"""Returns arr with the same wcs information as the first enmap among args.
@@ -823,7 +823,7 @@ def spec2flat_corr(shape, wcs, cov, exp=1.0, mode="constant"):
 	corr2d = np.roll(corr2d, -corr2d.shape[-2]//2, -2)
 	corr2d = np.roll(corr2d, -corr2d.shape[-1]//2, -1)
 	corr2d = ndmap(corr2d, wcs)
-	return fft(corr2d).real * np.product(shape[-2:])**0.5
+	return fft_map(corr2d).real * np.product(shape[-2:])**0.5
 
 def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 	"""Smooth the spectrum ps with the given kernel, using the given weighting."""
@@ -833,7 +833,7 @@ def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 	# Set up the kernel array
 	K = np.zeros((nspec,nl))
 	l = np.arange(nl)
-	if isinstance(kernel, basestring):
+	if type(kernel) == str:
 		if kernel == "gauss":
 			K[:] = np.exp(-0.5*(l/width)**2)
 		elif kernel == "step":
@@ -845,7 +845,7 @@ def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 		K[:,:tmp.shape[-1]] = tmp[:,:K.shape[-1]]
 	# Set up the weighting scheme
 	W = np.zeros((nspec,nl))
-	if isinstance(weight, basestring):
+	if type(weight) == str:
 		if weight == "mode":
 			W[:] = l[None,:]**2
 		elif weight == "uniform":
@@ -997,7 +997,7 @@ def padcrop(m, info):
 
 def grad(m):
 	"""Returns the gradient of the map m as [2,...]."""
-	return ifft(fft(m)*_widen(m.lmap(),m.ndim+1)*1j).real
+	return ifft_map(fft_map(m)*_widen(m.lmap(),m.ndim+1)*1j).real
 
 def grad_pix(m):
 	"""The gradient of map m expressed in units of pixels.
@@ -1009,7 +1009,7 @@ def grad_pix(m):
 
 def div(m):
 	"""Returns the divergence of the map m[2,...] as [...]."""
-	return ifft(np.sum(fft(m)*_widen(m.lmap(),m.ndim)*1j,0)).real
+	return ifft_map(np.sum(fft_map(m)*_widen(m.lmap(),m.ndim)*1j,0)).real
 
 def _widen(map,n):
 	"""Helper for gard and div. Adds degenerate axes between the first
