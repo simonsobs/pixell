@@ -82,6 +82,10 @@ CYTHON_TARGETS = [
 
 class CythonicBuild(build_ext):
     def run(self):
+        # Handle the special external dependencies.
+        if not os.path.exists('_deps/libsharp/libsharp/sharp.h'):
+            sp.call('scripts/install_libsharp.sh', shell=True)
+
         # Pre-construct any cython .c files that we need.
         for target in CYTHON_TARGETS:
             target.build()
