@@ -3,20 +3,21 @@
 language: python
 python:
   - 3.6
-  - 3.5
-  - 3.4
-  - 2.7
-  - 2.6
+#  - 3.5
+#  - 3.4
+#  - 2.7
+#  - 2.6
 
 os: linux
 
 
 install:
-  - pip install -r requirements.txt
-  - pip install .
+   - pip install -r requirements.txt
+   - python setup.py build_ext -i
 
 # Command to run tests, e.g. python setup.py test
-script: py.test
+script:
+   - py.test tests/
 
 matrix:
   allow_failures:
