@@ -4,7 +4,6 @@
 """The setup script."""
 
 from setuptools import setup, Extension
-from setuptools.command.install import install
 from setuptools.command.build_ext import build_ext
 import os
 import subprocess as sp
@@ -77,7 +76,7 @@ class CythonTarget:
 
 CYTHON_TARGETS = [
     CythonTarget('sharp.c', deps=['csharp.pxd', 'csharp.h'],
-                 root='sotools/sharp/')
+                 root='src/sharp/')
 ]
 
 
@@ -115,7 +114,7 @@ setup(
     },
     ext_modules=[
         Extension('sotools.sharp',
-                  sources=['sotools/sharp/sharp.c'],
+                  sources=['src/sharp/sharp.c'],
                   libraries=['sharp','c_utils', 'fftpack'],
                   library_dirs=['_deps/libsharp/auto/lib'],
                   include_dirs=[np.get_include()],
