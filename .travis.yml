@@ -12,7 +12,7 @@ os: linux
 
 
 install:
-   - pip install -q numpy cython
+   - pip install -q numpy scipy cython
    - python setup.py install
 
 # Command to run tests, e.g. python setup.py test
