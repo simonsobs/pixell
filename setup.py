@@ -40,7 +40,7 @@ def process_cython_file(item):
         c_file, tmp_file, tmp_file, c_file), shell=True)
     return c_file
 
-sharp_src = process_cython_file('python/sharp/sharp.pyx')
+sharp_src = process_cython_file('sotools/sharp/sharp.pyx')
 
 
 
@@ -67,7 +67,7 @@ setup(
         'Programming Language :: Python :: 3.6',
     ],
     description="sotools",
-    package_dir={"sotools": "python"},
+    package_dir={"sotools": "sotools"},
     entry_points={
         'console_scripts': [
             'sotools=sotools.cli:main',
