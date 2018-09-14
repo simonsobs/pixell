@@ -12,12 +12,12 @@ os: linux
 
 
 install:
-   - pip install -q numpy scipy astropy cython
-   - python setup.py install
+   - pip install -r requirements.txt
+   - python setup.py build -i
 
 # Command to run tests, e.g. python setup.py test
 script:
-   - py.test --ignore=_deps/
+   - py.test tests/
 
 matrix:
   allow_failures:
