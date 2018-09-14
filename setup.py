@@ -4,8 +4,9 @@
 """The setup script."""
 
 from setuptools import setup, Extension
-from setuptools.command.install import install
+from setuptools.command.build_ext import build_ext
 import os
+import subprocess as sp
 import numpy as np
 
 with open('README.rst') as readme_file:
@@ -25,32 +26,19 @@ compile_opts = {
     'extra_link_args': ['-fopenmp']
     }
 
-
-def process_cython_file(item):
-    """Compile a cython file into a .c, including any fixes for complex
-    data types.
-
-    Returns the filename of the .c file.
-    """
-    import subprocess as sp
-    c_file = item[:-4] + '.c'
-    tmp_file = item + '.fixed.c'
-    sp.call('cython %s || rm %s' % (item, c_file), shell=True)
-    sp.call("sed 's/typedef npy_float64 _Complex/typedef double _Complex/;s/typedef npy_float32 _Complex/typedef float _Complex/' %s > %s && mv %s %s" % (
-        c_file, tmp_file, tmp_file, c_file), shell=True)
-    return c_file
-
-sharp_src = process_cython_file('sotools/sharp/sharp.pyx')
-
-
-
-class CustomInstall(install):
-
+class CustomBuild(build_ext):
     def run(self):
-        os.system('./scripts/install_libsharp.sh') 
-        install.run(self)
-        
-        
+        # Handle the special external dependencies.
+        if not os.path.exists('_deps/libsharp/libsharp/sharp.h'):
+            sp.call('scripts/install_libsharp.sh', shell=True)
+
+        # Handle cythonization to create sharp.c, etc.
+        sp.call('make -C cython/', shell=True)
+
+        # Then let setuptools do its thing.
+        return build_ext.run(self)
+
+
 setup(
     author="Simons Observatory Collaboration Analysis Library Task Force",
     author_email='',
@@ -74,7 +62,8 @@ setup(
         ],
     },
     ext_modules=[
-        Extension('sotools.sharp', sources=[sharp_src],
+        Extension('sotools.sharp',
+                  sources=['cython/sharp.c'],
                   libraries=['sharp','c_utils', 'fftpack'],
                   library_dirs=['_deps/libsharp/auto/lib'],
                   include_dirs=[np.get_include()],
@@ -95,5 +84,5 @@ setup(
     url='https://github.com/simonsobs/sotools',
     version='0.1.0',
     zip_safe=False,
-    cmdclass={'install': CustomInstall}
+    cmdclass={'build_ext': CustomBuild}
 )
