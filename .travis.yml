@@ -16,7 +16,8 @@ install:
    - python setup.py install
 
 # Command to run tests, e.g. python setup.py test
-script: py.test
+script:
+   - py.test --ignore=_deps/
 
 matrix:
   allow_failures:
