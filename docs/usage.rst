@@ -11,3 +11,7 @@ To use sotools in a project::
 
 .. automodule:: sotools.enmap
    :members:    
+
+.. automodule:: sotools.reproject
+   :members:    
+      
