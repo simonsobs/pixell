@@ -7,3 +7,4 @@ cd libsharp
 aclocal && autoconf
 ./configure --enable-pic
 make
+rm -rf python/
