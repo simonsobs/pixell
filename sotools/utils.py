@@ -5,9 +5,11 @@ arcmin = degree/60
 arcsec = arcmin/60
 fwhm   = 1.0/(8*np.log(2))**0.5
 T_cmb = 2.73
-c = 299792458.0
-h = 6.62606957e-34
-k = 1.3806488e-23
+c  = 299792458.0
+h  = 6.62606957e-34
+k  = 1.3806488e-23
+AU = 149597870700.0
+day2sec = 86400.
 
 # These are like degree, arcmin and arcsec, but turn any lists
 # they touch into arrays.
@@ -158,7 +160,10 @@ def ctime2mjd(ctime):
 def mjd2ctime(mjd):
 	"""Converts from modified julian date to unix time."""
 	return (np.asarray(mjd)-40587.0)*86400
-day2sec = 86400.
+def mjd2djd(mjd): return np.asarray(mjd) + 2400000.5 - 2415020
+def djd2mjd(djd): return np.asarray(djd) - 2400000.5 + 2415020
+def ctime2djd(ctime): return mjd2djd(ctime2mjd(ctime))
+def djd2mjd(cdjd):    return mjd2ctime(djd2mjd(djd))
 
 def mjd2ctime(mjd):
 	"""Converts from modified julian date to unix time"""

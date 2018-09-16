@@ -272,6 +272,7 @@ def alm2map_raw(alm, map, ainfo, minfo, spin=2, deriv=False, copy=False):
 	to already be set up, and that the map and alm must be fully compatible
 	with these."""
 	if copy: map = map.copy()
+	alm = np.asarray(alm, dtype=np.result_type(map.dtype,1j))
 	alm_full = utils.to_Nd(alm, 2 if deriv else 3)
 	map_full = utils.to_Nd(map, 4)
 	map_flat = map_full.reshape(map_full.shape[:-2]+(-1,))

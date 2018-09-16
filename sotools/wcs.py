@@ -201,7 +201,8 @@ def finalize(w, pos, res, shape, ref=None):
 	if pos.ndim == 1:
 		if shape is not None:
 			# Place pixel origin at corner of shape centered on crval
-			w.wcs.crpix = np.array(shape)/2.0+0.5
+			off = w.wcs_world2pix(pos[None],0)[0]
+			w.wcs.crpix = np.array(shape)/2.0+0.5 - off
 	else:
 		# Make pos[0] the corner of the (0,0) pixel (counting from 0 for simplicity)
 		off = w.wcs_world2pix(pos[0,None],0)[0]+0.5
