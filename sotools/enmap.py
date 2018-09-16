@@ -732,9 +732,10 @@ def geometry(pos, res=None, shape=None, proj="cea", deg=False, pre=(), **kwargs)
 		# shape-(0.5,0.5). We assume that wcs.build has already
 		# assured the former. Our job is to find shape that puts
 		# the top edge close to the requested value, while still
-		# being valied. If we always round down, we should be safe:
-		faredge = wcsutils.nobcheck(wcs).wcs_world2pix(pos[1:2,::-1],0)[0,::-1]
-		shape = tuple(np.floor(faredge+0.5).astype(int))
+		# being valid. If we always round down, we should be safe:
+		nearedge = wcsutils.nobcheck(wcs).wcs_world2pix(pos[0:1,::-1],0)[0,::-1]
+		faredge  = wcsutils.nobcheck(wcs).wcs_world2pix(pos[1:2,::-1],0)[0,::-1]
+		shape = tuple(np.round(faredge-nearedge).astype(int))
 	return pre+tuple(shape), wcs
 
 def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
@@ -1287,7 +1288,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mod
 			chunk = hdu.section[isel1][(Ellipsis,)+isel2]
 		else: chunk = hdu.data[isel]
 		if omap is None:
-			omap = zeros(chunk.shape[:-2]+oshape, wcs, chunk.dtype)
+			omap = zeros(chunk.shape[:-2]+oshape, owcs, chunk.dtype)
 		omap[osel] = chunk
 	omap = fix_endian(omap)
 	return omap
@@ -1345,7 +1346,7 @@ def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mode
 				chunk = data[isel1][(Ellipsis,)+isel2]
 			else: chunk = data[isel]
 			if omap is None:
-				omap = zeros(chunk.shape[:-2]+oshape, wcs, chunk.dtype)
+				omap = zeros(chunk.shape[:-2]+oshape, owcs, chunk.dtype)
 			omap[osel] = chunk
 		omap = fix_endian(omap)
 		return omap
@@ -1386,6 +1387,11 @@ def read_helper(shape, sel=None, box=None, pixbox=None, wrap="auto", mode=None, 
 	oshape, owcs = slice_geometry(shape[-2:], wcs, (slice(*pbox[:,-2]),slice(*pbox[:,-1])), nowrap=True)
 	# Apply wrapping
 	nphi = utils.nint(360/np.abs(wcs.wcs.cdelt[0]))
+	# If our map is actually wider than our wrapping length, then wrapping doesn't
+	# make much sense. We can either just disable it, or generalize it to assume
+	# e.g. a spin-1/2 field. I do the latter here, by wrapping at the smallest multiple
+	# of nphi that's not smaller than the width of the map in pixels
+	nphi *= (nphi+shape[-1]-1)//nphi
 	if wrap is "auto": wrap = [0,nphi]
 	else: wrap = np.zeros(2,int)+wrap
 	info = []

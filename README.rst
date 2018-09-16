@@ -2,9 +2,10 @@
 sotools
 =======
 
-
+..
 .. image:: https://img.shields.io/pypi/v/sotools.svg
         :target: https://pypi.python.org/pypi/sotools
+..
 
 .. image:: https://img.shields.io/travis/simonsobs/sotools.svg
         :target: https://travis-ci.org/simonsobs/sotools
@@ -22,6 +23,14 @@ This is an early development repository for a CMB map analysis library. The API 
 * Free software: BSD license
 * Documentation: https://sotools.readthedocs.io.
 
+Dependencies
+------------
+
+* libsharp (downloaded and installed)
+* automake (for libsharp compilation)
+* cython
+* astropy
+* scipy
 
 Features
 --------

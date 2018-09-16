@@ -8,7 +8,7 @@ from . import wcs as enwcs, enmap, coordinates
 def postage_stamp(imap,ra_deg,dec_deg,width_arcmin,res_arcmin,proj='gnomonic',**kwargs):
     """Extract a postage stamp from a larger map by reprojecting to a coordinate system centered on the given position.
     
-    imap -- (Ny,Nx) enmap array from which to extract stamps TODO: support leading dimensions
+    imap -- (Ny,Nx) enmap array from which to extract stamps or filename for map TODO: support leading dimensions 
     ra_deg -- right ascension in degrees
     dec_deg -- declination in degrees
     width_arcmin -- stamp dimension in arcminutes
@@ -20,7 +20,8 @@ def postage_stamp(imap,ra_deg,dec_deg,width_arcmin,res_arcmin,proj='gnomonic',**
     width = np.deg2rad(width_arcmin/60.)
     res = np.deg2rad(res_arcmin/60.)
     # cut out a stamp assuming CAR ; TODO: generalize?
-    stamp = cutout(imap,width=np.deg2rad(width_arcmin/60.)/np.cos(dec),ra=ra,dec=dec)
+    stamp = cutout(imap,width=np.deg2rad(width_arcmin/60.)/np.cos(dec),ra=ra,dec=dec,return_slice=(type(imap)==str))
+    if (type(imap)==str): stamp = enmap.read_map(imap,sel=stamp)
     if stamp is None: return None
     sshape,swcs = stamp.shape,stamp.wcs
     if proj=='car' or proj=='cea':
@@ -28,7 +29,40 @@ def postage_stamp(imap,ra_deg,dec_deg,width_arcmin,res_arcmin,proj='gnomonic',**
     elif proj=='gnomonic':
         tshape,twcs = gnomonic_pole_geometry(width,res)
     rpix = get_rotated_pixels(sshape,swcs,tshape,twcs,inverse=False,pos_target=None,center_target=(0.,0.),center_source=(dec,ra))
-    return rotate_map(stamp,pix_target=rpix,**kwargs)
+    return enmap.enmap(rotate_map(stamp,pix_target=rpix,**kwargs),twcs)
+
+
+def centered_map(imap,res,box=None,pixbox=None,proj='car',rpix=None,width=None,height=None,**kwargs):
+    """Reproject a map such that its central pixel is at the origin of a given projection system (default: CAR).
+    
+    imap -- (Ny,Nx) enmap array from which to extract stamps TODO: support leading dimensions 
+    res -- width of pixel in radians
+    box -- optional bounding box of submap in radians
+    pixbox -- optional bounding box of submap in pixel numbers
+    proj -- coordinate system for target map; default is 'car'; can also specify 'cea' or 'gnomonic'
+    rpix -- optional pre-calculated pixel positions from get_rotated_pixels()
+    """
+    proj = proj.strip().lower() ; assert proj in ['gnomonic','car','cea']
+    # cut out a stamp assuming CAR ; TODO: generalize?
+    if box is not None: pixbox = enmap.skybox2pixbox(imap.shape, imap.wcs, box)
+    if pixbox is not None:
+        omap = enmap.extract_pixbox(imap, pixbox)
+    else:
+        omap = imap
+    sshape,swcs = omap.shape,omap.wcs
+    dec,ra = enmap.pix2sky(sshape,swcs,(sshape[0]/2.,sshape[1]/2.)) # central pixel of source geometry
+    height,width = enmap.extent(sshape,swcs)
+    #box = enmap.box(sshape,swcs)
+    #height = np.abs(box[1,0]-box[0,0])
+    #width = np.abs(box[1,1]-box[0,1])
+    if proj=='car' or proj=='cea':
+        tshape,twcs = rect_geometry(width=width,res=res,proj=proj,height=height)
+    elif proj=='gnomonic':
+        tshape,twcs = gnomonic_pole_geometry(width,res,height=height)
+    print(sshape,swcs,tshape,twcs,dec,ra)
+    if rpix is None: rpix = get_rotated_pixels(sshape,swcs,tshape,twcs,inverse=False,pos_target=None,center_target=(0.,0.),center_source=(dec,ra))
+    return enmap.enmap(rotate_map(omap,pix_target=rpix,**kwargs),twcs),rpix
+
 
 def healpix_from_enmap(imap,**kwargs):
     return imap.to_healpix(**kwargs)
@@ -101,9 +135,12 @@ def get_rotated_pixels(shape_source,wcs_source,shape_target,wcs_target,inverse=F
     return pix_new
 
 
-def cutout(imap,width=None,ra=None,dec=None,pad=1,corner=False,preserve_wcs=False,res=None,npix=None):
-    shape = imap.shape[-2:]
-    wcs = imap.wcs
+def cutout(imap,width=None,ra=None,dec=None,pad=1,corner=False,preserve_wcs=False,res=None,npix=None,return_slice=False):
+    if type(imap)==str:
+        shape,wcs = enmap.read_map_geometry(imap)
+    else:
+        shape,wcs = imap.shape,imap.wcs
+    shape = shape[-2:]
     Ny,Nx = shape
     fround = lambda x : int(np.round(x))
     iy,ix = enmap.sky2pix(shape,wcs,coords=(dec,ra),corner=corner)
@@ -111,11 +148,17 @@ def cutout(imap,width=None,ra=None,dec=None,pad=1,corner=False,preserve_wcs=Fals
     if npix is None: npix = int(width/res)
     if fround(iy-npix/2)<pad or fround(ix-npix/2)<pad or fround(iy+npix/2)>(Ny-pad) or fround(ix+npix/2)>(Nx-pad): return None
     s = np.s_[fround(iy-npix/2.+0.5):fround(iy+npix/2.+0.5),fround(ix-npix/2.+0.5):fround(ix+npix/2.+0.5)]
+    if return_slice: return s
     cutout = imap[s]
     return cutout
 
-def rect_geometry(width,res,height=None,proj="car"):
+def rect_box(width,center=(0.,0.),height=None):
     if height is None: height = width
-    shape, wcs = enmap.geometry(pos=[[-height/2.,-width/2.],[height/2.,width/2.]], res=res, proj=proj)
+    ycen,xcen = center
+    box = np.array([[-height/2.+ycen,-width/2.+xcen],[height/2.+ycen,width/2.+xcen]])
+    return box 
+
+def rect_geometry(width,res,height=None,center=(0.,0.),proj="car"):
+    shape, wcs = enmap.geometry(pos=rect_box(width,center=center,height=height), res=res, proj=proj)
     return shape,wcs
 
