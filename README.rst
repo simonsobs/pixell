@@ -27,6 +27,37 @@ Dependencies
 * astropy
 * scipy
 
+Installing
+--------
+
+To install, run:
+
+.. code-block:: console
+		
+   $ python setup.py install --user
+
+
+Development workflow
+~~~~~~~~~~
+
+If you are a developer, run:
+
+.. code-block:: console
+		
+   $ python setup.py develop --user
+
+
+so that changes you make in any python file are immediately reflected. If you also need non-Python code to be recompiled, run:
+
+.. code-block:: console
+		
+   $ python setup.py clean
+
+
+before the above step.
+
+
+
 Contributing
 -------
 
@@ -37,5 +68,5 @@ If you have write access to this repository, please:
 3. merge or rebase to get in sync with master
 4. submit a pull request on github
 
-If you do not have write access, create a fork of this repository and proceed as described above. For more details, see :doc:`contributing`.
+If you do not have write access, create a fork of this repository and proceed as described above. For more details, see :ref:`ContributingPage`.
   
