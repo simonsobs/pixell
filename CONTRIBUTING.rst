@@ -80,7 +80,7 @@ Ready to contribute? Here's how to set up `sotools` for local development.
    tests::
 
     $ flake8 sotools tests
-    $ python setup.py test or py.test
+    $ py.test
 
    To get flake8, just pip install it into your virtualenv.
 

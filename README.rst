@@ -2,11 +2,6 @@
 sotools
 =======
 
-..
-.. image:: https://img.shields.io/pypi/v/sotools.svg
-        :target: https://pypi.python.org/pypi/sotools
-..
-
 .. image:: https://img.shields.io/travis/simonsobs/sotools.svg
         :target: https://travis-ci.org/simonsobs/sotools
 
@@ -32,15 +27,15 @@ Dependencies
 * astropy
 * scipy
 
-Features
---------
-
-* TODO
-
-Credits
+Contributing
 -------
 
-This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypackage`_ project template.
+If you have write access to this repository, please:
 
-.. _Cookiecutter: https://github.com/audreyr/cookiecutter
-.. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
+1. create a new branch
+2. push your changes to that branch
+3. merge or rebase to get in sync with master
+4. submit a pull request on github
+
+If you do not have write access, create a fork of this repository and proceed as described above. For more details, see :doc:`contributing`.
+  
