@@ -32,7 +32,7 @@ def postage_stamp(imap,ra_deg,dec_deg,width_arcmin,res_arcmin,proj='gnomonic',**
     return enmap.enmap(rotate_map(stamp,pix_target=rpix,**kwargs),twcs)
 
 
-def centered_map(imap,res,box=None,pixbox=None,proj='car',rpix=None,width=None,height=None,**kwargs):
+def centered_map(imap,res,box=None,pixbox=None,proj='car',rpix=None,width=None,height=None,width_multiplier=1.,**kwargs):
     """Reproject a map such that its central pixel is at the origin of a given projection system (default: CAR).
     
     imap -- (Ny,Nx) enmap array from which to extract stamps TODO: support leading dimensions 
@@ -42,7 +42,7 @@ def centered_map(imap,res,box=None,pixbox=None,proj='car',rpix=None,width=None,h
     proj -- coordinate system for target map; default is 'car'; can also specify 'cea' or 'gnomonic'
     rpix -- optional pre-calculated pixel positions from get_rotated_pixels()
     """
-    proj = proj.strip().lower() ; assert proj in ['gnomonic','car','cea']
+    proj = proj.strip().lower() ; assert proj in ['car','cea']
     # cut out a stamp assuming CAR ; TODO: generalize?
     if box is not None: pixbox = enmap.skybox2pixbox(imap.shape, imap.wcs, box)
     if pixbox is not None:
@@ -51,15 +51,12 @@ def centered_map(imap,res,box=None,pixbox=None,proj='car',rpix=None,width=None,h
         omap = imap
     sshape,swcs = omap.shape,omap.wcs
     dec,ra = enmap.pix2sky(sshape,swcs,(sshape[0]/2.,sshape[1]/2.)) # central pixel of source geometry
-    height,width = enmap.extent(sshape,swcs)
-    #box = enmap.box(sshape,swcs)
-    #height = np.abs(box[1,0]-box[0,0])
-    #width = np.abs(box[1,1]-box[0,1])
-    if proj=='car' or proj=='cea':
-        tshape,twcs = rect_geometry(width=width,res=res,proj=proj,height=height)
-    elif proj=='gnomonic':
-        tshape,twcs = gnomonic_pole_geometry(width,res,height=height)
-    print(sshape,swcs,tshape,twcs,dec,ra)
+    dims = enmap.extent(sshape,swcs)
+    height,width = dims
+    if height is None: height = dheight
+    if width is None: width = dwidth
+    width *= width_multiplier
+    tshape,twcs = rect_geometry(width=width,res=res,proj=proj,height=height)
     if rpix is None: rpix = get_rotated_pixels(sshape,swcs,tshape,twcs,inverse=False,pos_target=None,center_target=(0.,0.),center_source=(dec,ra))
     return enmap.enmap(rotate_map(omap,pix_target=rpix,**kwargs),twcs),rpix
 

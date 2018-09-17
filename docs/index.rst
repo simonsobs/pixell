@@ -8,7 +8,7 @@ Welcome to sotools's documentation!
    readme
    installation
    usage
-   modules
+   reference
    contributing
    authors
    history
