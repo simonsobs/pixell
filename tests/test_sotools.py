@@ -4,36 +4,15 @@
 """Tests for `sotools` package."""
 
 
-import unittest
-#from click.testing import CliRunner
-
 from sotools import enmap
 from sotools import sharp
 from sotools import curvedsky
+import numpy as np
 
-
-class TestSotools(unittest.TestCase):
-    """Tests for `sotools` package."""
-
-    def setUp(self):
-        """Set up test fixtures, if any."""
-        pass
-
-    def tearDown(self):
-        """Tear down test fixtures, if any."""
-        pass
-
-    def test_000_something(self):
-        """Test something."""
-        pass
-
-    # def test_command_line_interface(self):
-    #     """Test the CLI."""
-    #     runner = CliRunner()
-    #     result = runner.invoke(cli.main)
-    #     assert result.exit_code == 0
-    #     assert 'sotools.cli.main' in result.output
-    #     help_result = runner.invoke(cli.main, ['--help'])
-    #     assert help_result.exit_code == 0
-    #     assert '--help  Show this message and exit.' in help_result.output
+def test_fullsky_geometry():
+    # Tests whether number of pixels and area of a full-sky 0.5 arcminute resolution map are correct
+    test_res_arcmin = 0.5
+    shape,wcs = enmap.fullsky_geometry(res=np.deg2rad(test_res_arcmin/60.),proj='car')
+    assert shape[0]==21601 and shape[1]==43200
+    assert 50000 < (enmap.area(shape,wcs)*(180./np.pi)**2.) < 51000
 
