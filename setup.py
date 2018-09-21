@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8; indent-tabs-mode: t; tab-width: 4 -*-
 
 """The setup script."""
 
@@ -27,31 +27,36 @@ compile_opts = {
 	'extra_link_args': ['-fopenmp']
 	}
 
+
+def prebuild():
+    # Handle the special external dependencies.
+    if not os.path.exists('_deps/libsharp/libsharp/sharp.h'):
+        sp.call('scripts/install_libsharp.sh', shell=True)
+    # Handle cythonization to create sharp.c, etc.
+    sp.call('make -C cython',  shell=True)
+    sp.call('make -C fortran', shell=True)
+
+
 class CustomBuild(build_ext):
-	def run(self):
-		# Handle the special external dependencies.
-		if not os.path.exists('_deps/libsharp/libsharp/sharp.h'):
-			sp.call('scripts/install_libsharp.sh', shell=True)
-		# Handle cythonization to create sharp.c, etc.
-		sp.call('make -C cython',  shell=True)
-		sp.call('make -C fortran', shell=True)
-		# Then let setuptools do its thing.
-		return build_ext.run(self)
+    def run(self):
+        prebuild()
+        # Then let setuptools do its thing.
+        return build_ext.run(self)
 
 class CustomInstall(setuptools.command.install.install):
-	def run(self):
-		self.run_command("build_ext")
-		return setuptools.command.install.install.run(self)
+    def run(self):
+        prebuild()
+        return setuptools.command.install.install.run(self)
 
 class CustomDevelop(setuptools.command.develop.develop):
-	def run(self):
-		self.run_command("build_ext")
-		return setuptools.command.develop.develop.run(self)	
+    def run(self):
+        prebuild()
+        return setuptools.command.develop.develop.run(self)	
 
 class CustomEggInfo(setuptools.command.egg_info.egg_info):
-	def run(self):
-		self.run_command("build_ext")
-		return setuptools.command.egg_info.egg_info.run(self)	
+    def run(self):
+        prebuild()
+        return setuptools.command.egg_info.egg_info.run(self)	
 
 setup(
 	author="Simons Observatory Collaboration Analysis Library Task Force",
@@ -105,7 +110,8 @@ setup(
 	version='0.1.0',
 	zip_safe=False,
 	cmdclass={'build_ext': CustomBuild,
-		  'install': CustomInstall,
- 		  'develop': CustomDevelop,
- 		  'egg_info': CustomEggInfo}
+#		  'install': CustomInstall,
+# 		  'develop': CustomDevelop,
+ 		  'egg_info': CustomEggInfo
+	}
 )
