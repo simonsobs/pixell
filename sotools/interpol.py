@@ -1,3 +1,4 @@
+from __future__ import print_function
 import numpy as np, time
 from . import utils
 from . import _interpol_32, _interpol_64
@@ -168,7 +169,7 @@ def build(func, interpolator, box, errlim, maxsize=None, maxtime=None, return_ob
 				if np.any(np.isnan(ytrue)):
 					raise ValueError("Function to interpolate returned invalid value")
 				err = np.max(np.abs((ytrue-yinter).reshape(ytrue.shape[0],-1)), 1)
-				if verbose: print x.shape, x.size, err/errlim
+				if verbose: print(x.shape, x.size, err/errlim)
 				if any(err > errlim):
 					# Not good enough, so accept improvement
 					ip = interpolator(box, ytrue, *args, **kwargs)
