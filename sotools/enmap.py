@@ -1,6 +1,6 @@
 from __future__ import print_function
 import numpy as np, scipy.ndimage, warnings, astropy.io.fits, sys, time
-from . import utils, wcs as wcsutils, slice as sliceutils, powspec, fft as enfft
+from . import utils, wcsutils, slice as sliceutils, powspec, fft as enfft
 
 # Things that could be improved:
 #  1. We assume exactly 2 WCS axes in spherical projection in {dec,ra} order.
