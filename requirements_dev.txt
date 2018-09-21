@@ -10,7 +10,6 @@ numpy>=1.13
 astropy>=2.0
 setuptools>=39.2
 h5py>=2.7
-click>=6.7
 scipy>=1.0
 python_dateutil>=2.7
 cython>=0.28

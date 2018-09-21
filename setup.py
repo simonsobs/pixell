@@ -16,7 +16,7 @@ with open('README.rst') as readme_file:
 with open('HISTORY.rst') as history_file:
 	history = history_file.read()
 
-requirements       = ['Click>=6.0', ]
+requirements       = []
 setup_requirements = []
 test_requirements  = []
 
@@ -66,9 +66,9 @@ setup(
 	description="sotools",
 	package_dir={"sotools": "sotools"},
 	entry_points={
-		'console_scripts': [
-			'sotools=sotools.cli:main',
-		],
+#		'console_scripts': [
+#			'sotools=sotools.cli:main',
+#		],
 	},
 	ext_modules=[
 		Extension('sotools.sharp',
