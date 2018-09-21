@@ -44,10 +44,10 @@ class CustomInstall(setuptools.command.install.install):
         self.run_command("build_ext")
         return setuptools.command.install.install.run(self)
 
-# class CustomDevelop(setuptools.command.install.develop):
-#     def run(self):
-#         self.run_command("build_ext")
-#         return setuptools.command.install.develop.run(self)	
+class CustomDevelop(setuptools.command.develop.develop):
+    def run(self):
+        self.run_command("build_ext")
+        return setuptools.command.develop.develop.run(self)	
 
 
 setup(
@@ -101,6 +101,5 @@ setup(
 	url='https://github.com/simonsobs/sotools',
 	version='0.1.0',
 	zip_safe=False,
-	# cmdclass={'build_ext': CustomBuild,'install': CustomInstall}
 	cmdclass={'build_ext': CustomBuild,'install': CustomInstall,'develop': CustomDevelop}
 )
