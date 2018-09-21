@@ -48,6 +48,11 @@ class CustomDevelop(setuptools.command.develop.develop):
 		self.run_command("build_ext")
 		return setuptools.command.develop.develop.run(self)	
 
+class CustomEggInfo(setuptools.command.egg_info.egg_info):
+	def run(self):
+		self.run_command("build_ext")
+		return setuptools.command.egg_info.egg_info.run(self)	
+
 setup(
 	author="Simons Observatory Collaboration Analysis Library Task Force",
 	author_email='',
@@ -99,5 +104,8 @@ setup(
 	url='https://github.com/simonsobs/sotools',
 	version='0.1.0',
 	zip_safe=False,
-	cmdclass={'build_ext': CustomBuild,'install': CustomInstall,'develop': CustomDevelop}
+	cmdclass={'build_ext': CustomBuild,
+		  'install': CustomInstall,
+ 		  'develop': CustomDevelop,
+ 		  'egg_info': CustomEggInfo}
 )
