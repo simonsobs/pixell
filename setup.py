@@ -38,17 +38,15 @@ class CustomBuild(build_ext):
 		# Then let setuptools do its thing.
 		return build_ext.run(self)
 
-
 class CustomInstall(setuptools.command.install.install):
-    def run(self):
-        self.run_command("build_ext")
-        return setuptools.command.install.install.run(self)
+	def run(self):
+		self.run_command("build_ext")
+		return setuptools.command.install.install.run(self)
 
 class CustomDevelop(setuptools.command.develop.develop):
-    def run(self):
-        self.run_command("build_ext")
-        return setuptools.command.develop.develop.run(self)	
-
+	def run(self):
+		self.run_command("build_ext")
+		return setuptools.command.develop.develop.run(self)	
 
 setup(
 	author="Simons Observatory Collaboration Analysis Library Task Force",
