@@ -3,6 +3,7 @@
 
 """The setup script."""
 
+import setuptools
 from numpy.distutils.core import setup, Extension, build_ext
 import os
 import subprocess as sp
@@ -36,6 +37,18 @@ class CustomBuild(build_ext):
 		sp.call('make -C fortran', shell=True)
 		# Then let setuptools do its thing.
 		return build_ext.run(self)
+
+
+class CustomInstall(setuptools.command.install.install):
+    def run(self):
+        self.run_command("build_ext")
+        return setuptools.command.install.install.run(self)
+
+# class CustomDevelop(setuptools.command.install.develop):
+#     def run(self):
+#         self.run_command("build_ext")
+#         return setuptools.command.install.develop.run(self)	
+
 
 setup(
 	author="Simons Observatory Collaboration Analysis Library Task Force",
@@ -88,5 +101,6 @@ setup(
 	url='https://github.com/simonsobs/sotools',
 	version='0.1.0',
 	zip_safe=False,
-	cmdclass={'build_ext': CustomBuild}
+	cmdclass={'build_ext': CustomBuild,'install': CustomInstall}
+	#cmdclass={'build_ext': CustomBuild,'install': CustomInstall,'develop': CustomDevelop}
 )
