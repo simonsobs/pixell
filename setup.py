@@ -101,6 +101,6 @@ setup(
 	url='https://github.com/simonsobs/sotools',
 	version='0.1.0',
 	zip_safe=False,
-	cmdclass={'build_ext': CustomBuild,'install': CustomInstall}
-	#cmdclass={'build_ext': CustomBuild,'install': CustomInstall,'develop': CustomDevelop}
+	# cmdclass={'build_ext': CustomBuild,'install': CustomInstall}
+	cmdclass={'build_ext': CustomBuild,'install': CustomInstall,'develop': CustomDevelop}
 )

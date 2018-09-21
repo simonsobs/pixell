@@ -13,7 +13,7 @@ os: linux
 
 install:
    - pip install -r requirements.txt
-   - pip install .
+   - python setup.py install --user
 #   - python setup.py build_ext -i
 
 # Command to run tests, e.g. python setup.py test
