@@ -20,6 +20,10 @@ from . import utils, wcsutils, slice as sliceutils, powspec, fft as enfft
 
 extent_model = ["subgrid"]
 
+# Python 2/3 compatibility
+try: basestring
+except NameError: basestring = str
+
 # PyFits uses row-major ordering, i.e. C ordering, while the fits file
 # itself uses column-major ordering. So an array which is (ncomp,ny,nx)
 # will be (nx,ny,ncomp) in the file. This means that the axes in the ndmap
@@ -159,19 +163,19 @@ def subinds(shape, wcs, box, mode=None, cap=True):
 	box = np.asarray(box)
 	# Translate the box to pixels
 	bpix = skybox2pixbox(shape, wcs, box, include_direction=True)
-	if   mode == "round": ibox = np.round(bpix)
-	elif mode == "floor": ibox = np.floor(bpix)
-	elif mode == "ceil":  ibox = np.ceil(bpix)
-	elif mode == "inclusive": ibox = [np.floor(bpix[0]),np.ceil (bpix[1]), bpix[2]]
-	elif mode == "exclusive": ibox = [np.ceil (bpix[0]),np.floor(bpix[1]), bpix[2]]
+	if   mode == "round": bpix = np.round(bpix)
+	elif mode == "floor": bpix = np.floor(bpix)
+	elif mode == "ceil":  bpix = np.ceil(bpix)
+	elif mode == "inclusive": bpix = [np.floor(bpix[0]),np.ceil (bpix[1]), bpix[2]]
+	elif mode == "exclusive": bpix = [np.ceil (bpix[0]),np.floor(bpix[1]), bpix[2]]
 	else: raise ValueError("Unrecognized mode '%s' in subinds" % str(mode))
 	bpix = np.array(bpix, int)
 	if cap:
 		# Make sure we stay inside our map bounds
-		for b, n in zip(ibox.T,shape[-2:]):
+		for b, n in zip(bpix.T,shape[-2:]):
 			if b[2] > 0: b[:2] = [max(b[0],  0),min(b[1], n)]
 			else:        b[:2] = [min(b[0],n-1),max(b[1],-1)]
-	return ibox
+	return bpix
 
 def slice_geometry(shape, wcs, sel, nowrap=False):
 	"""Slice a geometry specified by shape and wcs according to the
@@ -189,8 +193,7 @@ def slice_geometry(shape, wcs, sel, nowrap=False):
 		wcs.wcs.crpix[j] /= s.step
 		wcs.wcs.cdelt[j] *= s.step
 		wcs.wcs.crpix[j] += 0.5
-		oshape[i] = s.stop-s.start
-		oshape[i] = (oshape[i]+s.step-1)//s.step
+		oshape[i] = (s.stop-s.start+s.step-np.sign(s.step))//s.step
 	return tuple(pre)+tuple(oshape), wcs
 
 def scale_geometry(shape, wcs, scale):
@@ -355,13 +358,18 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 
 def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
 	"""Like project, but only works for pixel-compatible wcs. Much
-	faster because it simply copies over pixels. Can be used in
-	co-adding by specifying an output map and a combining operation.
-	The deafult operation overwrites the output. Use np.ndarray.__iadd__
-	to get a copy-less += operation. The optional iwcs argument
-	is there to support input maps that are numpy-like but can't be made into
-	actual enmaps. The main example of this is a fits hdu object, which can be
-	sliced like an array to avoid reading more into memory than necessary.
+	faster because it simply copies over pixels.
+
+	Can be used in co-adding by specifying an output map and a combining
+	operation. The deafult operation overwrites the output. Use
+	np.ndarray.__iadd__ to get a copy-less += operation. Not that
+	areas outside are not assumed to be zero if an omap is specified -
+	instead those areas will simply not be operated on.
+
+	The optional iwcs argument is there to support input maps that are
+	numpy-like but can't be made into actual enmaps. The main example of
+	this is a fits hdu object, which can be sliced like an array to avoid
+	reading more into memory than necessary.
 	"""
 	# First check that our wcs is compatible
 	if iwcs is None: iwcs = map.wcs
@@ -369,9 +377,9 @@ def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iw
 	# Find the bounding box of the output in terms of input pixels.
 	# This is simple because our wcses are compatible, so they
 	# can only differ by a simple pixel offset. Here pixoff is
-	# pos_input - pos_output
-	pixoff = utils.nint((wcs.wcs.crpix-iwcs.wcs.crpix) - (wcs.wcs.crval-iwcs.wcs.crval)/iwcs.wcs.cdelt)[::-1]
-	pixbox = np.array([pixoff,pixoff+np.array(map.shape[-2:])])
+	# pos_input - pos_output. This is equivalent to the coordinates of
+	pixoff = utils.nint((iwcs.wcs.crpix-wcs.wcs.crpix) - (iwcs.wcs.crval-wcs.wcs.crval)/iwcs.wcs.cdelt)[::-1]
+	pixbox = np.array([pixoff,pixoff+np.array(shape[-2:])])
 	return extract_pixbox(map, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
 
 def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
@@ -383,14 +391,16 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 	if iwcs is None: iwcs = map.wcs
 	oshape, owcs = slice_geometry(map.shape, iwcs, (slice(*pixbox[:,-2]),slice(*pixbox[:,-1])), nowrap=True)
 	if omap is None:
-		omap = full(map.shape[:-2]+tuple(shape[-2:]), wcs, cval, map.dtype)
+		omap = full(map.shape[:-2]+tuple(oshape[-2:]), owcs, cval, map.dtype)
 	nphi = utils.nint(360/np.abs(iwcs.wcs.cdelt[0]))
-	if wrap is "auto": wrap = [0]*map.ndim + [nphi]
-	else: wrap = np.zeros(map.ndim,int)+wrap
+	# If our map is wider than the wrapping length, assume we're a lower-spin field
+	nphi *= (nphi+map.shape[-1]-1)//nphi
+	if wrap is "auto": wrap = [0,nphi]
+	else: wrap = np.zeros(2,int)+wrap
 	for ibox, obox in utils.sbox_wrap(pixbox.T, wrap=wrap, cap=map.shape[-2:]):
 		islice = utils.sbox2slice(ibox)
 		oslice = utils.sbox2slice(obox)
-		omap[oslice] = op(omap[oslice], imap[islice])
+		omap[oslice] = op(omap[oslice], map[islice])
 	return omap
 
 def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=True, safe=True):
@@ -834,7 +844,7 @@ def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 	# Set up the kernel array
 	K = np.zeros((nspec,nl))
 	l = np.arange(nl)
-	if type(kernel) == str:
+	if isinstance(kernel, basestring):
 		if kernel == "gauss":
 			K[:] = np.exp(-0.5*(l/width)**2)
 		elif kernel == "step":
@@ -846,7 +856,7 @@ def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 		K[:,:tmp.shape[-1]] = tmp[:,:K.shape[-1]]
 	# Set up the weighting scheme
 	W = np.zeros((nspec,nl))
-	if type(weight) == str:
+	if isinstance(weight, basestring):
 		if weight == "mode":
 			W[:] = l[None,:]**2
 		elif weight == "uniform":
