@@ -102,7 +102,6 @@ def save_mask_image(filename,shape):
         spine.set_edgecolor((0,0,0,0))
     plt.savefig(filename, bbox_inches='tight')
 
-
 def get_spectrum(ntype,noise,lmax,lmax_pad):
     ells = np.arange(0,lmax+lmax_pad)
     if ntype=="white": return np.ones(shape=(ells.size,))*(noise**2.)*((np.pi/180./60.)**2.)
@@ -137,7 +136,7 @@ def check_equality(imap1,imap2):
     assert np.all(imap1.shape==imap2.shape)
     assert wcsutils.equal(imap1.wcs,imap2.wcs)
     assert np.all(np.isclose(imap1,imap2))
-
+    
 def get_extraction_test_results(yaml_file):
     print("Starting tests from ",yaml_file)
     with open(yaml_file) as f:
@@ -159,7 +158,6 @@ def get_extraction_test_results(yaml_file):
             enmap.write_map(filename,imap)
             imap_in = enmap.read_map(filename)
             check_equality(imap,imap_in)
-
             for e in config['extracts']:
                 print("Doing test for extract ",e['name']," with geometry ",g," and spectrum ",s,"...")
                 if e['type']=='slice':

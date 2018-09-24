@@ -13,7 +13,6 @@ spectra:
     type: white_dl
     noise: 3.0
 
-
 geometries:
   - name: fullsky_10arc_car
     type: fullsky
@@ -28,7 +27,7 @@ extracts:
   - name: cut_center_0
     type: slice
     box_deg: [[-5,-5],[5,5]]
-
+    
   # - name: cut_span_180_1 # THIS FAILS THE TEST
   #   type: slice
   #   box_deg: [[-5,177.5],[5,182.5]]

@@ -44,25 +44,25 @@ resample - Map resampling
       
 .. automodule:: sotools.resample
    :members:
-
+      
 lensing - Lensing
 -----
-
+      
 .. automodule:: sotools.lensing
    :members:
 
 interpol - Interpolation
 -----
-
+      
 .. automodule:: sotools.interpol
    :members:
-
+      
 coordinates - Coordinate Transformation
 -----
-
+      
 .. automodule:: sotools.coordinates
    :members:
-
+      
 
 wcsutils - World Coordinate Sytem utilities
 -----

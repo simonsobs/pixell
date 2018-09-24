@@ -13,7 +13,7 @@ Any map can be completely specified by two objects, a numpy array (of at least t
 
 All ``ndmap`` s must have at least two dimensions. The trailing two axes are interpreted as the Y (typically, declination) and X (typically, right ascension) axes. Maps can have arbitrary number of leading dimensions, but many of ``sotools``' CMB-related tools interpret a 3D array of shape ``(ncomp,Ny,Nx)`` to consist of three ``Ny`` x ``Nx`` maps of intensity, polarization Q and U Stokes parameters in that order.
 
-Apart from all the numpy functionality, ``ndmap`` comes with a host of additional attributes and functions that utilize the information in the WCS. This usage guide will demonstrate how such maps can be manipulated using ``sotools``.
+Apart from all the numpy functionality, ``ndmap`` comes with a host of additional attributes and functions that utilize the information in the WCS. This usage guide will demonstrate how such maps can be manipulated using ``sotools``. 
 
 
 TODO: I've listed below common operations that would be useful to demonstrate here.  Finish this! (See :ref:`ReferencePage` for a dump of all member functions)
@@ -35,8 +35,8 @@ Alternatively, one can select a rectangular region specified through its bounds 
 		import numpy as np
 		dec_min = -5 ; ra_min = -5 ; dec_max = 5 ; ra_max = 5
 		# All coordinates in sotools are specified in radians
-		box = np.deg2rad([[dec_min,ra_min],[dec_max,ra_max]))
-		imap = enmap.read_map("map_on_disk.fits",box=box)
+		box = np.deg2rad([[dec_min,ra_min],[dec_max,ra_max])) 
+		imap = enmap.read_map("map_on_disk.fits",box=box) 
 
 
 To learn how to use a pixel box or a numpy slice, please read the docstring for ``read_map``.
@@ -59,7 +59,7 @@ Here, ``imap`` consists of three maps each with 500 pixels along the Y axis and 
 		car:{cdelt:[0.03333,0.03333],crval:[0,0],crpix:[500.5,250.5]}
 
 Above, we learn that the map is represented in the ``CAR`` projection system and what the WCS attributes are.
-
+   
 Sky coordinate and pixel conversions
 --------
 
