@@ -124,7 +124,8 @@ def get_geometries(yml_section):
         if g['type']=='fullsky':
             geos[g['name']] = enmap.fullsky_geometry(res=np.deg2rad(g['res_arcmin']/60.),proj=g['proj'])
         elif g['type']=='pickle':
-            geos[g['name']] = pickle.load(open("data/%s"%g['filename'],'rb'))
+            path = os.path.dirname(enmap.__file__)+"/../tests/"
+            geos[g['name']] = pickle.load(open(path+"data/%s"%g['filename'],'rb'))
         else:
             raise NotImplementedError
     return geos
