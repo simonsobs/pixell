@@ -9,15 +9,69 @@ Usage
 
 
 
-Any map can be completely specified by two objects, a familiar numpy array (of at least two dimensions) whose two trailing dimensions correspond to two coordinate axes of the map, and a ``wcs`` object that specifies the World Coordinate System. The latter specifies the correspondence between pixels and physical sky coordinates. This library allows for the manipulation of an object ``ndmap``, which has all the properties of numpy arrays but is in addition enriched by the ``wcs`` object. The ``shape`` of the numpy array and the ``wcs`` completely specifies the geometry and footprint of a map of the sky.
+Any map can be completely specified by two objects, a numpy array (of at least two dimensions) whose two trailing dimensions correspond to two coordinate axes of the map, and a ``wcs`` object that specifies the World Coordinate System. The latter specifies the correspondence between pixels and physical sky coordinates. This library allows for the manipulation of an object ``ndmap``, which has all the properties of numpy arrays but is in addition enriched by the ``wcs`` object (specifically an instantiation of Astropy's ``astropy.wcs.wcs.WCS`` object). The ``shape`` of the numpy array and the ``wcs`` completely specifies the geometry and footprint of a map of the sky.
 
-I've listed below common operations that would be useful to demonstrate here. TODO: Finish this! (See :ref:`ReferencePage` for a dump of all member functions)
+All ``ndmap`` s must have at least two dimensions. The trailing two axes are interpreted as the Y (typically, declination) and X (typically, right ascension) axes. Maps can have arbitrary number of leading dimensions, but many of ``sotools``' CMB-related tools interpret a 3D array of shape ``(ncomp,Ny,Nx)`` to consist of three ``Ny`` x ``Nx`` maps of intensity, polarization Q and U Stokes parameters in that order.
+
+Apart from all the numpy functionality, ``ndmap`` comes with a host of additional attributes and functions that utilize the information in the WCS. This usage guide will demonstrate how such maps can be manipulated using ``sotools``.
+
+
+TODO: I've listed below common operations that would be useful to demonstrate here.  Finish this! (See :ref:`ReferencePage` for a dump of all member functions)
 
 Reading maps from disk
 --------
 
+An entire map in ``FITS`` or ``HDF`` format can be loaded using ``read_map``, which is found in the module ``sotools.enmap``. The ``enmap`` module contains the majority of map manipulation functions.
+
+.. code-block:: python
+
+		from sotools import enmap
+		imap = enmap.read_map("map_on_disk.fits")
+
+Alternatively, one can select a rectangular region specified through its bounds using the ``box`` argument,
+
+.. code-block:: python
+
+		import numpy as np
+		dec_min = -5 ; ra_min = -5 ; dec_max = 5 ; ra_max = 5
+		# All coordinates in sotools are specified in radians
+		box = np.deg2rad([[dec_min,ra_min],[dec_max,ra_max]))
+		imap = enmap.read_map("map_on_disk.fits",box=box)
+
+
+To learn how to use a pixel box or a numpy slice, please read the docstring for ``read_map``.
+
+Inspecting a map
+--------
+
+An ``ndmap`` has all the attributes of a ``ndarray`` numpy array. In particular, you can inspect its shape.
+
+.. code-block:: python
+
+		> print(imap.shape)
+		(3,500,1000)
+
+Here, ``imap`` consists of three maps each with 500 pixels along the Y axis and 1000 pixels along the X axis. One can also inspect the WCS of the map,
+
+.. code-block:: python
+
+		> print(imap.wcs)
+		car:{cdelt:[0.03333,0.03333],crval:[0,0],crpix:[500.5,250.5]}
+
+Above, we learn that the map is represented in the ``CAR`` projection system and what the WCS attributes are.
+
 Sky coordinate and pixel conversions
 --------
+
+Conversions
+~~~~~~
+
+
+Position map
+~~~~~
+
+Pixel map
+~~~~~
 
 Distance from center -- ``modrmap``
 ~~~~~~
@@ -31,6 +85,13 @@ Absolute wave-number -- ``modlmap``
 Filtering maps
 --------
 
+A filter can be applied to a map in three steps:
+
+1. prepare a Fourier space filter ``kfilter``
+2. Fourier transform the map ``imap`` to ``kmap``
+3. multiply the filter and k-map
+4. inverse Fourier transform the result
+
 Manipulating map geometries
 ----------
 
@@ -42,6 +103,19 @@ Masking and windowing
 
 Flat-sky diagnostic power spectra
 ---------
+
+Curved-sky operations
+--------
+
+Spherical harmonic transforms
+~~~~~~~~
+
+Filtering
+~~~~~~~~
+
+Diagnostic power spectra
+~~~~~~~~
+
 
 Reprojecting maps
 ---------

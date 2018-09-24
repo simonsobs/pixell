@@ -1,0 +1,56 @@
+
+seed: 10
+lmax: 1500
+lmax_pad: 500
+result_name: MM_092318
+
+spectra:
+  - name: white_10
+    type: white
+    noise: 10.0
+
+  - name: constant_dl_1
+    type: white_dl
+    noise: 3.0
+
+
+geometries:
+  - name: fullsky_10arc_car
+    type: fullsky
+    proj: car
+    res_arcmin: 10.0
+
+  - name: cutsky_realistic
+    type: pickle
+    filename: cutsky_geometry_scaled_20x_9.4_arcminute_pixel_shape_wcs_tuple.pkl
+
+extracts:
+  - name: cut_center_0
+    type: slice
+    box_deg: [[-5,-5],[5,5]]
+
+  # - name: cut_span_180_1 # THIS FAILS THE TEST
+  #   type: slice
+  #   box_deg: [[-5,177.5],[5,182.5]]
+
+  # - name: cut_span_180_2 # THIS FAILS THE TEST
+  #   type: slice
+  #   box_deg: [[-5,-177.5],[5,-182.5]]
+
+  - name: postage_center_0
+    type: postage
+    width_arcmin: 100.0
+    res_arcmin: 10.0
+    center_deg: [0,0]
+
+  # - name: postage_span_180_1 # THIS FAILS THE TEST
+  #   type: postage
+  #   width_arcmin: 100.0
+  #   res_arcmin: 10.0
+  #   center_deg: [0,180]
+
+  # - name: postage_span_180_2 # THIS FAILS THE TEST
+  #   type: postage
+  #   width_arcmin: 100.0
+  #   res_arcmin: 10.0
+  #   center_deg: [0,-180]

@@ -38,11 +38,36 @@ reproject - Map reprojection
       
 .. automodule:: sotools.reproject
    :members:    
+
+resample - Map resampling
+-----
       
-wcs - World Coordinate Sytem utilities
+.. automodule:: sotools.resample
+   :members:
+
+lensing - Lensing
 -----
 
-.. automodule:: sotools.wcs
+.. automodule:: sotools.lensing
+   :members:
+
+interpol - Interpolation
+-----
+
+.. automodule:: sotools.interpol
+   :members:
+
+coordinates - Coordinate Transformation
+-----
+
+.. automodule:: sotools.coordinates
+   :members:
+
+
+wcsutils - World Coordinate Sytem utilities
+-----
+
+.. automodule:: sotools.wcsutils
    :members:          
 
 slice - Array slicing utilities
