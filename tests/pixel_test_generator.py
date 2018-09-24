@@ -1,4 +1,4 @@
-from . import pixel_tests as ptests
+import pixel_tests as ptests
 import pickle
 import os
 
@@ -10,4 +10,4 @@ while not(os.path.isfile(yaml_file)) or i==0:
     i += 1
 pkl_file = input("Enter name of pickle file to save test results to (exclude extension): ")
 results,_ = ptests.get_extraction_test_results(yaml_file)
-pickle.dump(results,open("data/%s.pkl" % pkl_file,'wb'))
+pickle.dump(results,open("data/%s.pkl" % pkl_file,'wb'),protocol=2)
