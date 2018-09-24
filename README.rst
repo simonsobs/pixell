@@ -21,11 +21,11 @@ This is an early development repository for a CMB map analysis library. The API 
 Dependencies
 ------------
 
+* Python>=2.7 or Python>=3.4
+* gcc/gfortran or Intel compilers (clang is not supported)
 * libsharp (downloaded and installed)
 * automake (for libsharp compilation)
-* cython
-* astropy
-* scipy
+* healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py
 
 Installing
 --------
@@ -36,6 +36,22 @@ To install, run:
 		
    $ python setup.py install --user
 
+Existing ``libsharp`` installation
+~~~~~~~~~~
+
+You can use an existing ``libsharp`` installation by symlinking the ``libsharp`` directory into a directory called ``_deps`` in the root directory.
+
+   
+Intel compilers
+~~~~~~~~~~
+
+Intel compilers might require a two step installation as follows
+
+.. code-block:: console
+		
+   $ python setup.py build_ext -i --fcompiler=intelem --compiler=intelem
+   $ python setup.py install --user
+
 
 Development workflow
 ~~~~~~~~~~
@@ -44,10 +60,9 @@ If you are a developer, run:
 
 .. code-block:: console
 		
-   $ python setup.py develop --user
+   $ python setup.py build_ext -i
 
-
-so that changes you make in any python file are immediately reflected. If you also need non-Python code to be recompiled, run:
+and add the cloned directory to your Python path so that changes you make in any python file are immediately reflected. If you also need non-Python code to be recompiled, run:
 
 .. code-block:: console
 		
