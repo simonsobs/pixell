@@ -6,3 +6,4 @@ scipy>=1.0
 python_dateutil>=2.7
 cython>=0.28
 matplotlib>=2.0
+pyyaml>=3.0
