@@ -5,7 +5,7 @@
 
 import setuptools
 from numpy.distutils.core import setup, Extension, build_ext
-import os
+import os, sys
 import subprocess as sp
 import numpy as np
 build_ext = build_ext.build_ext
@@ -20,13 +20,24 @@ requirements       = []
 setup_requirements = []
 test_requirements  = []
 
-compile_opts = {
-    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing'],
-    'extra_f90_compile_args': ['-Ofast', '-fopenmp', '-Wno-conversion', '-Wno-tabs'],
-    'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
-    'extra_link_args': ['-fopenmp']
+if sys.platform == 'darwin':
+    # This probably needs a little more refinement, to recognize clang
+    # vs. gcc on OSX.
+    compile_opts = {
+        'extra_compile_args': ['-std=c99', '-Wno-strict-aliasing'],
+        'extra_f90_compile_args': ['-Ofast', '-Wno-conversion', '-Wno-tabs'],
+        'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
+        'extra_link_args': ['-undefined', 'dynamic_lookup', '-bundle']
     }
 
+else:
+    compile_opts = {
+        'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing'],
+        'extra_f90_compile_args': ['-Ofast', '-fopenmp', '-Wno-conversion', '-Wno-tabs'],
+        'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
+        'extra_link_args': ['-fopenmp']
+    }
+    
 
 def prebuild():
     # Handle the special external dependencies.
