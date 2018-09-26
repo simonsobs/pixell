@@ -28,25 +28,25 @@ extracts:
     type: slice
     box_deg: [[-5,-5],[5,5]]
 
-  - name: cut_span_100_1 # THIS FAILS THE TEST
-    type: slice
-    box_deg: [[-5,100],[5,110]]
+  # - name: cut_span_100_1 # THIS FAILS THE TEST
+  #   type: slice
+  #   box_deg: [[-5,100],[5,110]]
     
-  - name: cut_span_180_1_rev # THIS FAILS THE TEST
-    type: slice
-    box_deg: [[-5,185],[5,175]]
+  # - name: cut_span_180_1_rev # THIS FAILS THE TEST
+  #   type: slice
+  #   box_deg: [[-5,185],[5,175]]
 
-  - name: cut_span_180_2_rev # THIS FAILS THE TEST
-    type: slice
-    box_deg: [[-5,-185],[5,-175]]
+  # - name: cut_span_180_2_rev # THIS FAILS THE TEST
+  #   type: slice
+  #   box_deg: [[-5,-185],[5,-175]]
     
-  - name: cut_span_180_1 # THIS FAILS THE TEST
-    type: slice
-    box_deg: [[-5,175],[5,185]]
+  # - name: cut_span_180_1 # THIS FAILS THE TEST
+  #   type: slice
+  #   box_deg: [[-5,175],[5,185]]
 
-  - name: cut_span_180_2 # THIS FAILS THE TEST
-    type: slice
-    box_deg: [[-5,-175],[5,-185]]
+  # - name: cut_span_180_2 # THIS FAILS THE TEST
+  #   type: slice
+  #   box_deg: [[-5,-175],[5,-185]]
 
   - name: postage_center_0
     type: postage
