@@ -133,6 +133,7 @@ def generate_map(shape,wcs,powspec,lmax,seed):
     return curvedsky.rand_map(shape, wcs, powspec, lmax=lmax, dtype=np.float64, seed=seed, oversample=2.0, spin=2, method="auto", direct=False, verbose=False)
 
 def check_equality(imap1,imap2):
+    print (imap1.shape,imap2.shape)
     assert np.all(imap1.shape==imap2.shape)
     assert wcsutils.equal(imap1.wcs,imap2.wcs)
     assert np.all(np.isclose(imap1,imap2))
