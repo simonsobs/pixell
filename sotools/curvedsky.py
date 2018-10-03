@@ -202,15 +202,17 @@ def alm2map_cyl(alm, map, ainfo=None, spin=2, deriv=False, direct=False, copy=Fa
 		map[mslice] = tmap[tslice]
 	return map
 
-def alm2map_healpix(alm, healmap=None, ainfo=None, nside=None, spin=2, deriv=False, copy=False):
+def alm2map_healpix(alm, healmap=None, ainfo=None, nside=None, spin=2, deriv=False, copy=False,
+		theta_min=None, theta_max=None):
 	"""Projects the given alm[...,ncomp,nalm] onto the given healpix map
 	healmap[...,ncomp,npix]."""
 	alm, ainfo = prepare_alm(alm, ainfo)
 	healmap    = prepare_healmap(healmap, nside, alm.shape[:-1], alm.real.dtype)
 	nside = npix2nside(healmap.shape[-1])
 	minfo = sharp.map_info_healpix(nside)
+	minfo = apply_minfo_theta_lim(minfo, theta_min, theta_max)
 	return alm2map_raw(alm, healmap[...,None], ainfo=ainfo, minfo=minfo,
-			spin=spin, deriv=deriv, copy=copy)
+			spin=spin, deriv=deriv, copy=copy)[...,0]
 
 def map2alm_cyl(map, alm=None, ainfo=None, lmax=None, spin=2, direct=False,
 		copy=False, rtol=None, atol=None):
@@ -247,12 +249,14 @@ def map2alm_cyl(map, alm=None, ainfo=None, lmax=None, spin=2, direct=False,
 	minfo = match_predefined_minfo(tmap, rtol=rtol, atol=atol)
 	return map2alm_raw(tmap, alm, minfo, ainfo, spin=spin)
 
-def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=2, copy=False):
+def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=2, copy=False,
+		theta_min=None, theta_max=None):
 	"""Projects the given alm[...,ncomp,nalm] onto the given healpix map
 	healmap[...,ncomp,npix]."""
 	alm, ainfo = prepare_alm(alm, ainfo, lmax, healmap.shape[:-1], healmap.dtype)
 	nside = npix2nside(healmap.shape[-1])
 	minfo = sharp.map_info_healpix(nside)
+	minfo = apply_minfo_theta_lim(minfo, theta_min, theta_max)
 	return map2alm_raw(healmap[...,None], alm, minfo=minfo, ainfo=ainfo,
 			spin=spin, copy=copy)
 
@@ -288,9 +292,13 @@ def alm2map_raw(alm, map, ainfo, minfo, spin=2, deriv=False, copy=False):
 		# general.
 		map_flat[:,0] = -map_flat[:,0]
 	else:
-		map_flat[:,:1,:] = sht.alm2map(alm_full[:,:1,:], map_flat[:,:1,:])
-		if map_flat.shape[1] > 1:
-			map_flat[:,1:,:] = sht.alm2map(alm_full[:,1:,:], map_flat[:,1:,:], spin=spin)
+		# We support scalar, spin and scalar-spin
+		if map_flat.shape[1] == 2: # spin
+			map_flat[:,:2,:] = sht.alm2map(alm_full[:,:2,:], map_flat[:,:2,:], spin=spin)
+		else:
+			map_flat[:,:1,:] = sht.alm2map(alm_full[:,:1,:], map_flat[:,:1,:]) # scalar
+			if map_flat.shape[1] > 1: # spin
+				map_flat[:,1:,:] = sht.alm2map(alm_full[:,1:,:], map_flat[:,1:,:], spin=spin)
 	return map
 
 def map2alm_raw(map, alm, minfo, ainfo, spin=2, copy=False):
@@ -303,9 +311,12 @@ def map2alm_raw(map, alm, minfo, ainfo, spin=2, copy=False):
 	map_full = utils.to_Nd(map, 4)
 	map_flat = map_full.reshape(map_full.shape[:-2]+(-1,))
 	sht      = sharp.sht(minfo, ainfo)
-	alm_full[:,:1,:] = sht.map2alm(map_flat[:,:1,:],alm_full[:,:1,:])
-	if map_flat.shape[1] > 1:
-		alm_full[:,1:,:] = sht.map2alm(map_flat[:,1:,:], alm_full[:,1:,:], spin=spin)
+	if map_flat.shape[1] == 2:
+		alm_full[:,:2,:] = sht.map2alm(map_flat[:,:2,:], alm_full[:,:2,:], spin=spin)
+	else:
+		alm_full[:,:1,:] = sht.map2alm(map_flat[:,:1,:],alm_full[:,:1,:])
+		if map_flat.shape[1] > 1:
+			alm_full[:,1:,:] = sht.map2alm(map_flat[:,1:,:], alm_full[:,1:,:], spin=spin)
 	return alm
 
 ### Helper function ###
@@ -484,3 +495,10 @@ def prepare_alm(alm=None, ainfo=None, lmax=None, pre=(), dtype=np.float64):
 def prepare_healmap(healmap, nside=None, pre=(), dtype=np.float64):
 	if healmap is not None: return healmap
 	return np.zeros(pre + (12*nside**2,), dtype)
+
+def apply_minfo_theta_lim(minfo, theta_min=None, theta_max=None):
+	if theta_min is None and theta_max is None: return minfo
+	mask = np.full(minfo.nrow, True, bool)
+	if theta_min is not None: mask &= minfo.theta >= theta_min
+	if theta_max is not None: mask &= minfo.theta <= theta_max
+	return minfo.select_rows(mask)

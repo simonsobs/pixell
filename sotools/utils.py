@@ -163,7 +163,7 @@ def mjd2ctime(mjd):
 def mjd2djd(mjd): return np.asarray(mjd) + 2400000.5 - 2415020
 def djd2mjd(djd): return np.asarray(djd) - 2400000.5 + 2415020
 def ctime2djd(ctime): return mjd2djd(ctime2mjd(ctime))
-def djd2mjd(cdjd):    return mjd2ctime(djd2mjd(djd))
+def djd2ctime(djd):    return mjd2ctime(djd2mjd(djd))
 
 def mjd2ctime(mjd):
 	"""Converts from modified julian date to unix time"""
@@ -1142,7 +1142,7 @@ def sbox_fix(sbox):
 	return sbox
 
 def sbox_wrap(sbox, wrap=0, cap=0):
-	""""Given a single sbox representing a slice of an N-dim array,
+	""""Given a single sbox [...,{from,to,step?}] representing a slice of an N-dim array,
 	wraps and caps the sbox, returning a list of sboxes for each
 	contiguous section of the slice.
 
@@ -1193,27 +1193,34 @@ def sbox_wrap(sbox, wrap=0, cap=0):
 				# ibox slice assuming all of the logical ibox is available
 				isub = sbox_fix([ibox[0]+npre*ibox[2],min(ibox[1],w),ibox[2]])
 				nsub = sbox_size(isub)
-				# the physical array may be smaller than the logical one
+				# the physical array may be smaller than the logical one.
 				if c:
 					isub = sbox_fix([ibox[0]+npre*ibox[2],min(ibox[1],c),ibox[2]])
 					ncap = sbox_size(isub)
 				else: ncap = nsub
 				if not flip: osub = [i, i+ncap, 1]
 				else:        osub = [ilen-1-i, ilen-1-(i+ncap), -1]
-				boxes_1d.append((list(isub),osub))
+				# accept this slice unless it doesn't overlap with anything
+				if ncap > 0:
+					boxes_1d.append((list(isub),osub))
 				i += nsub
 				ibox[:2] -= w
 		else:
 			# No wrapping, but may want to cap. In this case we will have both
 			# upwards and downwards capping. Find the number of samples to
 			# crop on each side
-			npre  = max((-ibox[0])//ibox[2],0)
-			if c: npost = max((ibox[1]-ibox[2]-(c-1))//ibox[2],0)
-			else: npost = 0
-			isub = [ibox[0]+npre*ibox[2], ibox[1]-npost*ibox[2], ibox[2]]
-			if not flip: osub = [npre, ilen-npost, 1]
-			else:        osub = [ilen-1-npre, npost-1, -1]
-			boxes_1d = [(isub,osub)]
+			if c:
+				npre  = max((-ibox[0])//ibox[2],0)
+				npost = max((ibox[1]-ibox[2]-(c-1))//ibox[2],0)
+			else: npre, npost = 0, 0
+			# Don't produce a slice if it would be empty
+			if npre + npost < ilen:
+				isub = [ibox[0]+npre*ibox[2], ibox[1]-npost*ibox[2], ibox[2]]
+				if not flip: osub = [npre, ilen-npost, 1]
+				else:        osub = [ilen-1-npre, npost-1, -1]
+				boxes_1d = [(isub,osub)]
+			else:
+				boxes_1d = []
 		dim_boxes.append(boxes_1d)
 	# Now create the outer product of all the individual dimensions' box sets
 	nper    = tuple([len(p) for p in dim_boxes])

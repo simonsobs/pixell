@@ -3,7 +3,7 @@ import numpy as np
 cimport numpy as np
 cimport csharp
 from libc.math cimport atan2
-from cython.parallel import prange, parallel
+#from cython.parallel import prange, parallel
 
 cdef class map_info:
 	"""This class is a thin wrapper for the sharp geom_info struct, which represents
@@ -54,6 +54,8 @@ cdef class map_info:
 		self.theta, self.nphi, self.phi0, self.offsets, self.stride, self.weight = theta, nphi, phi0, offsets, stride, weight
 	def __dealloc__(self):
 		csharp.sharp_destroy_geom_info(self.geom)
+	def select_rows(self, rows):
+		return map_info(self.theta[rows], self.nphi[rows], self.phi0[rows], self.offsets[rows], self.stride[rows], self.weight[rows])
 
 def map_info_healpix(int nside, int stride=1, weights=None):
 	"""Construct a new sharp map geometry for the HEALPix pixelization in the RING
