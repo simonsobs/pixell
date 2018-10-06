@@ -1,6 +1,7 @@
 from __future__ import print_function
 import numpy as np
-from . import wcsutils, enmap, coordinates
+from . import wcsutils, enmap, coordinates, utils, sharp, curvedsky
+
 
 
 ## Analyst-facing functions
@@ -65,10 +66,123 @@ def centered_map(imap,res,box=None,pixbox=None,proj='car',rpix=None,width=None,
 def healpix_from_enmap(imap,**kwargs):
 	return imap.to_healpix(**kwargs)
 
-def enmap_from_healpix(hp_map,shape,wcs,ncomp=1,unit=1,lmax=0,rot_method="not-alm",rot=None,first=0):
-	# TODO: Implement
-	pass
+def enmap_from_healpix(hp_map,shape,wcs,ncomp=1,unit=1,lmax=0,rot=["gal","equ"],first=0):
+    import healpy as hp
 
+
+    # equatorial to galactic euler zyz angles
+    euler = np.array([57.06793215,  62.87115487, -167.14056929])*utils.degree
+    assert ncomp == 1 or ncomp == 3, "Only 1 or 3 components supported"
+    dtype = np.float64
+    ctype = np.result_type(dtype,0j)
+    # Read the input maps
+    if type(hp_map)==str:
+	    m = np.atleast_2d(hp.read_map(hp_map, field=tuple(range(first,first+ncomp)))).astype(dtype)
+    else:
+	    m = np.atleast_2d(hp_map).astype(dtype)
+    if unit != 1: m /= unit
+    # Prepare the transformation
+    print("Preparing SHT")
+    nside = hp.npix2nside(m.shape[1])
+    lmax  = lmax or 3*nside
+    minfo = sharp.map_info_healpix(nside)
+    ainfo = sharp.alm_info(lmax)
+    sht   = sharp.sht(minfo, ainfo)
+    alm   = np.zeros((ncomp,ainfo.nelem), dtype=ctype)
+    # Perform the actual transform
+    print("T -> alm")
+    print( m.dtype, alm.dtype)
+    sht.map2alm(m[0], alm[0])
+    if ncomp == 3:
+        print("P -> alm")
+        sht.map2alm(m[1:3],alm[1:3], spin=2)
+    del m
+
+
+    if rot is not None:
+        # Rotate by displacing coordinates and then fixing the polarization
+        print("Computing pixel positions")
+        pmap = enmap.posmap(shape, wcs)
+        if rot:
+            print("Computing rotated positions")
+            s1,s2 = rot.split(",")
+            opos = coordinates.transform(s2, s1, pmap[::-1], pol=ncomp==3)
+            pmap[...] = opos[1::-1]
+            if len(opos) == 3: psi = -opos[2].copy()
+            del opos
+        print("Projecting")
+        res  = curvedsky.alm2map_pos(alm, pmap)
+        if rot and ncomp==3:
+            print("Rotating polarization vectors")
+            res[1:3] = enmap.rotate_pol(res[1:3], psi)
+    else:
+        print("Projecting")
+        res = enmap.zeros((len(alm),)+shape[-2:], wcs, dtype)
+        res = curvedsky.alm2map(alm, res)
+    return res
+
+
+
+def enmap_from_healpix_interp(shape,wcs,hp_map,hp_coords="galactic",interpolate=True):
+        """Project a healpix map to an enmap of chosen shape and wcs. The wcs
+        is assumed to be in equatorial (ra/dec) coordinates. If the healpix map
+        is in galactic coordinates, this can be specified by hp_coords, and a
+        slow conversion is done. No coordinate systems other than equatorial
+        or galactic are currently supported. Only intensity maps are supported.
+        If interpolate is True, bilinear interpolation using 4 nearest neighbours
+        is done.
+
+        shape -- 2-tuple (Ny,Nx)
+        wcs -- enmap wcs object in equatorial coordinates
+        hp_map -- array-like healpix map
+        hp_coords -- "galactic" to perform a coordinate transform, "fk5","j2000" or "equatorial" otherwise
+        interpolate -- boolean
+
+        """
+
+        import healpy as hp
+        from astropy.coordinates import SkyCoord
+        import astropy.units as u
+
+
+        eq_coords = ['fk5','j2000','equatorial']
+        gal_coords = ['galactic']
+
+        imap = enmap.zeros(shape,wcs)
+        Ny,Nx = shape
+
+        pixmap = enmap.pixmap(shape,wcs)
+        y = pixmap[0,...].T.ravel()
+        x = pixmap[1,...].T.ravel()
+        posmap = enmap.posmap(shape,wcs)
+
+        ph = posmap[1,...].T.ravel()
+        th = posmap[0,...].T.ravel()
+
+        if hp_coords.lower() not in eq_coords:
+                # This is still the slowest part. If there are faster coord transform libraries, let me know!
+                assert hp_coords.lower() in gal_coords
+                gc = SkyCoord(ra=ph*u.degree, dec=th*u.degree, frame='fk5')
+                gc = gc.transform_to('galactic')
+                phOut = gc.l.deg* np.pi/180.
+                thOut = gc.b.deg* np.pi/180.
+        else:
+                thOut = th
+                phOut = ph
+
+        thOut = np.pi/2. - thOut #polar angle is 0 at north pole
+
+        # Not as slow as you'd expect
+        if interpolate:
+                imap[y,x] = hp.get_interp_val(hp_map, np.rad2deg(thOut), np.rad2deg(phOut))
+        else:
+                ind = hp.ang2pix( hp.get_nside(hp_map), np.rad2deg(thOut), np.rad2deg(phOut) )
+                imap[:] = 0.
+                imap[[y,x]]=hp_map[ind]
+
+
+
+        return enmap.ndmap(imap,wcs)
 
 ## Helper functions
 
