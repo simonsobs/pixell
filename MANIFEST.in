@@ -6,7 +6,7 @@ include README.rst
 
 recursive-include tests *
 recursive-include scripts *
-recursive-exclude fortran fortran_*.f90
+recursive-exclude fortran interpol_*.f90
 recursive-exclude * temporary_map.fits
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
