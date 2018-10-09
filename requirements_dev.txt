@@ -15,4 +15,3 @@ python_dateutil>=2.7
 cython>=0.28
 matplotlib>=2.0
 pyyaml>=3.0
-healpy>=1.11

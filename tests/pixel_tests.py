@@ -133,10 +133,17 @@ def generate_map(shape,wcs,powspec,lmax,seed):
     return curvedsky.rand_map(shape, wcs, powspec, lmax=lmax, dtype=np.float64, seed=seed, oversample=2.0, spin=2, method="auto", direct=False, verbose=False)
 
 def check_equality(imap1,imap2):
-    print (imap1.shape,imap2.shape)
     assert np.all(imap1.shape==imap2.shape)
     assert wcsutils.equal(imap1.wcs,imap2.wcs)
-    assert np.all(np.isclose(imap1,imap2))
+    try:
+        assert np.all(np.isclose(imap1,imap2))
+    except:
+        from orphics import io
+        io.plot_img(imap1,"i1.png",lim=[-1.5,2])
+        io.plot_img(imap2,"i2.png",lim=[-1.5,2])
+        io.plot_img((imap1-imap2)/imap1,"ip.png",lim=[-0.1,0.1])
+        assert 1==0
+
     
 def get_extraction_test_results(yaml_file):
     print("Starting tests from ",yaml_file)

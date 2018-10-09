@@ -261,6 +261,7 @@ def cutout(imap,width=None,ra=None,dec=None,pad=1,corner=False,preserve_wcs=Fals
 	if res is None: res = np.min(enmap.extent(shape,wcs)/shape[-2:])
 	if npix is None: npix = int(width/res)
 	if fround(iy-npix/2)<pad or fround(ix-npix/2)<pad or fround(iy+npix/2)>(Ny-pad) or fround(ix+npix/2)>(Nx-pad): return None
+	pixbox = [[fround(iy-npix/2.+0.5), fround(ix-npix/2.+0.5)],[fround(iy+npix/2.+0.5),fround(ix+npix/2.+0.5)]]
 	s = np.s_[fround(iy-npix/2.+0.5):fround(iy+npix/2.+0.5),fround(ix-npix/2.+0.5):fround(ix+npix/2.+0.5)]
 	if return_slice: return s
 	cutout = imap[s]
