@@ -4,11 +4,12 @@
 """The setup script."""
 
 import setuptools
-from numpy.distutils.core import setup, Extension, build_ext
+from numpy.distutils.core import setup, Extension, build_ext, build_src
 import os
 import subprocess as sp
 import numpy as np
 build_ext = build_ext.build_ext
+build_src = build_src.build_src
 
 with open('README.rst') as readme_file:
     readme = readme_file.read()
@@ -28,13 +29,16 @@ compile_opts = {
     }
 
 
+def presrc():
+    # Create f90 files for f2py.
+    sp.call('make -C fortran', shell=True)
+    
 def prebuild():
     # Handle the special external dependencies.
     if not os.path.exists('_deps/libsharp/libsharp/sharp.h'):
         sp.call('scripts/install_libsharp.sh', shell=True)
     # Handle cythonization to create sharp.c, etc.
     sp.call('make -C cython',  shell=True)
-    sp.call('make -C fortran', shell=True)
 
 
 class CustomBuild(build_ext):
@@ -43,8 +47,15 @@ class CustomBuild(build_ext):
         # Then let setuptools do its thing.
         return build_ext.run(self)
 
+class CustomSrc(build_src):
+    def run(self):
+        presrc()
+        # Then let setuptools do its thing.
+        return build_src.run(self)
+
 class CustomEggInfo(setuptools.command.egg_info.egg_info):
     def run(self):
+        presrc()
         prebuild()
         return setuptools.command.egg_info.egg_info.run(self)   
 
@@ -100,6 +111,7 @@ setup(
     version='0.1.0',
     zip_safe=False,
     cmdclass={'build_ext': CustomBuild,
-          'egg_info': CustomEggInfo
+              'build_src': CustomSrc,
+              'egg_info': CustomEggInfo,
     }
 )
