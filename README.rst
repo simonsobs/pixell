@@ -67,8 +67,6 @@ and add the cloned directory to your Python path so that changes you make in any
 .. code-block:: bash
 		
    export PYTHONPATH=$PYTHONPATH:/path/to/cloned/pixell/directory
-   source ~/.bashrc
-
 
 If you also need non-Python code to be recompiled, run:
 

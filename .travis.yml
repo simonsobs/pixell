@@ -1,47 +1,32 @@
-# Config file for automatic testing at travis-ci.org
-
 language: python
 python:
-  - 3.6
-  - 3.5
-  - 3.4
-  - 2.7
-  - 2.6
-
+- 3.6
+- 3.5
+- 3.4
+- 2.7
+- 2.6
 os: linux
-
-
 install:
-   - pip install -r requirements.txt
-   - python setup.py develop
-  # - python setup.py build_ext -i
-
-# Command to run tests, e.g. python setup.py test
+- pip install -r requirements.txt
+- python setup.py develop
 script:
-   - py.test tests/
-
+- py.test tests/
 matrix:
   allow_failures:
-    - python: "3.5-dev"
-    - python: "3.6-dev"
-    - python: "3.7-dev"
-    - python: 2.6
-      
-# Assuming you have installed the travis-ci CLI tool, after you
-# create the Github repo and add it to Travis, run the
-# following command to finish PyPI deployment setup:
-# $ travis encrypt --add deploy.password
-# deploy:
-#   provider: pypi
-#   distributions: sdist bdist_wheel
-#   user: msyriac
-#   password:
-#     secure: PLEASE_REPLACE_ME
-#   on:
-#     tags: true
-#     repo: simonsobs/pixell
-#     python: 3.6
-
+  - python: 3.5-dev
+  - python: 3.6-dev
+  - python: 3.7-dev
+  - python: 2.6
+deploy:
+  provider: pypi
+  distributions: sdist --formats=gztar
+  user: msyriac
+  password:
+    secure: FN7aOQExErIbBzdqdFA+fFWm0X9p/1+O3WPTspLasWt1bUGIeCPPt4nrcPar1ev4svnV/96l5Nyr7gh3QB1vNfqequ+B8OqbtI+czOMD18EvZ1tc3hUdSBMQdbzbdt7NsmeA9qthV0fVTEjmlXC5q6lNMqJiSRD+YN6cA9Bepl0UtrN7hBnDJcwTSrCZkDMarHeAZo+9mDEm0x4TTC7894gx8PIWLN+a1VIshyVKLW6ssq39Afe/i0gWRJhnevJKhJAzDy88c6Ci1nnLyLVPBALzfRiKVBILPrSE80lESg2qG0p8K4wZbeNIrqVCxL7q0+vozsXFJKJ+gic5EZ1NRPR1NTL6X+9SB2JIfkpTfnMeqv8aXcEEJBqXaEBUGif7rg34FEX2FuwU0+v38XouO8InlAboSc3r1N9hCWSKpZdGJ37G9+1C3TrS1UqufN9jAQvyxW8YQ7JzPy3vVBJQpl3LeFzfmXQXjvfQbJy/02rid8U3cFovhgaFgwrkqcpd3Q1oJPCflQQNefU6OuEy7JVCMT1dKSwRlOdbXcOXWirl0FzehbS2CO/tFP2C08bQV54Tq/239sLAbAFYbLjqEfpJ06zI2uoN9cnspKePguXjZ3ObY2Mvnwpgmi7E/MZ/x2X3r1X8rvinDp/uY/O45btvC8sDDl9583RPQWkDrHc=
+  on:
+    tags: true
+    repo: simonsobs/pixell
+    python: 3.6
 addons:
   apt_packages:
-    - gfortran
+  - gfortran
