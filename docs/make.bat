@@ -9,7 +9,7 @@ if "%SPHINXBUILD%" == "" (
 )
 set SOURCEDIR=.
 set BUILDDIR=_build
-set SPHINXPROJ=sotools
+set SPHINXPROJ=pixell
 
 if "%1" == "" goto help
 

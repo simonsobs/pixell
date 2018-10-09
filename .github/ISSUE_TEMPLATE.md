@@ -1,4 +1,4 @@
-* sotools version:
+* pixell version:
 * Python version:
 * Operating System:
 

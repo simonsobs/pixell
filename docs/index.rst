@@ -1,4 +1,4 @@
-Welcome to sotools's documentation!
+Welcome to pixell's documentation!
 ======================================
 
 .. toctree::

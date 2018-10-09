@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""Tests for `sotools` package."""
+"""Tests for `pixell` package."""
 
 
-from sotools import enmap
-from sotools import sharp
-from sotools import curvedsky
-from sotools import lensing,interpol
+from pixell import enmap
+from pixell import sharp
+from pixell import curvedsky
+from pixell import lensing,interpol
 import numpy as np
 import pickle
 import os,sys

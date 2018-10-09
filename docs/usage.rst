@@ -11,9 +11,9 @@ Usage
 
 Any map can be completely specified by two objects, a numpy array (of at least two dimensions) whose two trailing dimensions correspond to two coordinate axes of the map, and a ``wcs`` object that specifies the World Coordinate System. The latter specifies the correspondence between pixels and physical sky coordinates. This library allows for the manipulation of an object ``ndmap``, which has all the properties of numpy arrays but is in addition enriched by the ``wcs`` object (specifically an instantiation of Astropy's ``astropy.wcs.wcs.WCS`` object). The ``shape`` of the numpy array and the ``wcs`` completely specifies the geometry and footprint of a map of the sky.
 
-All ``ndmap`` s must have at least two dimensions. The trailing two axes are interpreted as the Y (typically, declination) and X (typically, right ascension) axes. Maps can have arbitrary number of leading dimensions, but many of ``sotools``' CMB-related tools interpret a 3D array of shape ``(ncomp,Ny,Nx)`` to consist of three ``Ny`` x ``Nx`` maps of intensity, polarization Q and U Stokes parameters in that order.
+All ``ndmap`` s must have at least two dimensions. The trailing two axes are interpreted as the Y (typically, declination) and X (typically, right ascension) axes. Maps can have arbitrary number of leading dimensions, but many of ``pixell``' CMB-related tools interpret a 3D array of shape ``(ncomp,Ny,Nx)`` to consist of three ``Ny`` x ``Nx`` maps of intensity, polarization Q and U Stokes parameters in that order.
 
-Apart from all the numpy functionality, ``ndmap`` comes with a host of additional attributes and functions that utilize the information in the WCS. This usage guide will demonstrate how such maps can be manipulated using ``sotools``. 
+Apart from all the numpy functionality, ``ndmap`` comes with a host of additional attributes and functions that utilize the information in the WCS. This usage guide will demonstrate how such maps can be manipulated using ``pixell``. 
 
 
 TODO: I've listed below common operations that would be useful to demonstrate here.  Finish this! (See :ref:`ReferencePage` for a dump of all member functions)
@@ -21,11 +21,11 @@ TODO: I've listed below common operations that would be useful to demonstrate he
 Reading maps from disk
 --------
 
-An entire map in ``FITS`` or ``HDF`` format can be loaded using ``read_map``, which is found in the module ``sotools.enmap``. The ``enmap`` module contains the majority of map manipulation functions.
+An entire map in ``FITS`` or ``HDF`` format can be loaded using ``read_map``, which is found in the module ``pixell.enmap``. The ``enmap`` module contains the majority of map manipulation functions.
 
 .. code-block:: python
 
-		from sotools import enmap
+		from pixell import enmap
 		imap = enmap.read_map("map_on_disk.fits")
 
 Alternatively, one can select a rectangular region specified through its bounds using the ``box`` argument,
@@ -34,7 +34,7 @@ Alternatively, one can select a rectangular region specified through its bounds 
 
 		import numpy as np
 		dec_min = -5 ; ra_min = -5 ; dec_max = 5 ; ra_max = 5
-		# All coordinates in sotools are specified in radians
+		# All coordinates in pixell are specified in radians
 		box = np.deg2rad([[dec_min,ra_min],[dec_max,ra_max])) 
 		imap = enmap.read_map("map_on_disk.fits",box=box) 
 

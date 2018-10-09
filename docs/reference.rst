@@ -12,73 +12,73 @@ See :ref:`UsagePage` for how to use these functions for common map manipulation 
 enmap - General map manipulation
 -----
 
-.. automodule:: sotools.enmap
+.. automodule:: pixell.enmap
    :members:    
 
 fft - Fourier transforms
 -----
 
-.. automodule:: sotools.fft
+.. automodule:: pixell.fft
    :members:    
 
 curvedsky - Curved-sky harmonic transforms
 -----
 
-.. automodule:: sotools.curvedsky
+.. automodule:: pixell.curvedsky
    :members:          
 
 utils - General utilities
 -----
 
-.. automodule:: sotools.utils
+.. automodule:: pixell.utils
    :members:    
    
 reproject - Map reprojection
 -----
       
-.. automodule:: sotools.reproject
+.. automodule:: pixell.reproject
    :members:    
 
 resample - Map resampling
 -----
       
-.. automodule:: sotools.resample
+.. automodule:: pixell.resample
    :members:
       
 lensing - Lensing
 -----
       
-.. automodule:: sotools.lensing
+.. automodule:: pixell.lensing
    :members:
 
 interpol - Interpolation
 -----
       
-.. automodule:: sotools.interpol
+.. automodule:: pixell.interpol
    :members:
       
 coordinates - Coordinate Transformation
 -----
       
-.. automodule:: sotools.coordinates
+.. automodule:: pixell.coordinates
    :members:
       
 
 wcsutils - World Coordinate Sytem utilities
 -----
 
-.. automodule:: sotools.wcsutils
+.. automodule:: pixell.wcsutils
    :members:          
 
 slice - Array slicing utilities
 -----
 
-.. automodule:: sotools.slice
+.. automodule:: pixell.slice
    :members:          
 
 powspec - CMB power spectra utilities
 -----
 
-.. automodule:: sotools.powspec
+.. automodule:: pixell.powspec
    :members:          
       

@@ -1,7 +1,7 @@
 from __future__ import print_function
 import matplotlib
 matplotlib.use('Agg')
-from sotools import enmap,curvedsky,wcsutils,reproject
+from pixell import enmap,curvedsky,wcsutils,reproject
 import numpy as np
 import itertools,yaml,pickle,os,sys
 import matplotlib.pyplot as plt
@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 """
 This script generates a set of reference values against which
-sotools tests will be done.
+pixell tests will be done.
 
 """
 

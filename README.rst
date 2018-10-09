@@ -1,12 +1,12 @@
 =======
-sotools
+pixell
 =======
 
-.. image:: https://img.shields.io/travis/simonsobs/sotools.svg
-        :target: https://travis-ci.org/simonsobs/sotools
+.. image:: https://img.shields.io/travis/simonsobs/pixell.svg
+        :target: https://travis-ci.org/simonsobs/pixell
 
-.. image:: https://readthedocs.org/projects/sotools/badge/?version=latest
-        :target: https://sotools.readthedocs.io/en/latest/?badge=latest
+.. image:: https://readthedocs.org/projects/pixell/badge/?version=latest
+        :target: https://pixell.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
 
@@ -16,7 +16,7 @@ sotools
 This is an early development repository for a CMB map analysis library. The API for core modules will likely remain the same as in amaurea/enlib, but module and repository names are very likely to change!
 
 * Free software: BSD license
-* Documentation: https://sotools.readthedocs.io.
+* Documentation: https://pixell.readthedocs.io.
 
 Dependencies
 ------------
@@ -66,7 +66,7 @@ and add the cloned directory to your Python path so that changes you make in any
 
 .. code-block:: bash
 		
-   export PYTHONPATH=$PYTHONPATH:/path/to/cloned/sotools/directory
+   export PYTHONPATH=$PYTHONPATH:/path/to/cloned/pixell/directory
    source ~/.bashrc
 
 

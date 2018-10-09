@@ -8,13 +8,13 @@ Installation
 Stable release
 --------------
 
-To install sotools, run this command in your terminal:
+To install pixell, run this command in your terminal:
 
 .. code-block:: console
 
-    $ pip install sotools
+    $ pip install pixell
 
-This is the preferred method to install sotools, as it will always install the most recent stable release.
+This is the preferred method to install pixell, as it will always install the most recent stable release.
 
 If you don't have `pip`_ installed, this `Python installation guide`_ can guide
 you through the process.
@@ -26,19 +26,19 @@ you through the process.
 From sources
 ------------
 
-The sources for sotools can be downloaded from the `Github repo`_.
+The sources for pixell can be downloaded from the `Github repo`_.
 
 You can either clone the public repository:
 
 .. code-block:: console
 
-    $ git clone git://github.com/simonsobs/sotools
+    $ git clone git://github.com/simonsobs/pixell
 
 Or download the `tarball`_:
 
 .. code-block:: console
 
-    $ curl  -OL https://github.com/simonsobs/sotools/tarball/master
+    $ curl  -OL https://github.com/simonsobs/pixell/tarball/master
 
 Once you have a copy of the source, you can install it with:
 
@@ -47,5 +47,5 @@ Once you have a copy of the source, you can install it with:
     $ python setup.py install
 
 
-.. _Github repo: https://github.com/simonsobs/sotools
-.. _tarball: https://github.com/simonsobs/sotools/tarball/master
+.. _Github repo: https://github.com/simonsobs/pixell
+.. _tarball: https://github.com/simonsobs/pixell/tarball/master

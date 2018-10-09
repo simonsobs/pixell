@@ -39,7 +39,7 @@ matrix:
 #     secure: PLEASE_REPLACE_ME
 #   on:
 #     tags: true
-#     repo: simonsobs/sotools
+#     repo: simonsobs/pixell
 #     python: 3.6
 
 addons:
