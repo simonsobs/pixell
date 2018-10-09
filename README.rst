@@ -22,7 +22,7 @@ Dependencies
 ------------
 
 * Python>=2.7 or Python>=3.4
-* gcc/gfortran or Intel compilers (clang is not supported)
+* gcc/gfortran or Intel compilers (clang might not work out of the box)
 * libsharp (downloaded and installed)
 * automake (for libsharp compilation)
 * healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py
