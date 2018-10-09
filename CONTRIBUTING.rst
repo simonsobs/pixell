@@ -64,20 +64,16 @@ Ready to contribute? Here's how to set up `pixell` for local development.
 1. Fork the `pixell` repo on GitHub.
 2. Clone your fork locally::
 
-.. code-block:: bash
     $ git clone git@github.com:your_name_here/pixell.git
 
 3. Install your local copy for development::
 
-.. code-block:: bash
     $ cd pixell/
     $ python setup.py build_ext -i
-    
-    and add the cloned directory to your Python path so that changes you make in any python file are immediately reflected. e.g., in your ``.bashrc`` file,
 
-.. code-block:: bash
-		
-   export PYTHONPATH=$PYTHONPATH:/path/to/cloned/pixell/directory
+and add the cloned directory to your Python path so that changes you make in any python file are immediately reflected. e.g., in your ``.bashrc`` file::
+
+    export PYTHONPATH=$PYTHONPATH:/path/to/cloned/pixell/directory
 
 4. Create a branch for local development::
 
