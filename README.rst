@@ -62,14 +62,22 @@ If you are a developer, run:
 		
    $ python setup.py build_ext -i
 
-and add the cloned directory to your Python path so that changes you make in any python file are immediately reflected. If you also need non-Python code to be recompiled, run:
+and add the cloned directory to your Python path so that changes you make in any python file are immediately reflected. e.g., in your ``.bashrc`` file,
+
+.. code-block:: bash
+		
+   export PYTHONPATH=$PYTHONPATH:/path/to/cloned/sotools/directory
+   source ~/.bashrc
+
+
+If you also need non-Python code to be recompiled, run:
 
 .. code-block:: console
 		
    $ python setup.py clean
 
 
-before the above step.
+before the above steps.
 
 
 
