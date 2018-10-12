@@ -39,7 +39,7 @@ Alternatively, one can select a rectangular region specified through its bounds 
 		imap = enmap.read_map("map_on_disk.fits",box=box) 
 
 
-To learn how to use a pixel box or a numpy slice, please read the docstring for ``read_map``.
+Note the convention used to define coordinate boxes in pixell. To learn how to use a pixel box or a numpy slice, please read the docstring for ``read_map``.
 
 Inspecting a map
 --------
@@ -60,15 +60,40 @@ Here, ``imap`` consists of three maps each with 500 pixels along the Y axis and 
 
 Above, we learn that the map is represented in the ``CAR`` projection system and what the WCS attributes are.
    
-Sky coordinate and pixel conversions
+Relating pixels to the sky
 --------
+
+The geometry specified through ``shape`` and ``wcs`` contains all the information to get properties of the map related to the sky. ``pixell`` always specifies the Y coordinate first. So a sky position is often in the form ``(dec,ra)`` where ``dec`` could be the declination and ``ra`` could be the right ascension in radians in the equatorial coordinate system.
 
 Conversions
 ~~~~~~
 
+The pixel corresponding to ra=180,dec=20 can be obtained like
+
+.. code-block:: python
+
+		> dec = 20 ; ra = 180
+		> coords = np.deg2rad(np.array((dec,ra)))
+		> ypix,xpix = enmap.sky2pix(shape,wcs,coords)
+
+Note that you don't need to pass each dec,ra separately. You can pass a large number of coordinates for a vectorized conversion. In this case `coords` should have the shape (2,Ncoords), where Ncoords is the number of coordinates you want to convert, with the first row containing declination and the second row containing right ascension. Also, the returned pixel coordinates are in general fractional.
+
+Similarly, pixel coordinates can be converted to sky coordinates
+
+.. code-block:: python
+
+		> ypix = 100 ; xpix = 300
+		> pixes = np.array((ypix,xpix))
+		> dec,ra = enmap.pix2sky(shape,wcs,pixes)
+
+with similar considerations as above for passing a large number of coordinates.
+
+
 
 Position map
 ~~~~~
+
+
 
 Pixel map
 ~~~~~
