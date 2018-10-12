@@ -67,59 +67,77 @@ def healpix_from_enmap(imap,**kwargs):
 	return imap.to_healpix(**kwargs)
 
 def enmap_from_healpix(hp_map,shape,wcs,ncomp=1,unit=1,lmax=0,rot=["gal","equ"],first=0):
-    import healpy as hp
+	"""Convert a healpix map to an ndmap using harmonic space reprojection. The resulting map will be band-limited.
+
+	Args:
+	    hp_map: an (Npix,) or (ncomp,Npix,) healpix map or a string containing the path to a healpix map on disk
+	    shape: the shape of the ndmap geometry to project to
+	    wcs: the wcs object of the ndmap geometry to project to
+	    ncomp: the number of components in the healpix map (either 1 or 3)
+	    unit: a unit conversion factor to divide the map by
+	    lmax: the maximum multipole to include in the reprojection
+	    rot: list containing 2 strings that specify a coordinate rotation to perform. 
+	         e.g. ["gal","equ"] to rotate a Planck map in galactic coordinates to the 
+	         equatorial coordinates used in ndmaps.
+	    first: if a filename is provided for the healpix map, this specifies the index of the first FITS field
+
+	Returns:
+	    res: the reprojected ndmap
+	
+	"""
+	import healpy as hp
 
 
-    # equatorial to galactic euler zyz angles
-    euler = np.array([57.06793215,  62.87115487, -167.14056929])*utils.degree
-    assert ncomp == 1 or ncomp == 3, "Only 1 or 3 components supported"
-    dtype = np.float64
-    ctype = np.result_type(dtype,0j)
-    # Read the input maps
-    if type(hp_map)==str:
-	    m = np.atleast_2d(hp.read_map(hp_map, field=tuple(range(first,first+ncomp)))).astype(dtype)
-    else:
-	    m = np.atleast_2d(hp_map).astype(dtype)
-    if unit != 1: m /= unit
-    # Prepare the transformation
-    print("Preparing SHT")
-    nside = hp.npix2nside(m.shape[1])
-    lmax  = lmax or 3*nside
-    minfo = sharp.map_info_healpix(nside)
-    ainfo = sharp.alm_info(lmax)
-    sht   = sharp.sht(minfo, ainfo)
-    alm   = np.zeros((ncomp,ainfo.nelem), dtype=ctype)
-    # Perform the actual transform
-    print("T -> alm")
-    print( m.dtype, alm.dtype)
-    sht.map2alm(m[0], alm[0])
-    if ncomp == 3:
-        print("P -> alm")
-        sht.map2alm(m[1:3],alm[1:3], spin=2)
-    del m
+	# equatorial to galactic euler zyz angles
+	euler = np.array([57.06793215,  62.87115487, -167.14056929])*utils.degree
+	assert ncomp == 1 or ncomp == 3, "Only 1 or 3 components supported"
+	dtype = np.float64
+	ctype = np.result_type(dtype,0j)
+	# Read the input maps
+	if type(hp_map)==str:
+		m = np.atleast_2d(hp.read_map(hp_map, field=tuple(range(first,first+ncomp)))).astype(dtype)
+	else:
+		m = np.atleast_2d(hp_map).astype(dtype)
+		if unit != 1: m /= unit
+	# Prepare the transformation
+	print("Preparing SHT")
+	nside = hp.npix2nside(m.shape[1])
+	lmax  = lmax or 3*nside
+	minfo = sharp.map_info_healpix(nside)
+	ainfo = sharp.alm_info(lmax)
+	sht	  = sharp.sht(minfo, ainfo)
+	alm	  = np.zeros((ncomp,ainfo.nelem), dtype=ctype)
+	# Perform the actual transform
+	print("T -> alm")
+	print( m.dtype, alm.dtype)
+	sht.map2alm(m[0], alm[0])
+	if ncomp == 3:
+		print("P -> alm")
+		sht.map2alm(m[1:3],alm[1:3], spin=2)
+	del m
 
 
-    if rot is not None:
-        # Rotate by displacing coordinates and then fixing the polarization
-        print("Computing pixel positions")
-        pmap = enmap.posmap(shape, wcs)
-        if rot:
-            print("Computing rotated positions")
-            s1,s2 = rot.split(",")
-            opos = coordinates.transform(s2, s1, pmap[::-1], pol=ncomp==3)
-            pmap[...] = opos[1::-1]
-            if len(opos) == 3: psi = -opos[2].copy()
-            del opos
-        print("Projecting")
-        res  = curvedsky.alm2map_pos(alm, pmap)
-        if rot and ncomp==3:
-            print("Rotating polarization vectors")
-            res[1:3] = enmap.rotate_pol(res[1:3], psi)
-    else:
-        print("Projecting")
-        res = enmap.zeros((len(alm),)+shape[-2:], wcs, dtype)
-        res = curvedsky.alm2map(alm, res)
-    return res
+	if rot is not None:
+		# Rotate by displacing coordinates and then fixing the polarization
+		print("Computing pixel positions")
+		pmap = enmap.posmap(shape, wcs)
+		if rot:
+			print("Computing rotated positions")
+			s1,s2 = rot.split(",")
+			opos = coordinates.transform(s2, s1, pmap[::-1], pol=ncomp==3)
+			pmap[...] = opos[1::-1]
+			if len(opos) == 3: psi = -opos[2].copy()
+			del opos
+		print("Projecting")
+		res  = curvedsky.alm2map_pos(alm, pmap)
+		if rot and ncomp==3:
+			print("Rotating polarization vectors")
+			res[1:3] = enmap.rotate_pol(res[1:3], psi)
+	else:
+		print("Projecting")
+		res = enmap.zeros((len(alm),)+shape[-2:], wcs, dtype)
+		res = curvedsky.alm2map(alm, res)
+	return res
 
 
 
