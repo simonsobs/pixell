@@ -66,7 +66,7 @@ def centered_map(imap,res,box=None,pixbox=None,proj='car',rpix=None,width=None,
 def healpix_from_enmap(imap,**kwargs):
 	return imap.to_healpix(**kwargs)
 
-def enmap_from_healpix(hp_map,shape,wcs,ncomp=1,unit=1,lmax=0,rot=["gal","equ"],first=0):
+def enmap_from_healpix(hp_map,shape,wcs,ncomp=1,unit=1,lmax=0,rot="gal,equ",first=0):
 	"""Convert a healpix map to an ndmap using harmonic space reprojection. The resulting map will be band-limited.
 
 	Args:
