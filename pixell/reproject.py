@@ -66,7 +66,7 @@ def centered_map(imap,res,box=None,pixbox=None,proj='car',rpix=None,width=None,
 def healpix_from_enmap(imap,**kwargs):
 	return imap.to_healpix(**kwargs)
 
-def enmap_from_healpix(hp_map,shape,wcs,ncomp=1,unit=1,lmax=0,rot=["gal","equ"],first=0):
+def enmap_from_healpix(hp_map,shape,wcs,ncomp=1,unit=1,lmax=0,rot="gal,equ",first=0):
 	"""Convert a healpix map to an ndmap using harmonic space reprojection. The resulting map will be band-limited.
 
 	Args:
@@ -76,8 +76,8 @@ def enmap_from_healpix(hp_map,shape,wcs,ncomp=1,unit=1,lmax=0,rot=["gal","equ"],
 	    ncomp: the number of components in the healpix map (either 1 or 3)
 	    unit: a unit conversion factor to divide the map by
 	    lmax: the maximum multipole to include in the reprojection
-	    rot: list containing 2 strings that specify a coordinate rotation to perform. 
-	         e.g. ["gal","equ"] to rotate a Planck map in galactic coordinates to the 
+	    rot: comma separated string that specify a coordinate rotation to perform. Use None to perform no rotation.
+	         e.g. default "gal,equ" to rotate a Planck map in galactic coordinates to the 
 	         equatorial coordinates used in ndmaps.
 	    first: if a filename is provided for the healpix map, this specifies the index of the first FITS field
 
