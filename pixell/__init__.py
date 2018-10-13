@@ -4,4 +4,4 @@
 
 __author__ = """Simons Observatory Collaboration Analysis Library Task Force"""
 __email__ = ''
-__version__ = '0.1.3'
+__version__ = '0.1.4'
