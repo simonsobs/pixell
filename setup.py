@@ -108,7 +108,7 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/simonsobs/pixell',
-    version='0.1.4',
+    version='0.2.0',
     zip_safe=False,
     cmdclass={'build_ext': CustomBuild,
               'build_src': CustomSrc,
