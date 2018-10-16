@@ -74,16 +74,27 @@ def lens_map_flat(cmb_map, phi_map):
 
 ######## Curved sky lensing ########
 
-def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64, seed=None, oversample=2.0, spin=2, output="l", geodesic=True, verbose=False, delta_theta=None):
-	from . import curvedsky, sharp
+def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64, seed=None, oversample=2.0, spin=2, output="l", geodesic=True, verbose=False, delta_theta=None, phi_seed=None, separate_phi_from_cmb=False):
+	import curvedsky, sharp
 	ctype   = np.result_type(dtype,0j)
 	# Restrict to target number of components
 	oshape  = shape[-3:]
 	if len(oshape) == 2: shape = (1,)+tuple(shape)
+
+	#van Engelen added this:
+
 	# First draw a random lensing field, and use it to compute the undeflected positions
-	if verbose: print("Generating alms")
-	alm, ainfo = curvedsky.rand_alm(ps_lensinput, lmax=lmax, seed=seed, dtype=ctype, return_ainfo=True)
-	phi_alm, cmb_alm = alm[0], alm[1:1+shape[-3]]
+	if not separate_phi_from_cmb:
+
+		#AVE - this was the default option.
+		if verbose: print("Generating alms")
+		alm, ainfo = curvedsky.rand_alm(ps_lensinput, lmax=lmax, seed=seed, dtype=ctype, return_ainfo=True)
+		phi_alm, cmb_alm = alm[0], alm[1:1+shape[-3]]
+		del alm
+        else:
+		if verbose: print("Generating alms, separating phi from cmb")
+		phi_alm, phi_ainfo = curvedsky.rand_alm(ps_lensinput[0, 0, :], lmax=lmax, seed=phi_seed, dtype=ctype, return_ainfo=True)
+		cmb_alm, cmb_ainfo = curvedsky.rand_alm(ps_lensinput[1:, 1:, :], lmax=lmax, seed=seed, dtype=ctype, return_ainfo=True)
 	# Truncate alm if we want a smoother map. In taylens, it was necessary to truncate
 	# to a lower lmax for the map than for phi, to avoid aliasing. The appropriate lmax
 	# for the cmb was the one that fits the resolution. FIXME: Can't slice alm this way.
