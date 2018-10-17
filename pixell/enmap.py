@@ -1,6 +1,6 @@
 from __future__ import print_function
 import numpy as np, scipy.ndimage, warnings, astropy.io.fits, sys, time
-from . import utils, wcsutils, slice as sliceutils, powspec, fft as enfft
+from . import utils, wcsutils, powspec, fft as enfft
 
 # Things that could be improved:
 #  1. We assume exactly 2 WCS axes in spherical projection in {dec,ra} order.
@@ -88,7 +88,7 @@ class ndmap(np.ndarray):
 	def to_flipper(self, omap=None, unpack=True): return to_flipper(self, omap=omap, unpack=unpack)
 	def __getitem__(self, sel):
 		# Split sel into normal and wcs parts.
-		sel1, sel2 = sliceutils.split_slice(sel, [self.ndim-2,2])
+		sel1, sel2 = utils.split_slice(sel, [self.ndim-2,2])
 		# No index creation supported in the wcs part
 		if any([s is None for s in sel2]):
 			raise IndexError("None-indices not supported for the wcs part of an ndmap.")
@@ -203,7 +203,7 @@ def slice_geometry(shape, wcs, sel, nowrap=False):
 	oshape = np.array(shape)
 	# The wcs object has the indices in reverse order
 	for i,s in enumerate(sel[-2:]):
-		s = sliceutils.expand_slice(s, shape[i], nowrap=nowrap)
+		s = utils.expand_slice(s, shape[i], nowrap=nowrap)
 		j = -1-i
 		start = s.start if s.step > 0 else s.start + 1
 		wcs.wcs.crpix[j] -= start+0.5
@@ -877,7 +877,7 @@ def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 	# Set up the kernel array
 	K = np.zeros((nspec,nl))
 	l = np.arange(nl)
-	if type(kernel) == str:
+	if isinstance(kernel, basestring):
 		if kernel == "gauss":
 			K[:] = np.exp(-0.5*(l/width)**2)
 		elif kernel == "step":
@@ -889,7 +889,7 @@ def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 		K[:,:tmp.shape[-1]] = tmp[:,:K.shape[-1]]
 	# Set up the weighting scheme
 	W = np.zeros((nspec,nl))
-	if type(weight) == str:
+	if isinstance(weight, basestring):
 		if weight == "mode":
 			W[:] = l[None,:]**2
 		elif weight == "uniform":
@@ -1405,11 +1405,11 @@ class fits_wrapper:
 	@property
 	def shape(self): return self.hdu.shape
 	def __getitem__(self, sel):
-		_, psel = sliceutils.split_slice(sel, [len(self.shape)-2,2])
+		_, psel = utils.split_slice(sel, [len(self.shape)-2,2])
 		if len(psel) > 2: raise IndexError("too many indices")
 		_, wcs = slice_geometry(self.shape[-2:], self.wcs, psel)
 		if self.hdu.size > self.threshold:
-			sel1, sel2 = sliceutils.split_slice(sel, [len(self.shape)-1,1])
+			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-1,1])
 			res = self.hdu.section[sel1][(Ellipsis,)+sel2]
 		else: res = self.hdu.data[sel]
 		return ndmap(fix_endian(res), wcs)
@@ -1424,11 +1424,11 @@ class hdf_wrapper:
 	@property
 	def dtype(self): return self.dset.shape
 	def __getitem__(self, sel):
-		_, psel = sliceutils.split_slice(sel, [self.ndim-2,2])
+		_, psel = utils.split_slice(sel, [self.ndim-2,2])
 		if len(psel) > 2: raise IndexError("too many indices")
 		_, wcs = slice_geometry(self.shape[-2:], self.wcs, psel)
 		if self.dset.size > self.threshold:
-			sel1, sel2 = sliceutils.split_slice(sel, [len(self.shape)-1,1])
+			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-1,1])
 			res = self.dset[sel1][(Ellipsis,)+sel2]
 		else:
 			res = self.dset.value[sel]
