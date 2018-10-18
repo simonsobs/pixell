@@ -1,5 +1,5 @@
-.PHONY: clean clean-test clean-pyc clean-build docs help
-.DEFAULT_GOAL := help
+.PHONY: clean clean-test clean-pyc clean-build docs help develop
+.DEFAULT_GOAL := develop
 
 define BROWSER_PYSCRIPT
 import os, webbrowser, sys
@@ -26,38 +26,32 @@ export PRINT_HELP_PYSCRIPT
 
 BROWSER := python -c "$$BROWSER_PYSCRIPT"
 
+include options.mk
+
+# Main targets:
+
+develop:
+	python setup.py build_ext --inplace $(build_opts)
+
 help:
 	@python -c "$$PRINT_HELP_PYSCRIPT" < $(MAKEFILE_LIST)
 
-clean: clean-build clean-pyc clean-test clean-prebuild ## remove all pre-build build, test, coverage and Python artifacts
-
-clean-build: ## remove build artifacts
-	rm -fr build/
-	rm -fr dist/
-	rm -fr .eggs/
+clean:
+	rm -rf build dist .eggs .coverage htmlcov .pytest_cache
+	make clean -C cython
+	make clean -C fortran
+	find . -name '*.pyc' -delete
+	find . -name '*.pyo' -delete
+	find . -name '*.so' -delete
+	find . -name '*~' -delete
 	find . -name '*.egg-info' -exec rm -fr {} +
 	find . -name '*.egg' -exec rm -f {} +
-
-clean-pyc: ## remove Python file artifacts
-	find . -name '*.pyc' -exec rm -f {} +
-	find . -name '*.pyo' -exec rm -f {} +
-	find . -name '*~' -exec rm -f {} +
-	find . -name '__pycache__' -exec rm -fr {} +
-
-clean-test: ## remove test and coverage artifacts
-	rm -f .coverage
-	rm -fr htmlcov/
-	rm -fr .pytest_cache
-
-clean-prebuild:  ## remove intermediate products from fortran and cython
-	make clean -C fortran
-	make clean -C cython
 
 lint: ## check style with flake8
 	flake8 pixell tests
 
 test: ## run tests quickly with the default Python
-	python setup.py test
+	python setup.py test $(build_opts)
 
 coverage: ## check code coverage quickly with the default Python
 	coverage run --source pixell setup.py test
@@ -83,9 +77,9 @@ release: dist ## package and upload a release
 	twine upload dist/*
 
 dist: clean ## builds source and wheel package
-	python setup.py sdist
-	python setup.py bdist_wheel
+	python setup.py sdist $(build_opts)
+	python setup.py bdist_wheel $(build_opts)
 	ls -l dist
 
 install: clean ## install the package to the active Python's site-packages
-	python setup.py install
+	python setup.py install $(build_opts)
