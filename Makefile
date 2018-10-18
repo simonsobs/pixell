@@ -26,15 +26,16 @@ export PRINT_HELP_PYSCRIPT
 
 BROWSER := python -c "$$BROWSER_PYSCRIPT"
 
+python = python
 -include options.mk
 
 # Main targets:
 
 develop:
-	python setup.py build_ext --inplace $(build_opts)
+	$(python) setup.py build_ext --inplace $(build_opts)
 
 help:
-	@python -c "$$PRINT_HELP_PYSCRIPT" < $(MAKEFILE_LIST)
+	@$(python) -c "$$PRINT_HELP_PYSCRIPT" < $(MAKEFILE_LIST)
 
 clean:
 	rm -rf build dist .eggs .coverage htmlcov .pytest_cache
@@ -51,7 +52,7 @@ lint: ## check style with flake8
 	flake8 pixell tests
 
 test: ## run tests quickly with the default Python
-	python setup.py test $(build_opts)
+	$(python) setup.py test $(build_opts)
 
 coverage: ## check code coverage quickly with the default Python
 	coverage run --source pixell setup.py test
@@ -77,9 +78,9 @@ release: dist ## package and upload a release
 	twine upload dist/*
 
 dist: clean ## builds source and wheel package
-	python setup.py sdist $(build_opts)
-	python setup.py bdist_wheel $(build_opts)
+	$(python) setup.py sdist $(build_opts)
+	$(python) setup.py bdist_wheel $(build_opts)
 	ls -l dist
 
 install: clean ## install the package to the active Python's site-packages
-	python setup.py install $(build_opts)
+	$(python) setup.py install $(build_opts)
