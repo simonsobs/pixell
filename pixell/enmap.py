@@ -744,20 +744,26 @@ def samewcs(arr, *args):
 # to drag around a shape, wcs pair all the time.
 def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=False, ref=None, **kwargs):
 	"""Consruct a shape,wcs pair suitable for initializing enmaps.
-	pos can be either a [2] center position or a [{from,to},2]
+	pos can be either a {dec,ra} center position or a [{from,to},{dec,ra}]
 	bounding box. At least one of res or shape must be specified.
 	If res is specified, it must either be a number, in
 	which the same resolution is used in each direction,
-	or [2]. If shape is specified, it must be [2]. All angles
-	are given in radians. If force is True, the resulting bounding
-	box of the geometry is forced to be exactly what is specifed.
-	WARNING: This can occasionally result in a geometry that 
-	does not have pre-determined ring weights, thus causing SHTs 
-	to not be available. By default, force is False, and the 
-	reference point of the geometry is set to the origin, which
-	ensures that ring weights are available for common choices 
-	of resolution. The force flag is ignored if the reference point
-	is explicitly specified in ref."""
+	or {dec,ra}. If shape is specified, it must be at least [2]. All angles
+	are given in radians.
+
+	The projection type is chosen with the proj argument. The default is "car",
+	corresponding to the equirectangular plate carree projection. Other valid
+	projections are "cea", "zea", "gnom", etc. See wcsutils for details.
+
+	By default the geometry is tweaked so that a standard position, typically
+	ra=0,dec=0, would be at an integer logical pixel position (even if that position is
+	outside the physical map). This makes it easier to generate maps that are compatible
+	up to an integer pixel offset, as well as maps that are compatible with the predefined
+	spherical harmonics transform ring weights. The cost of this tweaking is that the
+	resulting bounding box can differ by a fraction of a pixel from the one requested.
+	To force the geometry to exactly match the bounding box provided you can pass force=True.
+	It is also possible to manually choose the reference pixel via the ref argument, which
+	must be a dec,ra coordinate pair."""
 	# We use radians by default, while wcslib uses degrees, so need to rescale.
 	# The exception is when we are using a plain, non-spherical wcs, in which case
 	# both are unitless. So undo the scaling in this case.
@@ -765,8 +771,9 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	if proj == "plain": scale *= utils.degree
 	pos = np.asarray(pos)*scale
 	if res is not None: res = np.asarray(res)*scale
-	if ref is None:
-		if not(force): ref = (0,0)
+	# Apply a standard reference points unless one is manually specified, or we
+	# want to force the bounding box to exactly match the input.
+	if ref is None and not force: ref = "standard"
 	wcs = wcsutils.build(pos, res, shape, rowmajor=True, system=proj, ref=ref, **kwargs)
 	if shape is None:
 		# Infer shape. WCS does not allow us to wrap around the

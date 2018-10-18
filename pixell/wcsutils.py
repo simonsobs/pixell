@@ -105,6 +105,7 @@ def plain(pos, res=None, shape=None, rowmajor=False, ref=None):
 	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
 	w = WCS(naxis=2)
 	w.wcs.crval = mid
+	if ref is "standard": ref = None
 	return finalize(w, pos, res, shape, ref=ref)
 
 def car(pos, res=None, shape=None, rowmajor=False, ref=None):
@@ -113,6 +114,7 @@ def car(pos, res=None, shape=None, rowmajor=False, ref=None):
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---CAR", "DEC--CAR"]
 	w.wcs.crval = np.array([mid[0],0])
+	if ref is "standard": ref = (0,0)
 	return finalize(w, pos, res, shape, ref=ref)
 
 def cea(pos, res=None, shape=None, rowmajor=False, lam=None, ref=None):
@@ -124,6 +126,7 @@ def cea(pos, res=None, shape=None, rowmajor=False, lam=None, ref=None):
 	w.wcs.ctype = ["RA---CEA", "DEC--CEA"]
 	w.wcs.set_pv([(2,1,lam)])
 	w.wcs.crval = np.array([mid[0],0])
+	if ref is "standard": ref = (0,0)
 	return finalize(w, pos, res, shape, ref=ref)
 
 def zea(pos, res=None, shape=None, rowmajor=False, ref=None):
@@ -134,6 +137,7 @@ def zea(pos, res=None, shape=None, rowmajor=False, ref=None):
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---ZEA", "DEC--ZEA"]
 	w.wcs.crval = mid
+	if ref is "standard": ref = None
 	return finalize(w, pos, res, shape, ref=ref)
 
 # The airy distribution is a bit different, since is needs to
@@ -150,9 +154,19 @@ def air(pos, res=None, shape=None, rowmajor=False, rad=None, ref=None):
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---AIR","DEC--AIR"]
 	w.wcs.set_pv([(2,1,90-rad)])
+	if ref is "standard": ref = None
 	return finalize(w, pos, res, shape, ref=ref)
 
-systems = {"car": car, "cea": cea, "air": air, "zea": zea, "plain": plain }
+def tan(pos, res=None, shape=None, rowmajor=False, ref=None):
+	"""Set up a plate carree system. See the build function for details."""
+	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
+	w = WCS(naxis=2)
+	w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+	w.wcs.crval = np.array([mid[0],0])
+	if ref is "standard": ref = None
+	return finalize(w, pos, res, shape, ref=ref)
+
+systems = {"car": car, "cea": cea, "air": air, "zea": zea, "tan": tan, "gnom": tan, "plain": plain }
 
 def build(pos, res=None, shape=None, rowmajor=False, system="cea", ref=None, **kwargs):
 	"""Set up the WCS system named by the "system" argument.
