@@ -26,7 +26,7 @@ export PRINT_HELP_PYSCRIPT
 
 BROWSER := python -c "$$BROWSER_PYSCRIPT"
 
-include options.mk
+-include options.mk
 
 # Main targets:
 
