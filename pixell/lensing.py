@@ -99,7 +99,6 @@ def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64
 	# to a lower lmax for the map than for phi, to avoid aliasing. The appropriate lmax
 	# for the cmb was the one that fits the resolution. FIXME: Can't slice alm this way.
 	#if maplmax: cmb_alm = cmb_alm[:,:maplmax]
-	del alm
 	if delta_theta is None: bsize = shape[-2]
 	else:
 		bsize = utils.nint(abs(delta_theta/utils.degree/wcs.wcs.cdelt[1]))
