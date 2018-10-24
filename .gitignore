@@ -1,3 +1,6 @@
+# Ignore our per-side configuration
+options.mk
+
 # Ignore the dependencies we pulled in.
 _deps/
 
