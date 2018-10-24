@@ -2,7 +2,7 @@
 pixell
 =======
 
-.. image:: https://img.shields.io/travis/simonsobs/pixell.svg
+.. image:: https://travis-ci.org/simonsobs/pixell.svg?branch=master
         :target: https://travis-ci.org/simonsobs/pixell
 
 .. image:: https://readthedocs.org/projects/pixell/badge/?version=latest

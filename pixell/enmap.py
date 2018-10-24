@@ -342,20 +342,6 @@ def skybox2pixbox(shape, wcs, skybox, npoint=10, corner=False, include_direction
 	if include_direction: res = np.concatenate([res,dir[None]],0)
 	return res
 
-def box(shape, wcs, npoint=10, corner=True):
-	"""Compute a bounding box for the given geometry."""
-	# Because of wcs's wrapping, we need to evaluate several
-	# extra pixels to make our unwinding unambiguous
-	pix = np.array([np.linspace(0,shape[-2],num=npoint,endpoint=True),
-		np.linspace(0,shape[-1],num=npoint,endpoint=True)])
-	if corner: pix -= 0.5
-	coords = wcsutils.nobcheck(wcs).wcs_pix2world(pix[1],pix[0],0)[::-1]
-	if wcsutils.is_plain(wcs):
-		return np.array(coords).T[[0,-1]]
-	else:
-		return utils.unwind(np.array(coords)*utils.degree).T[[0,-1]]
-
-
 def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, prefilter=True, mask_nan=True, safe=True):
 	"""Project the map into a new map given by the specified
 	shape and wcs, interpolating as necessary. Handles nan
@@ -1274,7 +1260,7 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, wrap="auto", mode
 	return res
 
 def read_map_geometry(fname, fmt=None, hdu=None):
-	"""Read an enmap from file. The file type is inferred
+	"""Read an enmap geometry from file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'."""
 	toks = fname.split(":")
