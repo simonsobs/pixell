@@ -1,6 +1,6 @@
 from __future__ import print_function
 import numpy as np, scipy.ndimage, warnings, astropy.io.fits, sys, time
-from . import utils, wcsutils, slice as sliceutils, powspec, fft as enfft
+from . import utils, wcsutils, powspec, fft as enfft
 
 # Things that could be improved:
 #  1. We assume exactly 2 WCS axes in spherical projection in {dec,ra} order.
@@ -88,7 +88,7 @@ class ndmap(np.ndarray):
 	def to_flipper(self, omap=None, unpack=True): return to_flipper(self, omap=omap, unpack=unpack)
 	def __getitem__(self, sel):
 		# Split sel into normal and wcs parts.
-		sel1, sel2 = sliceutils.split_slice(sel, [self.ndim-2,2])
+		sel1, sel2 = utils.split_slice(sel, [self.ndim-2,2])
 		# No index creation supported in the wcs part
 		if any([s is None for s in sel2]):
 			raise IndexError("None-indices not supported for the wcs part of an ndmap.")
@@ -203,7 +203,7 @@ def slice_geometry(shape, wcs, sel, nowrap=False):
 	oshape = np.array(shape)
 	# The wcs object has the indices in reverse order
 	for i,s in enumerate(sel[-2:]):
-		s = sliceutils.expand_slice(s, shape[i], nowrap=nowrap)
+		s = utils.expand_slice(s, shape[i], nowrap=nowrap)
 		j = -1-i
 		start = s.start if s.step > 0 else s.start + 1
 		wcs.wcs.crpix[j] -= start+0.5
@@ -443,7 +443,7 @@ def _arghelper(map, func, unit):
 	if unit == "coord": res = pix2sky(map.shape, map.wcs, res.T).T
 	return res
 
-def rand_map(shape, wcs, cov, scalar=False, seed=None,pixel_units=False,iau=False):
+def rand_map(shape, wcs, cov, scalar=False, seed=None, pixel_units=False, iau=False, spin=[0,2]):
 	"""Generate a standard flat-sky pixel-space CMB map in TQU convention based on
 	the provided power spectrum. If cov.ndim is 4, 2D power is assumed else 1D
 	power is assumed. If pixel_units is True, the 2D power spectra is assumed
@@ -453,7 +453,7 @@ def rand_map(shape, wcs, cov, scalar=False, seed=None,pixel_units=False,iau=Fals
 	if scalar:
 		return ifft(kmap).real
 	else:
-		return harm2map(kmap,iau=iau)
+		return harm2map(kmap, iau=iau, spin=spin)
 
 def rand_gauss(shape, wcs, dtype=None):
 	"""Generate a map with random gaussian noise in pixel space."""
@@ -651,27 +651,32 @@ def ifft(emap, omap=None, nthread=0, normalize=True):
 # T,E,B hamonic maps. They are not the most efficient way of doing this.
 # It would be better to precompute the rotation matrix and buffers, and
 # use real transforms.
-def map2harm(emap, nthread=0, normalize=True,iau=False):
+def map2harm(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
 	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap."""
 	emap = samewcs(fft(emap,nthread=nthread,normalize=normalize), emap)
-	if emap.ndim > 2 and emap.shape[-3] > 1:
-		rot = queb_rotmat(emap.lmap(),iau=iau)
-		emap[...,-2:,:,:] = map_mul(rot, emap[...,-2:,:,:])
+	if emap.ndim > 2:
+		rot, s0 = None, None
+		for s, i1, i2 in spin_helper(spin, emap.shape[-3]):
+			if s == 0:  continue
+			if s != s0: s0, rot = s, queb_rotmat(emap.lmap(), iau=iau, spin=s)
+			emap[...,i1:i2,:,:] = map_mul(rot, emap[...,i1:i2,:,:])
 	return emap
-def harm2map(emap, nthread=0, normalize=True,iau=False):
-	if emap.ndim > 2 and emap.shape[-3] > 1:
-		rot = queb_rotmat(emap.lmap(), inverse=True,iau=iau)
-		emap = emap.copy()
-		emap[...,-2:,:,:] = map_mul(rot, emap[...,-2:,:,:])
+def harm2map(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
+	if emap.ndim > 2:
+		rot, s0 = None, None
+		for s, i1, i2 in spin_helper(spin, emap.shape[-3]):
+			if s == 0:  continue
+			if s != s0: s0, rot = s, queb_rotmat(emap.lmap(), iau=iau, spin=s, inverse=True)
+			emap[...,i1:i2,:,:] = map_mul(rot, emap[...,i1:i2,:,:])
 	return samewcs(ifft(emap,nthread=nthread,normalize=normalize), emap).real
 
-def queb_rotmat(lmap, inverse=False, iau=False):
+def queb_rotmat(lmap, inverse=False, iau=False, spin=2):
 	# atan2(x,y) instead of (y,x) because Qr points in the
 	# tangential direction, not radial. This matches flipperpol too.
 	# This corresponds to the Healpix convention. To get IAU,
 	# flip the sign of a.
 	sgn = -1 if iau else 1
-	a    = sgn*2*np.arctan2(-lmap[1], lmap[0])
+	a    = sgn*spin*np.arctan2(-lmap[1], lmap[0])
 	c, s = np.cos(a), np.sin(a)
 	if inverse: s = -s
 	return samewcs(np.array([[c,-s],[s,c]]),lmap)
@@ -737,14 +742,28 @@ def samewcs(arr, *args):
 # Use that to make everything that currently accepts shape, wcs
 # transparently accept geometry. This will free us from having
 # to drag around a shape, wcs pair all the time.
-def geometry(pos, res=None, shape=None, proj="cea", deg=False, pre=(), **kwargs):
+def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=False, ref=None, **kwargs):
 	"""Consruct a shape,wcs pair suitable for initializing enmaps.
-	pos can be either a [2] center position or a [{from,to},2]
+	pos can be either a {dec,ra} center position or a [{from,to},{dec,ra}]
 	bounding box. At least one of res or shape must be specified.
 	If res is specified, it must either be a number, in
 	which the same resolution is used in each direction,
-	or [2]. If shape is specified, it must be [2]. All angles
-	are given in radians."""
+	or {dec,ra}. If shape is specified, it must be at least [2]. All angles
+	are given in radians.
+
+	The projection type is chosen with the proj argument. The default is "car",
+	corresponding to the equirectangular plate carree projection. Other valid
+	projections are "cea", "zea", "gnom", etc. See wcsutils for details.
+
+	By default the geometry is tweaked so that a standard position, typically
+	ra=0,dec=0, would be at an integer logical pixel position (even if that position is
+	outside the physical map). This makes it easier to generate maps that are compatible
+	up to an integer pixel offset, as well as maps that are compatible with the predefined
+	spherical harmonics transform ring weights. The cost of this tweaking is that the
+	resulting bounding box can differ by a fraction of a pixel from the one requested.
+	To force the geometry to exactly match the bounding box provided you can pass force=True.
+	It is also possible to manually choose the reference pixel via the ref argument, which
+	must be a dec,ra coordinate pair."""
 	# We use radians by default, while wcslib uses degrees, so need to rescale.
 	# The exception is when we are using a plain, non-spherical wcs, in which case
 	# both are unitless. So undo the scaling in this case.
@@ -752,7 +771,10 @@ def geometry(pos, res=None, shape=None, proj="cea", deg=False, pre=(), **kwargs)
 	if proj == "plain": scale *= utils.degree
 	pos = np.asarray(pos)*scale
 	if res is not None: res = np.asarray(res)*scale
-	wcs = wcsutils.build(pos, res, shape, rowmajor=True, system=proj, **kwargs)
+	# Apply a standard reference points unless one is manually specified, or we
+	# want to force the bounding box to exactly match the input.
+	if ref is None and not force: ref = "standard"
+	wcs = wcsutils.build(pos, res, shape, rowmajor=True, system=proj, ref=ref, **kwargs)
 	if shape is None:
 		# Infer shape. WCS does not allow us to wrap around the
 		# sky, so shape mustn't be large enough to make that happen.
@@ -862,7 +884,7 @@ def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 	# Set up the kernel array
 	K = np.zeros((nspec,nl))
 	l = np.arange(nl)
-	if type(kernel) == str:
+	if isinstance(kernel, basestring):
 		if kernel == "gauss":
 			K[:] = np.exp(-0.5*(l/width)**2)
 		elif kernel == "step":
@@ -874,7 +896,7 @@ def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 		K[:,:tmp.shape[-1]] = tmp[:,:K.shape[-1]]
 	# Set up the weighting scheme
 	W = np.zeros((nspec,nl))
-	if type(weight) == str:
+	if isinstance(weight, basestring):
 		if weight == "mode":
 			W[:] = l[None,:]**2
 		elif weight == "uniform":
@@ -1310,36 +1332,6 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mod
 	wrapper = fits_wrapper(hdu, wcs, threshold=sel_threshold)
 	return read_helper(wrapper, sel=sel, box=box, pixbox=pixbox, wrap=wrap, mode=mode)
 
-def read_fits_old(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None):
-	"""Read an enmap from the specified fits file. By default,
-	the map and coordinate system will be read from HDU 0. Use
-	the hdu argument to change this. The map must be stored as
-	a fits image. If sel is specified, it should be a slice
-	that will be applied to the image before reading. This avoids
-	reading more of the image than necessary. Instead of sel,
-	a coordinate box [[yfrom,xfrom],[yto,xto]] can be specified."""
-	if hdu is None: hdu = 0
-	hdu  = astropy.io.fits.open(fname)[hdu]
-	ndim = len(hdu.shape)
-	if hdu.header["NAXIS"] < 2:
-		raise ValueError("%s is not an enmap (only %d axes)" % (fname, hdu.header["NAXIS"]))
-	if wcs is None:
-		with warnings.catch_warnings():
-			wcs = wcsutils.WCS(hdu.header).sub(2)
-	(oshape, owcs), info = read_helper_old(hdu.shape, sel=sel, box=box, pixbox=pixbox, wrap=wrap, mode=mode, sel_threshold=10e6, wcs=wcs)
-	omap = None
-	# Loop through the discontinuous blocks
-	for isel, osel in info:
-		if hdu.size > sel_threshold:
-			isel1, isel2 = sliceutils.split_slice(isel, [len(isel)-1,1])
-			chunk = hdu.section[isel1][(Ellipsis,)+isel2]
-		else: chunk = hdu.data[isel]
-		if omap is None:
-			omap = zeros(chunk.shape[:-2]+oshape, owcs, chunk.dtype)
-		omap[osel] = chunk
-	omap = fix_endian(omap)
-	return omap
-
 def read_fits_geometry(fname, hdu=None):
 	"""Read an enmap wcs from the specified fits file. By default,
 	the map and coordinate system will be read from HDU 0. Use
@@ -1387,38 +1379,6 @@ def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mode
 		wrapper = hdf_wrapper(data, wcs, threshold=sel_threshold)
 		return read_helper(wrapper, sel=sel, box=box, pixbox=pixbox, wrap=wrap, mode=mode)
 
-def read_hdf_old(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None):
-	"""Read an enmap from the specified hdf file. Two formats
-	are supported. The old enmap format, which simply used
-	a bounding box to specify the coordinates, and the new
-	format, which uses WCS properties. The latter is used if
-	available. With the old format, plate carree projection
-	is assumed. Note: some of the old files have a slightly
-	buggy wcs, which can result in 1-pixel errors."""
-	import h5py
-	with h5py.File(fname,"r") as hfile:
-		data = hfile["data"]
-		hwcs = hfile["wcs"]
-		header = astropy.io.fits.Header()
-		for key in hwcs:
-			header[key] = hwcs[key].value
-		if wcs is None:
-			wcs = wcsutils.WCS(header).sub(2)
-		(oshape, owcs), info = read_helper_old(data.shape, sel=sel, box=box, pixbox=pixbox, wrap=wrap, mode=mode, sel_threshold=10e6, wcs=wcs)
-		omap = None
-		# Loop through the discontinuous blocks
-		for isel, osel in info:
-			if data.size > sel_threshold:
-				isel1, isel2 = sliceutils.split_slice(isel, [len(isel)-1,1])
-				chunk = data[isel1][(Ellipsis,)+isel2]
-			else: chunk = data[isel]
-			if omap is None:
-				omap = zeros(chunk.shape[:-2]+oshape, owcs, chunk.dtype)
-			omap[osel] = chunk
-		omap = fix_endian(omap)
-		return omap
-
-
 def read_hdf_geometry(fname):
 	"""Read an enmap wcs from the specified hdf file."""
 	import h5py
@@ -1439,44 +1399,6 @@ def read_helper(data, sel=None, box=None, pixbox=None, wrap="auto", mode=None, s
 	data = data[:] # Get rid of the wrapper if it still remains
 	return data
 
-def read_helper_old(shape, sel=None, box=None, pixbox=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None):
-	"""Helper function for map reading. Handles the slicing, sky-wrapping and capping, etc."""
-	# By popular demand we support several types of slicing, which gets a bit cumbersome.
-	# We will transform all of these into expanded slices
-	if sel is None: sel = (Ellipsis)
-	ndim = len(shape)
-	sel  = sliceutils.split_slice(sel, [ndim])[0]
-	sel += (slice(None),)*(ndim-len(sel))
-	# Ok, sel is now full-lenght, with a slice or number for each dimension.
-	# Separate out the pixel parts, which we will handle as piboxes
-	sel_pre, sel_pix = sliceutils.split_slice(sel, [ndim-2,2])
-	# Turn the sel_pix into a pbox, that can later be overridden
-	sel_pix = tuple([sliceutils.expand_slice(sel_pix[i], shape[-2+i]) for i in range(2)])
-	pbox = np.array([[s.start, s.stop, s.step] for s in sel_pix]).T
-	# We can now override using box and pixbox
-	if box is not None and pixbox is None:
-		# Box is a coordinate bounding box. It must be converted to pixels
-		pixbox = subinds(shape[-2:], wcs, box, mode=mode)
-	if pixbox is not None:
-		pbox = np.asarray(pixbox)
-	# Ok, we now have our slicing in a single, easy-to-work-with format.
-	oshape, owcs = slice_geometry(shape[-2:], wcs, (slice(*pbox[:,-2]),slice(*pbox[:,-1])), nowrap=True)
-	# Apply wrapping
-	nphi = utils.nint(360/np.abs(wcs.wcs.cdelt[0]))
-	# If our map is actually wider than our wrapping length, then wrapping doesn't
-	# make much sense. We can either just disable it, or generalize it to assume
-	# e.g. a spin-1/2 field. I do the latter here, by wrapping at the smallest multiple
-	# of nphi that's not smaller than the width of the map in pixels
-	nphi *= (nphi+shape[-1]-1)//nphi
-	if wrap is "auto": wrap = [0,nphi]
-	else: wrap = np.zeros(2,int)+wrap
-	info = []
-	for ibox, obox in utils.sbox_wrap(pbox.T, wrap=wrap, cap=shape[-2:]):
-		isel = utils.sbox2slice(ibox)[1:] # [1:] removes ellipsis
-		osel = utils.sbox2slice(obox)
-		info.append((sel_pre+isel,osel))
-	return (oshape, owcs), info
-
 # These wrapper classes are there to let us reuse the normal map
 # extract and submap operations on fits and hdf maps without needing
 # to read in all the data.
@@ -1490,11 +1412,11 @@ class fits_wrapper:
 	@property
 	def shape(self): return self.hdu.shape
 	def __getitem__(self, sel):
-		_, psel = sliceutils.split_slice(sel, [len(self.shape)-2,2])
+		_, psel = utils.split_slice(sel, [len(self.shape)-2,2])
 		if len(psel) > 2: raise IndexError("too many indices")
 		_, wcs = slice_geometry(self.shape[-2:], self.wcs, psel)
 		if self.hdu.size > self.threshold:
-			sel1, sel2 = sliceutils.split_slice(sel, [len(self.shape)-1,1])
+			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-1,1])
 			res = self.hdu.section[sel1][(Ellipsis,)+sel2]
 		else: res = self.hdu.data[sel]
 		return ndmap(fix_endian(res), wcs)
@@ -1509,11 +1431,11 @@ class hdf_wrapper:
 	@property
 	def dtype(self): return self.dset.shape
 	def __getitem__(self, sel):
-		_, psel = sliceutils.split_slice(sel, [self.ndim-2,2])
+		_, psel = utils.split_slice(sel, [self.ndim-2,2])
 		if len(psel) > 2: raise IndexError("too many indices")
 		_, wcs = slice_geometry(self.shape[-2:], self.wcs, psel)
 		if self.dset.size > self.threshold:
-			sel1, sel2 = sliceutils.split_slice(sel, [len(self.shape)-1,1])
+			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-1,1])
 			res = self.dset[sel1][(Ellipsis,)+sel2]
 		else:
 			res = self.dset.value[sel]
@@ -1578,3 +1500,15 @@ def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False):
 	else:
 		raise ValueError("Invalid resample method '%s'" % method)
 	return omap
+
+def spin_helper(spin, n):
+	spin  = np.array(spin).reshape(-1)
+	scomp = 1+(spin!=0)
+	ci, i1 = 0, 0
+	while True:
+		i2 = min(i1+scomp[ci],n)
+		if i2-i1 != scomp[ci]: raise IndexError("Unpaired component in spin transform")
+		yield spin[ci], i1, i2
+		if i2 == n: break
+		i1 = i2
+		ci = (ci+1)%len(spin)

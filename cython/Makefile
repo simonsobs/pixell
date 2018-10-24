@@ -5,4 +5,4 @@
 sharp.c: sharp.pyx csharp.pxd csharp.h
 
 clean:
-	rm sharp.c
+	rm -f sharp.c

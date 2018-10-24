@@ -9,4 +9,4 @@ all: interpol_32.f90 interpol_64.f90
 	perl -pe 's/\b_\b/8/g' < $< > $@
 
 clean:
-	rm -rf *.pyc *.mod *.f90
+	rm -rf *.pyc *.mod interpol*.f90

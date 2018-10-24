@@ -23,11 +23,20 @@ test_requirements  = []
 
 compile_opts = {
     'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing'],
-    'extra_f90_compile_args': ['-Ofast', '-fopenmp', '-Wno-conversion', '-Wno-tabs'],
+    'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
     'extra_link_args': ['-fopenmp']
     }
 
+fcflags = os.getenv('FCFLAGS')
+if fcflags is None or fcflags.strip() == '':
+    fcflags = ['-Ofast']
+else:
+    print('User supplied fortran flags: ', fcflags)
+    print('These will supersede other optimization flags.')
+    fcflags = fcflags.split()
+    
+compile_opts['extra_f90_compile_args'].extend(fcflags)
 
 def presrc():
     # Create f90 files for f2py.
@@ -94,6 +103,9 @@ setup(
         Extension('pixell._interpol_64',
             sources=['fortran/interpol_64.f90'],
             **compile_opts),
+        Extension('pixell._colorize',
+            sources=['fortran/colorize.f90'],
+            **compile_opts),
     ],
     include_dirs = ['_deps/libsharp/auto/include'],
     library_dirs = ['_deps/libsharp/auto/lib'],
@@ -108,7 +120,7 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/simonsobs/pixell',
-    version='0.1.4',
+    version='0.2.0',
     zip_safe=False,
     cmdclass={'build_ext': CustomBuild,
               'build_src': CustomSrc,
