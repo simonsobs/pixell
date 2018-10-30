@@ -42,14 +42,10 @@ def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=
 	rtype = np.zeros([0],dtype=dtype).real.dtype
 	ps    = np.asarray(ps)
 	if ainfo is None: ainfo = sharp.alm_info(min(lmax,ps.shape[-1]-1) or ps.shape[-1]-1)
-	if ps.ndim == 1:
-		wps = ps[None,None]
-	elif ps.ndim == 2:
-		wps = powspec.sym_expand(ps, scheme="diag")
-	elif ps.ndim == 3:
-		wps = ps
-	else:
-		raise ValuerError("power spectrum must be [nl], [nspec,nl] or [ncomp,ncomp,nl]")
+	if   ps.ndim == 1: wps = ps[None,None]
+	elif ps.ndim == 2: wps = powspec.sym_expand(ps, scheme="diag")
+	elif ps.ndim == 3: wps = ps
+	else: raise ValuerError("power spectrum must be [nl], [nspec,nl] or [ncomp,ncomp,nl]")
 	ncomp = wps.shape[0]
 	ps12  = enmap.multi_pow(wps, 0.5)
 	# Draw random gaussian numbers in chunks to save memory
