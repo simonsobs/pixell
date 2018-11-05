@@ -5,7 +5,7 @@
 
 import setuptools
 from numpy.distutils.core import setup, Extension, build_ext, build_src
-import os
+import os,sys
 import subprocess as sp
 import numpy as np
 build_ext = build_ext.build_ext
@@ -45,7 +45,11 @@ def presrc():
 def prebuild():
     # Handle the special external dependencies.
     if not os.path.exists('_deps/libsharp/libsharp/sharp.h'):
-        sp.call('scripts/install_libsharp.sh', shell=True)
+        try:
+            sp.check_call('scripts/install_libsharp.sh', shell=True)
+        except subprocess.CalledProcessError:
+            print("ERROR: libsharp installation failed")
+            sys.exit(1)
     # Handle cythonization to create sharp.c, etc.
     sp.call('make -C cython',  shell=True)
 
