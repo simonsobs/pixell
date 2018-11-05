@@ -1,7 +1,7 @@
 # Transform from real numbers to RGB colors.
 import numpy as np, time
 has_fortran = True
-try: from . import fortran
+try: from . import _colorize
 except ImportError: has_fortran = False
 
 # Predefined schemes
@@ -97,7 +97,7 @@ schemes["iron"]      = Colorscheme("0.00000:000000,0.00840:000024,0.01681:000033
 
 def colorize_scalar_fortran(a, desc):
 	res = np.empty((len(a),4),dtype=np.uint16)
-	fortran.remap(a, res.T, desc.vals, desc.cols.astype(np.int16).T)
+	_colorize.remap(a, res.T, desc.vals, desc.cols.astype(np.int16).T)
 	return res.astype(np.uint8)
 
 def colorize_scalar_python(a, desc):
@@ -131,7 +131,7 @@ def colorize_direct_python(a, desc):
 
 def colorize_direct_fortran(a, desc):
 	res = np.empty((a.shape[1],4),dtype=np.uint16)
-	fortran.direct(a.T, res.T)
+	_colorize.direct(a.T, res.T)
 	return res.astype(np.uint8)
 
 def to_mpl_colormap(name, data=None):

@@ -230,7 +230,7 @@ def partial_expand(a, shape, axes=[-1], pos=0):
 	return moveaxes(a, range(len(axes)), axes)
 
 def addaxes(a, axes):
-	axes = np.array(axes)
+	axes = np.array(axes,int)
 	axes[axes<0] += a.ndim
 	axes = np.sort(axes)[::-1]
 	inds = [slice(None) for i in a.shape]
@@ -238,7 +238,7 @@ def addaxes(a, axes):
 	return a[inds]
 
 def delaxes(a, axes):
-	axes = np.array(axes)
+	axes = np.array(axes,int)
 	axes[axes<0] += a.ndim
 	axes = np.sort(axes)[::-1]
 	inds = [slice(None) for i in a.shape]
@@ -266,7 +266,7 @@ class flatview:
 	def __exit__(self, type, value, traceback):
 		# Copy back out from flat into the original array, if necessary
 		if "w" not in self.mode: return
-		if np.may_share_memory(self.array, self.flat): return
+		if np.shares_memory(self.array, self.flat): return
 		# We need to copy back out
 		self.array[:] = partial_expand(self.flat, self.array.shape, self.axes, pos=self.pos)
 
