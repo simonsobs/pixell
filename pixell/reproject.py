@@ -107,7 +107,7 @@ def healpix_from_enmap(imap, lmax, nside):
 
 
 def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
-                       rot="gal,equ", first=0):
+                       rot="gal,equ", first=0, alm=None, return_alm=False):
     """Convert a healpix map to an ndmap using harmonic space reprojection.
     The resulting map will be band-limited.
 
@@ -132,33 +132,34 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
     """
     import healpy as hp
 
-    assert ncomp == 1 or ncomp == 3, "Only 1 or 3 components supported"
     dtype = np.float64
-    ctype = np.result_type(dtype, 0j)
-    # Read the input maps
-    if type(hp_map) == str:
-        m = np.atleast_2d(hp.read_map(hp_map, field=tuple(
-            range(first, first + ncomp)))).astype(dtype)
-    else:
-        m = np.atleast_2d(hp_map).astype(dtype)
-        if unit != 1:
-            m /= unit
-    # Prepare the transformation
-    print("Preparing SHT")
-    nside = hp.npix2nside(m.shape[1])
-    lmax = lmax or 3 * nside
-    minfo = sharp.map_info_healpix(nside)
-    ainfo = sharp.alm_info(lmax)
-    sht = sharp.sht(minfo, ainfo)
-    alm = np.zeros((ncomp, ainfo.nelem), dtype=ctype)
-    # Perform the actual transform
-    print("T -> alm")
-    print(m.dtype, alm.dtype)
-    sht.map2alm(m[0], alm[0])
-    if ncomp == 3:
-        print("P -> alm")
-        sht.map2alm(m[1:3], alm[1:3], spin=2)
-    del m
+    if alm is None:
+        assert ncomp == 1 or ncomp == 3, "Only 1 or 3 components supported"
+        ctype = np.result_type(dtype, 0j)
+        # Read the input maps
+        if type(hp_map) == str:
+            m = np.atleast_2d(hp.read_map(hp_map, field=tuple(
+                range(first, first + ncomp)))).astype(dtype)
+        else:
+            m = np.atleast_2d(hp_map).astype(dtype)
+            if unit != 1:
+                m /= unit
+        # Prepare the transformation
+        print("Preparing SHT")
+        nside = hp.npix2nside(m.shape[1])
+        lmax = lmax or 3 * nside
+        minfo = sharp.map_info_healpix(nside)
+        ainfo = sharp.alm_info(lmax)
+        sht = sharp.sht(minfo, ainfo)
+        alm = np.zeros((ncomp, ainfo.nelem), dtype=ctype)
+        # Perform the actual transform
+        print("T -> alm")
+        print(m.dtype, alm.dtype)
+        sht.map2alm(m[0], alm[0])
+        if ncomp == 3:
+            print("P -> alm")
+            sht.map2alm(m[1:3], alm[1:3], spin=2)
+        del m
 
     if rot is not None:
         # Rotate by displacing coordinates and then fixing the polarization
@@ -181,6 +182,7 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
         print("Projecting")
         res = enmap.zeros((len(alm),) + shape[-2:], wcs, dtype)
         res = curvedsky.alm2map(alm, res)
+    if return_alm: return res,alm
     return res
 
 
