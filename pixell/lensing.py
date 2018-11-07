@@ -107,7 +107,7 @@ def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64
 		l = np.arange(ainfo.lmax+1.0)
 		kappa_alm = ainfo.lmul(phi_alm, l*(l+1)/2)
 		for i1 in range(0, shape[-2], bsize):
-			curvedsky.alm2map(kappa_alm, kappa_map[...,i1:i1+bize,:])
+			curvedsky.alm2map(kappa_alm, kappa_map[...,i1:i1+bsize,:])
 		del kappa_alm
 	if "a" in output: grad_map  = enmap.empty((2,)+shape[-2:], wcs, dtype=dtype)
 	if "u" in output: cmb_raw   = enmap.empty(shape, wcs, dtype=dtype)
