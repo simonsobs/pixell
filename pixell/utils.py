@@ -1622,6 +1622,50 @@ def eigpow(A, e, axes=[-2,-1], rlim=None, alim=None):
 			res = V.dot(E[:,None]*V.T)
 		return res
 
+def build_conditional(ps, inds, axes=[0,1]):
+	"""Given some covariance matrix ps[n,n] describing a
+	set of n Gaussian distributed variables, and a set of
+	indices inds[m] specifying which of these variables are already
+	known, return matrices A[n-m,m], cov[m,m] such that the
+	conditional distribution for the unknown variables is
+	x_unknown ~ normal(A x_known, cov). If ps has more than
+	2 dimensions, then the axes argument indicates which
+	dimensions contain the matrix.
+
+	Example:
+
+	C  = np.array([[10,2,1],[2,8,1],[1,1,5]])
+	vknown = np.linalg.cholesky(C[:1,:1]).dot(np.random.standard_normal(1))
+	A, cov = lensing.build_conditional(C, v0)
+	vrest  = A.dot(vknown) + np.linalg.cholesky(cov).dot(np.random_standard_normal(2))
+
+	vtot = np.concatenate([vknown,vrest]) should have the same distribution
+	as a sample drawn directly from the full C.
+	"""
+	ps   = np.asarray(ps)
+	# Make the matrix parts the last axes, so we have [:,ncomp,ncomp]
+	C = partial_flatten(ps,   axes)
+	# Define masks for what is known and unknown
+	known       = np.full(C.shape[1],False,bool)
+	known[inds] = True
+	unknown     = ~known
+	# Hack: Handle masked arrays where some elements are all-zero.
+	def inv(A):
+		good = ~np.all(np.einsum("aii->ai", A)==0,-1)
+		res  = A*0
+		res[good] = np.linalg.inv(A[good])
+		return res
+	# Build the parameters for the conditional distribution
+	Ci     = inv(C)
+	Ciuk   = Ci[:,unknown,:][:,:,known]
+	Ciuu   = Ci[:,unknown,:][:,:,unknown]
+	Ciuui  = inv(Ciuu)
+	A      = -np.matmul(Ciuui, Ciuk)
+	# Expand back to original shape
+	A      = partial_expand(A,     ps.shape, axes)
+	cov    = partial_expand(Ciuui, ps.shape, axes)
+	return A, cov
+
 def nint(a):
 	"""Return a rounded to the nearest integer, as an integer."""
 	return np.round(a).astype(int)

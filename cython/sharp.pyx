@@ -201,6 +201,20 @@ cdef class alm_info:
 		self.mstart.flags.writeable = False
 	def lm2ind(self, l, m):
 		return self.mstart[m]+l*self.stride
+	@cython.boundscheck(False)
+	@cython.wraparound(False)
+	def get_map(self):
+		"""Return the explicit [nelem,{l,m}] mapping this alm_info represents."""
+		cdef np.ndarray[np.int64_t,ndim=2] mapping = np.empty([self.nelem,2],np.int64)
+		cdef np.ndarray[np.int64_t,ndim=1] mstart = self.mstart
+		cdef int l, m, i
+		l, m = 0, 0
+		for m in range(self.mmax+1):
+			for l in range(m, self.lmax+1):
+				i = mstart[m]+l*self.stride
+				mapping[i,0] = l
+				mapping[i,1] = m
+		return mapping
 	def transpose_alm(self, alm, out=None):
 		"""In order to accomodate l-major ordering, which is not directoy
 		supported by sharp, this function efficiently transposes Alm into
@@ -226,7 +240,7 @@ cdef class alm_info:
 		cdef np.ndarray[np.int64_t,ndim=1] mstart = self.mstart
 		cdef np.ndarray[np.complex128_t,ndim=1] work = np.empty(alm.shape[1],alm.dtype)
 		for comp in range(alm.shape[0]):
-			l,m = 0,0
+			l,m,i = 0,0,0
 			for i in range(alm.shape[1]):
 				j = mstart[m]+l*self.stride
 				work[j] = alm[comp,i]
