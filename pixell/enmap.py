@@ -80,6 +80,7 @@ class ndmap(np.ndarray):
 	@property
 	def plain(self): return ndmap(self, wcsutils.WCS(naxis=2))
 	def padslice(self, box, default=np.nan): return padslice(self, box, default=default)
+	def center(self): return center(self.shape,self.wcs)
 	def downgrade(self, factor): return downgrade(self, factor)
 	def upgrade(self, factor): return upgrade(self, factor)
 	def fillbad(self, val=0, inplace=False): fillbad(self, val=val, inplace=inplace)
@@ -591,12 +592,21 @@ def modlmap(shape, wcs, oversample=1):
 	slmap = lmap(shape,wcs,oversample=oversample)
 	return np.sum(slmap**2,0)**0.5
 
-def modrmap(shape, wcs, safe=True, corner=False):
+def center(shape,wcs):
+	cpix = (np.array(shape[-2:])-1)/2.
+	return pix2sky(shape,wcs,cpix)
+
+def modrmap(shape, wcs, ref="center", safe=True, corner=False):
 	"""Return an enmap where each entry is the distance from center
 	of that entry. Results are returned in radians, and if safe is true
 	(default), then sharp coordinate edges will be avoided."""
 	slmap = posmap(shape,wcs,safe=safe,corner=corner)
-	return np.sum(slmap**2,0)**0.5
+	if isinstance(ref,basestring):
+		if ref=="center": ref = center(shape,wcs)
+		else:             raise ValueError
+	ref = np.array(ref)[:,None,None]
+	return ndmap(utils.angdist(slmap,ref,zenith=False),wcs)
+
 
 def laxes(shape, wcs, oversample=1):
 	oversample = int(oversample)
