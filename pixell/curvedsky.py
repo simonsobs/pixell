@@ -39,25 +39,11 @@ def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=
 	to allow generation of low-res and high-res maps that agree on large
 	scales. It uses 2/3 of the memory of healpy.synalm, and has comparable
 	speed."""
-	rtype = np.zeros([0],dtype=dtype).real.dtype
-	ps    = np.asarray(ps)
-	if ainfo is None: ainfo = sharp.alm_info(min(lmax,ps.shape[-1]-1) or ps.shape[-1]-1)
-	if   ps.ndim == 1: wps = ps[None,None]
-	elif ps.ndim == 2: wps = powspec.sym_expand(ps, scheme="diag")
-	elif ps.ndim == 3: wps = ps
-	else: raise ValuerError("power spectrum must be [nl], [nspec,nl] or [ncomp,ncomp,nl]")
-	ncomp = wps.shape[0]
-	ps12  = enmap.multi_pow(wps, 0.5)
-	# Draw random gaussian numbers in chunks to save memory
-	alm   = np.empty([ncomp,ainfo.nelem],dtype=dtype)
-	aflat = alm.reshape(-1).view(rtype)
-	bsize = 0x10000
-	if seed != None: np.random.seed(seed)
-	for i in range(0, aflat.size, bsize):
-		aflat[i:i+bsize] = np.random.standard_normal(min(bsize,aflat.size-i))
-	# Transpose numbers to make them m-major.
-	if m_major: ainfo.transpose_alm(alm,alm)
+	rtype      = np.zeros([0],dtype=dtype).real.dtype
+	wps, ainfo = prepare_ps(ps, ainfo=ainfo, lmax=lmax)
+	alm = rand_alm_white(ainfo, pre=[wps.shape[0]], seed=seed, dtype=dtype, m_major=m_major)
 	# Scale alms by spectrum, taking into account which alms are complex
+	ps12 = enmap.multi_pow(wps, 0.5)
 	ainfo.lmul(alm, (ps12/2**0.5).astype(rtype), alm)
 	alm[:,:ainfo.lmax].imag  = 0
 	alm[:,:ainfo.lmax].real *= 2**0.5
@@ -489,3 +475,28 @@ def apply_minfo_theta_lim(minfo, theta_min=None, theta_max=None):
 	if theta_min is not None: mask &= minfo.theta >= theta_min
 	if theta_max is not None: mask &= minfo.theta <= theta_max
 	return minfo.select_rows(mask)
+
+def fill_gauss(arr, bsize=0x10000):
+	rtype = np.zeros([0],arr.dtype).real.dtype
+	arr   = arr.reshape(-1).view(rtype)
+	for i in range(0, arr.size, bsize):
+		arr[i:i+bsize] = np.random.standard_normal(min(bsize,arr.size-i))
+
+def prepare_ps(ps, ainfo=None, lmax=None):
+	ps    = np.asarray(ps)
+	if ainfo is None: ainfo = sharp.alm_info(min(lmax,ps.shape[-1]-1) or ps.shape[-1]-1)
+	if   ps.ndim == 1: wps = ps[None,None]
+	elif ps.ndim == 2: wps = powspec.sym_expand(ps, scheme="diag")
+	elif ps.ndim == 3: wps = ps
+	else: raise ValuerError("power spectrum must be [nl], [nspec,nl] or [ncomp,ncomp,nl]")
+	return wps, ainfo
+
+def rand_alm_white(ainfo, pre=None, alm=None, seed=None, dtype=np.complex128, m_major=True):
+	if seed is not None:     np.random.seed(seed)
+	if alm is None:
+		if pre is None: alm = np.empty(ainfo.nelem, dtype)
+		else:           alm = np.empty(tuple(pre)+(ainfo.nelem,), dtype)
+	fill_gauss(alm)
+	# Transpose numbers to make them m-major.
+	if m_major: ainfo.transpose_alm(alm,alm)
+	return alm

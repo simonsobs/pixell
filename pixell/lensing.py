@@ -80,28 +80,25 @@ def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64
 	# Restrict to target number of components
 	oshape  = shape[-3:]
 	if len(oshape) == 2: shape = (1,)+tuple(shape)
-	ps_lensinput = ps_lensinput[:1+shape[-3],:1+shape[-3]]
+	ncomp   = shape[-3]
+	ps_lensinput = ps_lensinput[:1+ncomp,:1+ncomp]
 	# First draw a random lensing field, and use it to compute the undeflected positions
 	if verbose: print("Generating alms")
 	if phi_seed is None:
 		alm, ainfo = curvedsky.rand_alm(ps_lensinput, lmax=lmax, seed=seed, dtype=ctype, return_ainfo=True)
-		phi_alm, cmb_alm = alm[0], alm[1:]
-		del alm
 	else:
-		# First draw the plain CMB using our CMB seed
-		cmb_alm, ainfo = curvedsky.rand_alm(ps_lensinput[1:,1:], lmax=lmax, seed=seed, dtype=ctype, return_ainfo=True)
-		# Then find the conditional distribution for phi
-		ncmb, nl = cmb_alm.shape
-		A, cov = utils.build_conditional(ps_lensinput[:,:,:nl], inds=range(1,1+ncmb), axes=[0,1])
-		# And draw from it. This is only complicated due to the difference between the index
-		# ordering numpy wants ([...,:,:] and the one we use [:,:,...]). The contiguousarray
-		# stuff is needed to work around weird numpy behavior that causes it to waste lots of memory
-		Aflat  = np.ascontiguousarray(np.transpose(A, (2,0,1)))
-		linds  = ainfo.get_map()[:,0]
-		Afull  = Aflat[linds]
-		phi_alm  = curvedsky.rand_alm(cov, lmax=lmax, seed=phi_seed, dtype=ctype)[0]
-		phi_alm += np.matmul(Afull, cmb_alm.T[:,:,None]).T[0,0]
-		del A, Afull, cov
+		# We want separate seeds for cmb and phi. This means we have to do things a bit more manually
+		wps, ainfo = curvedsky.prepare_ps(ps_lensinput, lmax=lmax)
+		alm = np.empty([1+ncomp,ainfo.nelem],ctype)
+		curvedsky.rand_alm_white(ainfo, alm=alm[:1], seed=phi_seed)
+		curvedsky.rand_alm_white(ainfo, alm=alm[1:], seed=seed)
+		ps12 = enmap.multi_pow(wps, 0.5)
+		ainfo.lmul(alm, (ps12/2**0.5).astype(dtype), alm)
+		alm[:,:ainfo.lmax].imag  = 0
+		alm[:,:ainfo.lmax].real *= 2**0.5
+		del wps, ps12
+	phi_alm, cmb_alm = alm[0], alm[1:]
+	del alm
 	# Truncate alm if we want a smoother map. In taylens, it was necessary to truncate
 	# to a lower lmax for the map than for phi, to avoid aliasing. The appropriate lmax
 	# for the cmb was the one that fits the resolution. FIXME: Can't slice alm this way.
