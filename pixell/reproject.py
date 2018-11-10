@@ -186,8 +186,8 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
     return res
 
 
-def enmap_from_healpix_interp(shape, wcs, hp_map, hp_coords="galactic",
-                              interpolate=True):
+def enmap_from_healpix_interp(shape, wcs, hp_map, rot="gal,equ",
+                              interpolate=False):
     """Project a healpix map to an enmap of chosen shape and wcs. The wcs
     is assumed to be in equatorial (ra/dec) coordinates. If the healpix map
     is in galactic coordinates, this can be specified by hp_coords, and a
@@ -199,54 +199,38 @@ def enmap_from_healpix_interp(shape, wcs, hp_map, hp_coords="galactic",
     shape -- 2-tuple (Ny,Nx)
     wcs -- enmap wcs object in equatorial coordinates
     hp_map -- array-like healpix map
-    hp_coords -- "galactic" to perform a coordinate transform,
-    "fk5","j2000" or "equatorial" otherwise
-    interpolate -- boolean
+    rot: comma separated string that specify a coordinate rotation to
+    perform. Use None to perform no rotation. e.g. default "gal,equ"
+    to rotate a Planck map in galactic coordinates to the equatorial
+    coordinates used in ndmaps.
+    interpolate -- boolean whether to interpolate or not
 
     """
-
     import healpy as hp
     from astropy.coordinates import SkyCoord
     import astropy.units as u
-
     eq_coords = ['fk5', 'j2000', 'equatorial']
     gal_coords = ['galactic']
-
     imap = enmap.zeros(shape, wcs)
     Ny, Nx = shape
-
     pixmap = enmap.pixmap(shape, wcs)
     y = pixmap[0, ...].T.ravel()
     x = pixmap[1, ...].T.ravel()
     posmap = enmap.posmap(shape, wcs)
-
-    ph = posmap[1, ...].T.ravel()
-    th = posmap[0, ...].T.ravel()
-
-    if hp_coords.lower() not in eq_coords:
-        # This is still the slowest part. If there are faster coord transform
-        # libraries, let me know!
-        assert hp_coords.lower() in gal_coords
-        gc = SkyCoord(ra=ph * u.degree, dec=th * u.degree, frame='fk5')
-        gc = gc.transform_to('galactic')
-        phOut = gc.l.deg * np.pi / 180.
-        thOut = gc.b.deg * np.pi / 180.
-    else:
-        thOut = th
-        phOut = ph
-
-    thOut = np.pi / 2. - thOut  # polar angle is 0 at north pole
-
-    # Not as slow as you'd expect
+    if rot is not None:
+        s1, s2 = rot.split(",")
+        opos = coordinates.transform(s2,s1, posmap[::-1], pol=None)
+        posmap[...] = opos[1::-1]
+    th = np.rad2deg(posmap[1, ...].T.ravel())
+    ph = np.rad2deg(posmap[0, ...].T.ravel())
     if interpolate:
         imap[y, x] = hp.get_interp_val(
-            hp_map, np.rad2deg(thOut), np.rad2deg(phOut))
+            hp_map, th, ph, lonlat=True)
     else:
         ind = hp.ang2pix(hp.get_nside(hp_map),
-                         np.rad2deg(thOut), np.rad2deg(phOut))
+                         th, ph, lonlat=True)
         imap[:] = 0.
         imap[[y, x]] = hp_map[ind]
-
     return enmap.ndmap(imap, wcs)
 
 # Helper functions
