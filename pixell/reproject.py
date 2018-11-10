@@ -107,12 +107,15 @@ def healpix_from_enmap(imap, lmax, nside):
 
 
 def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
-                       rot="gal,equ", first=0, alm=None, return_alm=False):
+                       rot="gal,equ", first=0, is_alm=False, return_alm=False):
     """Convert a healpix map to an ndmap using harmonic space reprojection.
-    The resulting map will be band-limited.
+    The resulting map will be band-limited. Bright sources and sharp edges
+    could cause ringing. Use enmap_from_healpix_interp if you are worried
+    about this (e.g. for a mask), but that routine will not ensure power to 
+    be correct to some lmax.
 
     Args:
-        hp_map: an (Npix,) or (ncomp,Npix,) healpix map or a string containing
+        hp_map: an (Npix,) or (ncomp,Npix,) healpix map, or alms,  or a string containing
         the path to a healpix map on disk
         shape: the shape of the ndmap geometry to project to
         wcs: the wcs object of the ndmap geometry to project to
@@ -125,15 +128,18 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
         coordinates used in ndmaps.
         first: if a filename is provided for the healpix map, this specifies
         the index of the first FITS field
+        is_alm: if True, interprets hp_map as alms
+        return_alm: if True, returns alms also
 
     Returns:
-        res: the reprojected ndmap
+        res: the reprojected ndmap or the a tuple (ndmap,alms) if return_alm
+        is True
 
     """
     import healpy as hp
 
     dtype = np.float64
-    if alm is None:
+    if not(is_alm):
         assert ncomp == 1 or ncomp == 3, "Only 1 or 3 components supported"
         ctype = np.result_type(dtype, 0j)
         # Read the input maps
@@ -160,6 +166,8 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
             print("P -> alm")
             sht.map2alm(m[1:3], alm[1:3], spin=2)
         del m
+    else:
+        alm = hp_map
 
     if rot is not None:
         # Rotate by displacing coordinates and then fixing the polarization
@@ -186,24 +194,24 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
     return res
 
 
-def enmap_from_healpix_interp(shape, wcs, hp_map, rot="gal,equ",
+def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
                               interpolate=False):
     """Project a healpix map to an enmap of chosen shape and wcs. The wcs
     is assumed to be in equatorial (ra/dec) coordinates. If the healpix map
     is in galactic coordinates, this can be specified by hp_coords, and a
     slow conversion is done. No coordinate systems other than equatorial
     or galactic are currently supported. Only intensity maps are supported.
-    If interpolate is True, bilinear interpolation using 4 nearest neighbours
-    is done.
-
-    shape -- 2-tuple (Ny,Nx)
-    wcs -- enmap wcs object in equatorial coordinates
-    hp_map -- array-like healpix map
-    rot: comma separated string that specify a coordinate rotation to
-    perform. Use None to perform no rotation. e.g. default "gal,equ"
-    to rotate a Planck map in galactic coordinates to the equatorial
-    coordinates used in ndmaps.
-    interpolate -- boolean whether to interpolate or not
+    
+    Args:
+        hp_map: an (Npix,) healpix map
+        shape: the shape of the ndmap geometry to project to
+        wcs: the wcs object of the ndmap geometry to project to
+        rot: comma separated string that specify a coordinate rotation to
+        perform. Use None to perform no rotation. e.g. default "gal,equ"
+        to rotate a Planck map in galactic coordinates to the equatorial
+        coordinates used in ndmaps.
+        interpolate: if True, bilinear interpolation using 4 nearest neighbours
+        is done.
 
     """
     import healpy as hp
