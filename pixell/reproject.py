@@ -197,10 +197,9 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
 def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
                               interpolate=False):
     """Project a healpix map to an enmap of chosen shape and wcs. The wcs
-    is assumed to be in equatorial (ra/dec) coordinates. If the healpix map
-    is in galactic coordinates, this can be specified by hp_coords, and a
-    slow conversion is done. No coordinate systems other than equatorial
-    or galactic are currently supported. Only intensity maps are supported.
+    is assumed to be in equatorial (ra/dec) coordinates. No coordinate systems 
+    other than equatorial or galactic are currently supported. Only intensity 
+    maps are supported.
     
     Args:
         hp_map: an (Npix,) healpix map
