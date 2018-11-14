@@ -101,11 +101,31 @@ Pixel map
 Distance from center -- ``modrmap``
 ~~~~~~
 
-Fourier modes of the map
+Fourier operations
 --------
 
-Absolute wave-number -- ``modlmap``
+Maps can be 2D Fourier-transformed for manipulation in Fourier space. The 2DFT
+of the (real) map is generally a complex ``ndmap`` with the same shape as the
+original map. To facilitate 2DFTs, there are functions that do the Fourier transforms themselves,
+and functions that provide metadata associated with such transforms.
+
+What are the modes in the map?
 ~~~~~~
+
+Since an `ndmap` contains information about the physical extent of the map and
+the physical width of the pixels, the discrete frequencies corresponding to its
+numpy array need to be converted to physical wavenumbers of the map.
+
+This is done by the ``laxes`` function, which returns the wavenumbers
+along the Y and X directions. The ``lmap`` function returns a map of all the
+``(ly,lx)`` wavenumbers in each pixel of the Fourier-space map. The ``modlmap``
+function returns the "modulus of lmap", i.e. a map of the distances of each
+Fourier-pixel from ``(ly=0,lx=0)``.
+
+FFTs and inverse FFTs
+~~~~~~~~~
+
+
 
 Filtering maps
 --------
