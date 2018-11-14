@@ -90,9 +90,10 @@ class ndmap(np.ndarray):
 	def __getitem__(self, sel):
 		# Split sel into normal and wcs parts.
 		sel1, sel2 = utils.split_slice(sel, [self.ndim-2,2])
-		# No index creation supported in the wcs part
+		# If any wcs-associated indices are None, then we don't know how to update the
+		# wcs, and assume the user knows what it's doing
 		if any([s is None for s in sel2]):
-			raise IndexError("None-indices not supported for the wcs part of an ndmap.")
+			return ndmap(np.ndarray.__getitem__(self, sel), self.wcs)
 		if len(sel2) > 2:
 			raise IndexError("too many indices")
 		# If the wcs slice includes direct indexing, so that wcs
