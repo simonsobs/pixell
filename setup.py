@@ -48,7 +48,7 @@ def prebuild():
     if not os.path.exists('_deps/libsharp/libsharp/sharp.h'):
         try:
             sp.check_call('scripts/install_libsharp.sh', shell=True)
-        except subprocess.CalledProcessError:
+        except sp.CalledProcessError:
             print("ERROR: libsharp installation failed")
             sys.exit(1)
     # Handle cythonization to create sharp.c, etc.

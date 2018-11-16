@@ -13,6 +13,7 @@ recursive-exclude fortran interpol_*.f90
 recursive-exclude * temporary_map.fits
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
+recursive-exclude * *.ttf
 
 recursive-include docs *.rst conf.py Makefile make.bat *.jpg *.png *.gif
 include versioneer.py
