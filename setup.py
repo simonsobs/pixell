@@ -123,6 +123,7 @@ setup(
     license="BSD license",
     long_description=readme + '\n\n' + history,
     include_package_data=True,
+    data_files=[('pixell', ['pixell/arial.ttf'])],
     keywords='pixell',
     name='pixell',
     packages=['pixell'],
