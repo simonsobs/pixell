@@ -606,7 +606,7 @@ def modrmap(shape, wcs, ref="center", safe=True, corner=False):
 		if ref=="center": ref = center(shape,wcs)
 		else:             raise ValueError
 	ref = np.array(ref)[:,None,None]
-	return ndmap(utils.angdist(slmap,ref,zenith=False),wcs)
+	return ndmap(utils.angdist(slmap,ref,zenith=False,lim=1e-11),wcs) #FIXME: this can break for fine pixelizations
 
 
 def laxes(shape, wcs, oversample=1):
