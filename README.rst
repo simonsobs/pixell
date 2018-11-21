@@ -53,7 +53,7 @@ Intel compilers might require a two step installation as follows
    $ python setup.py install --user
 
 
-Development workflow
+Development workflow (recommended)
 ~~~~~~~~~~
 
 If you are a developer, run:

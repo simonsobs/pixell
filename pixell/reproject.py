@@ -2,11 +2,14 @@ from __future__ import print_function
 import numpy as np
 from . import wcsutils, enmap, coordinates, sharp, curvedsky
 
+# Python 2/3 compatibility
+try: basestring
+except NameError: basestring = str
 
 # Analyst-facing functions
 
-def postage_stamp(imap, ra_deg, dec_deg, width_arcmin,
-                  res_arcmin, proj='gnomonic', **kwargs):
+def postage_stamp(inmap, ra_deg, dec_deg, width_arcmin,
+                  res_arcmin, proj='gnomonic', return_cutout=False, **kwargs):
     """Extract a postage stamp from a larger map by reprojecting
     to a coordinate system centered on the given position.
 
@@ -25,23 +28,39 @@ def postage_stamp(imap, ra_deg, dec_deg, width_arcmin,
     ra = np.deg2rad(ra_deg)
     width = np.deg2rad(width_arcmin / 60.)
     res = np.deg2rad(res_arcmin / 60.)
-    # cut out a stamp assuming CAR ; TODO: generalize?
-    stamp = cutout(imap, width=np.deg2rad(width_arcmin / 60.) /
-                   np.cos(dec), ra=ra, dec=dec,
-                   return_slice=(type(imap) == str))
-    if (type(imap) == str):
-        stamp = enmap.read_map(imap, sel=stamp)
-    if stamp is None:
-        return None
-    sshape, swcs = stamp.shape, stamp.wcs
-    if proj == 'car' or proj == 'cea':
-        tshape, twcs = rect_geometry(width=width, res=res, proj=proj)
-    elif proj == 'gnomonic':
-        tshape, twcs = gnomonic_pole_geometry(width, res)
-    rpix = get_rotated_pixels(sshape, swcs, tshape, twcs, inverse=False,
-                              pos_target=None, center_target=(0., 0.),
-                              center_source=(dec, ra))
-    return enmap.enmap(rotate_map(stamp, pix_target=rpix, **kwargs), twcs)
+    
+    if not(type(inmap) is list or type(inmap) is tuple):
+        imaps = [inmap]
+    else:
+        imaps = inmap
+
+    rots = []
+    stamps = []
+    for imap in imaps:
+        # cut out a stamp assuming CAR ; TODO: generalize?
+        stamp = cutout(imap, width=np.deg2rad(width_arcmin / 60.) /
+                       np.cos(dec), ra=ra, dec=dec,
+                       return_slice=isinstance(imap,basestring))
+        if isinstance(imap,basestring):
+            stamp = enmap.read_map(imap, sel=stamp)
+        if stamp is None:
+            return (None,None) if return_cutout else None
+        sshape, swcs = stamp.shape, stamp.wcs
+        if proj == 'car' or proj == 'cea':
+            tshape, twcs = rect_geometry(width=width, res=res, proj=proj)
+        elif proj == 'gnomonic':
+            tshape, twcs = gnomonic_pole_geometry(width, res)
+        rpix = get_rotated_pixels(sshape, swcs, tshape, twcs, inverse=False,
+                                  pos_target=None, center_target=(0., 0.),
+                                  center_source=(dec, ra))
+        rot = enmap.enmap(rotate_map(stamp, pix_target=rpix, **kwargs), twcs)
+        rots.append(rot.copy())
+        if return_cutout: stamps.append(enmap.enmap(stamp.copy(),swcs))
+    rots = enmap.enmap(np.stack(rots),twcs)
+    if len(imaps)==1: rots = rots[0]
+    if return_cutout:
+        return rots,stamps[0] if len(imaps==1) else stamps
+    return rots
 
 
 def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
@@ -107,12 +126,15 @@ def healpix_from_enmap(imap, lmax, nside):
 
 
 def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
-                       rot="gal,equ", first=0, alm=None, return_alm=False):
+                       rot="gal,equ", first=0, is_alm=False, return_alm=False):
     """Convert a healpix map to an ndmap using harmonic space reprojection.
-    The resulting map will be band-limited.
+    The resulting map will be band-limited. Bright sources and sharp edges
+    could cause ringing. Use enmap_from_healpix_interp if you are worried
+    about this (e.g. for a mask), but that routine will not ensure power to 
+    be correct to some lmax.
 
     Args:
-        hp_map: an (Npix,) or (ncomp,Npix,) healpix map or a string containing
+        hp_map: an (Npix,) or (ncomp,Npix,) healpix map, or alms,  or a string containing
         the path to a healpix map on disk
         shape: the shape of the ndmap geometry to project to
         wcs: the wcs object of the ndmap geometry to project to
@@ -125,15 +147,18 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
         coordinates used in ndmaps.
         first: if a filename is provided for the healpix map, this specifies
         the index of the first FITS field
+        is_alm: if True, interprets hp_map as alms
+        return_alm: if True, returns alms also
 
     Returns:
-        res: the reprojected ndmap
+        res: the reprojected ndmap or the a tuple (ndmap,alms) if return_alm
+        is True
 
     """
     import healpy as hp
 
     dtype = np.float64
-    if alm is None:
+    if not(is_alm):
         assert ncomp == 1 or ncomp == 3, "Only 1 or 3 components supported"
         ctype = np.result_type(dtype, 0j)
         # Read the input maps
@@ -160,6 +185,8 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
             print("P -> alm")
             sht.map2alm(m[1:3], alm[1:3], spin=2)
         del m
+    else:
+        alm = hp_map
 
     if rot is not None:
         # Rotate by displacing coordinates and then fixing the polarization
@@ -186,67 +213,50 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
     return res
 
 
-def enmap_from_healpix_interp(shape, wcs, hp_map, hp_coords="galactic",
-                              interpolate=True):
+def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
+                              interpolate=False):
     """Project a healpix map to an enmap of chosen shape and wcs. The wcs
-    is assumed to be in equatorial (ra/dec) coordinates. If the healpix map
-    is in galactic coordinates, this can be specified by hp_coords, and a
-    slow conversion is done. No coordinate systems other than equatorial
-    or galactic are currently supported. Only intensity maps are supported.
-    If interpolate is True, bilinear interpolation using 4 nearest neighbours
-    is done.
-
-    shape -- 2-tuple (Ny,Nx)
-    wcs -- enmap wcs object in equatorial coordinates
-    hp_map -- array-like healpix map
-    hp_coords -- "galactic" to perform a coordinate transform,
-    "fk5","j2000" or "equatorial" otherwise
-    interpolate -- boolean
+    is assumed to be in equatorial (ra/dec) coordinates. No coordinate systems 
+    other than equatorial or galactic are currently supported. Only intensity 
+    maps are supported.
+    
+    Args:
+        hp_map: an (Npix,) healpix map
+        shape: the shape of the ndmap geometry to project to
+        wcs: the wcs object of the ndmap geometry to project to
+        rot: comma separated string that specify a coordinate rotation to
+        perform. Use None to perform no rotation. e.g. default "gal,equ"
+        to rotate a Planck map in galactic coordinates to the equatorial
+        coordinates used in ndmaps.
+        interpolate: if True, bilinear interpolation using 4 nearest neighbours
+        is done.
 
     """
-
     import healpy as hp
     from astropy.coordinates import SkyCoord
     import astropy.units as u
-
     eq_coords = ['fk5', 'j2000', 'equatorial']
     gal_coords = ['galactic']
-
     imap = enmap.zeros(shape, wcs)
     Ny, Nx = shape
-
     pixmap = enmap.pixmap(shape, wcs)
     y = pixmap[0, ...].T.ravel()
     x = pixmap[1, ...].T.ravel()
     posmap = enmap.posmap(shape, wcs)
-
-    ph = posmap[1, ...].T.ravel()
-    th = posmap[0, ...].T.ravel()
-
-    if hp_coords.lower() not in eq_coords:
-        # This is still the slowest part. If there are faster coord transform
-        # libraries, let me know!
-        assert hp_coords.lower() in gal_coords
-        gc = SkyCoord(ra=ph * u.degree, dec=th * u.degree, frame='fk5')
-        gc = gc.transform_to('galactic')
-        phOut = gc.l.deg * np.pi / 180.
-        thOut = gc.b.deg * np.pi / 180.
-    else:
-        thOut = th
-        phOut = ph
-
-    thOut = np.pi / 2. - thOut  # polar angle is 0 at north pole
-
-    # Not as slow as you'd expect
+    if rot is not None:
+        s1, s2 = rot.split(",")
+        opos = coordinates.transform(s2,s1, posmap[::-1], pol=None)
+        posmap[...] = opos[1::-1]
+    th = np.rad2deg(posmap[1, ...].T.ravel())
+    ph = np.rad2deg(posmap[0, ...].T.ravel())
     if interpolate:
         imap[y, x] = hp.get_interp_val(
-            hp_map, np.rad2deg(thOut), np.rad2deg(phOut))
+            hp_map, th, ph, lonlat=True)
     else:
         ind = hp.ang2pix(hp.get_nside(hp_map),
-                         np.rad2deg(thOut), np.rad2deg(phOut))
+                         th, ph, lonlat=True)
         imap[:] = 0.
         imap[[y, x]] = hp_map[ind]
-
     return enmap.ndmap(imap, wcs)
 
 # Helper functions
@@ -336,9 +346,7 @@ def cutout(imap, width=None, ra=None, dec=None, pad=1, corner=False,
         shape, wcs = enmap.read_map_geometry(imap)
     else:
         shape, wcs = imap.shape, imap.wcs
-    shape = shape[-2:]
-    Ny, Nx = shape
-
+    Ny, Nx = shape[-2:]
     def fround(x):
         return int(np.round(x))
     iy, ix = enmap.sky2pix(shape, wcs, coords=(dec, ra), corner=corner)
@@ -350,7 +358,7 @@ def cutout(imap, width=None, ra=None, dec=None, pad=1, corner=False,
        fround(iy + npix / 2) > (Ny - pad) or \
        fround(ix + npix / 2) > (Nx - pad):
         return None
-    s = np.s_[fround(iy - npix / 2. + 0.5):fround(iy + npix / 2. + 0.5),
+    s = np.s_[...,fround(iy - npix / 2. + 0.5):fround(iy + npix / 2. + 0.5),
               fround(ix - npix / 2. + 0.5):fround(ix + npix / 2. + 0.5)]
     if return_slice:
         return s
