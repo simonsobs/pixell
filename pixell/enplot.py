@@ -861,6 +861,8 @@ def hwstack(mexp):
 	nr,nc,ny,nx = mexp.shape
 	return np.transpose(mexp,(0,2,1,3)).reshape(nr*ny,nc*nx)
 
+class BackendError: pass
+
 def show(img, title=None, method="auto"):
 	if   method == "tk":      show_tk(img, title=title)
 	elif method == "qt":      show_qt(img, title=title)
@@ -884,7 +886,7 @@ def show(img, title=None, method="auto"):
 				return show_ipython(img, title=title)
 		except (ImportError, NameError): pass
 		try: return show_tk(img, title=title)
-		except ImportError: pass
+		except (ImportError, BackendError): pass
 		try: return show_wx(img, title=title)
 		except ImportError: pass
 		try: return show_qt(img, title=title)
@@ -921,10 +923,12 @@ def show_tk(img, title=None):
 				window.destroy()
 				if self.nclosed >= len(self.windows): self.root.destroy()
 			window.protocol("WM_DELETE_WINDOW", closer)
-	app = Displayer()
-	for img_, title_ in _show_helper(img, title):
-		app.add_window(img_, title_)
-	app.root.mainloop()
+	try:
+		app = Displayer()
+		for img_, title_ in _show_helper(img, title):
+			app.add_window(img_, title_)
+		app.root.mainloop()
+	except tkinter.TclError: raise BackendError
 
 def show_wx(img, title=None):
 	import wx
