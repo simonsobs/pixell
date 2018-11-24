@@ -680,11 +680,12 @@ def calc_contours(crange, args):
 		if len(vals) > 1:
 			return np.array([float(v) for v in vals if len(v) > 0])
 		else:
-			return seutp_uniform([float(tok) for tok in args.contours.split(":")])
+			return setup_uniform([float(tok) for tok in args.contours.split(":")])
 	else:
 		vals = parse_list(args.contours, float)
 		if   args.contour_type == "list":    return np.array(vals)
-		elif args.contour_type == "uniform": return setup_uniform(vals)
+		elif args.contour_type == "uniform":
+			return setup_uniform(vals)
 		else: raise ValueError("Unknown contour type '%s'" % args.contour_type)
 
 def draw_contours(map, contours, args):

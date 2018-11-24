@@ -424,31 +424,38 @@ def execute(type, alm_info ainfo, alm, map_info minfo, map, spin):
 	else:
 		execute_sp(type, spin, ainfo, alm3, minfo, map3)
 
-cpdef execute_dp(int type, int spin, alm_info ainfo, np.ndarray[np.complex128_t,ndim=3,mode="c"] alm, map_info minfo, np.ndarray[np.float64_t,ndim=3,mode="c"] map):
+cpdef execute_dp(int type, int spin, alm_info ainfo, np.ndarray[np.complex128_t,ndim=3] alm, map_info minfo, np.ndarray[np.float64_t,ndim=3] map):
 	cdef int ntrans = map.shape[0]
 	cdef int nmap = map.shape[0]*map.shape[1]
 	cdef int nalm = alm.shape[0]*alm.shape[1]
-	cdef np.ndarray[np.complex128_t,ndim=2,mode="c"] aflat = alm.reshape(nalm,alm.shape[2])
-	cdef np.ndarray[np.float64_t,ndim=2,mode="c"]    mflat = map.reshape(nmap,map.shape[2])
 	cdef np.ndarray[np.uintp_t,ndim=1,mode="c"]      aptrs = np.empty(nalm,dtype=np.uintp)
 	cdef np.ndarray[np.uintp_t,ndim=1,mode="c"]      mptrs = np.empty(nmap,dtype=np.uintp)
-	cdef int i
-	for i in range(nalm): aptrs[i] = <np.uintp_t>&aflat[i,0]
-	for i in range(nmap): mptrs[i] = <np.uintp_t>&mflat[i,0]
+	cdef int i, j, k
+	for i in range(ntrans):
+		for j in range(map.shape[1]):
+			k = i*map.shape[1]+j
+			check_cont_dp(map[i,j], alm[i,j])
+			aptrs[k] = <np.uintp_t>&alm[i,j,0]
+			mptrs[k] = <np.uintp_t>&map[i,j,0]
 	execute_helper(type, ainfo, aptrs, minfo, mptrs, spin, ntrans, csharp.SHARP_DP)
 
 cpdef execute_sp(int type, int spin, alm_info ainfo, np.ndarray[np.complex64_t,ndim=3,mode="c"] alm, map_info minfo, np.ndarray[np.float32_t,ndim=3,mode="c"] map):
 	cdef int ntrans = map.shape[0]
 	cdef int nmap = map.shape[0]*map.shape[1]
 	cdef int nalm = alm.shape[0]*alm.shape[1]
-	cdef np.ndarray[np.complex64_t,ndim=2,mode="c"]  aflat = alm.reshape(nalm,alm.shape[2])
-	cdef np.ndarray[np.float32_t,ndim=2,mode="c"]    mflat = map.reshape(nmap,map.shape[2])
 	cdef np.ndarray[np.uintp_t,ndim=1,mode="c"]      aptrs = np.empty(nalm,dtype=np.uintp)
 	cdef np.ndarray[np.uintp_t,ndim=1,mode="c"]      mptrs = np.empty(nmap,dtype=np.uintp)
-	cdef int i
-	for i in range(nalm): aptrs[i] = <np.uintp_t>&aflat[i,0]
-	for i in range(nmap): mptrs[i] = <np.uintp_t>&mflat[i,0]
+	cdef int i, j, k
+	for i in range(ntrans):
+		for j in range(map.shape[1]):
+			k = i*map.shape[1]+j
+			check_cont_sp(map[i,j], alm[i,j])
+			aptrs[k] = <np.uintp_t>&alm[i,j,0]
+			mptrs[k] = <np.uintp_t>&map[i,j,0]
 	execute_helper(type, ainfo, aptrs, minfo, mptrs, spin, ntrans, 0)
+
+cdef check_cont_dp(np.ndarray[np.float64_t,ndim=1,mode="c"] map_row, np.ndarray[np.complex128_t,ndim=1,mode="c"] alm_row): pass
+cdef check_cont_sp(np.ndarray[np.float32_t,ndim=1,mode="c"] map_row, np.ndarray[np.complex64_t, ndim=1,mode="c"] alm_row): pass
 
 typemap = { "map2alm": csharp.SHARP_MAP2ALM, "alm2map": csharp.SHARP_ALM2MAP, "alm2map_der1": csharp.SHARP_ALM2MAP_DERIV1 }
 

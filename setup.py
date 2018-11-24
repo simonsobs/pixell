@@ -30,7 +30,7 @@ compile_opts = {
 
 fcflags = os.getenv('FCFLAGS')
 if fcflags is None or fcflags.strip() == '':
-    fcflags = ['-Ofast']
+    fcflags = ['-O3']
 else:
     print('User supplied fortran flags: ', fcflags)
     print('These will supersede other optimization flags.')
