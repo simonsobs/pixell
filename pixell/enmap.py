@@ -1192,7 +1192,7 @@ def to_flipper(imap, omap=None, unpack=True):
 	by from_flipper does not give back an exactly identical map to the one
 	on started with.
 	"""
-	import flipper
+	import flipper.liteMap
 	if imap.wcs.wcs.cdelt[0] > 0: imap = imap[...,::-1]
 	# flipper wants a different kind of wcs object than we have.
 	header = imap.wcs.to_header(relax=True)
