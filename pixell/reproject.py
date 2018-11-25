@@ -111,13 +111,24 @@ def healpix_from_enmap_interp(imap, **kwargs):
 
 def healpix_from_enmap(imap, lmax, nside):
     """Convert an ndmap to a healpix map such that the healpix map is
-    band-limited up to lmax.
+    band-limited up to lmax. Only supports single component (intensity)
+    currently. The resulting map will be band-limited. Bright sources and 
+    sharp edges could cause ringing. Use healpix_from_enmap_interp if you 
+    are worried about this (e.g. for a mask), but that routine will not ensure 
+    power to be correct to some lmax.
+
 
     Args:
+        imap: ndmap of shape (Ny,Nx)
+        lmax: integer specifying maximum multipole of map
+        nside: integer specifying nside of healpix map
+
+    Returns:
+        retmap: (Npix,) healpix map as array
 
     """
     import healpy as hp
-    alm = curvedsky.map2alm(imap, lmax=lmax)
+    alm = curvedsky.map2alm(imap, lmax=lmax, spin=0)
     if alm.ndim > 1:
         assert alm.shape[0] == 1
         alm = alm[0]
