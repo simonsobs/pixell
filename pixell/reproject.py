@@ -2,11 +2,14 @@ from __future__ import print_function
 import numpy as np
 from . import wcsutils, enmap, coordinates, sharp, curvedsky
 
+# Python 2/3 compatibility
+try: basestring
+except NameError: basestring = str
 
 # Analyst-facing functions
 
-def postage_stamp(imap, ra_deg, dec_deg, width_arcmin,
-                  res_arcmin, proj='gnomonic', **kwargs):
+def postage_stamp(inmap, ra_deg, dec_deg, width_arcmin,
+                  res_arcmin, proj='gnomonic', return_cutout=False, **kwargs):
     """Extract a postage stamp from a larger map by reprojecting
     to a coordinate system centered on the given position.
 
@@ -25,23 +28,39 @@ def postage_stamp(imap, ra_deg, dec_deg, width_arcmin,
     ra = np.deg2rad(ra_deg)
     width = np.deg2rad(width_arcmin / 60.)
     res = np.deg2rad(res_arcmin / 60.)
-    # cut out a stamp assuming CAR ; TODO: generalize?
-    stamp = cutout(imap, width=np.deg2rad(width_arcmin / 60.) /
-                   np.cos(dec), ra=ra, dec=dec,
-                   return_slice=(type(imap) == str))
-    if (type(imap) == str):
-        stamp = enmap.read_map(imap, sel=stamp)
-    if stamp is None:
-        return None
-    sshape, swcs = stamp.shape, stamp.wcs
-    if proj == 'car' or proj == 'cea':
-        tshape, twcs = rect_geometry(width=width, res=res, proj=proj)
-    elif proj == 'gnomonic':
-        tshape, twcs = gnomonic_pole_geometry(width, res)
-    rpix = get_rotated_pixels(sshape, swcs, tshape, twcs, inverse=False,
-                              pos_target=None, center_target=(0., 0.),
-                              center_source=(dec, ra))
-    return enmap.enmap(rotate_map(stamp, pix_target=rpix, **kwargs), twcs)
+    
+    if not(type(inmap) is list or type(inmap) is tuple):
+        imaps = [inmap]
+    else:
+        imaps = inmap
+
+    rots = []
+    stamps = []
+    for imap in imaps:
+        # cut out a stamp assuming CAR ; TODO: generalize?
+        stamp = cutout(imap, width=np.deg2rad(width_arcmin / 60.) /
+                       np.cos(dec), ra=ra, dec=dec,
+                       return_slice=isinstance(imap,basestring))
+        if isinstance(imap,basestring):
+            stamp = enmap.read_map(imap, sel=stamp)
+        if stamp is None:
+            return (None,None) if return_cutout else None
+        sshape, swcs = stamp.shape, stamp.wcs
+        if proj == 'car' or proj == 'cea':
+            tshape, twcs = rect_geometry(width=width, res=res, proj=proj)
+        elif proj == 'gnomonic':
+            tshape, twcs = gnomonic_pole_geometry(width, res)
+        rpix = get_rotated_pixels(sshape, swcs, tshape, twcs, inverse=False,
+                                  pos_target=None, center_target=(0., 0.),
+                                  center_source=(dec, ra))
+        rot = enmap.enmap(rotate_map(stamp, pix_target=rpix, **kwargs), twcs)
+        rots.append(rot.copy())
+        if return_cutout: stamps.append(enmap.enmap(stamp.copy(),swcs))
+    rots = enmap.enmap(np.stack(rots),twcs)
+    if len(imaps)==1: rots = rots[0]
+    if return_cutout:
+        return rots,stamps[0] if len(imaps==1) else stamps
+    return rots
 
 
 def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
@@ -92,13 +111,24 @@ def healpix_from_enmap_interp(imap, **kwargs):
 
 def healpix_from_enmap(imap, lmax, nside):
     """Convert an ndmap to a healpix map such that the healpix map is
-    band-limited up to lmax.
+    band-limited up to lmax. Only supports single component (intensity)
+    currently. The resulting map will be band-limited. Bright sources and 
+    sharp edges could cause ringing. Use healpix_from_enmap_interp if you 
+    are worried about this (e.g. for a mask), but that routine will not ensure 
+    power to be correct to some lmax.
+
 
     Args:
+        imap: ndmap of shape (Ny,Nx)
+        lmax: integer specifying maximum multipole of map
+        nside: integer specifying nside of healpix map
+
+    Returns:
+        retmap: (Npix,) healpix map as array
 
     """
     import healpy as hp
-    alm = curvedsky.map2alm(imap, lmax=lmax)
+    alm = curvedsky.map2alm(imap, lmax=lmax, spin=0)
     if alm.ndim > 1:
         assert alm.shape[0] == 1
         alm = alm[0]
@@ -327,9 +357,7 @@ def cutout(imap, width=None, ra=None, dec=None, pad=1, corner=False,
         shape, wcs = enmap.read_map_geometry(imap)
     else:
         shape, wcs = imap.shape, imap.wcs
-    shape = shape[-2:]
-    Ny, Nx = shape
-
+    Ny, Nx = shape[-2:]
     def fround(x):
         return int(np.round(x))
     iy, ix = enmap.sky2pix(shape, wcs, coords=(dec, ra), corner=corner)
@@ -341,7 +369,7 @@ def cutout(imap, width=None, ra=None, dec=None, pad=1, corner=False,
        fround(iy + npix / 2) > (Ny - pad) or \
        fround(ix + npix / 2) > (Nx - pad):
         return None
-    s = np.s_[fround(iy - npix / 2. + 0.5):fround(iy + npix / 2. + 0.5),
+    s = np.s_[...,fround(iy - npix / 2. + 0.5):fround(iy + npix / 2. + 0.5),
               fround(ix - npix / 2. + 0.5):fround(ix + npix / 2. + 0.5)]
     if return_slice:
         return s

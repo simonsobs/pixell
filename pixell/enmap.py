@@ -90,9 +90,10 @@ class ndmap(np.ndarray):
 	def __getitem__(self, sel):
 		# Split sel into normal and wcs parts.
 		sel1, sel2 = utils.split_slice(sel, [self.ndim-2,2])
-		# No index creation supported in the wcs part
+		# If any wcs-associated indices are None, then we don't know how to update the
+		# wcs, and assume the user knows what it's doing
 		if any([s is None for s in sel2]):
-			raise IndexError("None-indices not supported for the wcs part of an ndmap.")
+			return ndmap(np.ndarray.__getitem__(self, sel), self.wcs)
 		if len(sel2) > 2:
 			raise IndexError("too many indices")
 		# If the wcs slice includes direct indexing, so that wcs
@@ -1318,7 +1319,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mod
 	reading more of the image than necessary. Instead of sel,
 	a coordinate box [[yfrom,xfrom],[yto,xto]] can be specified."""
 	if hdu is None: hdu = 0
-	hdu  = astropy.io.fits.open(fname)[hdu]
+	hdu = astropy.io.fits.open(fname)[hdu]
 	ndim = len(hdu.shape)
 	if hdu.header["NAXIS"] < 2:
 		raise ValueError("%s is not an enmap (only %d axes)" % (fname, hdu.header["NAXIS"]))
@@ -1393,6 +1394,7 @@ def read_helper(data, sel=None, box=None, pixbox=None, wrap="auto", mode=None, s
 	if pixbox is not None: data = extract_pixbox(data, pixbox, wrap=wrap)
 	if sel    is not None: data = data[sel]
 	data = data[:] # Get rid of the wrapper if it still remains
+	data = data.copy()
 	return data
 
 # These wrapper classes are there to let us reuse the normal map
