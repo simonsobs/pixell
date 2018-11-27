@@ -6,21 +6,21 @@ from . import sharp, enmap, powspec, wcsutils, utils
 
 class ShapeError(Exception): pass
 
-def rand_map(shape, wcs, ps, lmax=None, dtype=np.float64, seed=None, oversample=2.0, spin=[0,2], method="auto", direct=False, verbose=False):
+def rand_map(shape, wcs, ps=None, lmax=None, dtype=np.float64, seed=None, oversample=2.0, spin=[0,2], method="auto", direct=False, verbose=False, alm=None):
 	"""Generates a CMB realization with the given power spectrum for an enmap
 	with the specified shape and WCS. This is identical to enlib.rand_map, except
 	that it takes into account the curvature of the full sky. This makes it much
 	slower and more memory-intensive. The map should not cross the poles."""
 	# Ensure everything has the right dimensions and restrict to relevant dimensions
-	ps = utils.atleast_3d(ps)
-	if not ps.shape[0] == ps.shape[1]: raise ShapeError("ps must be [ncomp,ncomp,nl] or [nl]")
 	if not (len(shape) == 2 or len(shape) == 3): raise ShapeError("shape must be (ncomp,ny,nx) or (ny,nx)")
 	ncomp = 1 if len(shape) == 2 else shape[-3]
-	ps = ps[:ncomp,:ncomp]
-
 	ctype = np.result_type(dtype,0j)
-	if verbose: print("Generating alms with seed %s up to lmax=%d dtype %s" % (str(seed), lmax, np.dtype(ctype).char))
-	alm   = rand_alm_healpy(ps, lmax=lmax, seed=seed, dtype=ctype)
+	if alm is None:
+		ps = utils.atleast_3d(ps)
+		if not ps.shape[0] == ps.shape[1]: raise ShapeError("ps must be [ncomp,ncomp,nl] or [nl]")
+		ps = ps[:ncomp,:ncomp]
+		if verbose: print("Generating alms with seed %s up to lmax=%d dtype %s" % (str(seed), lmax, np.dtype(ctype).char))
+		alm   = rand_alm_healpy(ps, lmax=lmax, seed=seed, dtype=ctype)
 	if verbose: print("Allocating output map shape %s dtype %s" % (str((ncomp,)+shape[-2:]), np.dtype(dtype).char))
 	map   = enmap.empty((ncomp,)+shape[-2:], wcs, dtype=dtype)
 	alm2map(alm, map, spin=spin, oversample=oversample, method=method, direct=direct, verbose=verbose)
