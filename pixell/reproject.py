@@ -9,18 +9,31 @@ except NameError: basestring = str
 # Analyst-facing functions
 
 def postage_stamp(inmap, ra_deg, dec_deg, width_arcmin,
-                  res_arcmin, proj='gnomonic', return_cutout=False, **kwargs):
+                  res_arcmin, proj='gnomonic', return_cutout=False,
+                  npad=3, rotate_pol=True, **kwargs):
     """Extract a postage stamp from a larger map by reprojecting
     to a coordinate system centered on the given position.
 
-    imap -- (Ny,Nx) enmap array from which to extract stamps or
-    filename for map TODO: support leading dimensions
-    ra_deg -- right ascension in degrees
-    dec_deg -- declination in degrees
-    width_arcmin -- stamp dimension in arcminutes
-    res_arcmin -- width of pixel in arcminutes
-    proj -- coordinate system for postage stamp; default is 'gnomonic';
-    can also specify 'cea' or 'car'
+    Args:
+        imap: (ncomp,Ny,Nx) or (Ny,Nx) enmap array from which to 
+        extract stamps or filename or list of filenames for map
+        ra_deg: right ascension in degrees
+        dec_deg: declination in degrees
+        width_arcmin: stamp dimension in arcminutes
+        res_arcmin: width of pixel in arcminutes
+        proj: coordinate system for postage stamp; default is 'gnomonic';
+        can also specify 'cea' or 'car'
+        return_cutout: return the pre-reprojection cutout as well
+        npad: integer specifying number of extra pixels in pre-reprojection
+        cutout
+        **kwargs: additional parameters passed to interpolation enmap.at
+        function
+
+    Returns:
+        rots: ndmap containing reprojected maps
+        If return_cutout is True,
+        cutout: pre-reprojection cutout as ndmap
+
     """
     proj = proj.strip().lower()
     assert proj in ['gnomonic', 'car', 'cea']
@@ -37,14 +50,23 @@ def postage_stamp(inmap, ra_deg, dec_deg, width_arcmin,
     rots = []
     stamps = []
     for imap in imaps:
+        if isinstance(imap,basestring):
+            ishape,iwcs = enmap.read_map_geometry(imap)
+        else:
+            ishape,iwcs = imap.shape,imap.wcs
+        mapres = np.min(np.abs(enmap.extent(ishape,iwcs))/ishape[-2:])
         # cut out a stamp assuming CAR ; TODO: generalize?
-        stamp = cutout(imap, width=np.deg2rad(width_arcmin / 60.) /
+        stamp = cutout(imap, width=npad*mapres+np.deg2rad(width_arcmin / 60.) /
                        np.cos(dec), ra=ra, dec=dec,
                        return_slice=isinstance(imap,basestring))
         if isinstance(imap,basestring):
             stamp = enmap.read_map(imap, sel=stamp)
         if stamp is None:
             return (None,None) if return_cutout else None
+        if stamp.ndim==2: stamp = stamp[None,:]
+        ncomp = stamp.shape[0]
+        assert ncomp==1 or ncomp==3, \
+            "Only leading dimensions of 1 (intensity) or 3 (I,Q,U) are supported."
         sshape, swcs = stamp.shape, stamp.wcs
         if proj == 'car' or proj == 'cea':
             tshape, twcs = rect_geometry(width=width, res=res, proj=proj)
@@ -54,11 +76,8 @@ def postage_stamp(inmap, ra_deg, dec_deg, width_arcmin,
                                   pos_target=None, center_target=(0., 0.),
                                   center_source=(dec, ra))
         rot = enmap.enmap(rotate_map(stamp, pix_target=rpix[:2], **kwargs), twcs)
-
-        """
-        rot[1:3] = enmap.rotate_pol(rot[1:3], -rpix[2]) # for polarization rotation if enough components
-
-        """
+        if ncomp==3 and rotate_pol:
+            rot[1:3] = enmap.rotate_pol(rot[1:3], -rpix[2]) # for polarization rotation if enough components
         rots.append(rot.copy())
         if return_cutout: stamps.append(enmap.enmap(stamp.copy(),swcs))
     rots = enmap.enmap(np.stack(rots),twcs)
@@ -69,7 +88,8 @@ def postage_stamp(inmap, ra_deg, dec_deg, width_arcmin,
 
 
 def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
-                 width=None, height=None, width_multiplier=1., **kwargs):
+                 width=None, height=None, width_multiplier=1.,
+                 rotate_pol=True, **kwargs):
     """Reproject a map such that its central pixel is at the origin of a
     given projection system (default: CAR).
 
@@ -82,6 +102,8 @@ def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
     can also specify 'cea' or 'gnomonic'
     rpix -- optional pre-calculated pixel positions from get_rotated_pixels()
     """
+    if imap.ndim==2: imap = imap[None,:]
+    ncomp = imap.shape[0]
     proj = proj.strip().lower()
     assert proj in ['car', 'cea']
     # cut out a stamp assuming CAR ; TODO: generalize?
@@ -107,9 +129,11 @@ def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
         rpix = get_rotated_pixels(sshape, swcs, tshape, twcs, inverse=False,
                                   pos_target=None, center_target=(0., 0.),
                                   center_source=(dec, ra))
-    return enmap.enmap(rotate_map(omap, pix_target=rpix[:2], **kwargs), twcs), rpix
-
-
+    rot = enmap.enmap(rotate_map(omap, pix_target=rpix[:2], **kwargs), twcs)
+    if ncomp==3 and rotate_pol:
+        rot[1:3] = enmap.rotate_pol(rot[1:3], -rpix[2]) # for polarization rotation if enough components
+    return rot, rpix
+    
 def healpix_from_enmap_interp(imap, **kwargs):
     return imap.to_healpix(**kwargs)
 
@@ -342,13 +366,8 @@ def get_rotated_pixels(shape_source, wcs_source, shape_target, wcs_target,
     else:
         transfun = lambda x: coordinates.recenter(x, (rat, dect, ras, decs))
     res = coordinates.transform_meta(transfun, pos_target[1::-1], fields=["ang"])
-    # newcoord = res.ocoord
-    # newcoord = np.array((res.ocoord[1],res.ocoord[0],res.ang))
-    # psi = res.ang
-    # newcoord[1::-1] = newcoord[:2]
     pix_new = enmap.sky2pix(shape_source, wcs_source, res.ocoord[1::-1])
     pix_new = np.concatenate((pix_new,res.ang[None]))
-    
     return pix_new
 
 
