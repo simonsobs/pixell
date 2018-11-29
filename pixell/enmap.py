@@ -1510,3 +1510,4 @@ def spin_helper(spin, n):
 		if i2 == n: break
 		i1 = i2
 		ci = (ci+1)%len(spin)
+

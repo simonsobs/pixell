@@ -45,3 +45,5 @@ def test_pixels():
             assert sorted(results[g][s].keys())==sorted(cresults[g][s].keys())
             for e in results[g][s].keys():
                 assert np.all(np.isclose(results[g][s][e],cresults[g][s][e]))
+
+

@@ -53,13 +53,18 @@ def postage_stamp(inmap, ra_deg, dec_deg, width_arcmin,
         rpix = get_rotated_pixels(sshape, swcs, tshape, twcs, inverse=False,
                                   pos_target=None, center_target=(0., 0.),
                                   center_source=(dec, ra))
-        rot = enmap.enmap(rotate_map(stamp, pix_target=rpix, **kwargs), twcs)
+        rot = enmap.enmap(rotate_map(stamp, pix_target=rpix[:2], **kwargs), twcs)
+
+        """
+        rot[1:3] = enmap.rotate_pol(rot[1:3], -rpix[2]) # for polarization rotation if enough components
+
+        """
         rots.append(rot.copy())
         if return_cutout: stamps.append(enmap.enmap(stamp.copy(),swcs))
     rots = enmap.enmap(np.stack(rots),twcs)
     if len(imaps)==1: rots = rots[0]
     if return_cutout:
-        return rots,stamps[0] if len(imaps==1) else stamps
+        return rots,stamps[0] if len(imaps)==1 else stamps
     return rots
 
 
@@ -102,7 +107,7 @@ def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
         rpix = get_rotated_pixels(sshape, swcs, tshape, twcs, inverse=False,
                                   pos_target=None, center_target=(0., 0.),
                                   center_source=(dec, ra))
-    return enmap.enmap(rotate_map(omap, pix_target=rpix, **kwargs), twcs), rpix
+    return enmap.enmap(rotate_map(omap, pix_target=rpix[:2], **kwargs), twcs), rpix
 
 
 def healpix_from_enmap_interp(imap, **kwargs):
@@ -300,7 +305,7 @@ def rotate_map(imap, shape_target=None, wcs_target=None, shape_source=None,
         assert (shape_target is None) and (
             wcs_target is None), "Both pix_target and shape_target, \
             wcs_target must not be specified."
-    rotmap = enmap.at(imap, pix_target, unit="pix", **kwargs)
+    rotmap = enmap.at(imap, pix_target[:2], unit="pix", **kwargs)
     return rotmap
 
 
@@ -329,25 +334,21 @@ def get_rotated_pixels(shape_source, wcs_source, shape_target, wcs_target,
     # what are the angle coordinates of each pixel in the target geometry
     if pos_target is None:
         pos_target = enmap.posmap(shape_target, wcs_target)
-    lra = pos_target[1, :, :].ravel()
-    ldec = pos_target[0, :, :].ravel()
-    del pos_target
+    #del pos_target
     # recenter the angle coordinates of the target from the target center
     # to the source center
     if inverse:
-        newcoord = coordinates.decenter((lra, ldec), (rat, dect, ras, decs))
+        transfun = lambda x: coordinates.decenter(x, (rat, dect, ras, decs))
     else:
-        newcoord = coordinates.recenter((lra, ldec), (rat, dect, ras, decs))
-    del lra
-    del ldec
-    # reshape these new coordinates into enmap-friendly form
-    new_pos = np.empty((2, shape_target[0], shape_target[1]))
-    new_pos[0, :, :] = newcoord[1, :].reshape(shape_target)
-    new_pos[1, :, :] = newcoord[0, :].reshape(shape_target)
-    del newcoord
-    # translate these new coordinates to pixel positions in the target geometry
-    # based on the source's wcs
-    pix_new = enmap.sky2pix(shape_source, wcs_source, new_pos)
+        transfun = lambda x: coordinates.recenter(x, (rat, dect, ras, decs))
+    res = coordinates.transform_meta(transfun, pos_target[1::-1], fields=["ang"])
+    # newcoord = res.ocoord
+    # newcoord = np.array((res.ocoord[1],res.ocoord[0],res.ang))
+    # psi = res.ang
+    # newcoord[1::-1] = newcoord[:2]
+    pix_new = enmap.sky2pix(shape_source, wcs_source, res.ocoord[1::-1])
+    pix_new = np.concatenate((pix_new,res.ang[None]))
+    
     return pix_new
 
 
