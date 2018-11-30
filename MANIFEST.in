@@ -8,6 +8,7 @@ recursive-include cython *
 recursive-include fortran *
 recursive-include tests *
 recursive-include scripts *
+recursive-include * *.ttf
 recursive-exclude cython sharp.c
 recursive-exclude fortran interpol_*.f90
 recursive-exclude * temporary_map.fits

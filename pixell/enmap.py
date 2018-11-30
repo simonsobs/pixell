@@ -1207,7 +1207,7 @@ def to_flipper(imap, omap=None, unpack=True):
 	by from_flipper does not give back an exactly identical map to the one
 	on started with.
 	"""
-	import flipper
+	import flipper.liteMap
 	if imap.wcs.wcs.cdelt[0] > 0: imap = imap[...,::-1]
 	# flipper wants a different kind of wcs object than we have.
 	header = imap.wcs.to_header(relax=True)
@@ -1333,7 +1333,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mod
 	reading more of the image than necessary. Instead of sel,
 	a coordinate box [[yfrom,xfrom],[yto,xto]] can be specified."""
 	if hdu is None: hdu = 0
-	hdu  = astropy.io.fits.open(fname)[hdu]
+	hdu = astropy.io.fits.open(fname)[hdu]
 	ndim = len(hdu.shape)
 	if hdu.header["NAXIS"] < 2:
 		raise ValueError("%s is not an enmap (only %d axes)" % (fname, hdu.header["NAXIS"]))
@@ -1408,6 +1408,7 @@ def read_helper(data, sel=None, box=None, pixbox=None, wrap="auto", mode=None, s
 	if pixbox is not None: data = extract_pixbox(data, pixbox, wrap=wrap)
 	if sel    is not None: data = data[sel]
 	data = data[:] # Get rid of the wrapper if it still remains
+	data = data.copy()
 	return data
 
 # These wrapper classes are there to let us reuse the normal map
@@ -1523,3 +1524,4 @@ def spin_helper(spin, n):
 		if i2 == n: break
 		i1 = i2
 		ci = (ci+1)%len(spin)
+
