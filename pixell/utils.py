@@ -1895,3 +1895,10 @@ def slice_downgrade(d, s, axis=-1):
 		rest = a[len(a2)*step:]
 		a2 = np.concatenate([a2,[np.mean(rest,0)]],0)
 	return moveaxis(a2, 0, axis)
+
+def outer_stack(arrays):
+	"""Example. outer_stack([[1,2,3],[10,20]]) -> [[[1,1],[2,2],[3,3]],[[10,20],[10,20],[10,2]]]"""
+	res = np.empty([len(arrays)]+[len(a) for a in arrays], arrays[0].dtype)
+	for i, array in enumerate(arrays):
+		res[i] = array[(None,)*i + (slice(None),) + (None,)*(len(arrays)-i-1)]
+	return res
