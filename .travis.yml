@@ -10,7 +10,8 @@ install:
 - pip install -r requirements.txt
 - python setup.py develop
 script:
-- py.test tests/
+- py.test --cov=pixell tests/
+#- py.test tests/
 matrix:
   allow_failures:
   - python: 3.5-dev
