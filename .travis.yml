@@ -11,7 +11,8 @@ install:
 - python setup.py develop
 script:
 - py.test --cov=pixell tests/
-#- py.test tests/
+after_success:
+  - coveralls
 matrix:
   allow_failures:
   - python: 3.5-dev

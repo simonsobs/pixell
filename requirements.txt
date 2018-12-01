@@ -10,3 +10,4 @@ pyyaml>=3.0
 healpy>=1.12.3
 Pillow>=5.3.0
 pytest-cov>=2.6
+coveralls>=1.5
