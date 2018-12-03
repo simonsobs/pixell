@@ -51,7 +51,7 @@ def test_pixels():
 
 def test_sim_slice():
     path = os.path.dirname(enmap.__file__)+"/../tests/"
-    ps = powspec.read_spectrum(path+"data/camb_theory.dat")[:1,:1]
+    ps = powspec.read_spectrum(path+"data/test_scalCls.dat")[:1,:1]
     test_res_arcmin = 10.0
     lmax = 2000
     fact = 2.
