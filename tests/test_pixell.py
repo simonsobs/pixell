@@ -11,6 +11,8 @@ from pixell import lensing
 from pixell import interpol
 from pixell import array_ops
 from pixell import enplot
+from pixell import powspec
+from pixell import reproject
 import numpy as np
 import pickle
 import os,sys
@@ -47,3 +49,14 @@ def test_pixels():
                 assert np.all(np.isclose(results[g][s][e],cresults[g][s][e]))
 
 
+def test_sim_slice():
+    path = os.path.dirname(enmap.__file__)+"/../tests/"
+    ps = powspec.read_spectrum(path+"data/camb_theory.dat")[:1,:1]
+    test_res_arcmin = 10.0
+    lmax = 2000
+    fact = 2.
+    shape,wcs = enmap.fullsky_geometry(res=np.deg2rad(test_res_arcmin/60.),proj='car')
+    omap = curvedsky.rand_map(shape, wcs, ps,lmax=lmax)
+    ofunc = lambda ishape,iwcs: fact*enmap.extract(omap,ishape,iwcs)
+    nmap = reproject.populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400)
+    assert np.all(np.isclose(nmap/omap,2.))
