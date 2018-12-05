@@ -284,7 +284,7 @@ def posmap(shape, wcs, safe=True, corner=False, separable=False, dtype=np.float6
 	pixel (j,k) in the map. Results are returned in radians, and
 	if safe is true (default), then sharp coordinate edges will be
 	avoided."""
-	res     = zeros((2,)+shape[-2:], wcs, dtype)
+	res     = zeros((2,)+tuple(shape[-2:]), wcs, dtype)
 	if separable:
 		dec, ra = posaxes(shape, wcs, safe=safe, corner=corner)
 		res[0] = dec[:,None]
