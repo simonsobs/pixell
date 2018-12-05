@@ -54,7 +54,7 @@ class ndmap(np.ndarray):
 	def sky2pix(self, coords, safe=True, corner=False): return sky2pix(self.shape, self.wcs, coords, safe, corner)
 	def pix2sky(self, pix,    safe=True, corner=False): return pix2sky(self.shape, self.wcs, pix,    safe, corner)
 	def box(self): return box(self.shape, self.wcs)
-	def posmap(self, safe=True, corner=False): return posmap(self.shape, self.wcs, safe=safe, corner=corner)
+	def posmap(self, safe=True, corner=False, separable=False, dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
 	def modlmap(self, oversample=1): return modlmap(self.shape, self.wcs, oversample=oversample)
@@ -278,14 +278,35 @@ def ones(shape, wcs=None, dtype=None):
 def full(shape, wcs, val, dtype=None):
 	return enmap(np.full(shape, val, dtype=dtype), wcs, copy=False)
 
-def posmap(shape, wcs, safe=True, corner=False):
+def posmap(shape, wcs, safe=True, corner=False, separable=False, dtype=np.float64, bsize=1e6):
 	"""Return an enmap where each entry is the coordinate of that entry,
 	such that posmap(shape,wcs)[{0,1},j,k] is the {y,x}-coordinate of
 	pixel (j,k) in the map. Results are returned in radians, and
 	if safe is true (default), then sharp coordinate edges will be
 	avoided."""
-	pix    = np.mgrid[:shape[-2],:shape[-1]]
-	return ndmap(pix2sky(shape, wcs, pix, safe, corner), wcs)
+	res     = zeros((2,)+tuple(shape[-2:]), wcs, dtype)
+	if separable:
+		dec, ra = posaxes(shape, wcs, safe=safe, corner=corner)
+		res[0] = dec[:,None]
+		res[1] = ra[None,:]
+	else:
+		rowstep = int((bsize+shape[-1]-1)//shape[-1])
+		for i1 in range(0, shape[-2], rowstep):
+			i2  = min(i1+rowstep, shape[-2])
+			pix = np.mgrid[i1:i2,:shape[-1]]
+			res[:,i1:i2,:] = pix2sky(shape, wcs, pix, safe, corner)
+	return res
+
+def posmap_old(shape, wcs, safe=True, corner=False):
+		pix    = np.mgrid[:shape[-2],:shape[-1]]
+		return ndmap(pix2sky(shape, wcs, pix, safe, corner), wcs)
+
+def posaxes(shape, wcs, safe=True, corner=False):
+	y = np.arange(shape[-2])
+	x = np.arange(shape[-1])
+	dec = pix2sky(shape, wcs, np.array([y,y*0]), safe=safe, corner=corner)[0]
+	ra  = pix2sky(shape, wcs, np.array([x*0,x]), safe=safe, corner=corner)[1]
+	return dec, ra
 
 def pixmap(shape, wcs=None):
 	"""Return an enmap where each entry is the pixel coordinate of that entry."""
@@ -1193,7 +1214,7 @@ def to_flipper(imap, omap=None, unpack=True):
 	by from_flipper does not give back an exactly identical map to the one
 	on started with.
 	"""
-	import flipper
+	import flipper.liteMap
 	if imap.wcs.wcs.cdelt[0] > 0: imap = imap[...,::-1]
 	# flipper wants a different kind of wcs object than we have.
 	header = imap.wcs.to_header(relax=True)
@@ -1319,7 +1340,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mod
 	reading more of the image than necessary. Instead of sel,
 	a coordinate box [[yfrom,xfrom],[yto,xto]] can be specified."""
 	if hdu is None: hdu = 0
-	hdu  = astropy.io.fits.open(fname)[hdu]
+	hdu = astropy.io.fits.open(fname)[hdu]
 	ndim = len(hdu.shape)
 	if hdu.header["NAXIS"] < 2:
 		raise ValueError("%s is not an enmap (only %d axes)" % (fname, hdu.header["NAXIS"]))
@@ -1394,6 +1415,7 @@ def read_helper(data, sel=None, box=None, pixbox=None, wrap="auto", mode=None, s
 	if pixbox is not None: data = extract_pixbox(data, pixbox, wrap=wrap)
 	if sel    is not None: data = data[sel]
 	data = data[:] # Get rid of the wrapper if it still remains
+	data = data.copy()
 	return data
 
 # These wrapper classes are there to let us reuse the normal map
@@ -1509,3 +1531,4 @@ def spin_helper(spin, n):
 		if i2 == n: break
 		i1 = i2
 		ci = (ci+1)%len(spin)
+

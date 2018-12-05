@@ -31,7 +31,7 @@ compile_opts = {
 
 fcflags = os.getenv('FCFLAGS')
 if fcflags is None or fcflags.strip() == '':
-    fcflags = ['-Ofast']
+    fcflags = ['-O3']
 else:
     print('User supplied fortran flags: ', fcflags)
     print('These will supersede other optimization flags.')
@@ -133,6 +133,7 @@ setup(
     license="BSD license",
     long_description=readme + '\n\n' + history,
     include_package_data=True,
+    data_files=[('pixell', ['pixell/arial.ttf'])],
     keywords='pixell',
     name='pixell',
     packages=['pixell'],
