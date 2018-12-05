@@ -3,14 +3,14 @@ pixell
 =======
 
 .. image:: https://travis-ci.org/simonsobs/pixell.svg?branch=master
-        :target: https://travis-ci.org/simonsobs/pixell
+           :target: https://travis-ci.org/simonsobs/pixell
 
 .. image:: https://readthedocs.org/projects/pixell/badge/?version=latest
-        :target: https://pixell.readthedocs.io/en/latest/?badge=latest
-        :alt: Documentation Status
+           :target: https://pixell.readthedocs.io/en/latest/?badge=latest
+		   :alt: Documentation Status
 
-
-
+.. image:: https://coveralls.io/repos/github/simonsobs/pixell/badge.svg?branch=master
+		   :target: https://coveralls.io/github/simonsobs/pixell?branch=master
 
 
 This is an early development repository for a CMB map analysis library. The API for core modules will likely remain the same as in amaurea/enlib, but module and repository names are very likely to change!

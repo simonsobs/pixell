@@ -64,6 +64,9 @@ nthread_ifft=nthread_fft
 default_flags=['FFTW_ESTIMATE']
 alignment = 32
 
+def set_engine(eng):
+	global engine
+	engine = eng
 
 def fft(tod, ft=None, nthread=0, axes=[-1], flags=None):
 	"""Compute discrete fourier transform of tod, and store it in ft. What

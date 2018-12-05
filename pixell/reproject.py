@@ -9,18 +9,31 @@ except NameError: basestring = str
 # Analyst-facing functions
 
 def postage_stamp(inmap, ra_deg, dec_deg, width_arcmin,
-                  res_arcmin, proj='gnomonic', return_cutout=False, **kwargs):
+                  res_arcmin, proj='gnomonic', return_cutout=False,
+                  npad=3, rotate_pol=True, **kwargs):
     """Extract a postage stamp from a larger map by reprojecting
     to a coordinate system centered on the given position.
 
-    imap -- (Ny,Nx) enmap array from which to extract stamps or
-    filename for map TODO: support leading dimensions
-    ra_deg -- right ascension in degrees
-    dec_deg -- declination in degrees
-    width_arcmin -- stamp dimension in arcminutes
-    res_arcmin -- width of pixel in arcminutes
-    proj -- coordinate system for postage stamp; default is 'gnomonic';
-    can also specify 'cea' or 'car'
+    Args:
+        imap: (ncomp,Ny,Nx) or (Ny,Nx) enmap array from which to 
+        extract stamps or filename or list of filenames for map
+        ra_deg: right ascension in degrees
+        dec_deg: declination in degrees
+        width_arcmin: stamp dimension in arcminutes
+        res_arcmin: width of pixel in arcminutes
+        proj: coordinate system for postage stamp; default is 'gnomonic';
+        can also specify 'cea' or 'car'
+        return_cutout: return the pre-reprojection cutout as well
+        npad: integer specifying number of extra pixels in pre-reprojection
+        cutout
+        **kwargs: additional parameters passed to interpolation enmap.at
+        function
+
+    Returns:
+        rots: ndmap containing reprojected maps
+        If return_cutout is True,
+        cutout: pre-reprojection cutout as ndmap
+
     """
     proj = proj.strip().lower()
     assert proj in ['gnomonic', 'car', 'cea']
@@ -37,14 +50,23 @@ def postage_stamp(inmap, ra_deg, dec_deg, width_arcmin,
     rots = []
     stamps = []
     for imap in imaps:
+        if isinstance(imap,basestring):
+            ishape,iwcs = enmap.read_map_geometry(imap)
+        else:
+            ishape,iwcs = imap.shape,imap.wcs
+        mapres = np.min(np.abs(enmap.extent(ishape,iwcs))/ishape[-2:])
         # cut out a stamp assuming CAR ; TODO: generalize?
-        stamp = cutout(imap, width=np.deg2rad(width_arcmin / 60.) /
+        stamp = cutout(imap, width=npad*mapres+np.deg2rad(width_arcmin / 60.) /
                        np.cos(dec), ra=ra, dec=dec,
                        return_slice=isinstance(imap,basestring))
         if isinstance(imap,basestring):
             stamp = enmap.read_map(imap, sel=stamp)
         if stamp is None:
             return (None,None) if return_cutout else None
+        if stamp.ndim==2: stamp = stamp[None,:]
+        ncomp = stamp.shape[0]
+        assert ncomp==1 or ncomp==3, \
+            "Only leading dimensions of 1 (intensity) or 3 (I,Q,U) are supported."
         sshape, swcs = stamp.shape, stamp.wcs
         if proj == 'car' or proj == 'cea':
             tshape, twcs = rect_geometry(width=width, res=res, proj=proj)
@@ -53,18 +75,21 @@ def postage_stamp(inmap, ra_deg, dec_deg, width_arcmin,
         rpix = get_rotated_pixels(sshape, swcs, tshape, twcs, inverse=False,
                                   pos_target=None, center_target=(0., 0.),
                                   center_source=(dec, ra))
-        rot = enmap.enmap(rotate_map(stamp, pix_target=rpix, **kwargs), twcs)
+        rot = enmap.enmap(rotate_map(stamp, pix_target=rpix[:2], **kwargs), twcs)
+        if ncomp==3 and rotate_pol:
+            rot[1:3] = enmap.rotate_pol(rot[1:3], -rpix[2]) # for polarization rotation if enough components
         rots.append(rot.copy())
         if return_cutout: stamps.append(enmap.enmap(stamp.copy(),swcs))
     rots = enmap.enmap(np.stack(rots),twcs)
     if len(imaps)==1: rots = rots[0]
     if return_cutout:
-        return rots,stamps[0] if len(imaps==1) else stamps
+        return rots,stamps[0] if len(imaps)==1 else stamps
     return rots
 
 
 def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
-                 width=None, height=None, width_multiplier=1., **kwargs):
+                 width=None, height=None, width_multiplier=1.,
+                 rotate_pol=True, **kwargs):
     """Reproject a map such that its central pixel is at the origin of a
     given projection system (default: CAR).
 
@@ -77,6 +102,8 @@ def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
     can also specify 'cea' or 'gnomonic'
     rpix -- optional pre-calculated pixel positions from get_rotated_pixels()
     """
+    if imap.ndim==2: imap = imap[None,:]
+    ncomp = imap.shape[0]
     proj = proj.strip().lower()
     assert proj in ['car', 'cea']
     # cut out a stamp assuming CAR ; TODO: generalize?
@@ -102,22 +129,35 @@ def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
         rpix = get_rotated_pixels(sshape, swcs, tshape, twcs, inverse=False,
                                   pos_target=None, center_target=(0., 0.),
                                   center_source=(dec, ra))
-    return enmap.enmap(rotate_map(omap, pix_target=rpix, **kwargs), twcs), rpix
-
-
+    rot = enmap.enmap(rotate_map(omap, pix_target=rpix[:2], **kwargs), twcs)
+    if ncomp==3 and rotate_pol:
+        rot[1:3] = enmap.rotate_pol(rot[1:3], -rpix[2]) # for polarization rotation if enough components
+    return rot, rpix
+    
 def healpix_from_enmap_interp(imap, **kwargs):
     return imap.to_healpix(**kwargs)
 
 
 def healpix_from_enmap(imap, lmax, nside):
     """Convert an ndmap to a healpix map such that the healpix map is
-    band-limited up to lmax.
+    band-limited up to lmax. Only supports single component (intensity)
+    currently. The resulting map will be band-limited. Bright sources and 
+    sharp edges could cause ringing. Use healpix_from_enmap_interp if you 
+    are worried about this (e.g. for a mask), but that routine will not ensure 
+    power to be correct to some lmax.
+
 
     Args:
+        imap: ndmap of shape (Ny,Nx)
+        lmax: integer specifying maximum multipole of map
+        nside: integer specifying nside of healpix map
+
+    Returns:
+        retmap: (Npix,) healpix map as array
 
     """
     import healpy as hp
-    alm = curvedsky.map2alm(imap, lmax=lmax)
+    alm = curvedsky.map2alm(imap, lmax=lmax, spin=0)
     if alm.ndim > 1:
         assert alm.shape[0] == 1
         alm = alm[0]
@@ -242,6 +282,7 @@ def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
     pixmap = enmap.pixmap(shape, wcs)
     y = pixmap[0, ...].T.ravel()
     x = pixmap[1, ...].T.ravel()
+    del pixmap
     posmap = enmap.posmap(shape, wcs)
     if rot is not None:
         s1, s2 = rot.split(",")
@@ -249,14 +290,19 @@ def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
         posmap[...] = opos[1::-1]
     th = np.rad2deg(posmap[1, ...].T.ravel())
     ph = np.rad2deg(posmap[0, ...].T.ravel())
+    del posmap
     if interpolate:
         imap[y, x] = hp.get_interp_val(
             hp_map, th, ph, lonlat=True)
     else:
         ind = hp.ang2pix(hp.get_nside(hp_map),
                          th, ph, lonlat=True)
+        del th
+        del ph
         imap[:] = 0.
-        imap[[y, x]] = hp_map[ind]
+        imap[(y, x)] = hp_map[ind]
+        del y
+        del x
     return enmap.ndmap(imap, wcs)
 
 # Helper functions
@@ -289,7 +335,7 @@ def rotate_map(imap, shape_target=None, wcs_target=None, shape_source=None,
         assert (shape_target is None) and (
             wcs_target is None), "Both pix_target and shape_target, \
             wcs_target must not be specified."
-    rotmap = enmap.at(imap, pix_target, unit="pix", **kwargs)
+    rotmap = enmap.at(imap, pix_target[:2], unit="pix", **kwargs)
     return rotmap
 
 
@@ -318,25 +364,16 @@ def get_rotated_pixels(shape_source, wcs_source, shape_target, wcs_target,
     # what are the angle coordinates of each pixel in the target geometry
     if pos_target is None:
         pos_target = enmap.posmap(shape_target, wcs_target)
-    lra = pos_target[1, :, :].ravel()
-    ldec = pos_target[0, :, :].ravel()
-    del pos_target
+    #del pos_target
     # recenter the angle coordinates of the target from the target center
     # to the source center
     if inverse:
-        newcoord = coordinates.decenter((lra, ldec), (rat, dect, ras, decs))
+        transfun = lambda x: coordinates.decenter(x, (rat, dect, ras, decs))
     else:
-        newcoord = coordinates.recenter((lra, ldec), (rat, dect, ras, decs))
-    del lra
-    del ldec
-    # reshape these new coordinates into enmap-friendly form
-    new_pos = np.empty((2, shape_target[0], shape_target[1]))
-    new_pos[0, :, :] = newcoord[1, :].reshape(shape_target)
-    new_pos[1, :, :] = newcoord[0, :].reshape(shape_target)
-    del newcoord
-    # translate these new coordinates to pixel positions in the target geometry
-    # based on the source's wcs
-    pix_new = enmap.sky2pix(shape_source, wcs_source, new_pos)
+        transfun = lambda x: coordinates.recenter(x, (rat, dect, ras, decs))
+    res = coordinates.transform_meta(transfun, pos_target[1::-1], fields=["ang"])
+    pix_new = enmap.sky2pix(shape_source, wcs_source, res.ocoord[1::-1])
+    pix_new = np.concatenate((pix_new,res.ang[None]))
     return pix_new
 
 
@@ -379,3 +416,49 @@ def rect_geometry(width, res, height=None, center=(0., 0.), proj="car"):
     shape, wcs = enmap.geometry(pos=rect_box(
         width, center=center, height=height), res=res, proj=proj)
     return shape, wcs
+
+
+def distribute(N,nmax):
+    """
+    Distribute N things into cells as equally as possible such that 
+    no cell has more than nmax things.
+    """
+    actual_max = int(2.*(nmax+1)/3.)
+    numcells = int(round(N*1./actual_max))
+    each_cell = [actual_max]*(numcells-1)
+    rem = N-sum(each_cell)
+    if rem>0: each_cell.append(rem)
+    assert sum(each_cell)==N
+    return each_cell
+
+def populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400):
+    """
+    Loop through tiles in a new map of geometry (shape,wcs)
+    with tiles that have maximum allowed shape (maxpixy,maxpixx)
+    such that each tile is populated with the result of
+    ofunc(oshape,owcs) where oshape,owcs is the geometry of each
+    tile.
+    """
+    omap = enmap.zeros(shape,wcs)
+    Ny,Nx = shape[-2:]
+    tNys = distribute(Ny,maxpixy)
+    tNxs = distribute(Nx,maxpixx)
+    numy = len(tNys)
+    numx = len(tNxs)
+    sny = 0
+    ntiles = numy*numx
+    print("Number of tiles = ",ntiles)
+    done = 0
+    for i in range(numy):
+        eny = sny+tNys[i]
+        snx = 0
+        for j in range(len(tNxs)):
+            enx = snx+tNxs[j]
+            sel = np.s_[...,sny:eny,snx:enx]
+            oshape,owcs = enmap.slice_geometry(shape,wcs,sel)
+            omap[sel] = ofunc(oshape,owcs)
+            snx += tNxs[j]
+            done += 1
+        sny += tNys[i]
+        print(done , " / ", ntiles, " tiles done...")
+    return omap
