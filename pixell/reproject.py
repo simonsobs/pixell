@@ -378,7 +378,7 @@ def get_rotated_pixels(shape_source, wcs_source, shape_target, wcs_target,
 
 
 def cutout(imap, width=None, ra=None, dec=None, pad=1, corner=False,
-           preserve_wcs=False, res=None, npix=None, return_slice=False):
+           res=None, npix=None, return_slice=False):
     if type(imap) == str:
         shape, wcs = enmap.read_map_geometry(imap)
     else:
