@@ -15,3 +15,5 @@ python_dateutil>=2.7
 cython>=0.28
 matplotlib>=2.0
 pyyaml>=3.0
+pytest-cov>=2.6
+coveralls>=1.5

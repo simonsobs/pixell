@@ -54,7 +54,7 @@ class ndmap(np.ndarray):
 	def sky2pix(self, coords, safe=True, corner=False): return sky2pix(self.shape, self.wcs, coords, safe, corner)
 	def pix2sky(self, pix,    safe=True, corner=False): return pix2sky(self.shape, self.wcs, pix,    safe, corner)
 	def box(self): return box(self.shape, self.wcs)
-	def posmap(self, safe=True, corner=False, separable=False): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable)
+	def posmap(self, safe=True, corner=False, separable=False, dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
 	def modlmap(self, oversample=1): return modlmap(self.shape, self.wcs, oversample=oversample)
@@ -278,19 +278,26 @@ def ones(shape, wcs=None, dtype=None):
 def full(shape, wcs, val, dtype=None):
 	return enmap(np.full(shape, val, dtype=dtype), wcs, copy=False)
 
-def posmap(shape, wcs, safe=True, corner=False, separable=False):
+def posmap(shape, wcs, safe=True, corner=False, separable=False, dtype=np.float64, bsize=1e6):
 	"""Return an enmap where each entry is the coordinate of that entry,
 	such that posmap(shape,wcs)[{0,1},j,k] is the {y,x}-coordinate of
 	pixel (j,k) in the map. Results are returned in radians, and
 	if safe is true (default), then sharp coordinate edges will be
 	avoided."""
+	res     = zeros((2,)+tuple(shape[-2:]), wcs, dtype)
 	if separable:
 		dec, ra = posaxes(shape, wcs, safe=safe, corner=corner)
-		res = np.empty([2,len(dec),len(ra)])
 		res[0] = dec[:,None]
 		res[1] = ra[None,:]
-		return ndmap(res, wcs)
 	else:
+		rowstep = int((bsize+shape[-1]-1)//shape[-1])
+		for i1 in range(0, shape[-2], rowstep):
+			i2  = min(i1+rowstep, shape[-2])
+			pix = np.mgrid[i1:i2,:shape[-1]]
+			res[:,i1:i2,:] = pix2sky(shape, wcs, pix, safe, corner)
+	return res
+
+def posmap_old(shape, wcs, safe=True, corner=False):
 		pix    = np.mgrid[:shape[-2],:shape[-1]]
 		return ndmap(pix2sky(shape, wcs, pix, safe, corner), wcs)
 

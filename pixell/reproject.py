@@ -282,6 +282,7 @@ def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
     pixmap = enmap.pixmap(shape, wcs)
     y = pixmap[0, ...].T.ravel()
     x = pixmap[1, ...].T.ravel()
+    del pixmap
     posmap = enmap.posmap(shape, wcs)
     if rot is not None:
         s1, s2 = rot.split(",")
@@ -289,14 +290,19 @@ def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
         posmap[...] = opos[1::-1]
     th = np.rad2deg(posmap[1, ...].T.ravel())
     ph = np.rad2deg(posmap[0, ...].T.ravel())
+    del posmap
     if interpolate:
         imap[y, x] = hp.get_interp_val(
             hp_map, th, ph, lonlat=True)
     else:
         ind = hp.ang2pix(hp.get_nside(hp_map),
                          th, ph, lonlat=True)
+        del th
+        del ph
         imap[:] = 0.
-        imap[[y, x]] = hp_map[ind]
+        imap[(y, x)] = hp_map[ind]
+        del y
+        del x
     return enmap.ndmap(imap, wcs)
 
 # Helper functions
@@ -372,7 +378,7 @@ def get_rotated_pixels(shape_source, wcs_source, shape_target, wcs_target,
 
 
 def cutout(imap, width=None, ra=None, dec=None, pad=1, corner=False,
-           preserve_wcs=False, res=None, npix=None, return_slice=False):
+           res=None, npix=None, return_slice=False):
     if type(imap) == str:
         shape, wcs = enmap.read_map_geometry(imap)
     else:
@@ -410,3 +416,49 @@ def rect_geometry(width, res, height=None, center=(0., 0.), proj="car"):
     shape, wcs = enmap.geometry(pos=rect_box(
         width, center=center, height=height), res=res, proj=proj)
     return shape, wcs
+
+
+def distribute(N,nmax):
+    """
+    Distribute N things into cells as equally as possible such that 
+    no cell has more than nmax things.
+    """
+    actual_max = int(2.*(nmax+1)/3.)
+    numcells = int(round(N*1./actual_max))
+    each_cell = [actual_max]*(numcells-1)
+    rem = N-sum(each_cell)
+    if rem>0: each_cell.append(rem)
+    assert sum(each_cell)==N
+    return each_cell
+
+def populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400):
+    """
+    Loop through tiles in a new map of geometry (shape,wcs)
+    with tiles that have maximum allowed shape (maxpixy,maxpixx)
+    such that each tile is populated with the result of
+    ofunc(oshape,owcs) where oshape,owcs is the geometry of each
+    tile.
+    """
+    omap = enmap.zeros(shape,wcs)
+    Ny,Nx = shape[-2:]
+    tNys = distribute(Ny,maxpixy)
+    tNxs = distribute(Nx,maxpixx)
+    numy = len(tNys)
+    numx = len(tNxs)
+    sny = 0
+    ntiles = numy*numx
+    print("Number of tiles = ",ntiles)
+    done = 0
+    for i in range(numy):
+        eny = sny+tNys[i]
+        snx = 0
+        for j in range(len(tNxs)):
+            enx = snx+tNxs[j]
+            sel = np.s_[...,sny:eny,snx:enx]
+            oshape,owcs = enmap.slice_geometry(shape,wcs,sel)
+            omap[sel] = ofunc(oshape,owcs)
+            snx += tNxs[j]
+            done += 1
+        sny += tNys[i]
+        print(done , " / ", ntiles, " tiles done...")
+    return omap
