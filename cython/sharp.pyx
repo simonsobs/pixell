@@ -434,7 +434,7 @@ cpdef execute_dp(int type, int spin, alm_info ainfo, np.ndarray[np.complex128_t,
 	for i in range(ntrans):
 		for j in range(map.shape[1]):
 			k = i*map.shape[1]+j
-			check_cont_dp(map[i,j], alm[i,j])
+			#check_cont_dp(map[i,j], alm[i,j])
 			aptrs[k] = <np.uintp_t>&alm[i,j,0]
 			mptrs[k] = <np.uintp_t>&map[i,j,0]
 	execute_helper(type, ainfo, aptrs, minfo, mptrs, spin, ntrans, csharp.SHARP_DP)
@@ -449,7 +449,7 @@ cpdef execute_sp(int type, int spin, alm_info ainfo, np.ndarray[np.complex64_t,n
 	for i in range(ntrans):
 		for j in range(map.shape[1]):
 			k = i*map.shape[1]+j
-			check_cont_sp(map[i,j], alm[i,j])
+			#check_cont_sp(map[i,j], alm[i,j])
 			aptrs[k] = <np.uintp_t>&alm[i,j,0]
 			mptrs[k] = <np.uintp_t>&map[i,j,0]
 	execute_helper(type, ainfo, aptrs, minfo, mptrs, spin, ntrans, 0)
