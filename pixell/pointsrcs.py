@@ -26,7 +26,6 @@ import numpy as np
 from astropy.io import fits
 import astropy.table as atpy
 from . import utils, enmap
-import IPython
 
 #### Map-space source simulation ###
 
