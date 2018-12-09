@@ -2,7 +2,9 @@
 full sky."""
 from __future__ import print_function
 import numpy as np
-from . import sharp, enmap, powspec, wcsutils, utils
+from . import enmap, powspec, wcsutils, utils
+try: from . import sharp
+except ImportError: pass
 
 class ShapeError(Exception): pass
 
