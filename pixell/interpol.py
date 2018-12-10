@@ -1,7 +1,8 @@
 from __future__ import print_function
 import numpy as np, time
 from . import utils
-from . import _interpol_32, _interpol_64
+try: from . import _interpol_32, _interpol_64
+except ImportError: pass
 
 def map_coordinates(idata, points, odata=None, mode="spline", order=3, border="cyclic", trans=False, deriv=False,
 		prefilter=True):

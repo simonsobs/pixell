@@ -1,6 +1,8 @@
 from __future__ import print_function
 import numpy as np
-from . import wcsutils, enmap, coordinates, sharp, curvedsky
+from . import wcsutils, enmap, coordinates, curvedsky
+try: from . import sharp
+except ImportError: pass
 
 # Python 2/3 compatibility
 try: basestring
