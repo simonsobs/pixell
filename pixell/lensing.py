@@ -1,5 +1,7 @@
 import numpy as np
-from . import enmap, utils, powspec, interpol
+from . import enmap, utils, powspec
+try: from . import interpol
+except ImportError: pass
 
 ####### Flat sky lensing #######
 
