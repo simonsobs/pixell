@@ -228,7 +228,13 @@ def read_fits(fname, fix=True, fix_cols = {"RADeg":"ra","decDeg":"dec","deltaT_c
 		for k in fix_cols.keys():
 			if k in tab.keys():
 				tab.rename_column(k, fix_cols[k])
-	return tab.as_array().view(np.recarray)
+	return tab2recarray(tab)
+
+def tab2recarray(tab):
+    """Converts an astropy Table object into a numpy recarray (preferred format for sim_srcs).
+
+    """
+    return tab.as_array().view(np.recarray)
 
 def src2param(srcs):
 	"""Translate recarray srcs into the source fromat used for tod-level point source
