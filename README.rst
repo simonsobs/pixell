@@ -17,6 +17,7 @@ This is an early development repository for a CMB map analysis library. The API 
 
 * Free software: BSD license
 * Documentation: https://pixell.readthedocs.io.
+* Tutorial_
 
 Dependencies
 ------------
@@ -89,5 +90,7 @@ If you have write access to this repository, please:
 3. merge or rebase to get in sync with master
 4. submit a pull request on github
 
-If you do not have write access, create a fork of this repository and proceed as described above. For more details, see :ref:`ContributingPage`.
+If you do not have write access, create a fork of this repository and proceed as described above. For more details, see Contributing_.
   
+.. _Tutorial: https://github.com/simonsobs/pixell_tutorials/blob/master/Tutorial.ipynb
+.. _Contributing: https://pixell.readthedocs.io/en/latest/contributing.html
