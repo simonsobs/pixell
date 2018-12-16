@@ -495,6 +495,8 @@ def rand_gauss_iso_harm(shape, wcs, cov, pixel_units=False):
 
 def extent(shape, wcs, method="default", nsub=None, signed=False):
 	if method == "default": method = extent_model[-1]
+	# consider always choosing intermediate for plain wcses
+	# it doesn't look like subgrid makes sense for these
 	if method == "intermediate":
 		return extent_intermediate(shape, wcs, signed=signed)
 	elif method == "subgrid":
@@ -1391,7 +1393,7 @@ def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mode
 		hwcs = hfile["wcs"]
 		header = astropy.io.fits.Header()
 		for key in hwcs:
-			header[key] = hwcs[key].value
+			header[key] = fix_python3(hwcs[key].value)
 		if wcs is None:
 			wcs = wcsutils.WCS(header).sub(2)
 		wrapper = hdf_wrapper(data, wcs, threshold=sel_threshold)
@@ -1408,6 +1410,14 @@ def read_hdf_geometry(fname):
 		wcs   = wcsutils.WCS(header).sub(2)
 		shape = hfile["data"].shape
 	return shape, wcs
+
+def fix_python3(s):
+	"""Convert "bytes" to string in python3, while leaving other types unmolested.
+	Python3 string handling is stupid."""
+	try:
+		if isinstance(s, bytes): return s.decode("utf-8")
+		else: return s
+	except TypeError: return s
 
 def read_helper(data, sel=None, box=None, pixbox=None, wrap="auto", mode=None, sel_threshold=10e6):
 	"""Helper function for map reading. Handles the slicing, sky-wrapping and capping, etc."""
@@ -1447,6 +1457,8 @@ class hdf_wrapper:
 		self.threshold = threshold
 	@property
 	def shape(self): return self.dset.shape
+	@property
+	def ndim(self): return len(self.shape)
 	@property
 	def dtype(self): return self.dset.shape
 	def __getitem__(self, sel):

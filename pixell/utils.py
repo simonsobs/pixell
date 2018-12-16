@@ -1547,7 +1547,7 @@ def expbin(n, nbin=None, nmin=8, nmax=0):
 
 def bin_data(bins, d, op=np.mean):
 	"""Bin the data d into the specified bins along the last dimension. The result has
-	shape d.shape + (nbin,)."""
+	shape d.shape[:-1] + (nbin,)."""
 	nbin  = bins.shape[0]
 	dflat = d.reshape(-1,d.shape[-1])
 	dbin  = np.zeros([dflat.shape[0], nbin])

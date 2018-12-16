@@ -38,6 +38,12 @@ from astropy.wcs import WCS
 deg2rad = np.pi/180
 rad2deg = 1/deg2rad
 
+def explicit(naxis=2, **args):
+	wcs = WCS(naxis=naxis)
+	for key in args:
+		setattr(wcs.wcs, key, args[key])
+	return wcs
+
 def describe(wcs):
 	"""Since astropy.wcs.WCS objects do not have a useful
 	str implementation, this function provides a relpacement."""
