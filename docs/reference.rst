@@ -70,12 +70,6 @@ wcsutils - World Coordinate Sytem utilities
 .. automodule:: pixell.wcsutils
    :members:          
 
-slice - Array slicing utilities
------
-
-.. automodule:: pixell.slice
-   :members:          
-
 powspec - CMB power spectra utilities
 -----
 

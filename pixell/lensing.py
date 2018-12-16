@@ -1,5 +1,7 @@
 import numpy as np
-from . import enmap, utils, powspec, interpol
+from . import enmap, utils, powspec
+try: from . import interpol
+except ImportError: pass
 
 ####### Flat sky lensing #######
 
@@ -75,7 +77,7 @@ def lens_map_flat(cmb_map, phi_map):
 ######## Curved sky lensing ########
 
 def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64, seed=None, phi_seed=None, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
-	import curvedsky, sharp
+	from . import curvedsky, sharp
 	ctype   = np.result_type(dtype,0j)
 	# Restrict to target number of components
 	oshape  = shape[-3:]
