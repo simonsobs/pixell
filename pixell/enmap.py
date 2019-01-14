@@ -725,10 +725,10 @@ def map_mul(mat, vec):
 def smooth_gauss(emap, sigma):
 	"""Smooth the map given as the first argument with a gaussian beam
 	with the given standard deviation in radians."""
-	if sigma == 0: return emap.copy()
+	if np.all(sigma == 0): return emap.copy()
 	f  = map2harm(emap)
-	l2 = np.sum(emap.lmap()**2,0)
-	f *= np.exp(-0.5*l2*sigma**2)
+	x2 = np.sum(emap.lmap()**2*sigma**2,0)
+	f *= np.exp(-0.5*x2)
 	return harm2map(f)
 
 def calc_window(shape):
@@ -1482,7 +1482,7 @@ def fillbad(map, val=0, inplace=False):
 	map[~np.isfinite(map)] = val
 	return map
 
-def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False):
+def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3):
 	"""Resample the input map such that it covers the same area of the sky
 	with a different number of pixels given by oshape."""
 	# Construct the output shape and wcs
@@ -1515,7 +1515,7 @@ def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False):
 	elif method == "spline":
 		opix  = pixmap(oshape) - off[:,None,None]
 		ipix  = opix * (np.array(map.shape[-2:],float)/oshape[-2:])[:,None,None]
-		omap  = ndmap(map.at(ipix, unit="pix", mode=mode), owcs)
+		omap  = ndmap(map.at(ipix, unit="pix", mode=mode, order=order), owcs)
 	else:
 		raise ValueError("Invalid resample method '%s'" % method)
 	return omap
