@@ -250,6 +250,7 @@ def define_arg_parser():
 	add_argument("-g", "--grid", action="count", default=1, help="Toggle the coordinate grid. Disabling it can make plotting much faster when plotting many small maps.")
 	add_argument("--grid-color", type=str, default="00000020", help="The RGBA color to use for the grid.")
 	add_argument("-t", "--ticks", type=str, default="1", help="The grid spacing in degrees. Either a single number to be used for both axis, or ty,tx.")
+	add_argument("--tick-unit", "--tu", type=str, default=None, help="Units for tick axis. Can be the unit size in degrees, or the word 'degree', 'arcmin' or 'arcsec' or the shorter 'd','m','s'.")
 	add_argument("--nolabels", action="store_true", help="Disable the generation of coordinate labels outside the map when using the grid.")
 	add_argument("--nstep", type=int, default=200, help="The number of steps to use when drawing grid lines. Higher numbers result in smoother curves.")
 	add_argument("--subticks", type=float, default=0, help="Subtick spacing. Only supported by matplotlib driver.")
@@ -629,7 +630,10 @@ def calc_gridinfo(shape, wcs, args):
 	Depends on args.ticks and args.nstep."""
 	ticks = np.full(2,1.0)
 	ticks[:] = parse_list(args.ticks)
-	return cgrid.calc_gridinfo(shape, wcs, steps=ticks, nstep=args.nstep, zenith=args.zenith)
+	try:               unit = float(args.tick_unit)
+	except TypeError:  unit = 1.0
+	except ValueError: unit = args.tick_unit
+	return cgrid.calc_gridinfo(shape, wcs, steps=ticks, nstep=args.nstep, zenith=args.zenith, unit=unit)
 
 def draw_grid(ginfo, args):
 	"""Return a grid based on gridinfo. args.grid_color controls the color
