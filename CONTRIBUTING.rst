@@ -114,9 +114,13 @@ Before you submit a pull request, check that it meets these guidelines:
 Deploying
 ---------
 
-A reminder for the maintainers on how to deploy.
-Make sure all your changes are committed (including an entry in HISTORY.rst).
-Then run::
+Only maintainers, who have access to the master branch, are able to
+deploy the package.  This is accomplished by associating a tag, of the
+form vX.y.z, to the relevant commit in the master branch.  We use
+bumpversion for this, in a way that is compatible with versioneer.
+Before initiating the release, be sure to update HISTORY.rst with the
+differences since last version (not required while we're still in
+0.y.z).  Then run::
 
 $ bumpversion patch # possible: major / minor / patch
 $ git push
