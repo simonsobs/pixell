@@ -5,7 +5,8 @@
 
 import setuptools
 from numpy.distutils.core import setup, Extension, build_ext, build_src
-import os,sys
+import versioneer
+import os, sys
 import subprocess as sp
 import numpy as np
 build_ext = build_ext.build_ext
@@ -72,6 +73,15 @@ class CustomEggInfo(setuptools.command.egg_info.egg_info):
         prebuild()
         return setuptools.command.egg_info.egg_info.run(self)   
 
+# Cascade your overrides here.
+cmdclass = {
+    'build_ext': CustomBuild,
+    'build_src': CustomSrc,
+    'egg_info': CustomEggInfo,
+}
+cmdclass = versioneer.get_cmdclass(cmdclass)
+
+
 setup(
     author="Simons Observatory Collaboration Analysis Library Task Force",
     author_email='',
@@ -131,10 +141,7 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/simonsobs/pixell',
-    version='0.5.1',
+    version=versioneer.get_version(),
     zip_safe=False,
-    cmdclass={'build_ext': CustomBuild,
-              'build_src': CustomSrc,
-              'egg_info': CustomEggInfo,
-    }
+    cmdclass=cmdclass
 )
