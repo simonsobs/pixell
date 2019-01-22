@@ -495,6 +495,8 @@ def rand_gauss_iso_harm(shape, wcs, cov, pixel_units=False):
 
 def extent(shape, wcs, method="default", nsub=None, signed=False):
 	if method == "default": method = extent_model[-1]
+	# consider always choosing intermediate for plain wcses
+	# it doesn't look like subgrid makes sense for these
 	if method == "intermediate":
 		return extent_intermediate(shape, wcs, signed=signed)
 	elif method == "subgrid":
@@ -725,10 +727,10 @@ def map_mul(mat, vec):
 def smooth_gauss(emap, sigma):
 	"""Smooth the map given as the first argument with a gaussian beam
 	with the given standard deviation in radians."""
-	if sigma == 0: return emap.copy()
+	if np.all(sigma == 0): return emap.copy()
 	f  = map2harm(emap)
-	l2 = np.sum(emap.lmap()**2,0)
-	f *= np.exp(-0.5*l2*sigma**2)
+	x2 = np.sum(emap.lmap()**2*sigma**2,0)
+	f *= np.exp(-0.5*x2)
 	return harm2map(f)
 
 def calc_window(shape):
@@ -1391,7 +1393,7 @@ def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mode
 		hwcs = hfile["wcs"]
 		header = astropy.io.fits.Header()
 		for key in hwcs:
-			header[key] = hwcs[key].value
+			header[key] = fix_python3(hwcs[key].value)
 		if wcs is None:
 			wcs = wcsutils.WCS(header).sub(2)
 		wrapper = hdf_wrapper(data, wcs, threshold=sel_threshold)
@@ -1408,6 +1410,14 @@ def read_hdf_geometry(fname):
 		wcs   = wcsutils.WCS(header).sub(2)
 		shape = hfile["data"].shape
 	return shape, wcs
+
+def fix_python3(s):
+	"""Convert "bytes" to string in python3, while leaving other types unmolested.
+	Python3 string handling is stupid."""
+	try:
+		if isinstance(s, bytes): return s.decode("utf-8")
+		else: return s
+	except TypeError: return s
 
 def read_helper(data, sel=None, box=None, pixbox=None, wrap="auto", mode=None, sel_threshold=10e6):
 	"""Helper function for map reading. Handles the slicing, sky-wrapping and capping, etc."""
@@ -1448,6 +1458,8 @@ class hdf_wrapper:
 	@property
 	def shape(self): return self.dset.shape
 	@property
+	def ndim(self): return len(self.shape)
+	@property
 	def dtype(self): return self.dset.shape
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [self.ndim-2,2])
@@ -1482,7 +1494,7 @@ def fillbad(map, val=0, inplace=False):
 	map[~np.isfinite(map)] = val
 	return map
 
-def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False):
+def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3):
 	"""Resample the input map such that it covers the same area of the sky
 	with a different number of pixels given by oshape."""
 	# Construct the output shape and wcs
@@ -1515,7 +1527,7 @@ def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False):
 	elif method == "spline":
 		opix  = pixmap(oshape) - off[:,None,None]
 		ipix  = opix * (np.array(map.shape[-2:],float)/oshape[-2:])[:,None,None]
-		omap  = ndmap(map.at(ipix, unit="pix", mode=mode), owcs)
+		omap  = ndmap(map.at(ipix, unit="pix", mode=mode, order=order), owcs)
 	else:
 		raise ValueError("Invalid resample method '%s'" % method)
 	return omap

@@ -1,6 +1,8 @@
 from __future__ import print_function
 import numpy as np
-from . import wcsutils, enmap, coordinates, sharp, curvedsky
+from . import wcsutils, enmap, coordinates, curvedsky
+try: from . import sharp
+except ImportError: pass
 
 # Python 2/3 compatibility
 try: basestring
@@ -378,7 +380,7 @@ def get_rotated_pixels(shape_source, wcs_source, shape_target, wcs_target,
 
 
 def cutout(imap, width=None, ra=None, dec=None, pad=1, corner=False,
-           preserve_wcs=False, res=None, npix=None, return_slice=False):
+           res=None, npix=None, return_slice=False):
     if type(imap) == str:
         shape, wcs = enmap.read_map_geometry(imap)
     else:
