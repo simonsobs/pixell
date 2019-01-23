@@ -9,7 +9,7 @@ from utils import T_cmb, h, c, k
 
 def boost_map(imap, dir=dir_equ, beta=beta, pol=True, modulation="thermo", T0=T_cmb, freq=150e9,
 		boundary="wrap", order=3, recenter=False, return_modulation=False,
-		dipole=False, map_unit=1e-6):
+		dipole=False, map_unit=1e-6, do_aberration=True):
 	"""Doppler-boost (aberrate and modulate) the given input map imap. The doppler boost
 	goes in direction dir[{ra,dec}] with speed beta in units of c. If pol=True and
 	the map isn't scalar, then the map will be assumed to be [TQU], and a parallel-
@@ -32,7 +32,13 @@ def boost_map(imap, dir=dir_equ, beta=beta, pol=True, modulation="thermo", T0=T_
 
 	If return_modulation == True, then a tuple of (omap, A) will be returned, where
 	A is the modulation as returned from calc_boost. This can be useful if one wants
-	to compute the same map modulated at several different frequencies."""
+	to compute the same map modulated at several different frequencies.
+
+        If do_aberration == False, then the modulation will be applied
+        (assuming "modulation" is not None) but the aberration will
+        not.  This is useful to modulate pre-aberrated maps.
+
+        """
 	if imap.ndim < 3: pol = False
 	opos = imap.posmap()
 	# we swap between enmap's dec,ra convention and the ra,dec convention we use here here.
@@ -42,11 +48,14 @@ def boost_map(imap, dir=dir_equ, beta=beta, pol=True, modulation="thermo", T0=T_
 	ipos, A  = calc_boost(opos[::-1], dir, -beta, pol=pol, recenter=recenter)
 	ipos[:2] = ipos[1::-1]
 	A      **= -1 # invert A to go from raw to observed
-	omap = enmap.samewcs(imap.at(ipos[:2], mode=boundary, order=order), imap)
-	if pol:
-		c,s = np.cos(2*ipos[2]), np.sin(2*ipos[2])
-		omap[1] = c*omap[1] + s*omap[2]
-		omap[2] =-s*omap[1] + c*omap[2]
+        if do_aberration:
+	        omap = enmap.samewcs(imap.at(ipos[:2], mode=boundary, order=order), imap)
+	        if pol:
+		        c,s = np.cos(2*ipos[2]), np.sin(2*ipos[2])
+		        omap[1] = c*omap[1] + s*omap[2]
+		        omap[2] =-s*omap[1] + c*omap[2]
+        else:
+                omap = imap.copy()
 	omap = apply_modulation(omap, A, T0=T0, freq=freq, map_unit=map_unit, mode=modulation, dipole=dipole)
 	if return_modulation: return omap, A
 	else:                 return omap
@@ -56,6 +65,8 @@ def apply_modulation(imap, A, T0=T_cmb, freq=150e9, map_unit=1e-6, mode="thermo"
 	if    mode is None:     return imap
 	elif  mode == "plain":  return imap*A
 	elif  mode == "thermo":
+                import pdb
+                pdb.set_trace()
 		# We're in linearized thermodynamic units. We assume that the map doesn't contain the
 		# monopole, so we can treat it as a perturbation around the monopole. If the map
 		# contains the monopole, then linearized units probably isn't the best choice
