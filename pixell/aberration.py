@@ -65,8 +65,6 @@ def apply_modulation(imap, A, T0=T_cmb, freq=150e9, map_unit=1e-6, mode="thermo"
 	if    mode is None:     return imap
 	elif  mode == "plain":  return imap*A
 	elif  mode == "thermo":
-                import pdb
-                pdb.set_trace()
 		# We're in linearized thermodynamic units. We assume that the map doesn't contain the
 		# monopole, so we can treat it as a perturbation around the monopole. If the map
 		# contains the monopole, then linearized units probably isn't the best choice
