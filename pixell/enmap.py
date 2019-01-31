@@ -382,6 +382,20 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 	pmap = utils.interpol(map, pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
 	return ndmap(pmap, wcs)
 
+def get_pixbox(iwcs,oshape,owcs):
+	"""Obtain the pixbox which when extracted from a map with WCS=iwcs
+	returns a map that has geometry oshape,owcs.
+	"""
+	# First check that our wcs is compatible
+	assert wcsutils.is_compatible(iwcs, owcs), "Incompatible wcs in enmap.extract: %s vs. %s" % (str(iwcs), str(owcs))
+	# Find the bounding box of the output in terms of input pixels.
+	# This is simple because our wcses are compatible, so they
+	# can only differ by a simple pixel offset. Here pixoff is
+	# pos_input - pos_output. This is equivalent to the coordinates of
+	pixoff = utils.nint((iwcs.wcs.crpix-owcs.wcs.crpix) - (iwcs.wcs.crval-owcs.wcs.crval)/iwcs.wcs.cdelt)[::-1]
+	pixbox = np.array([pixoff,pixoff+np.array(oshape[-2:])])
+	return pixbox
+
 def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
 	"""Like project, but only works for pixel-compatible wcs. Much
 	faster because it simply copies over pixels.
@@ -397,15 +411,8 @@ def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iw
 	this is a fits hdu object, which can be sliced like an array to avoid
 	reading more into memory than necessary.
 	"""
-	# First check that our wcs is compatible
 	if iwcs is None: iwcs = map.wcs
-	assert wcsutils.is_compatible(iwcs, wcs), "Incompatible wcs in enmap.extract: %s vs. %s" % (str(iwcs), str(wcs))
-	# Find the bounding box of the output in terms of input pixels.
-	# This is simple because our wcses are compatible, so they
-	# can only differ by a simple pixel offset. Here pixoff is
-	# pos_input - pos_output. This is equivalent to the coordinates of
-	pixoff = utils.nint((iwcs.wcs.crpix-wcs.wcs.crpix) - (iwcs.wcs.crval-wcs.wcs.crval)/iwcs.wcs.cdelt)[::-1]
-	pixbox = np.array([pixoff,pixoff+np.array(shape[-2:])])
+	pixbox = get_pixbox(iwcs,shape,wcs)
 	return extract_pixbox(map, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
 
 def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
