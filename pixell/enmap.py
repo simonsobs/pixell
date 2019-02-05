@@ -664,13 +664,13 @@ def fft(emap, omap=None, nthread=0, normalize=True):
 	"""
 	res = samewcs(enfft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
 	if normalize: res /= np.prod(emap.shape[-2:])**0.5
-	if str(normalize).strip()[:3]=='phy': res *= np.sqrt(emap.area()/ np.prod(emap.shape[-2:]))
+	if normalize in ["phy","phys","physical"]: res *= emap.pixsize()**0.5
 	return res
 def ifft(emap, omap=None, nthread=0, normalize=True):
 	"""Performs the 2d iFFT of the complex enmap given, and returns a pixel-space enmap."""
 	res = samewcs(enfft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
 	if normalize: res /= np.prod(emap.shape[-2:])**0.5
-	if str(normalize).strip()[:3]=='phy': res /= np.sqrt(emap.area()/ np.prod(emap.shape[-2:]))
+	if normalize in ["phy","phys","physical"]: res /= emap.pixsize()**0.5
 	return res
 
 # These are shortcuts for transforming from T,Q,U real-space maps to
