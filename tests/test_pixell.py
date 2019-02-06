@@ -23,6 +23,13 @@ def test_enplot():
     a = enmap.ones(shape,wcs)
     p = enplot.get_plots(a)
 
+def test_fft():
+    # Tests that ifft(ifft(imap))==imap, i.e. default normalizations are consistent
+    shape,wcs = enmap.geometry(pos=(0,0),shape=(3,100,100),res=0.01)
+    imap = enmap.enmap(np.random.random(shape),wcs)
+    assert np.all(np.isclose(imap,enmap.ifft(enmap.fft(imap,normalize='phy'),normalize='phy').real))
+    assert np.all(np.isclose(imap,enmap.ifft(enmap.fft(imap)).real))
+    
 
 def test_fullsky_geometry():
     # Tests whether number of pixels and area of a full-sky 0.5 arcminute resolution map are correct

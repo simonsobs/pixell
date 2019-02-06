@@ -664,14 +664,21 @@ def lrmap(shape, wcs, oversample=1):
 	return lmap(shape, wcs, oversample=oversample)[...,:shape[-1]//2+1]
 
 def fft(emap, omap=None, nthread=0, normalize=True):
-	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap."""
+	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap.
+	If normalize starts with "phy" (for physical), then an additional normalization
+	is applied such that the binned square of the fourier transform can
+	be directly compared to theory (apart from mask corrections)
+	, i.e., pixel area factors are corrected for.
+	"""
 	res = samewcs(enfft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
 	if normalize: res /= np.prod(emap.shape[-2:])**0.5
+	if normalize in ["phy","phys","physical"]: res *= emap.pixsize()**0.5
 	return res
 def ifft(emap, omap=None, nthread=0, normalize=True):
 	"""Performs the 2d iFFT of the complex enmap given, and returns a pixel-space enmap."""
 	res = samewcs(enfft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
 	if normalize: res /= np.prod(emap.shape[-2:])**0.5
+	if normalize in ["phy","phys","physical"]: res /= emap.pixsize()**0.5
 	return res
 
 # These are shortcuts for transforming from T,Q,U real-space maps to
@@ -679,7 +686,12 @@ def ifft(emap, omap=None, nthread=0, normalize=True):
 # It would be better to precompute the rotation matrix and buffers, and
 # use real transforms.
 def map2harm(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
-	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap."""
+	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap.
+	If normalize starts with "phy" (for physical), then an additional normalization
+	is applied such that the binned square of the fourier transform can
+	be directly compared to theory  (apart from mask corrections)
+	, i.e., pixel area factors are corrected for.
+	"""
 	emap = samewcs(fft(emap,nthread=nthread,normalize=normalize), emap)
 	if emap.ndim > 2:
 		rot, s0 = None, None
