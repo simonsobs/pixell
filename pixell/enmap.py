@@ -658,7 +658,7 @@ def lrmap(shape, wcs, oversample=1):
 
 def fft(emap, omap=None, nthread=0, normalize=True):
 	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap.
-	If normalize starts with "phy" (for physical), then an additional normalization
+	If normalize is "phy", "phys" or "physical", then an additional normalization
 	is applied such that the binned square of the fourier transform can
 	be directly compared to theory, i.e., pixel area factors are divided out.
 	"""

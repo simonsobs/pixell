@@ -76,6 +76,11 @@ def plot(*arglist, **args):
 	"""
 	return list(plot_iterator(*arglist, **args))
 
+def pshow(*arglist, **args):
+	"""Convenience function to both build plots and show them.
+	pshow(...) is equivalent to show(plot(...))."""
+	show(plot(*arglist, **args))
+
 # Compatibility function
 def get_plots(*arglist, **args):
 	"""This function is identical to enplot.plot"""

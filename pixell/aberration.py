@@ -5,11 +5,11 @@ beta    = 0.0012301
 dir_equ = np.array([167.929, -6.927])*np.pi/180
 dir_gal = np.array([263.990, 48.260])*np.pi/180
 dir_ecl = np.array([171.646,-11.141])*np.pi/180
-from utils import T_cmb, h, c, k
+from .utils import T_cmb, h, c, k
 
 def boost_map(imap, dir=dir_equ, beta=beta, pol=True, modulation="thermo", T0=T_cmb, freq=150e9,
 		boundary="wrap", order=3, recenter=False, return_modulation=False,
-		dipole=False, map_unit=1e-6):
+		dipole=False, map_unit=1e-6, aberrate=True, modulate=True):
 	"""Doppler-boost (aberrate and modulate) the given input map imap. The doppler boost
 	goes in direction dir[{ra,dec}] with speed beta in units of c. If pol=True and
 	the map isn't scalar, then the map will be assumed to be [TQU], and a parallel-
@@ -32,24 +32,32 @@ def boost_map(imap, dir=dir_equ, beta=beta, pol=True, modulation="thermo", T0=T_
 
 	If return_modulation == True, then a tuple of (omap, A) will be returned, where
 	A is the modulation as returned from calc_boost. This can be useful if one wants
-	to compute the same map modulated at several different frequencies."""
-	if imap.ndim < 3: pol = False
+	to compute the same map modulated at several different frequencies.
+	
+  The modulation and aberration steps can be individually skipped using the
+  corresponding arguments. By default both are performed.
+	"""
+	if imap.ndim < 3 or not aberrate: pol = False
 	opos = imap.posmap()
 	# we swap between enmap's dec,ra convention and the ra,dec convention we use here here.
 	# we use -beta because we know where the pixels in the *observed* frame is, and want
 	# to know here they should be in the raw frame. This also means that A will need to be
 	# inverted, since it now wants to take us from observed to raw too
-	ipos, A  = calc_boost(opos[::-1], dir, -beta, pol=pol, recenter=recenter)
-	ipos[:2] = ipos[1::-1]
-	A      **= -1 # invert A to go from raw to observed
-	omap = enmap.samewcs(imap.at(ipos[:2], mode=boundary, order=order), imap)
-	if pol:
+	ipos, A = calc_boost(opos[::-1], dir, -beta, pol=pol, recenter=recenter)
+	A **= -1
+	omap = imap
+	if aberrate: omap = apply_aberration(omap, ipos, boundary=boundary, order=order)
+	if modulate: omap = apply_modulation(omap, A, T0=T0, freq=freq, map_unit=map_unit, mode=modulation, dipole=dipole)
+	if return_modulation: return omap, A
+	else:                 return omap
+
+def apply_aberration(imap, ipos, boundary="wrap", order=3):
+	omap = enmap.samewcs(imap.at(ipos[1::-1], mode=boundary, order=order), imap)
+	if len(ipos >= 3):
 		c,s = np.cos(2*ipos[2]), np.sin(2*ipos[2])
 		omap[1] = c*omap[1] + s*omap[2]
 		omap[2] =-s*omap[1] + c*omap[2]
-	omap = apply_modulation(omap, A, T0=T0, freq=freq, map_unit=map_unit, mode=modulation, dipole=dipole)
-	if return_modulation: return omap, A
-	else:                 return omap
+	return omap
 
 def apply_modulation(imap, A, T0=T_cmb, freq=150e9, map_unit=1e-6, mode="thermo",
 		dipole=False, pol=True, tiny=False):
