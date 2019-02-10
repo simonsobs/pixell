@@ -4,6 +4,7 @@
 """The setup script."""
 
 import setuptools
+from distutils.errors import DistutilsError
 from numpy.distutils.core import setup, Extension, build_ext, build_src
 import versioneer
 import os, sys
@@ -41,7 +42,8 @@ compile_opts['extra_f90_compile_args'].extend(fcflags)
 
 def presrc():
     # Create f90 files for f2py.
-    sp.call('make -C fortran', shell=True)
+    if sp.call('make -C fortran', shell=True) != 0:
+        raise DistutilsError('Failure in the fortran source-prep step.')
     
 def prebuild():
     # Handle the special external dependencies.
@@ -49,10 +51,10 @@ def prebuild():
         try:
             sp.check_call('scripts/install_libsharp.sh', shell=True)
         except sp.CalledProcessError:
-            print("ERROR: libsharp installation failed")
-            sys.exit(1)
+            raise DistutilsError('Failed to install libsharp.')
     # Handle cythonization to create sharp.c, etc.
-    sp.call('make -C cython',  shell=True)
+    if sp.call('make -C cython',  shell=True) != 0:
+        raise DistutilsError('Failure in the cython pre-build step.')
 
 
 class CustomBuild(build_ext):
@@ -145,3 +147,6 @@ setup(
     zip_safe=False,
     cmdclass=cmdclass
 )
+
+print('\n[setup.py request was successful.]')
+
