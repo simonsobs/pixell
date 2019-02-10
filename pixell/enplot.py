@@ -76,6 +76,11 @@ def plot(*arglist, **args):
 	"""
 	return list(plot_iterator(*arglist, **args))
 
+def pshow(*arglist, **args):
+	"""Convenience function to both build plots and show them.
+	pshow(...) is equivalent to show(plot(...))."""
+	show(plot(*arglist, **args))
+
 # Compatibility function
 def get_plots(*arglist, **args):
 	"""This function is identical to enplot.plot"""
@@ -588,8 +593,11 @@ def get_color_range(map, args):
 	if np.any(np.isnan(crange)):
 		vals = np.sort(map[np.isfinite(map)])
 		n    = len(vals)
-		v1   = vals[int(round(n*args.quantile))]
-		v2   = vals[min(n-1,int(round(n*(1-args.quantile))))]
+		if n == 0: return np.repeat(np.array([-1,1])[:,None], ncomp, -1)
+		i    = min(n-1,int(round(n*args.quantile)))
+		v1, v2 = vals[i], vals[n-1-i]
+		# Avoid division by zero later, in case min and max are the same
+		if v2 == v1: (v1,v2) = (v1-1,v2+1)
 		crange[0,np.isnan(crange[0])] = v1
 		crange[1,np.isnan(crange[1])] = v2
 	return crange
