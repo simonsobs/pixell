@@ -26,7 +26,7 @@ Dependencies
 * gcc/gfortran or Intel compilers (clang might not work out of the box)
 * libsharp (downloaded and installed)
 * automake (for libsharp compilation)
-* healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py
+* healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py, Pillow (Python Image Library)
 
 Installing
 ----------

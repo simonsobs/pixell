@@ -170,6 +170,10 @@ def build(func, interpolator, box, errlim, maxsize=None, maxtime=None, return_ob
 				if np.any(np.isnan(ytrue)):
 					raise ValueError("Function to interpolate returned invalid value")
 				err = np.max(np.abs((ytrue-yinter).reshape(ytrue.shape[0],-1)), 1)
+				# Find the worst failure:
+				ytrue_flat = ytrue.reshape(4,-1)
+				yinter_flat= yinter.reshape(4,-1)
+				badi = np.argmax(np.abs((ytrue_flat[2]-yinter_flat[2])))
 				if verbose: print(x.shape, x.size, err/errlim)
 				if any(err > errlim):
 					# Not good enough, so accept improvement

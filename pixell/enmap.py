@@ -63,6 +63,7 @@ class ndmap(np.ndarray):
 	def pixsize(self): return pixsize(self.shape, self.wcs)
 	def pixshape(self, signed=False): return pixshape(self.shape, self.wcs, signed=signed)
 	def pixsizemap(self): return pixsizemap(self.shape, self.wcs)
+	def pixshapemap(self): return pixshapemap(self.shape, self.wcs)
 	def extent(self, method="default", signed=False): return extent(self.shape, self.wcs, method=method, signed=signed)
 	@property
 	def preflat(self):
@@ -382,7 +383,7 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 	pmap = utils.interpol(map, pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
 	return ndmap(pmap, wcs)
 
-def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
+def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False):
 	"""Like project, but only works for pixel-compatible wcs. Much
 	faster because it simply copies over pixels.
 
@@ -406,9 +407,9 @@ def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iw
 	# pos_input - pos_output. This is equivalent to the coordinates of
 	pixoff = utils.nint((iwcs.wcs.crpix-wcs.wcs.crpix) - (iwcs.wcs.crval-wcs.wcs.crval)/iwcs.wcs.cdelt)[::-1]
 	pixbox = np.array([pixoff,pixoff+np.array(shape[-2:])])
-	return extract_pixbox(map, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
+	return extract_pixbox(map, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 
-def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
+def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False):
 	"""This function extracts a rectangular area from an enmap based on the
 	given pixbox[{from,to,[stride]},{y,x}]. The difference between this function
 	and plain slicing of the enmap is that this one supports wrapping around the
@@ -427,8 +428,23 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 	for ibox, obox in utils.sbox_wrap(pixbox.T, wrap=wrap, cap=map.shape[-2:]):
 		islice = utils.sbox2slice(ibox)
 		oslice = utils.sbox2slice(obox)
-		omap[oslice] = op(omap[oslice], map[islice])
+		if reverse: map [islice] = op(map[islice], omap[oslice])
+		else:       omap[oslice] = op(omap[oslice], map[islice])
 	return omap
+
+def insert(omap, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
+	"""Insert imap into omap based on their world coordinate systems, which
+	must be compatible. Essentially the reverse of extract."""
+	return extract(omap, imap.shape, imap.wcs, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=True)
+
+def insert_at(omap, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
+	"""Insert imap into omap at the position given by pix. If pix is [y,x], then
+	[0:ny,0:nx] in imap will be copied into [y:y+ny,x:x+nx] in omap. If pix is
+	[{from,to,[stride]},{y,x}], then this specifies the omap pixbox into which to
+	copy imap. Wrapping is handled the same way as in extract."""
+	pixbox = np.array(pix)
+	if pixbox.ndim == 1: pixbox = np.array([pixbox,pixbox+imap.shape[-2:]])
+	return extract_pixbox(omap, pixbox, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=True)
 
 def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=True, safe=True):
 	if unit != "pix": pos = sky2pix(map.shape, map.wcs, pos, safe=safe)
@@ -577,29 +593,41 @@ def pixshape(shape, wcs, signed=False):
 	"""Returns the height and width of a single pixel, in radians."""
 	return extent(shape, wcs, signed=signed)/shape[-2:]
 
-def pixsizemap(shape, wcs):
+def pixshapemap(shape, wcs, bsize=1000):
+	"""Returns the physical width and heigh of each pixel in the map in radians.
+	Heavy for big maps. Much faster approaches are possible for known pixelizations."""
+	res    = zeros((2,)+shape[-2:], wcs)
+	# Loop over blocks in y to reduce memory usage
+	for i1 in range(0, shape[-2], bsize):
+		i2 = min(i1+bsize, shape[-2])
+		pix  = np.mgrid[i1:i2+1,:shape[-1]+1]
+		with utils.nowarn():
+			y, x = pix2sky(shape, wcs, pix, safe=True, corner=True)
+		del pix
+		dy = np.abs(y[1:,1:]-y[:-1,:-1])
+		dx = np.abs(x[1:,1:]-x[:-1,:-1])
+		cy = np.cos(y)
+		bad= cy<= 0
+		cy[bad] = np.mean(cy[~bad])
+		dx *= 0.5*(cy[1:,1:]+cy[:-1,:-1])
+		del y, x, cy
+		# Due to wcs fragility, we may have some nans at wraparound points.
+		# Fill these with the mean non-nan value. Since most maps will be cylindrical,
+		# it makes sense to do this by row
+		bad = ~np.isfinite(dy)
+		dy[bad] = np.mean(dy[~bad])
+		bad = ~np.isfinite(dx)
+		dx[bad] = np.mean(dx[~bad])
+		# Copy over to our output array
+		res[0,i1:i2,:] = dy
+		res[1,i1:i2,:] = dx
+		del dx, dy
+	return res
+
+def pixsizemap(shape, wcs, bsize=1000):
 	"""Returns the physical area of each pixel in the map in steradians.
 	Heavy for big maps."""
-	# First get the coordinates of all the pixel corners
-	pix  = np.mgrid[:shape[-2]+1,:shape[-1]+1]
-	with utils.nowarn():
-		y, x = pix2sky(shape, wcs, pix, safe=True, corner=True)
-	del pix
-	dy   = y[1:,1:]-y[:-1,:-1]
-	dx   = x[1:,1:]-x[:-1,:-1]
-	cy   = np.cos(y)
-	dx  *= 0.5*(cy[1:,1:]+cy[:-1,:-1])
-	del y, x, cy
-	area = dy*dx
-	del dy, dx
-	area = np.abs(area)
-	# Due to wcs fragility, we may have some nans at wraparound points.
-	# Fill these with the mean non-nan value. Since most maps will be cylindrical,
-	# it makes sense to do this by row
-	for a in area:
-		bad  = ~np.isfinite(a)
-		a[bad] = np.mean(a[~bad])
-	return ndmap(area, wcs)
+	return np.product(pixshapemap(shape, wcs, bsize=bsize),0)
 
 def lmap(shape, wcs, oversample=1):
 	"""Return a map of all the wavenumbers in the fourier transform
@@ -657,14 +685,21 @@ def lrmap(shape, wcs, oversample=1):
 	return lmap(shape, wcs, oversample=oversample)[...,:shape[-1]//2+1]
 
 def fft(emap, omap=None, nthread=0, normalize=True):
-	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap."""
+	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap.
+	If normalize is "phy", "phys" or "physical", then an additional normalization
+	is applied such that the binned square of the fourier transform can
+	be directly compared to theory (apart from mask corrections)
+	, i.e., pixel area factors are corrected for.
+	"""
 	res = samewcs(enfft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
 	if normalize: res /= np.prod(emap.shape[-2:])**0.5
+	if normalize in ["phy","phys","physical"]: res *= emap.pixsize()**0.5
 	return res
 def ifft(emap, omap=None, nthread=0, normalize=True):
 	"""Performs the 2d iFFT of the complex enmap given, and returns a pixel-space enmap."""
 	res = samewcs(enfft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
 	if normalize: res /= np.prod(emap.shape[-2:])**0.5
+	if normalize in ["phy","phys","physical"]: res /= emap.pixsize()**0.5
 	return res
 
 # These are shortcuts for transforming from T,Q,U real-space maps to
@@ -672,7 +707,12 @@ def ifft(emap, omap=None, nthread=0, normalize=True):
 # It would be better to precompute the rotation matrix and buffers, and
 # use real transforms.
 def map2harm(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
-	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap."""
+	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap.
+	If normalize starts with "phy" (for physical), then an additional normalization
+	is applied such that the binned square of the fourier transform can
+	be directly compared to theory  (apart from mask corrections)
+	, i.e., pixel area factors are corrected for.
+	"""
 	emap = samewcs(fft(emap,nthread=nthread,normalize=normalize), emap)
 	if emap.ndim > 2:
 		rot, s0 = None, None
