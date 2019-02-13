@@ -239,14 +239,14 @@ def define_arg_parser():
 	add_argument("--max", type=str, help="The value at which the color bar ends. See --range.")
 	add_argument("-q", "--quantile", type=float, default=0.01, help="Which quantile to use when automatically determining the color range. If specified, the color bar will go from [quant(q),quant(1-q)].")
 	add_argument("-v", dest="verbosity", action="count", default=0, help="Verbose output. Specify multiple times to increase verbosity further.")
-	add_argument("-s", "-u", "--scale", "--upgrade", type=str, default="1", help="Upscale the image using nearest neighbor interpolation by this amount before plotting. For example, 2 would make the map twice as large in each direction, while 4,1 would make it 4 times as tall and leave the width unchanged.")
+	add_argument("-u", "-s", "--upgrade", "--scale", type=str, default="1", help="Upscale the image using nearest neighbor interpolation by this amount before plotting. For example, 2 would make the map twice as large in each direction, while 4,1 would make it 4 times as tall and leave the width unchanged.")
 	add_argument("--verbosity", dest="verbosity", type=int, help="Specify verbosity directly as an integer.")
 	add_argument("--method", default="auto", help="Which colorization implementation to use: auto, fortran or python.")
 	add_argument("--slice", type=str, help="Apply this numpy slice to the map before plotting.")
 	add_argument("--sub",   type=str, help="Slice a map based on dec1:dec2,ra1:ra2.")
 	add_argument("-H", "--hdu",  type=int, default=0, help="Header unit of the fits file to use")
 	add_argument("--op", type=str, help="Apply this general operation to the map before plotting. For example, 'log(abs(m))' would give you a lograithmic plot.")
-	add_argument("-d", "--downgrade", type=str, default="1", help="Downsacale the map by this factor before plotting. This is done by averaging nearby pixels. See --scale for syntax.")
+	add_argument("-d", "--downgrade", type=str, default="1", help="Downsacale the map by this factor before plotting. This is done by averaging nearby pixels. See --upgrade for syntax.")
 	add_argument("--prefix", type=str, default="", help="Specify a prefix for the output file. See --oname.")
 	add_argument("--suffix", type=str, default="", help="Specify a suffix for the output file. See --oname.")
 	add_argument("--ext", type=str, default="png", help="Specify an extension for the output file. This will determine the file type of the resulting image. Can be anything PIL recognizes. The default is png.")
@@ -380,7 +380,7 @@ def get_map(ifile, args, return_info=False, name=None):
 			if args.op is not None:
 				m = eval(args.op, {"m":m},np.__dict__)
 			# Scale if requested
-			scale = parse_list(args.scale, int)
+			scale = parse_list(args.upgrade, int)
 			if np.any(np.array(scale)>1):
 				m = enmap.upgrade(m, scale)
 			# Flip such that pixels are in PIL or matplotlib convention,
