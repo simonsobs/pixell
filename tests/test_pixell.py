@@ -38,7 +38,7 @@ def test_extract():
     smap = imap[200:300,200:300]
     sshape,swcs = smap.shape,smap.wcs
     smap2 = enmap.extract(imap,sshape,swcs)
-    pixbox = enmap.get_pixbox(imap.wcs,sshape,swcs)
+    pixbox = enmap.pixbox_of(imap.wcs,sshape,swcs)
     # Do write and read test
     filename = "temporary_extract_map.fits" # NOT THREAD SAFE
     enmap.write_map(filename,imap)
