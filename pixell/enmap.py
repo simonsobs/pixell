@@ -397,7 +397,7 @@ def get_pixbox(iwcs,oshape,owcs):
 	pixbox = np.array([pixoff,pixoff+np.array(oshape[-2:])])
 	return pixbox
 
-def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
+def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False):
 	"""Like project, but only works for pixel-compatible wcs. Much
 	faster because it simply copies over pixels.
 
@@ -414,9 +414,12 @@ def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iw
 	"""
 	if iwcs is None: iwcs = map.wcs
 	pixbox = get_pixbox(iwcs,shape,wcs)
-	return extract_pixbox(map, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
+	extracted = extract_pixbox(map, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse = reverse)
+	assert wcsutils.is_equivalent(extracted.wcs,wcs) and (extracted.shape==shape) #TODO: add bounding box tests
+	extracted.wcs = wcs
+	return extracted
 
-def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
+def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False):
 	"""This function extracts a rectangular area from an enmap based on the
 	given pixbox[{from,to,[stride]},{y,x}]. The difference between this function
 	and plain slicing of the enmap is that this one supports wrapping around the
@@ -435,8 +438,23 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 	for ibox, obox in utils.sbox_wrap(pixbox.T, wrap=wrap, cap=map.shape[-2:]):
 		islice = utils.sbox2slice(ibox)
 		oslice = utils.sbox2slice(obox)
-		omap[oslice] = op(omap[oslice], map[islice])
+		if reverse: map [islice] = op(map[islice], omap[oslice])
+		else:       omap[oslice] = op(omap[oslice], map[islice])
 	return omap
+
+def insert(omap, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
+	"""Insert imap into omap based on their world coordinate systems, which
+	must be compatible. Essentially the reverse of extract."""
+	return extract(omap, imap.shape, imap.wcs, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=True)
+
+def insert_at(omap, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
+	"""Insert imap into omap at the position given by pix. If pix is [y,x], then
+	[0:ny,0:nx] in imap will be copied into [y:y+ny,x:x+nx] in omap. If pix is
+	[{from,to,[stride]},{y,x}], then this specifies the omap pixbox into which to
+	copy imap. Wrapping is handled the same way as in extract."""
+	pixbox = np.array(pix)
+	if pixbox.ndim == 1: pixbox = np.array([pixbox,pixbox+imap.shape[-2:]])
+	return extract_pixbox(omap, pixbox, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=True)
 
 def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=True, safe=True):
 	if unit != "pix": pos = sky2pix(map.shape, map.wcs, pos, safe=safe)
@@ -649,7 +667,7 @@ def modrmap(shape, wcs, ref="center", safe=True, corner=False):
 		if ref=="center": ref = center(shape,wcs)
 		else:             raise ValueError
 	ref = np.array(ref)[:,None,None]
-	return ndmap(utils.angdist(slmap,ref,zenith=False),wcs)
+	return ndmap(utils.angdist(slmap[::-1],ref[::-1],zenith=False),wcs)
 
 
 def laxes(shape, wcs, oversample=1):
