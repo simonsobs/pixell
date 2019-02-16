@@ -13,6 +13,7 @@ from pixell import array_ops
 from pixell import enplot
 from pixell import powspec
 from pixell import reproject
+from pixell import wcsutils
 import numpy as np
 import pickle
 import os,sys
@@ -29,6 +30,25 @@ def test_fft():
     imap = enmap.enmap(np.random.random(shape),wcs)
     assert np.all(np.isclose(imap,enmap.ifft(enmap.fft(imap,normalize='phy'),normalize='phy').real))
     assert np.all(np.isclose(imap,enmap.ifft(enmap.fft(imap)).real))
+
+def test_extract():
+    # Tests that extraction is sensible
+    shape,wcs = enmap.geometry(pos=(0,0),shape=(500,500),res=0.01)
+    imap = enmap.enmap(np.random.random(shape),wcs)
+    smap = imap[200:300,200:300]
+    sshape,swcs = smap.shape,smap.wcs
+    smap2 = enmap.extract(imap,sshape,swcs)
+    pixbox = enmap.get_pixbox(imap.wcs,sshape,swcs)
+    # Do write and read test
+    filename = "temporary_extract_map.fits" # NOT THREAD SAFE
+    enmap.write_map(filename,imap)
+    smap3 = enmap.read_map(filename,pixbox=pixbox)
+    os.remove(filename)
+    assert np.all(np.isclose(smap,smap2))
+    assert np.all(np.isclose(smap,smap3))
+    assert wcsutils.equal(smap.wcs,smap2.wcs)
+    assert wcsutils.equal(smap.wcs,smap3.wcs)
+    
     
 
 def test_fullsky_geometry():
