@@ -54,6 +54,7 @@ class ndmap(np.ndarray):
 	def sky2pix(self, coords, safe=True, corner=False): return sky2pix(self.shape, self.wcs, coords, safe, corner)
 	def pix2sky(self, pix,    safe=True, corner=False): return pix2sky(self.shape, self.wcs, pix,    safe, corner)
 	def box(self): return box(self.shape, self.wcs)
+	def pixbox_of(self,oshape,owcs): return pixbox_of(self.wcs, oshape,owcs)
 	def posmap(self, safe=True, corner=False, separable=False, dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
@@ -383,7 +384,7 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 	pmap = utils.interpol(map, pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
 	return ndmap(pmap, wcs)
 
-def get_pixbox(iwcs,oshape,owcs):
+def pixbox_of(iwcs,oshape,owcs):
 	"""Obtain the pixbox which when extracted from a map with WCS=iwcs
 	returns a map that has geometry oshape,owcs.
 	"""
@@ -413,7 +414,7 @@ def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iw
 	reading more into memory than necessary.
 	"""
 	if iwcs is None: iwcs = map.wcs
-	pixbox = get_pixbox(iwcs,shape,wcs)
+	pixbox = pixbox_of(iwcs,shape,wcs)
 	extracted = extract_pixbox(map, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse = reverse)
 	# There is a degeneracy between crval and crpix in the wcs, so the
 	# extracted map's wcs might not be identical, but is equivalent.
