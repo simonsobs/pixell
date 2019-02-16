@@ -415,7 +415,6 @@ def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iw
 	if iwcs is None: iwcs = map.wcs
 	pixbox = get_pixbox(iwcs,shape,wcs)
 	extracted = extract_pixbox(map, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse = reverse)
-	assert wcsutils.is_equivalent(extracted.wcs,wcs) and (extracted.shape==shape) #TODO: add bounding box tests
 	extracted.wcs = wcs
 	return extracted
 
