@@ -415,6 +415,9 @@ def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iw
 	if iwcs is None: iwcs = map.wcs
 	pixbox = get_pixbox(iwcs,shape,wcs)
 	extracted = extract_pixbox(map, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse = reverse)
+	# There is a degeneracy between crval and crpix in the wcs, so the
+	# extracted map's wcs might not be identical, but is equivalent.
+	# We explicitly set the wcs to be identical.
 	extracted.wcs = wcs
 	return extracted
 
