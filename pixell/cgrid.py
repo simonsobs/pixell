@@ -57,13 +57,13 @@ def calc_gridinfo(shape, wcs, steps=[2,2], nstep=[200,200], zenith=False, unit=1
 	# Draw lines of longitude
 	for phi in start[1] + np.arange(nline[1])*steps[1]:
 		# Loop over theta
-		pixs = np.array(wcs.wcs_world2pix(phi, np.linspace(box[0,0],box[1,0],nstep[0],endpoint=True), 0)).T
+		pixs = np.array(wcsutils.nobcheck(wcs).wcs_world2pix(phi, np.linspace(box[0,0],box[1,0],nstep[0],endpoint=True), 0)).T
 		if not wcsutils.is_plain(wcs): phi = utils.rewind(phi, 0, 360)
 		gridinfo.lon.append((phi/unit,calc_line_segs(pixs)))
 	# Draw lines of latitude
 	for theta in start[0] + np.arange(nline[0])*steps[0]:
 		# Loop over phi
-		pixs = np.array(wcs.wcs_world2pix(np.linspace(box[0,1],box[1,1]+0.9,nstep[1],endpoint=True), theta, 0)).T
+		pixs = np.array(wcsutils.nobcheck(wcs).wcs_world2pix(np.linspace(box[0,1],box[1,1]+0.9,nstep[1],endpoint=True), theta, 0)).T
 		if zenith: theta = 90-theta
 		gridinfo.lat.append((theta/unit,calc_line_segs(pixs)))
 	return gridinfo
