@@ -4,7 +4,7 @@ degree = np.pi/180
 arcmin = degree/60
 arcsec = arcmin/60
 fwhm   = 1.0/(8*np.log(2))**0.5
-T_cmb = 2.73
+T_cmb = 2.725
 c  = 299792458.0
 h  = 6.62606957e-34
 k  = 1.3806488e-23
@@ -1497,6 +1497,25 @@ def triangle_wave(x, period=1):
 	res[m2] = 2-x[m2]
 	res[m3] = x[m3]-4
 	return res
+
+def flux_factor(beam_area, freq, T0=T_cmb):
+	"""Compute the factor A that when multiplied with a linearized
+	temperature increment dT around T0 (in K) at the given frequency freq
+	in Hz and integrated over the given beam_area in steradians, produces
+	the corresponding flux = A*dT. This is useful for converting between
+	point source amplitudes and point source fluxes."""
+	# A blackbody has intensity I = 2hf**3/c**2/(exp(hf/kT)-1) = V/(exp(x)-1)
+	# with V = 2hf**3/c**2, x = hf/kT.
+	# dI/dx = -V/(exp(x)-1)**2 * exp(x)
+	# dI/dT = dI/dx * dx/dT
+	#       = 2hf**3/c**2/(exp(x)-1)**2*exp(x) * hf/k / T**2
+	#       = 2*h**2*f**4/c**2/k/T**2 * exp(x)/(exp(x)-1)**2
+	#       = 2*x**4 * k**3*T**2/(h**2*c**2) * exp(x)/(exp(x)-1)**2
+	#       = .... /(4*sinh(x/2)**2)
+	x     = h*freq/(k*T0)
+	dIdT  = 2*x**4 * k**3*T0**2/(h**2*c**2) / (4*np.sinh(x/2)**2)
+	dJydK = dIdT * 1e26 * beam_area
+	return dJydK
 
 ### Binning ####
 
