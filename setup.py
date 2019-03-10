@@ -56,12 +56,19 @@ def presrc():
         raise DistutilsError('Failure in the fortran source-prep step.')
     
 def prebuild():
+    # Handle Macs
+    try:
+        sp.check_call('scripts/osx.sh', shell=True)
+    except sp.CalledProcessError:
+        raise DistutilsError('Failed to prepare Mac OS X properly. See earlier errors.')
+    
     # Handle the special external dependencies.
     if not os.path.exists('_deps/libsharp/success.txt'):
         try:
             sp.check_call('scripts/install_libsharp.sh', shell=True)
         except sp.CalledProcessError:
             raise DistutilsError('Failed to install libsharp.')
+        
     # Handle cythonization to create sharp.c, etc.
     no_cython = sp.call('python -c \'import cython\'',shell=True)
     if no_cython:
