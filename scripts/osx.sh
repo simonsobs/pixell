@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 if [ "$(uname)" == "Darwin" ]; then
-	if $(gfortran --version); then
+	if (gfortran --version); then
 		echo "gfortran found. Assuming gcc (not just clang) is installed."
 	else
 		brew --version
