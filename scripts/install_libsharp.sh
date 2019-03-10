@@ -11,6 +11,7 @@ else
 	if [ "$(uname)" == "Darwin" ]; then
 		echo WARNING: automake not found. Since this looks like Mac OS, attempting to install it.
 		brew install autoconf automake
+		brew install clang-omp # anticipating gcc issues
 		if [ $? -eq 0 ]; then
 			echo
 		else
