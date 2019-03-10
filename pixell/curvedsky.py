@@ -33,7 +33,9 @@ def rand_alm_healpy(ps, lmax=None, seed=None, dtype=np.complex128):
 	import healpy
 	if seed is not None: np.random.seed(seed)
 	ps = powspec.sym_compress(ps, scheme="diag")
-	return np.asarray(healpy.synalm(ps, lmax=lmax, new=True))
+	alms = np.asarray(healpy.synalm(ps, lmax=lmax, new=True))
+	print(seed,alms)
+	return alms
 
 def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=True, return_ainfo=False):
 	"""This is a replacement for healpy.synalm. It generates the random
