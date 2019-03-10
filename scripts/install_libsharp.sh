@@ -14,7 +14,9 @@ else
 		if [ $? -eq 0 ]; then
 			echo
 		else
+			echo "NOTE: You might need to enter your user password since we are going to attempt to install homebrew."
 			ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)" < /dev/null 2> /dev/null
+			brew install autoconf
 		fi
 		aclocal
 	elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
