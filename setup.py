@@ -14,6 +14,25 @@ build_ext = build_ext.build_ext
 build_src = build_src.build_src
 
 
+# Handle Macs
+is_mac = os.popen('uname').read().strip()=="Darwin"
+if is_mac:
+    # Installs brew and gcc and gfortran if necessary
+    try:
+        sp.check_call('scripts/osx.sh', shell=True)
+    except sp.CalledProcessError:
+        raise DistutilsError('Failed to prepare Mac OS X properly. See earlier errors.')
+    # Checks gcc/gfortran version
+    import glob
+    gfs = glob.glob("/usr/bin/gfortran-*")
+    if len(gfs)==0: gfs = glob.glob("/usr/local/bin/gfortran-*")
+    if len(gfs)==0: raise DistutilsError('No gfortran found.')
+    gversion = os.path.basename(gfs[0]).split('-')[-1]
+    os.environ["FC"] = "gfortran-%s" % gversion
+    os.environ["CC"] = "gcc-%s" % gversion
+
+
+
 def pip_install(package):
     import pip
     if hasattr(pip, 'main'):
@@ -56,23 +75,6 @@ def presrc():
         raise DistutilsError('Failure in the fortran source-prep step.')
     
 def prebuild():
-    # Handle Macs
-    is_mac = os.popen('uname').read().strip()=="Darwin"
-    if is_mac:
-        # Installs brew and gcc and gfortran if necessary
-        try:
-            sp.check_call('scripts/osx.sh', shell=True)
-        except sp.CalledProcessError:
-            raise DistutilsError('Failed to prepare Mac OS X properly. See earlier errors.')
-        # Checks gcc/gfortran version
-        import glob
-        gfs = glob.glob("/usr/bin/gfortran-*")
-        if len(gfs)==0: gfs = glob.glob("/usr/local/bin/gfortran-*")
-        if len(gfs)==0: raise DistutilsError('No gfortran found.')
-        gversion = os.path.basename(gfs[0]).split('-')[-1]
-        os.environ["FC"] = "gfortran-%s" % gversion
-        os.environ["CC"] = "gcc-%s" % gversion
-    
     # Handle the special external dependencies.
     if not os.path.exists('_deps/libsharp/success.txt'):
         try:
