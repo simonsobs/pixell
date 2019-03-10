@@ -81,7 +81,7 @@ def prebuild():
             raise DistutilsError('Failed to install libsharp.')
         
     # Handle cythonization to create sharp.c, etc.
-    no_cython = sp.call('python -c \'import cython\'',shell=True)
+    no_cython = sp.call('cython --version',shell=True)
     if no_cython:
         try:
             print("Cython not found. Attempting a conda install first.")
