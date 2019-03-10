@@ -8,7 +8,7 @@ except ImportError: pass
 
 class ShapeError(Exception): pass
 
-def rand_map(shape, wcs, ps, lmax=None, dtype=np.float64, seed=None, oversample=2.0, spin=[0,2], method="auto", direct=False, verbose=False):
+def rand_map(shape, wcs, ps, lmax=None, dtype=np.float64, seed=None, oversample=2.0, spin=[0,2], method="auto", direct=False, verbose=False,force_zero_alm=False):
 	"""Generates a CMB realization with the given power spectrum for an enmap
 	with the specified shape and WCS. This is identical to enlib.rand_map, except
 	that it takes into account the curvature of the full sky. This makes it much
@@ -23,6 +23,7 @@ def rand_map(shape, wcs, ps, lmax=None, dtype=np.float64, seed=None, oversample=
 	ctype = np.result_type(dtype,0j)
 	if verbose: print("Generating alms with seed %s up to lmax=%d dtype %s" % (str(seed), lmax, np.dtype(ctype).char))
 	alm   = rand_alm_healpy(ps, lmax=lmax, seed=seed, dtype=ctype)
+	if force_zero_alm: alm = alm*0
 	if verbose: print("Allocating output map shape %s dtype %s" % (str((ncomp,)+shape[-2:]), np.dtype(dtype).char))
 	map   = enmap.empty((ncomp,)+shape[-2:], wcs, dtype=dtype)
 	alm2map(alm, map, spin=spin, oversample=oversample, method=method, direct=direct, verbose=verbose)
