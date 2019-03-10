@@ -130,7 +130,10 @@ def get_geometries(yml_section):
     return geos
 
 def generate_map(shape,wcs,powspec,lmax,seed):
-    return curvedsky.rand_map(shape, wcs, powspec, lmax=lmax, dtype=np.float64, seed=seed, oversample=2.0, spin=[0,2], method="auto", direct=False, verbose=False)
+    omap = curvedsky.rand_map(shape, wcs, powspec, lmax=lmax, dtype=np.float64, seed=seed, oversample=2.0, spin=[0,2], method="auto", direct=False, verbose=False)
+    print(omap)
+    print(omap.dtype)
+    return omap
 
 def check_equality(imap1,imap2):
     assert np.all(imap1.shape==imap2.shape)

@@ -73,8 +73,9 @@ def test_pixels():
         for s in results[g].keys():
             assert sorted(results[g][s].keys())==sorted(cresults[g][s].keys())
             for e in results[g][s].keys():
-                print(results[g][s][e])
-                print(cresults[g][s][e])
+                print(g,s,e)
+                print("Results ", results[g][s][e])
+                print("Saved ", cresults[g][s][e])
                 assert np.all(np.isclose(results[g][s][e],cresults[g][s][e]))
 
 
