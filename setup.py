@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """The setup script."""
-
+from __future__ import print_function
 import setuptools
 from distutils.errors import DistutilsError
 from numpy.distutils.core import setup, Extension, build_ext, build_src
@@ -12,6 +12,14 @@ import subprocess as sp
 import numpy as np
 build_ext = build_ext.build_ext
 build_src = build_src.build_src
+
+
+def pip_install(package):
+    import pip
+    if hasattr(pip, 'main'):
+        pip.main(['install', package])
+    else:
+        pip._internal.main(['install', package])
 
 with open('README.rst') as readme_file:
     readme = readme_file.read()
@@ -55,6 +63,19 @@ def prebuild():
         except sp.CalledProcessError:
             raise DistutilsError('Failed to install libsharp.')
     # Handle cythonization to create sharp.c, etc.
+    no_cython = sp.call('python -c \'import cython\'',shell=True)
+    if no_cython:
+        try:
+            print("Cython not found. Attempting a conda install first.")
+            import conda.cli
+            conda.cli.main('conda', 'install',  '-y', 'cython')
+        except:
+            try:
+                print("conda install of cython failed. Attempting a pip install.")
+                pip_install("cython")
+            except:
+                raise DistutilsError('Cython not found and all attempts at installing it failed. User intervention required.')
+        
     if sp.call('make -C cython',  shell=True) != 0:
         raise DistutilsError('Failure in the cython pre-build step.')
 
