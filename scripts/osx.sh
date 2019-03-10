@@ -13,8 +13,6 @@ if [ "$(uname)" == "Darwin" ]; then
 		
 		# We need to install gcc and gfortran
 		brew reinstall gcc
-		CC=/usr/local/bin/gcc-8
-		FC=/usr/local/bin/gfortran-8
 	fi
 
 fi

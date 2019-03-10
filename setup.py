@@ -57,10 +57,23 @@ def presrc():
     
 def prebuild():
     # Handle Macs
-    try:
-        sp.check_call('scripts/osx.sh', shell=True)
-    except sp.CalledProcessError:
-        raise DistutilsError('Failed to prepare Mac OS X properly. See earlier errors.')
+    is_mac = os.popen('uname').read().strip()=="Darwin"
+    if is_mac:
+        # Installs brew and gcc and gfortran if necessary
+        try:
+            sp.check_call('scripts/osx.sh', shell=True)
+        except sp.CalledProcessError:
+            raise DistutilsError('Failed to prepare Mac OS X properly. See earlier errors.')
+        # Checks gcc/gfortran version
+        import glob
+        gfs = glob.glob("/usr/bin/gfortran-*")
+        if len(gfs)==0: gfs = glob.glob("/usr/local/bin/gfortran-*")
+        if len(gfs)==0: raise DistutilsError('No gfortran found.')
+        gversion = os.path.basename(gfs[0]).split('-')[-1]
+        os.environ["FC"] = "gfortran-%s" % gversion
+        os.environ["CC"] = "gcc-%s" % gversion
+            
+        
     
     # Handle the special external dependencies.
     if not os.path.exists('_deps/libsharp/success.txt'):
@@ -89,18 +102,21 @@ def prebuild():
 
 class CustomBuild(build_ext):
     def run(self):
+        print("Running build...")
         prebuild()
         # Then let setuptools do its thing.
         return build_ext.run(self)
 
 class CustomSrc(build_src):
     def run(self):
+        print("Running src...")
         presrc()
         # Then let setuptools do its thing.
         return build_src.run(self)
 
 class CustomEggInfo(setuptools.command.egg_info.egg_info):
     def run(self):
+        print("Running EggInfo...")
         presrc()
         prebuild()
         return setuptools.command.egg_info.egg_info.run(self)   
