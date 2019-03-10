@@ -12,7 +12,7 @@ if [ "$(uname)" == "Darwin" ]; then
 		fi
 		
 		# We need to install gcc and gfortran
-		brew reinstall gcc --without-multilib
+		brew reinstall gcc
 	fi
 
 fi
