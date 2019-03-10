@@ -33,7 +33,7 @@ else
 	fi
 fi
 autoconf
-CC=gcc-8 CXX=g++-8 ./configure --enable-pic
+./configure --enable-pic
 make
 if [ $? -eq 0 ]; then
     echo Successfully installed libsharp.
