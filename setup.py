@@ -72,8 +72,6 @@ def prebuild():
         gversion = os.path.basename(gfs[0]).split('-')[-1]
         os.environ["FC"] = "gfortran-%s" % gversion
         os.environ["CC"] = "gcc-%s" % gversion
-            
-        
     
     # Handle the special external dependencies.
     if not os.path.exists('_deps/libsharp/success.txt'):
