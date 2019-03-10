@@ -5,7 +5,7 @@
 from __future__ import print_function
 import setuptools
 from distutils.errors import DistutilsError
-from numpy.distutils.core import setup, Extension, build_ext, build_src
+from numpy.distutils.core import setup, Extension, build_ext, build_src, develop
 import versioneer
 import os, sys
 import subprocess as sp
@@ -107,6 +107,13 @@ class CustomBuild(build_ext):
         # Then let setuptools do its thing.
         return build_ext.run(self)
 
+class CustomDevelop(develop):
+    def run(self):
+        print("Running develop...")
+        prebuild()
+        # Then let setuptools do its thing.
+        return develop.run(self)
+    
 class CustomSrc(build_src):
     def run(self):
         print("Running src...")
@@ -123,6 +130,7 @@ class CustomEggInfo(setuptools.command.egg_info.egg_info):
 
 # Cascade your overrides here.
 cmdclass = {
+    'develop': CustomDevelop,
     'build_ext': CustomBuild,
     'build_src': CustomSrc,
     'egg_info': CustomEggInfo,
