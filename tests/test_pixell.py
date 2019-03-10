@@ -23,7 +23,7 @@ def test_basic():
     seed = 100
     shape,wcs = enmap.fullsky_geometry(shape=(5,5))
     powspec = np.ones((100,))
-    lmax = 1
+    lmax = 2
     omap = curvedsky.rand_map(shape, wcs, powspec, lmax=lmax, dtype=np.float64, seed=seed, oversample=2.0, spin=[0,2], method="auto", direct=False, verbose=False)
     print(omap)
 
