@@ -46,6 +46,7 @@ if is_mac:
     gversion = os.path.basename(gfs[0]).split('-')[-1]
     os.environ["FC"] = "gfortran-%s" % gversion
     os.environ["CC"] = "gcc-%s" % gversion
+    os.environ["CXX"] = "g++-%s" % gversion
 
 
 
