@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 if [ "$(uname)" == "Darwin" ]; then
-	brew install clang-omp # anticipating gcc issues
+	brew install --with-toolchain llvm # anticipating gcc issues
 fi
 
 
