@@ -1,4 +1,4 @@
-import pixel_tests as ptests
+from . import pixel_tests as ptests
 import pickle
 import os
 

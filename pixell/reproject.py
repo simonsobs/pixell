@@ -464,3 +464,4 @@ def populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400):
         sny += tNys[i]
         print(done , " / ", ntiles, " tiles done...")
     return omap
+

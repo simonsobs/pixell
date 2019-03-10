@@ -19,10 +19,12 @@ with open('README.rst') as readme_file:
 with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
-requirements       = []
-setup_requirements = []
-test_requirements  = []
+with open('requirements.txt') as f:
+    requirements = f.read().splitlines()
 
+with open('requirements_dev.txt') as f:
+    test_requirements = f.read().splitlines()
+    
 compile_opts = {
     'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing'],
     'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
@@ -139,7 +141,6 @@ setup(
     keywords='pixell',
     name='pixell',
     packages=['pixell'],
-    setup_requires=setup_requirements,
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/simonsobs/pixell',
