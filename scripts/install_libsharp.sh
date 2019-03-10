@@ -23,8 +23,15 @@ else
 		echo WARNING: automake not found. Please install this or libsharp will not be installed correctly.
 		exit 127
 	fi
-	
+fi
 autoconf
 ./configure --enable-pic
 make
+if [ $? -eq 0 ]; then
+    echo Successfully installed libsharp.
+	touch success.txt
+else
+	echo ERROR: Libsharp did not install correctly.
+	exit 127
+fi
 rm -rf python/

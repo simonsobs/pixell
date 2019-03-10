@@ -49,7 +49,7 @@ def presrc():
     
 def prebuild():
     # Handle the special external dependencies.
-    if not os.path.exists('_deps/libsharp/libsharp/sharp.h'):
+    if not os.path.exists('_deps/libsharp/success.txt'):
         try:
             sp.check_call('scripts/install_libsharp.sh', shell=True)
         except sp.CalledProcessError:
