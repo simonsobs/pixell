@@ -33,9 +33,7 @@ def rand_alm_healpy(ps, lmax=None, seed=None, dtype=np.complex128):
 	import healpy
 	if seed is not None: np.random.seed(seed)
 	ps = powspec.sym_compress(ps, scheme="diag")
-	alms = np.asarray(healpy.synalm(ps, lmax=lmax, new=True))
-	print(seed,alms)
-	return alms
+	return np.asarray(healpy.synalm(ps, lmax=lmax, new=True))
 
 def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=True, return_ainfo=False):
 	"""This is a replacement for healpy.synalm. It generates the random
@@ -183,7 +181,9 @@ def alm2map_cyl(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, cop
 	if direct: tmap, mslices, tslices = map, [(Ellipsis,)], [(Ellipsis,)]
 	else:      tmap, mslices, tslices = make_projectable_map_cyl(map, verbose=verbose)
 	if verbose: print("Performing alm2map")
+	print("alm", alm)
 	alm2map_raw(alm, tmap, ainfo, map2minfo(tmap), spin=spin, deriv=deriv)
+	print("tmap", tmap)
 	for mslice, tslice in zip(mslices, tslices):
 		map[mslice] = tmap[tslice]
 	return map
