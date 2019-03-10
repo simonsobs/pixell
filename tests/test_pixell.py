@@ -22,10 +22,20 @@ def test_basic():
     print("Basic test")
     seed = 100
     shape,wcs = enmap.fullsky_geometry(shape=(5,5))
-    powspec = np.ones((100,))
-    lmax = 2
-    omap = curvedsky.rand_map(shape, wcs, powspec, lmax=lmax, dtype=np.float64, seed=seed, oversample=2.0, spin=[0,2], method="auto", direct=False, verbose=False,force_zero_alm=True)
-    print(omap)
+    # powspec = np.ones((100,))
+    # lmax = 2
+    # map = curvedsky.rand_map(shape, wcs, powspec, lmax=lmax, dtype=np.float64, seed=seed, oversample=2.0, spin=[0,2], method="auto", direct=False, verbose=False,force_zero_alm=True)
+
+
+    map = enmap.zeros(shape, wcs)
+    minfo = curvedsky.map2minfo(map)
+    ainfo = sharp.alm_info(lmax=2)
+    alm = np.zeros(ainfo.nelem, dtype=np.complex128)
+    alm[ainfo.lm2ind(2,0)] = 1
+    sht = sharp.sht(minfo, ainfo)
+    sht.alm2map(alm, map.reshape(-1))
+    
+    print(map)
 
 
 def test_enplot():
