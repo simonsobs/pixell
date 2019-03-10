@@ -18,6 +18,16 @@ import numpy as np
 import pickle
 import os,sys
 
+def test_basic():
+    print("Basic test")
+    seed = 100
+    shape,wcs = enmap.geometry(shape=(5,5),pos=(0,0),res=np.deg2rad(10.))
+    powspec = np.ones((100,))
+    lmax = 100
+    omap = curvedsky.rand_map(shape, wcs, powspec, lmax=lmax, dtype=np.float64, seed=seed, oversample=2.0, spin=[0,2], method="auto", direct=False, verbose=False)
+    print(omap)
+
+
 def test_enplot():
     print("Testing enplot...")
     shape,wcs = enmap.geometry(pos=(0,0),shape=(3,100,100),res=0.01)

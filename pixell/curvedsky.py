@@ -181,13 +181,7 @@ def alm2map_cyl(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, cop
 	if direct: tmap, mslices, tslices = map, [(Ellipsis,)], [(Ellipsis,)]
 	else:      tmap, mslices, tslices = make_projectable_map_cyl(map, verbose=verbose)
 	if verbose: print("Performing alm2map")
-	print("alm", alm)
-	print("ainfo", ainfo.lmax, ainfo.mmax, ainfo.stride, ainfo.nelem, ainfo.mstart)
-	print("map2minfo",map2minfo(tmap).nrow, map2minfo(tmap).npix, map2minfo(tmap).theta, map2minfo(tmap).nphi, map2minfo(tmap).phi0, map2minfo(tmap).offsets, map2minfo(tmap).stride, map2minfo(tmap).weight)
-	print("spin",spin)
-	print("deriv",deriv)
 	alm2map_raw(alm, tmap, ainfo, map2minfo(tmap), spin=spin, deriv=deriv)
-	print("tmap", tmap)
 	for mslice, tslice in zip(mslices, tslices):
 		map[mslice] = tmap[tslice]
 	return map
