@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 if [ "$(uname)" == "Darwin" ]; then
+	brew update
+	brew upgrade
 	brew install --with-toolchain llvm # anticipating gcc issues
 fi
 
