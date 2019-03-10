@@ -18,14 +18,21 @@ import numpy as np
 import pickle
 import os,sys
 
+def test_interpol():
+    print("Lensing")
+    np.random.seed(100)
+    shape,wcs = enmap.geometry(shape=(5,5),res=np.deg2rad(10./60.),pos=(0,0))
+    imap = enmap.enmap(np.random.random(shape),wcs)
+    phi = enmap.enmap(np.random.random(shape),wcs)
+    grad_phi = enmap.grad(phi)
+    omap = lensing.lens_map(imap, grad_phi, order=3, mode="spline", border="cyclic", trans=False, deriv=False, h=1e-7)
+    print(omap)
+    
+
 def test_basic():
     print("Basic test")
     seed = 100
     shape,wcs = enmap.fullsky_geometry(shape=(5,5))
-    # powspec = np.ones((100,))
-    # lmax = 2
-    # map = curvedsky.rand_map(shape, wcs, powspec, lmax=lmax, dtype=np.float64, seed=seed, oversample=2.0, spin=[0,2], method="auto", direct=False, verbose=False,force_zero_alm=True)
-
 
     map = enmap.zeros(shape, wcs)
     minfo = curvedsky.map2minfo(map)
