@@ -73,7 +73,7 @@ compile_opts = {
     'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing'],
     'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
-    'extra_link_args': ['-fopenmp','-lgomp']
+    # 'extra_link_args': ['-fopenmp','-lgomp']
     }
 
 fcflags = os.getenv('FCFLAGS')
@@ -165,9 +165,6 @@ setup(
     description="pixell",
     package_dir={"pixell": "pixell"},
     entry_points={
-#       'console_scripts': [
-#           'pixell=pixell.cli:main',
-#       ],
     },
     ext_modules=[
         Extension('pixell.sharp',
