@@ -73,10 +73,10 @@ compile_opts = {
     'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing'],
     'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
-    'extra_link_args': ['-fopenmp']
+    # 'extra_link_args': ['-fopenmp']
     }
 
-# if not(is_mac): compile_opts['extra_link_args'] = ['-lgomp']
+if not(is_mac): compile_opts['extra_link_args'] = ['-lgomp']
     
     
 
