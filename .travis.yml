@@ -19,9 +19,10 @@ after_success:
   - coveralls
   
 matrix:
-  - os: osx
-    language: generic
-    env: PYTHON=3.5.1
+  include:
+    - os: osx
+      language: generic
+      env: PYTHON=3.5.1
     
   allow_failures:
     - python: 3.5-dev
