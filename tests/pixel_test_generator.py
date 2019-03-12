@@ -1,3 +1,4 @@
+from pixell import sharp
 from . import pixel_tests as ptests
 import pickle
 import os

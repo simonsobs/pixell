@@ -4,8 +4,8 @@
 """Tests for `pixell` package."""
 
 
-from pixell import enmap
 from pixell import sharp
+from pixell import enmap
 from pixell import curvedsky
 from pixell import lensing
 from pixell import interpol

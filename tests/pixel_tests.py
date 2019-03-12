@@ -1,4 +1,5 @@
 from __future__ import print_function
+from pixell import sharp
 import matplotlib
 matplotlib.use('Agg')
 from pixell import enmap,curvedsky,wcsutils,reproject
