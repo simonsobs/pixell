@@ -7,7 +7,7 @@ coverage>=4.5
 Sphinx>=1.7
 twine>=1.10
 numpy>=1.13
-astropy==2.0.12
+astropy>=3.0
 setuptools>=39.2
 h5py>=2.7
 scipy>=1.0
@@ -17,4 +17,4 @@ matplotlib>=2.0
 pyyaml>=3.0
 pytest-cov>=2.6
 coveralls>=1.5
-pytest==3.6
+pytest>=4.0

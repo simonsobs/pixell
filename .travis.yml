@@ -7,7 +7,6 @@ python:
 - 2.6
 os: linux
 install:
-  - docker pull $DOCKER_IMAGE
   - python -m pip install -U pip
   - python -m easy_install -U setuptools
   - pip install -r requirements.txt
@@ -23,21 +22,11 @@ matrix:
   - python: 3.6-dev
   - python: 3.7-dev
   - python: 2.6
+  - python: 2.7
 
-  include:
-    - sudo: required
-      services:
-        - docker
-      env: DOCKER_IMAGE=quay.io/pypa/manylinux1_x86_64
-    - sudo: required
-      services:
-        - docker
-      env: DOCKER_IMAGE=quay.io/pypa/manylinux1_i686
-           PRE_CMD=linux32
-           
-    - os: osx
-      language: generic
-      env: PYTHON=3.5.1
+  - os: osx
+    language: generic
+    env: PYTHON=3.5.1
            
 deploy:
   provider: pypi
