@@ -12,10 +12,7 @@ if [ "$(uname)" == "Darwin" ]; then
 			ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)" < /dev/null 2> /dev/null
 		fi
 		
-		brew reinstall gcc --with-multilib
-		if [ $? -eq 0 ]; then
-			brew reinstall gcc
-		fi
+		brew install gcc
 
 	fi
 
