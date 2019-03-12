@@ -11,4 +11,4 @@ healpy>=1.12.3
 Pillow>=5.3.0
 pytest-cov>=2.6
 coveralls>=1.5
-pytest==2.8
+pytest==3.6
