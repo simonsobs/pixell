@@ -11,6 +11,7 @@ import versioneer
 import os, sys
 import subprocess as sp
 import numpy as np
+import glob
 build_ext = build_ext.build_ext
 build_src = build_src.build_src
 
@@ -30,24 +31,36 @@ if (
 ):
     os.environ["MACOSX_DEPLOYMENT_TARGET"] = get_config_var("MACOSX_DEPLOYMENT_TARGET")
 
-# Handle Macs
-is_mac = os.popen('uname').read().strip()=="Darwin"
-if is_mac:
-    # Installs brew and gcc and gfortran if necessary
+compile_opts = {
+    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing'],
+    'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
+    'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
+    }
+
+# Set compiler options
+# Windows
+if sys.platform == 'win32':
+    raise DistUtilsError('Windows is not supported.')
+# Mac OS X - needs gcc (usually via HomeBrew) because the default compiler LLVM (clang) does not support OpenMP
+#          - with gcc -fopenmp option implies -pthread
+elif sys.platform == 'darwin':
     try:
         sp.check_call('scripts/osx.sh', shell=True)
     except sp.CalledProcessError:
         raise DistutilsError('Failed to prepare Mac OS X properly. See earlier errors.')
-    # Checks gcc/gfortran version
-    import glob
-    gfs = glob.glob("/usr/bin/gfortran-*")
-    if len(gfs)==0: gfs = glob.glob("/usr/local/bin/gfortran-*")
-    if len(gfs)==0: raise DistutilsError('No gfortran found.')
-    gversion = os.path.basename(gfs[0]).split('-')[-1]
-    os.environ["FC"] = "gfortran-%s" % gversion
-    os.environ["CC"] = "gcc-%s" % gversion
-    os.environ["CXX"] = "g++-%s" % gversion
-
+    gccpath = glob.glob('/usr/local/bin/gcc-[4-8]*')
+    if gccpath:
+        # Use newest gcc found
+        os.environ['CC'] = gccpath[-1].split(os.sep)[-1]
+        os.environ['CXX'] = os.environ['CC'].replace("gcc","g++")
+        os.environ['FC'] = os.environ['CC'].replace("gcc","gfortran")
+        rpath = '/usr/local/opt/gcc/lib/gcc/' + gccpath[-1].split(os.sep)[-1][-1] + '/'
+    else:
+        raise('Cannot find gcc 4.x, 5.x, 6.x, 7.x, or 8.x in /usr/local/bin. pixell requires gcc to be installed - easily done through the Homebrew package manager (http://brew.sh). Note: gcc with OpenMP support is required.')
+    compile_opts['extra_link_args'] = ['-fopenmp']
+# Linux
+elif sys.platform == 'linux':
+    compile_opts['extra_link_args'] = ['-fopenmp']
 
 
 def pip_install(package):
@@ -68,15 +81,6 @@ with open('requirements.txt') as f:
 
 with open('requirements_dev.txt') as f:
     test_requirements = f.read().splitlines()
-    
-compile_opts = {
-    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing'],
-    'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
-    'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
-    'extra_link_args': ['-lgomp']
-    }
-
-# if not(is_mac): compile_opts['extra_link_args'] = ['-lgomp']
     
     
 
