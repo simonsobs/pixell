@@ -11,8 +11,10 @@ install:
   - python -m easy_install -U setuptools
   - pip install -r requirements.txt
   - python setup.py develop
+  
 script:
 - py.test --cov=pixell tests/
+
 after_success:
   - coveralls
   
@@ -23,6 +25,7 @@ matrix:
   - python: 3.7-dev
   - python: 2.6
   - python: 2.7
+  - python: 3.4
 
   - os: osx
     language: generic
