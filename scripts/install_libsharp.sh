@@ -34,6 +34,7 @@ else
 fi
 autoconf
 ./configure --enable-pic
+cat config.log
 make
 if [ $? -eq 0 ]; then
     echo Successfully installed libsharp.
