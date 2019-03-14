@@ -12,7 +12,7 @@ if [ "$(uname)" == "Darwin" ]; then
 			ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)" < /dev/null 2> /dev/null
 		fi
 		
-		brew install gcc
+		brew reinstall gcc
 
 	fi
 
