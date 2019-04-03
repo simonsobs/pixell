@@ -1,10 +1,9 @@
 """This module provides functions for taking into account the curvature of the
 full sky."""
 from __future__ import print_function
+from . import sharp
 import numpy as np
 from . import enmap, powspec, wcsutils, utils
-try: from . import sharp
-except ImportError: pass
 
 class ShapeError(Exception): pass
 
