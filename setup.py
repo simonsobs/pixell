@@ -6,6 +6,7 @@
 import setuptools
 from distutils.errors import DistutilsError
 from numpy.distutils.core import setup, Extension, build_ext, build_src
+from distutils.sysconfig import get_config_var, get_config_vars
 import versioneer
 import os, sys
 import subprocess as sp
@@ -22,6 +23,22 @@ with open('HISTORY.rst') as history_file:
 requirements       = []
 setup_requirements = []
 test_requirements  = []
+
+# The following copied from healpy might be necessary for libsharp
+# Apple switched default C++ standard libraries (from gcc's libstdc++ to
+# clang's libc++), but some pre-packaged Python environments such as Anaconda
+# are built against the old C++ standard library. Luckily, we don't have to
+# actually detect which C++ standard library was used to build the Python
+# interpreter. We just have to propagate MACOSX_DEPLOYMENT_TARGET from the
+# configuration variables to the environment.
+#
+# This workaround fixes <https://github.com/healpy/healpy/issues/151>.
+if (
+    get_config_var("MACOSX_DEPLOYMENT_TARGET")
+    and not "MACOSX_DEPLOYMENT_TARGET" in os.environ
+):
+    os.environ["MACOSX_DEPLOYMENT_TARGET"] = get_config_var("MACOSX_DEPLOYMENT_TARGET")
+
 
 compile_opts = {
     'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing'],

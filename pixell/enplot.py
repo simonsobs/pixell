@@ -271,6 +271,7 @@ def define_arg_parser():
 	add_argument("-a", "--autocrop", action="store_true", help="Automatically crop the image by removing expanses of uniform color around the edges. This is done jointly for all components in a map, making them directly comparable, but is done independently for each input file.")
 	add_argument("-A", "--autocrop-each", action="store_true", help="As --autocrop, but done individually for each component in each map.")
 	add_argument("-L", "--layers", action="store_true", help="Output the individual layers that make up the final plot (such as the map itself, the coordinate grid, the axis labels, any contours and lables) as individual files instead of compositing them into a final image.")
+	add_argument(      "--no-image", action="store_true", help="Skip the main image plotting. Useful for getting a pure contour plot, for example.")
 	add_argument("-C", "--contours", type=str, default=None, help="Enable contour lines. For example -C 10 to place a contour at every 10 units in the map, -C 5:10 to place it at every 10 units, but starting at 5, and 1,2,4,8 or similar to place contours at manually chosen locations.")
 	add_argument("--contour-type",  type=str, default="uniform", help="The type of the contour specification. Only used when the contours specification is a list of numbers rather than a string (so not from the command line interface). 'uniform': the list is [interval] or [base, interval]. 'list': the list is an explicit list of the values the contours should be at.")
 	add_argument("--contour-color", type=str, default="000000", help="The color scheme to use for contour lines. Either a single rrggbb, a val:rrggbb,val:rrggbb,... specification or a color scheme name, such as planck, wmap or gray.")
@@ -450,10 +451,11 @@ def draw_map_field(map, args, crange=None, return_layers=False, return_info=Fals
 	names  = []
 	yoff   = map.shape[-2]
 	# Image layer
-	with printer.time("to image", 3):
-		img = PIL.Image.fromarray(utils.moveaxis(color,0,2)).convert('RGBA')
-	layers.append((img,[[0,0],img.size]))
-	names.append("img")
+	if not args.no_image:
+		with printer.time("to image", 3):
+			img = PIL.Image.fromarray(utils.moveaxis(color,0,2)).convert('RGBA')
+		layers.append((img,[[0,0],img.size]))
+		names.append("img")
 	# Contours
 	if args.contours:
 		with printer.time("draw contours", 3):
