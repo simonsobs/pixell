@@ -367,7 +367,7 @@ def nearest_product(n, factors, direction="below"):
 	a = np.zeros(nmax+1,dtype=bool)
 	a[1] = True
 	best = None
-	for i in xrange(n+1):
+	for i in range(n+1):
 		if not a[i]: continue
 		for f in factors:
 			m = i*f
@@ -1921,3 +1921,14 @@ def outer_stack(arrays):
 	for i, array in enumerate(arrays):
 		res[i] = array[(None,)*i + (slice(None),) + (None,)*(len(arrays)-i-1)]
 	return res
+
+def beam_transform_to_profile(bl, theta, normalize=False):
+	"""Given the transform b(l) of a beam, evaluate its real space angular profile
+	at the given radii theta."""
+	bl = np.asarray(bl)
+	l  = np.arange(bl.size)
+	x  = np.cos(theta)
+	a  = bl*(2*l+1)/(4*np.pi)
+	profile = np.polynomial.legendre.legval(x,a)
+	if normalize: profile /= np.sum(a)
+	return profile
