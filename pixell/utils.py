@@ -367,7 +367,7 @@ def nearest_product(n, factors, direction="below"):
 	a = np.zeros(nmax+1,dtype=bool)
 	a[1] = True
 	best = None
-	for i in xrange(n+1):
+	for i in range(n+1):
 		if not a[i]: continue
 		for f in factors:
 			m = i*f
