@@ -119,7 +119,7 @@ def plot_iterator(*arglist, **kwargs):
 	# Check for invalid kwargs
 	check_args(args)
 	if comm is None:
-		comm = mpi.COMM_WORLD
+		comm = mpi.COMM_SELF
 	# Set up verbose output
 	printer = Printer(args.verbosity)
 	cache = {}

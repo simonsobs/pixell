@@ -1517,6 +1517,10 @@ def flux_factor(beam_area, freq, T0=T_cmb):
 	dJydK = dIdT * 1e26 * beam_area
 	return dJydK
 
+def planck(f, T):
+	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
+	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
+
 ### Binning ####
 
 def edges2bins(edges):
