@@ -1434,9 +1434,49 @@ def point_in_polygon(points, polys):
 	for i in range(verts.shape[-2]):
 		x1, y1 = verts[...,i-1,:].T
 		x2, y2 = verts[...,i,:].T
-		x = -y1*(x2-x1)/(y2-y1) + x1
+		with nowarn():
+			x = -y1*(x2-x1)/(y2-y1) + x1
 		ncross += ((y1*y2 < 0) & (x > 0)).T
 	return ncross.T % 2 == 1
+
+def poly_edge_dist(points, polygons):
+	"""Given points [...,2] and a set of polygons [...,nvertex,2], return
+	dists[...], which represents the distance of the points from the edges
+	of the corresponding polygons. This means that the interior of the
+	polygon will not be 0. points[...,0] and polys[...,0,0] must broadcast
+	correctly."""
+	points   = np.asarray(points)
+	polygons = np.asarray(polygons)
+	nvert    = polygons.shape[-2]
+	p        = ang2rect(points,axis=-1)
+	vertices = ang2rect(polygons,axis=-1)
+	del points, polygons
+	dists = []
+	for i in range(nvert):
+		v1   = vertices[...,i,:]
+		v2   = vertices[...,(i+1)%nvert,:]
+		vz   = np.cross(v1,v2)
+		vz  /= np.sum(vz**2,-1)[...,None]**0.5
+		# Find out if the point is inside our line segment or not
+		vx   = v1
+		vy   = np.cross(vz,vx)
+		vy  /= np.sum(vy**2,-1)[...,None]**0.5
+		pang = np.arctan2(np.sum( p*vy,-1),np.sum( p*vx,-1))
+		ang2 = np.arctan2(np.sum(v2*vy,-1),np.sum(v2*vx,-1))
+		between = (pang >= 0) & (pang < ang2)
+		# If we are inside, the distance will simply be the distance
+		# from the line segment, which is the distance from vz minus pi/2.
+		# If we are outside, then use the distance from the edge of the line segment.
+		dist_between = np.abs(np.arccos(np.clip(np.sum(p*vz,-1),-1,1))-np.pi/2)
+		dist_outside = np.minimum(
+			np.arccos(np.clip(np.sum(p*v1,-1),-1,1)),
+			np.arccos(np.clip(np.sum(p*v2,-1),-1,1))
+		)
+		dist = np.where(between, dist_between, dist_outside)
+		del v1, v2, vx, vy, vz, pang, ang2, between
+		dists.append(dist)
+	dists = np.min(dists,0)
+	return dists
 
 def block_mean_filter(a, width):
 	"""Perform a binwise smoothing of a, where all samples
