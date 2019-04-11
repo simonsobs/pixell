@@ -8,6 +8,7 @@ class FakeCommunicator:
 
 FAKE_WORLD = FakeCommunicator()
 COMM_WORLD = FAKE_WORLD
+COMM_SELF  = FAKE_WORLD
 disabled   = True
 
 # Allow us to disable real mpi, creating only a simple placeholder object
