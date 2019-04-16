@@ -904,12 +904,12 @@ def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
         raise ValueError
     ishape,iwcs = fullsky_geometry(res=res, shape=shape, dims=dims, proj=proj)
     start = sky2pix(ishape,iwcs,(dec_cut_min,0))[0]
-    end = sky2pix(ishape,iwcs,(dec_cut_max,0))[0]
+    stop = sky2pix(ishape,iwcs,(dec_cut_max,0))[0]
     Ny,_ = ishape[-2:]
     start = max(int(np.round(start)),0); stop = min(int(np.round(stop)),Ny)
     assert start>=0 and start<Ny
-    assert end>=0 and end<Ny
-    return slice_geometry(ishape,iwcs,np.s_[start:end,:])
+    assert stop>=0 and stop<Ny
+    return slice_geometry(ishape,iwcs,np.s_[start:stop,:])
 
 def create_wcs(shape, box=None, proj="cea"):
 	if box is None:
