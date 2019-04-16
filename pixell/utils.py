@@ -1,4 +1,6 @@
 import numpy as np, scipy.ndimage, os, errno, scipy.optimize, time, datetime, warnings, re, sys
+try: xrange
+except: xrange = range
 
 degree = np.pi/180
 arcmin = degree/60
@@ -439,7 +441,7 @@ def equal_split(weights, nbin):
 	weight in each bin is as close to equal as possible.
 	Returns a list of indices for each bin."""
 	inds = np.argsort(weights)[::-1]
-	bins = [[] for b in range(nbin)]
+	bins = [[] for b in xrange(nbin)]
 	bw   = np.zeros([nbin])
 	for i in inds:
 		j = np.argmin(bw)
@@ -543,12 +545,12 @@ def range_union(a, mapping=False):
 	rmap = np.zeros(n,dtype=int)-1
 	b    = []
 	# i will point at the first unprocessed range
-	for i in range(n):
+	for i in xrange(n):
 		if rmap[inds[i]] >= 0: continue
 		rmap[inds[i]] = len(b)
 		start, end = a[inds[i]]
 		# loop through every unprocessed range in range
-		for j in range(i+1,n):
+		for j in xrange(i+1,n):
 			if rmap[inds[j]] >= 0: continue
 			if a[inds[j],0] > end: break
 			# This range overlaps, so register it and merge
@@ -660,19 +662,19 @@ def greedy_split(data, n=2, costfun=max, workfun=lambda w,x: x if w is None else
 	# Sort data based on standalone costs
 	costs = []
 	nowork = workfun(None,None)
-	work = [nowork for i in range(n)]
+	work = [nowork for i in xrange(n)]
 	for d in data:
 		work[0] = workfun(nowork,d)
 		costs.append(costfun(work))
 	order = np.argsort(costs)[::-1]
 	# Build groups using greedy algorithm
-	groups = [[] for i in range(n)]
-	work   = [nowork for i in range(n)]
+	groups = [[] for i in xrange(n)]
+	work   = [nowork for i in xrange(n)]
 	cost   = costfun(work)
 	for di in order:
 		d = data[di]
 		# Try adding to each group
-		for i in range(n):
+		for i in xrange(n):
 			iwork = workfun(work[i],d)
 			icost = costfun(work[:i]+[iwork]+work[i+1:])
 			if i == 0 or icost < best[2]: best = (i,iwork,icost)
@@ -1241,7 +1243,7 @@ def uncat(a, lens):
 	and lens = [len(x) for x in b], then uncat(a,lens) returns
 	b."""
 	cum = cumsum(lens, endpoint=True)
-	return [a[cum[i]:cum[i+1]] for i in range(len(lens))]
+	return [a[cum[i]:cum[i+1]] for i in xrange(len(lens))]
 
 def ang2rect(angs, zenith=False, axis=0):
 	"""Convert a set of angles [{phi,theta},...] to cartesian
@@ -1393,12 +1395,12 @@ def find_equal_groups(a, tol=0):
 	inds = np.argsort(a[:,0])
 	done = np.full(n, False, dtype=bool)
 	res = []
-	for i in range(n):
+	for i in xrange(n):
 		if done[i]: continue
 		xi = inds[i]
 		res.append([xi])
 		done[i] = True
-		for j in range(i+1,n):
+		for j in xrange(i+1,n):
 			if done[j]: continue
 			xj = inds[j]
 			if calc_diff(a[xj,0], a[xi,0]) > tol:
