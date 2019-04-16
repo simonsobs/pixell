@@ -883,6 +883,29 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
 	wcs.wcs.ctype = ["RA---CAR","DEC--CAR"]
 	return dims+(ny+1,nx+0), wcs
 
+def cutsky_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
+    """Return a geometry corresponding to a sky that had a full-sky
+    geometry but to which a declination cut was applied. If dec_cut
+    is a single number, the declination range will be (-dec_cut,dec_cut)
+    radians, and if specified with two components, it is interpreted as
+    (dec_cut_min,dec_cut_max). The remaining arguments are the same as
+    fullsky_geometry and pertain to the geometry before cropping to the
+    cut-sky.
+    """
+    dec_cut = np.asarray(dec_cut)
+    if dec_cut.size == 1:
+        dec_cut_min = -dec_cut[0]
+        dec_cut_max = dec_cut[0]
+        assert dec_cut_max>0
+    elif dec_cut.size == 2:
+        dec_cut_min,dec_cut_max = dec_cut
+    else:
+        raise ValueError
+    ishape,iwcs = fullsky_geometry(res=res, shape=shape, dims=dims, proj=proj)
+    sy = sky2pix(ishape,iwcs,(dec_cut_min,0))[0]
+    ey = sky2pix(ishape,iwcs,(dec_cut_max,0))[0]
+    return slice_geometry(ishape,iwcs,np.s_[sy:ey,:])
+
 def create_wcs(shape, box=None, proj="cea"):
 	if box is None:
 		box = np.array([[-1,-1],[1,1]])*0.5*10
