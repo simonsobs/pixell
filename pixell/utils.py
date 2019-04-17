@@ -1,4 +1,6 @@
 import numpy as np, scipy.ndimage, os, errno, scipy.optimize, time, datetime, warnings, re, sys
+try: xrange
+except: xrange = range
 
 degree = np.pi/180
 arcmin = degree/60
