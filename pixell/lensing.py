@@ -76,7 +76,7 @@ def lens_map_flat(cmb_map, phi_map):
 
 ######## Curved sky lensing ########
 
-def lens_map(shape, wcs, phi_alm, cmb_alm, ainfo, maplmax=None, dtype=np.float64, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
+def lens_map_curved(shape, wcs, phi_alm, cmb_alm, ainfo, maplmax=None, dtype=np.float64, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
 	from . import curvedsky, sharp
 	ctype   = np.result_type(dtype,0j)
 	# Restrict to target number of components
