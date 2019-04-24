@@ -76,13 +76,43 @@ def lens_map_flat(cmb_map, phi_map):
 
 ######## Curved sky lensing ########
 
-def lens_map_curved(shape, wcs, phi_alm, cmb_alm, ainfo=None, maplmax=None, dtype=np.float64, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
+def almxfl(alm,lfunc,ainfo=None):
+	"""Filter alms isotropically by a function.
+	Returns alm * lfunc(ell)
+
+	Args:
+	    alm: (...,N) ndarray of spherical harmonic alms
+	    lfunc: a function mapping multipole ell to the filtering expression
+	    ainfo: 	If ainfo is provided, it is an alm_info describing the layout 
+	of the input alm. Otherwise it will be inferred from the alm itself.
+
+	Returns:
+	    falm: The filtered alms alm * lfunc(ell)
+	"""
+	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
+	l = np.arange(ainfo.lmax+1.0)
+	return ainfo.lmul(alm, lfunc(l))
+
+def phi_to_kappa(phi_alm,phi_ainfo=None):
+	"""Convert lensing potential alms phi_alm to
+	lensing convergence alms kappa_alm, i.e.
+	phi_alm * l * (l+1) / 2
+
+	Args:
+	    phi_alm: (...,N) ndarray of spherical harmonic alms of lensing potential
+	    phi_ainfo: 	If ainfo is provided, it is an alm_info describing the layout 
+	of the input alm. Otherwise it will be inferred from the alm itself.
+
+	Returns:
+	    kappa_alm: The filtered alms phi_alm * l * (l+1) / 2
+	"""
+	return almxfl(alm=phi_alm,lfunc=lambda x: x*(x+1)/2,ainfo=phi_ainfo)
+
+def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, dtype=np.float64, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
 	from . import curvedsky, sharp
 	# Restrict to target number of components
 	oshape  = shape[-3:]
 	if len(oshape) == 2: shape = (1,)+tuple(shape)
-	assert phi_alm.shape[-1] == cmb_alm.shape[-1]
-	if ainfo is None: ainfo = sharp.alm_info(nalm=cmb_alm.shape[-1])
 	if delta_theta is None: bsize = shape[-2]
 	else:
 		bsize = utils.nint(abs(delta_theta/utils.degree/wcs.wcs.cdelt[1]))
@@ -93,8 +123,7 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, ainfo=None, maplmax=None, dtyp
 	if "p" in output: phi_map   = enmap.empty(shape[-2:], wcs, dtype=dtype)
 	if "k" in output:
 		kappa_map = enmap.empty(shape[-2:], wcs, dtype=dtype)
-		l = np.arange(ainfo.lmax+1.0)
-		kappa_alm = ainfo.lmul(phi_alm, l*(l+1)/2)
+		kappa_alm = phi_to_kappa(phi_alm,phi_ainfo=phi_ainfo)
 		for i1 in range(0, shape[-2], bsize):
 			curvedsky.alm2map(kappa_alm, kappa_map[...,i1:i1+bsize,:])
 		del kappa_alm
@@ -170,7 +199,7 @@ def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64
 	#if maplmax: cmb_alm = cmb_alm[:,:maplmax]
 	
 	return lens_map_curved(shape=shape, wcs=wcs, phi_alm=phi_alm,
-						   cmb_alm=cmb_alm, ainfo=ainfo, maplmax=maplmax,
+						   cmb_alm=cmb_alm, phi_ainfo=ainfo, maplmax=maplmax,
 						   dtype=dtype, oversample=oversample, spin=spin,
 						   output=output, geodesic=geodesic, verbose=verbose,
 						   delta_theta=delta_theta)
