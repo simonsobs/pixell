@@ -76,13 +76,13 @@ def lens_map_flat(cmb_map, phi_map):
 
 ######## Curved sky lensing ########
 
-def lens_map_curved(shape, wcs, phi_alm, cmb_alm, ainfo, maplmax=None, dtype=np.float64, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
+def lens_map_curved(shape, wcs, phi_alm, cmb_alm, ainfo=None, maplmax=None, dtype=np.float64, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
 	from . import curvedsky, sharp
-	ctype   = np.result_type(dtype,0j)
 	# Restrict to target number of components
 	oshape  = shape[-3:]
 	if len(oshape) == 2: shape = (1,)+tuple(shape)
-	if maplmax: cmb_alm = cmb_alm[:,:maplmax]
+	assert phi_alm.shape[-1] == cmb_alm.shape[-1]
+	if ainfo is None: ainfo = sharp.alm_info(nalm=cmb_alm.shape[-1])
 	if delta_theta is None: bsize = shape[-2]
 	else:
 		bsize = utils.nint(abs(delta_theta/utils.degree/wcs.wcs.cdelt[1]))
@@ -168,60 +168,12 @@ def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64
 	# to a lower lmax for the map than for phi, to avoid aliasing. The appropriate lmax
 	# for the cmb was the one that fits the resolution. FIXME: Can't slice alm this way.
 	#if maplmax: cmb_alm = cmb_alm[:,:maplmax]
-	if delta_theta is None: bsize = shape[-2]
-	else:
-		bsize = utils.nint(abs(delta_theta/utils.degree/wcs.wcs.cdelt[1]))
-		# Adjust bsize so we don't get any tiny blocks at the end
-		nblock= shape[-2]//bsize
-		bsize = int(shape[-2]/(nblock+0.5))
-	# Allocate output maps
-	if "p" in output: phi_map   = enmap.empty(shape[-2:], wcs, dtype=dtype)
-	if "k" in output:
-		kappa_map = enmap.empty(shape[-2:], wcs, dtype=dtype)
-		l = np.arange(ainfo.lmax+1.0)
-		kappa_alm = ainfo.lmul(phi_alm, l*(l+1)/2)
-		for i1 in range(0, shape[-2], bsize):
-			curvedsky.alm2map(kappa_alm, kappa_map[...,i1:i1+bsize,:])
-		del kappa_alm
-	if "a" in output: grad_map  = enmap.empty((2,)+shape[-2:], wcs, dtype=dtype)
-	if "u" in output: cmb_raw   = enmap.empty(shape, wcs, dtype=dtype)
-	if "l" in output: cmb_obs   = enmap.empty(shape, wcs, dtype=dtype)
-	# Then loop over dec bands
-	for i1 in range(0, shape[-2], bsize):
-		i2 = min(i1+bsize, shape[-2])
-		lshape, lwcs = enmap.slice_geometry(shape, wcs, (slice(i1,i2),slice(None)))
-		if "p" in output:
-			if verbose: print("Computing phi map")
-			curvedsky.alm2map(phi_alm, phi_map[...,i1:i2,:])
-		if verbose: print("Computing grad map")
-		if "a" in output: grad = grad_map[...,i1:i2,:]
-		else: grad = enmap.zeros((2,)+lshape[-2:], lwcs, dtype=dtype)
-		curvedsky.alm2map(phi_alm, grad, deriv=True)
-		if "l" not in output: continue
-		if verbose: print("Computing observed coordinates")
-		obs_pos = enmap.posmap(lshape, lwcs)
-		if verbose: print("Computing alpha map")
-		raw_pos = enmap.samewcs(offset_by_grad(obs_pos, grad, pol=shape[-3]>1, geodesic=geodesic), obs_pos)
-		del obs_pos, grad
-		if "u" in output:
-			if verbose: print("Computing unlensed map")
-			curvedsky.alm2map(cmb_alm, cmb_raw[...,i1:i2,:], spin=spin)
-		if verbose: print("Computing lensed map")
-		cmb_obs[...,i1:i2,:] = curvedsky.alm2map_pos(cmb_alm, raw_pos[:2], oversample=oversample, spin=spin)
-		if raw_pos.shape[0] > 2 and np.any(raw_pos[2]):
-			if verbose: print("Rotating polarization")
-			cmb_obs[...,i1:i2,:] = enmap.rotate_pol(cmb_obs[...,i1:i2,:], raw_pos[2])
-		del raw_pos
-	del cmb_alm, phi_alm
-	# Output in same order as specified in output argument
-	res = []
-	for c in output:
-		if   c == "l": res.append(cmb_obs.reshape(oshape))
-		elif c == "u": res.append(cmb_raw.reshape(oshape))
-		elif c == "p": res.append(phi_map)
-		elif c == "k": res.append(kappa_map)
-		elif c == "a": res.append(grad_map)
-	return tuple(res)
+	
+	return lens_map_curved(shape=shape, wcs=wcs, phi_alm=phi_alm,
+						   cmb_alm=cmb_alm, ainfo=ainfo, maplmax=maplmax,
+						   dtype=dtype, oversample=oversample, spin=spin,
+						   output=output, geodesic=geodesic, verbose=verbose,
+						   delta_theta=delta_theta)
 
 def offset_by_grad(ipos, grad, geodesic=True, pol=None):
 	"""Given a set of coordinates ipos[{dec,ra},...] and a gradient

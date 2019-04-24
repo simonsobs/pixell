@@ -18,6 +18,27 @@ import numpy as np
 import pickle
 import os,sys
 
+
+def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
+    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res))
+    shape = (3,) + shape
+    ells = np.arange(lmax)
+    ps_lensinput = np.ones((4,4,ells.size))
+    lensed = lensing.rand_map(shape, wcs, ps_lensinput, lmax=lmax, maplmax=None, dtype=dtype, seed=seed, phi_seed=None, oversample=2.0, spin=[0,2], output="lu", geodesic=True, verbose=False, delta_theta=None)
+    return lensed
+
+def test_lensing():
+    lensed,unlensed = get_lens_result(1.,400,np.float64)
+    path = os.path.dirname(enmap.__file__)+"/../tests/"
+    lensed0 = enmap.read_map(path+"data/MM_lensed_042219.fits")
+    unlensed0 = enmap.read_map(path+"data/MM_unlensed_042219.fits")
+    assert np.all(np.isclose(lensed,lensed0))
+    assert np.all(np.isclose(unlensed,unlensed0))
+    assert wcsutils.equal(lensed.wcs,lensed0.wcs)
+    assert wcsutils.equal(unlensed.wcs,unlensed0.wcs)
+    assert wcsutils.equal(unlensed.wcs,lensed.wcs)
+    
+
 def test_enplot():
     print("Testing enplot...")
     shape,wcs = enmap.geometry(pos=(0,0),shape=(3,100,100),res=0.01)
