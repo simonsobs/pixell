@@ -1145,6 +1145,14 @@ def _widen(map,n):
 	return map[(slice(None),) + (None,)*(n-3) + (slice(None),slice(None))]
 
 def apod(m, width, profile="cos", fill="zero"):
+	"""Apodize the provided map. Currently only cosine apodization is
+	implemented.
+
+    Args:
+        imap: (...,Ny,Nx) or (Ny,Nx) ndarray to be apodized
+        width: The width in pixels of the apodization on each edge.
+        profile: The shape of the apodization. Only "cos" is supported.
+	"""
 	width = np.minimum(np.zeros(2)+width,m.shape[-2:]).astype(np.int32)
 	if profile == "cos":
 		a = [0.5*(1-np.cos(np.linspace(0,np.pi,w))) for w in width]
