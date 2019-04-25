@@ -162,6 +162,8 @@ def mjd2ctime(mjd):
 	return (np.asarray(mjd)-40587.0)*86400
 def mjd2djd(mjd): return np.asarray(mjd) + 2400000.5 - 2415020
 def djd2mjd(djd): return np.asarray(djd) - 2400000.5 + 2415020
+def mjd2jd(mjd): return np.asarray(mjd) + 2400000.5
+def jd2mjd(jd): return np.asarray(jd) - 2400000.5
 def ctime2djd(ctime): return mjd2djd(ctime2mjd(ctime))
 def djd2ctime(djd):    return mjd2ctime(djd2mjd(djd))
 
