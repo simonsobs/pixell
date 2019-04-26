@@ -24,7 +24,7 @@ def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
     shape = (3,) + shape
     ells = np.arange(lmax)
     ps_lensinput = np.ones((4,4,ells.size))
-    lensed = lensing.rand_map(shape, wcs, ps_lensinput, lmax=lmax, maplmax=None, dtype=dtype, seed=seed, phi_seed=None, oversample=2.0, spin=[0,2], output="lu", geodesic=True, verbose=False, delta_theta=None)
+    lensed = lensing.rand_map(shape, wcs, ps_lensinput, lmax=lmax, maplmax=None, dtype=dtype, seed=seed, phi_seed=seed, oversample=2.0, spin=[0,2], output="lu", geodesic=True, verbose=False, delta_theta=None)
     return lensed
 
 def test_lensing():
