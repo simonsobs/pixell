@@ -164,7 +164,9 @@ def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64
 	# First draw a random lensing field, and use it to compute the undeflected positions
 	if verbose: print("Generating alms")
 	if phi_seed is None:
-		alm, ainfo = curvedsky.rand_alm(ps_lensinput, lmax=lmax, seed=seed, dtype=ctype, return_ainfo=True)
+		alm = curvedsky.rand_alm_healpy(ps_lensinput, lmax=lmax, seed=seed, dtype=ctype)
+		ainfo = sharp.alm_info(nalm=alm.shape[-1]) 
+		#alm, ainfo = rand_alm(ps_lensinput, lmax=lmax, seed=seed, dtype=ctype, return_ainfo=True)
 	else:
 		# We want separate seeds for cmb and phi. This means we have to do things a bit more manually
 		wps, ainfo = curvedsky.prepare_ps(ps_lensinput, lmax=lmax)
