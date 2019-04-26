@@ -28,7 +28,7 @@ def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
     return lensed
 
 def test_lensing():
-    lensed,unlensed = get_lens_result(1.,400,np.float64)
+    lensed,unlensed = get_lens_result(1.,5,np.float64)
     path = os.path.dirname(enmap.__file__)+"/../tests/"
     lensed0 = enmap.read_map(path+"data/MM_lensed_042219.fits")
     unlensed0 = enmap.read_map(path+"data/MM_unlensed_042219.fits")
