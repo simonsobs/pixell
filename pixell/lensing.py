@@ -126,11 +126,16 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 		if "a" in output: grad = grad_map[...,i1:i2,:]
 		else: grad = enmap.zeros((2,)+lshape[-2:], lwcs, dtype=dtype)
 		curvedsky.alm2map(phi_alm, grad, deriv=True)
+		utils.dump("dump3.hdf",grad=grad)
+		
 		if "l" not in output: continue
 		if verbose: print("Computing observed coordinates")
 		obs_pos = enmap.posmap(lshape, lwcs)
+		utils.dump("dump4.hdf",obs_pos=obs_pos)
+
 		if verbose: print("Computing alpha map")
 		raw_pos = enmap.samewcs(offset_by_grad(obs_pos, grad, pol=shape[-3]>1, geodesic=geodesic), obs_pos)
+		utils.dump("dump5.hdf",raw_pos=raw_pos)
 
 
 		# print(obs_pos.shape)
@@ -154,6 +159,9 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 			if verbose: print("Rotating polarization")
 			cmb_obs[...,i1:i2,:] = enmap.rotate_pol(cmb_obs[...,i1:i2,:], raw_pos[2])
 		del raw_pos
+		utils.dump("dump6.hdf",cmb_obs=cmb_obs)
+		raise ValueError
+
 
 	del cmb_alm, phi_alm
 	# Output in same order as specified in output argument
@@ -169,6 +177,7 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 
 def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64, seed=None, phi_seed=None, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
 	from . import curvedsky, sharp
+	utils.dump("dump1.hdf",ps_lensinput=ps_lensinput,seed=seed,lmax=lmax)
 	ctype   = np.result_type(dtype,0j)
 	# Restrict to target number of components
 	oshape  = shape[-3:]
@@ -192,7 +201,10 @@ def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64
 		alm[:,:ainfo.lmax].imag  = 0
 		alm[:,:ainfo.lmax].real *= 2**0.5
 		del wps, ps12
+		
 	phi_alm, cmb_alm = alm[0], alm[1:]
+	utils.dump("dump2.hdf",phi_alm=phi_alm,cmb_alm=cmb_alm)
+
 	del alm
 	# Truncate alm if we want a smoother map. In taylens, it was necessary to truncate
 	# to a lower lmax for the map than for phi, to avoid aliasing. The appropriate lmax

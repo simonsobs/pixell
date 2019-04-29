@@ -20,6 +20,13 @@ adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
 
+def dump(fname,**kwargs):
+	import h5py
+	with h5py.File(fname, "w") as hfile:
+		for key in kwargs:
+			hfile[key] = kwargs[key]
+	
+
 def lines(file_or_fname):
 	"""Iterates over lines in a file, which can be specified
 	either as a filename or as a file object."""
