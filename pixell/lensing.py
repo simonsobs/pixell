@@ -132,6 +132,7 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 		if verbose: print("Computing alpha map")
 		raw_pos = enmap.samewcs(offset_by_grad(obs_pos, grad, pol=shape[-3]>1, geodesic=geodesic), obs_pos)
 
+
 		# print(obs_pos.shape)
 		# # import healpy as hp, sys
 		# # obspos0 = enmap.read_map("raw_pos.fits")
