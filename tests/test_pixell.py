@@ -42,7 +42,6 @@ def test_offset():
     assert wcsutils.equal(raw_pos.wcs,raw_pos0.wcs)
 
 
-
 def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
     shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res))
     shape = (3,) + shape
