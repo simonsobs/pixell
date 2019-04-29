@@ -260,6 +260,7 @@ def offset_by_grad_helper(ipos, grad, pol):
 	"""Find the new position and induced rotation
 	from offseting the input positions ipos[2,nsamp]
 	by grad[2,nsamp]."""
+	utils.dump("dump7.hdf",ipos=ipos,grad=grad,pol=pol)
 	grad = np.array(grad)
 	# Decompose grad into direction and length.
 	# Fix zero-length gradients first, to avoid
@@ -267,6 +268,8 @@ def offset_by_grad_helper(ipos, grad, pol):
 	grad[:,np.all(grad==0,0)] = 1e-20
 	d = np.sum(grad**2,0)**0.5
 	grad  /=d
+	utils.dump("dump8.hdf",grad=grad,d=d)
+
 	# Perform the position offset using spherical
 	# trigonometry
 	cosd, sind = np.cos(d), np.sin(d)
@@ -274,6 +277,8 @@ def offset_by_grad_helper(ipos, grad, pol):
 	ocost  = cosd*cost-sind*sint*grad[0]
 	osint  = (1-ocost**2)**0.5
 	ophi   = ipos[1] + np.arcsin(sind*grad[1]/osint)
+	utils.dump("dump9.hdf",cosd=cosd,sind=sind,cost=sint,ocost=ocost,osint=osint,ophi=ophi)
+
 	if not pol:
 		return np.array([np.arccos(ocost), ophi]), None
 	# Compute the induced polarization rotation.
@@ -282,7 +287,10 @@ def offset_by_grad_helper(ipos, grad, pol):
 	denom  = 1+A**2
 	cosgam = 2*nom1**2/denom-1
 	singam = 2*nom1*(grad[1]-grad[0]*A)/denom
-	return np.array([np.arccos(ocost), ophi]), np.array([cosgam,singam])
+	res = np.array([np.arccos(ocost), ophi]), np.array([cosgam,singam])
+	utils.dump("dump10.hdf",A=A,nom1=nom1,denom=denom,cosgam=cosgam,singam=singam,res=res)
+	raise ValueError
+	return res
 
 def pole_wrap(pos):
 	"""Handle pole wraparound."""
