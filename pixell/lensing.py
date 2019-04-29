@@ -131,6 +131,18 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 		obs_pos = enmap.posmap(lshape, lwcs)
 		if verbose: print("Computing alpha map")
 		raw_pos = enmap.samewcs(offset_by_grad(obs_pos, grad, pol=shape[-3]>1, geodesic=geodesic), obs_pos)
+
+		# print(obs_pos.shape)
+		# # import healpy as hp, sys
+		# # obspos0 = enmap.read_map("raw_pos.fits")
+		# # assert np.all(np.isclose(obspos0,raw_pos))
+		# sys.exit()
+				  
+	
+
+		
+
+		
 		del obs_pos, grad
 		if "u" in output:
 			if verbose: print("Computing unlensed map")
@@ -141,6 +153,7 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 			if verbose: print("Rotating polarization")
 			cmb_obs[...,i1:i2,:] = enmap.rotate_pol(cmb_obs[...,i1:i2,:], raw_pos[2])
 		del raw_pos
+
 	del cmb_alm, phi_alm
 	# Output in same order as specified in output argument
 	res = []
@@ -164,9 +177,9 @@ def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64
 	# First draw a random lensing field, and use it to compute the undeflected positions
 	if verbose: print("Generating alms")
 	if phi_seed is None:
-		alm = curvedsky.rand_alm_healpy(ps_lensinput, lmax=lmax, seed=seed, dtype=ctype)
-		ainfo = sharp.alm_info(nalm=alm.shape[-1]) 
-		#alm, ainfo = rand_alm(ps_lensinput, lmax=lmax, seed=seed, dtype=ctype, return_ainfo=True)
+		# alm = curvedsky.rand_alm_healpy(ps_lensinput, lmax=lmax, seed=seed, dtype=ctype)
+		# ainfo = sharp.alm_info(nalm=alm.shape[-1]) 
+		alm, ainfo = curvedsky.rand_alm(ps_lensinput, lmax=lmax, seed=seed, dtype=ctype, return_ainfo=True)
 	else:
 		# We want separate seeds for cmb and phi. This means we have to do things a bit more manually
 		wps, ainfo = curvedsky.prepare_ps(ps_lensinput, lmax=lmax)
