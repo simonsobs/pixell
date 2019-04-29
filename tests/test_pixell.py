@@ -24,11 +24,12 @@ def get_offset_result(res=1.,dtype=np.float64,seed=1):
     shape = (3,) + shape
     obs_pos = enmap.posmap(shape, wcs)
     np.random.seed(seed)
-    grad = enmap.enmap(np.random.random(shape),wcs)
+    grad = enmap.enmap(np.random.random(shape),wcs)*1e5
+    print(grad)
     raw_pos = enmap.samewcs(lensing.offset_by_grad(obs_pos, grad, pol=shape[-3]>1, geodesic=True), obs_pos)
     return obs_pos,grad,raw_pos
 
-def test_lensing():
+def test_offset():
     obs_pos,grad,raw_pos = get_offset_result(1.)
     path = os.path.dirname(enmap.__file__)+"/../tests/"
     obs_pos0 = enmap.read_map(path+"data/MM_offset_obs_pos_042219.fits")
