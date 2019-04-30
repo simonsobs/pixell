@@ -24,7 +24,7 @@ def get_offset_result(res=1.,dtype=np.float64,seed=1):
     shape = (3,) + shape
     obs_pos = enmap.posmap(shape, wcs)
     np.random.seed(seed)
-    grad = enmap.enmap(np.random.random(shape),wcs)*1e6 #*(1-1e-12)
+    grad = enmap.enmap(np.random.random(shape),wcs)*1e-3
     raw_pos = enmap.samewcs(lensing.offset_by_grad(obs_pos, grad, pol=shape[-3]>1, geodesic=True), obs_pos)
     return obs_pos,grad,raw_pos
 
@@ -35,23 +35,21 @@ def test_offset():
     grad0 = enmap.read_map(path+"data/MM_offset_grad_042219.fits")
     raw_pos0 = enmap.read_map(path+"data/MM_offset_raw_pos_042219.fits")
     assert np.all(np.isclose(obs_pos,obs_pos0))
-    try:
-        assert np.all(np.isclose(raw_pos,raw_pos0))
-    except:
-        print(np.max(np.abs((raw_pos-raw_pos0)/raw_pos0)))
-        raise AssertionError
-        
+    assert np.all(np.isclose(raw_pos,raw_pos0))
     assert np.all(np.isclose(grad,grad0))
     assert wcsutils.equal(grad.wcs,grad0.wcs)
     assert wcsutils.equal(obs_pos.wcs,obs_pos0.wcs)
     assert wcsutils.equal(raw_pos.wcs,raw_pos0.wcs)
 
-
 def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
     shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res))
     shape = (3,) + shape
-    ells = np.arange(lmax)
-    ps_lensinput = np.ones((4,4,ells.size))
+    # ells = np.arange(lmax)
+    path = os.path.dirname(enmap.__file__)+"/../tests/"
+    ps_cmb,ps_lens = powspec.read_camb_scalar(path+"data/test_scalCls.dat")
+    ps_lensinput = np.zeros((4,4,ps_cmb.shape[-1]))
+    ps_lensinput[0,0] = ps_lens
+    ps_lensinput[1:,1:] = ps_cmb
     lensed = lensing.rand_map(shape, wcs, ps_lensinput, lmax=lmax, maplmax=None, dtype=dtype, seed=seed, phi_seed=None, oversample=2.0, spin=[0,2], output="lu", geodesic=True, verbose=False, delta_theta=None)
     return lensed
 
@@ -61,14 +59,7 @@ def test_lensing():
     lensed0 = enmap.read_map(path+"data/MM_lensed_042219.fits")
     unlensed0 = enmap.read_map(path+"data/MM_unlensed_042219.fits")
     y,x = lensed0.posmap()
-    try: assert np.all(np.isclose(lensed,lensed0,1e-5,0)) 
-    except:
-        print(np.max(np.abs((lensed-lensed0)/lensed0))*100)
-        raise AssertionError
-    # we are currently
-    # unable to get better than this precision for lensing across different computers.
-    # Numerical noise gets amplified in offset_by_grad_helper, specifically
-    # around where the trigonometric operations happen.
+    assert np.all(np.isclose(lensed,lensed0)) 
     assert np.all(np.isclose(unlensed,unlensed0))
     assert wcsutils.equal(lensed.wcs,lensed0.wcs)
     assert wcsutils.equal(unlensed.wcs,unlensed0.wcs)
