@@ -56,7 +56,7 @@ def test_lensing():
     lensed0 = enmap.read_map(path+"data/MM_lensed_042219.fits")
     unlensed0 = enmap.read_map(path+"data/MM_unlensed_042219.fits")
     y,x = lensed0.posmap()
-    try: assert np.all(np.isclose(lensed,lensed0,1e-2,0)) 
+    try: assert np.all(np.isclose(lensed,lensed0,1e-5,0)) 
     except:
         print(np.max(np.abs((lensed-lensed0)/lensed0))*100)
         raise AssertionError
