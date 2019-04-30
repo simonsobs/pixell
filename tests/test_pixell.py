@@ -56,8 +56,11 @@ def test_lensing():
     lensed0 = enmap.read_map(path+"data/MM_lensed_042219.fits")
     unlensed0 = enmap.read_map(path+"data/MM_unlensed_042219.fits")
     y,x = lensed0.posmap()
-    # print(np.max(np.abs((lensed-lensed0)/lensed0))*100)
-    assert np.all(np.isclose(lensed,lensed0,1e-2,0)) # we are currently
+    try: assert np.all(np.isclose(lensed,lensed0,1e-2,0)) 
+    except:
+        print(np.max(np.abs((lensed-lensed0)/lensed0))*100)
+        raise AssertionError
+    # we are currently
     # unable to get better than this precision for lensing across different computers.
     # Numerical noise gets amplified in offset_by_grad_helper, specifically
     # around where the trigonometric operations happen.
