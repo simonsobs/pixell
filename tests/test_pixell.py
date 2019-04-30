@@ -24,7 +24,7 @@ def get_offset_result(res=1.,dtype=np.float64,seed=1):
     shape = (3,) + shape
     obs_pos = enmap.posmap(shape, wcs)
     np.random.seed(seed)
-    grad = enmap.enmap(np.random.random(shape),wcs)*1e6
+    grad = enmap.enmap(np.random.random(shape),wcs)*1e6 #*(1-1e-12)
     raw_pos = enmap.samewcs(lensing.offset_by_grad(obs_pos, grad, pol=shape[-3]>1, geodesic=True), obs_pos)
     return obs_pos,grad,raw_pos
 
@@ -35,7 +35,12 @@ def test_offset():
     grad0 = enmap.read_map(path+"data/MM_offset_grad_042219.fits")
     raw_pos0 = enmap.read_map(path+"data/MM_offset_raw_pos_042219.fits")
     assert np.all(np.isclose(obs_pos,obs_pos0))
-    assert np.all(np.isclose(raw_pos,raw_pos0))
+    try:
+        assert np.all(np.isclose(raw_pos,raw_pos0))
+    except:
+        print(np.max(np.abs((raw_pos-raw_pos0)/raw_pos0)))
+        raise AssertionError
+        
     assert np.all(np.isclose(grad,grad0))
     assert wcsutils.equal(grad.wcs,grad0.wcs)
     assert wcsutils.equal(obs_pos.wcs,obs_pos0.wcs)
