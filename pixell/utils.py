@@ -20,6 +20,7 @@ adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
 
+
 def lines(file_or_fname):
 	"""Iterates over lines in a file, which can be specified
 	either as a filename or as a file object."""

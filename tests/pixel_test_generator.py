@@ -3,6 +3,7 @@ from . import pixel_tests as ptests
 import pickle
 import os
 
+
 import argparse
 # Parse command line
 parser = argparse.ArgumentParser(description='Generate test results.')
