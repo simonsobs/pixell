@@ -41,6 +41,7 @@ def listsplit(seq, elem):
 
 def find(array, vals, default=None):
 	"""Return the indices of each value of vals in the given array."""
+	array   = np.asarray(array)
 	order   = np.argsort(array)
 	cands   = np.minimum(np.searchsorted(array, vals, sorter=order),len(array)-1)
 	res     = order[cands]
