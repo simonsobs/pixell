@@ -501,3 +501,20 @@ def rand_alm_white(ainfo, pre=None, alm=None, seed=None, dtype=np.complex128, m_
 	# Transpose numbers to make them m-major.
 	if m_major: ainfo.transpose_alm(alm,alm)
 	return alm
+
+def almxfl(alm,lfunc,ainfo=None):
+	"""Filter alms isotropically by a function.
+	Returns alm * lfunc(ell)
+
+	Args:
+	    alm: (...,N) ndarray of spherical harmonic alms
+	    lfunc: a function mapping multipole ell to the filtering expression
+	    ainfo: 	If ainfo is provided, it is an alm_info describing the layout 
+	of the input alm. Otherwise it will be inferred from the alm itself.
+
+	Returns:
+	    falm: The filtered alms alm * lfunc(ell)
+	"""
+	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
+	l = np.arange(ainfo.lmax+1.0)
+	return ainfo.lmul(alm, lfunc(l))

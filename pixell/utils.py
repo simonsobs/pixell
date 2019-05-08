@@ -20,6 +20,7 @@ adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
 
+
 def lines(file_or_fname):
 	"""Iterates over lines in a file, which can be specified
 	either as a filename or as a file object."""
@@ -38,10 +39,17 @@ def listsplit(seq, elem):
 	ranges = zip([0]+[i+1 for i in inds],inds+[len(seq)])
 	return [seq[a:b] for a,b in ranges]
 
-def find(array, vals):
+def find(array, vals, default=None):
 	"""Return the indices of each value of vals in the given array."""
-	order = np.argsort(array)
-	return order[np.searchsorted(array, vals, sorter=order)]
+	array   = np.asarray(array)
+	order   = np.argsort(array)
+	cands   = np.minimum(np.searchsorted(array, vals, sorter=order),len(array)-1)
+	res     = order[cands]
+	bad     = array[res] != vals
+	if np.any(bad):
+		if default is None: raise ValueError("Value not found in array")
+		else: res[bad] = default
+	return res
 
 def contains(array, vals):
 	"""Given an array[n], returns a boolean res[n], which is True
