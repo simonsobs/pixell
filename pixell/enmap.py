@@ -892,7 +892,7 @@ def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
     fullsky_geometry and pertain to the geometry before cropping to the
     cut-sky.
     """
-    dec_cut = np.asarray(dec_cut)
+    dec_cut = np.atleast_1d(dec_cut)
     if dec_cut.size == 1:
         dec_cut_min = -dec_cut[0]
         dec_cut_max = dec_cut[0]
