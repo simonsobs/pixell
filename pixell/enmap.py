@@ -1553,7 +1553,7 @@ class hdf_wrapper:
 	@property
 	def ndim(self): return len(self.shape)
 	@property
-	def dtype(self): return self.dset.shape
+	def dtype(self): return self.dset.dtype
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [self.ndim-2,2])
 		if len(psel) > 2: raise IndexError("too many indices")
