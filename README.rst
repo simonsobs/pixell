@@ -40,7 +40,7 @@ To install, run:
 Existing ``libsharp`` installation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can use an existing ``libsharp`` installation by symlinking the ``libsharp`` directory into a directory called ``_deps`` in the root directory.
+You can use an existing ``libsharp`` installation by symlinking the ``libsharp`` directory into a directory called ``_deps`` in the root directory, such that the file ``pixell/_deps/libsharp/libsharp/sharp.c`` exists.
 
    
 Intel compilers
