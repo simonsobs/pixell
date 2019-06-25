@@ -37,10 +37,10 @@ To install, run:
 		
    $ python setup.py install --user
 
-Existing ``libsharp`` installation
+Existing ``libsharp`` installation (optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can use an existing ``libsharp`` installation by symlinking the ``libsharp`` directory into a directory called ``_deps`` in the root directory, such that the file ``pixell/_deps/libsharp/libsharp/sharp.c`` exists.
+Libsharp is installed automatically by setup.py. If instead you want to use an existing ``libsharp`` installation by symlinking the ``libsharp`` directory into a directory called ``_deps`` in the root directory, such that the file ``pixell/_deps/libsharp/libsharp/sharp.c`` exists.
 
    
 Intel compilers
