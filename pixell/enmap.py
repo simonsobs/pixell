@@ -75,7 +75,7 @@ class ndmap(np.ndarray):
 	@property
 	def geometry(self): return self.shape, self.wcs
 	def project(self, shape, wcs, order=3, mode="constant", cval=0, prefilter=True, mask_nan=True, safe=True): return project(self, shape, wcs, order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan, safe=safe)
-	def extract(self, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract(self, map, shape, wcs, omap=ompa, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
+	def extract(self, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract(self, shape, wcs, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def extract_pixbox(self, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract_pixbox(self, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def insert(self, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert(self, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
 	def insert_at(self, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert_at(self, pix, imap, wrap=wrap, op=op, cval=cval, iwcs=wcs)
@@ -434,8 +434,8 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 	at the edge of a (horizontally) fullsky map work."""
 	if iwcs is None: iwcs = map.wcs
 	pixbox = np.asarray(pixbox)
-	oshape, owcs = slice_geometry(map.shape, iwcs, (slice(*pixbox[:,-2]),slice(*pixbox[:,-1])), nowrap=True)
 	if omap is None:
+		oshape, owcs = slice_geometry(map.shape, iwcs, (slice(*pixbox[:,-2]),slice(*pixbox[:,-1])), nowrap=True)
 		omap = full(map.shape[:-2]+tuple(oshape[-2:]), owcs, cval, map.dtype)
 	nphi = utils.nint(360/np.abs(iwcs.wcs.cdelt[0]))
 	# If our map is wider than the wrapping length, assume we're a lower-spin field
@@ -462,6 +462,29 @@ def insert_at(omap, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
 	pixbox = np.array(pix)
 	if pixbox.ndim == 1: pixbox = np.array([pixbox,pixbox+imap.shape[-2:]])
 	return extract_pixbox(omap, pixbox, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=True)
+
+def neighborhood_pixboxes(shape, wcs, poss, r):
+	"""Given a set of positions poss[npos,2] in radians and a distance r in radians,
+	return pixboxes[npos][{from,to},{y,x}] corresponding to the regions within a
+	distance of r from each entry in poss."""
+	poss = np.asarray(poss)
+	res  = np.zeros([len(poss),2,2])
+	for i, pos in enumerate(poss):
+		# Find the coordinate box we need
+		dec, ra = pos[:2]
+		dec1, dec2 = max(dec-r,-np.pi/2), min(dec+r,np.pi/2)
+		with utils.nowarn():
+			scale = 1/min(np.cos(dec1), np.cos(dec2))
+		dra        = min(r*scale, np.pi)
+		ra1, ra2   = ra-dra, ra+dra
+		box        = np.array([[dec1,ra1],[dec2,ra2]])
+		# And get the corresponding pixbox
+		res[i]     = skybox2pixbox(shape, wcs, box)
+	# Turn ranges into from-inclusive, to-exclusive integers.
+	res = utils.nint(res)
+	res = np.sort(res, 1)
+	res[:,1] += 1
+	return res
 
 def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=True, safe=True):
 	if unit != "pix": pos = sky2pix(map.shape, map.wcs, pos, safe=safe)
@@ -892,7 +915,7 @@ def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
     fullsky_geometry and pertain to the geometry before cropping to the
     cut-sky.
     """
-    dec_cut = np.asarray(dec_cut)
+    dec_cut = np.atleast_1d(dec_cut)
     if dec_cut.size == 1:
         dec_cut_min = -dec_cut[0]
         dec_cut_max = dec_cut[0]
@@ -1173,6 +1196,14 @@ def _widen(map,n):
 	return map[(slice(None),) + (None,)*(n-3) + (slice(None),slice(None))]
 
 def apod(m, width, profile="cos", fill="zero"):
+	"""Apodize the provided map. Currently only cosine apodization is
+	implemented.
+
+    Args:
+        imap: (...,Ny,Nx) or (Ny,Nx) ndarray to be apodized
+        width: The width in pixels of the apodization on each edge.
+        profile: The shape of the apodization. Only "cos" is supported.
+	"""
 	width = np.minimum(np.zeros(2)+width,m.shape[-2:]).astype(np.int32)
 	if profile == "cos":
 		a = [0.5*(1-np.cos(np.linspace(0,np.pi,w))) for w in width]
@@ -1545,7 +1576,7 @@ class hdf_wrapper:
 	@property
 	def ndim(self): return len(self.shape)
 	@property
-	def dtype(self): return self.dset.shape
+	def dtype(self): return self.dset.dtype
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [self.ndim-2,2])
 		if len(psel) > 2: raise IndexError("too many indices")
