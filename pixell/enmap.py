@@ -434,8 +434,8 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 	at the edge of a (horizontally) fullsky map work."""
 	if iwcs is None: iwcs = map.wcs
 	pixbox = np.asarray(pixbox)
-	oshape, owcs = slice_geometry(map.shape, iwcs, (slice(*pixbox[:,-2]),slice(*pixbox[:,-1])), nowrap=True)
 	if omap is None:
+		oshape, owcs = slice_geometry(map.shape, iwcs, (slice(*pixbox[:,-2]),slice(*pixbox[:,-1])), nowrap=True)
 		omap = full(map.shape[:-2]+tuple(oshape[-2:]), owcs, cval, map.dtype)
 	nphi = utils.nint(360/np.abs(iwcs.wcs.cdelt[0]))
 	# If our map is wider than the wrapping length, assume we're a lower-spin field
@@ -462,6 +462,29 @@ def insert_at(omap, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
 	pixbox = np.array(pix)
 	if pixbox.ndim == 1: pixbox = np.array([pixbox,pixbox+imap.shape[-2:]])
 	return extract_pixbox(omap, pixbox, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=True)
+
+def neighborhood_pixboxes(shape, wcs, poss, r):
+	"""Given a set of positions poss[npos,2] in radians and a distance r in radians,
+	return pixboxes[npos][{from,to},{y,x}] corresponding to the regions within a
+	distance of r from each entry in poss."""
+	poss = np.asarray(poss)
+	res  = np.zeros([len(poss),2,2])
+	for i, pos in enumerate(poss):
+		# Find the coordinate box we need
+		dec, ra = pos[:2]
+		dec1, dec2 = max(dec-r,-np.pi/2), min(dec+r,np.pi/2)
+		with utils.nowarn():
+			scale = 1/min(np.cos(dec1), np.cos(dec2))
+		dra        = min(r*scale, np.pi)
+		ra1, ra2   = ra-dra, ra+dra
+		box        = np.array([[dec1,ra1],[dec2,ra2]])
+		# And get the corresponding pixbox
+		res[i]     = skybox2pixbox(shape, wcs, box)
+	# Turn ranges into from-inclusive, to-exclusive integers.
+	res = utils.nint(res)
+	res = np.sort(res, 1)
+	res[:,1] += 1
+	return res
 
 def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=True, safe=True):
 	if unit != "pix": pos = sky2pix(map.shape, map.wcs, pos, safe=safe)
