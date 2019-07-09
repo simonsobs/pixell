@@ -168,7 +168,7 @@ def healpix_from_enmap(imap, lmax, nside):
 
 
 def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
-                       rot="gal,equ", first=0, is_alm=False, return_alm=False):
+                       rot="gal,equ", first=0, is_alm=False, return_alm=False, f_ell=None):
     """Convert a healpix map to an ndmap using harmonic space reprojection.
     The resulting map will be band-limited. Bright sources and sharp edges
     could cause ringing. Use enmap_from_healpix_interp if you are worried
@@ -191,6 +191,8 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
         the index of the first FITS field
         is_alm: if True, interprets hp_map as alms
         return_alm: if True, returns alms also
+        f_ell: optionally apply a transfer function f_ell(ell) -- this should be 
+        a function of a single variable ell. e.g., lambda x: exp(-x**2/2/sigma**2)
 
     Returns:
         res: the reprojected ndmap or the a tuple (ndmap,alms) if return_alm
@@ -229,6 +231,8 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
         del m
     else:
         alm = hp_map
+
+    if f_ell is not None: alm = curvedsky.almxfl(alm,f_ell)
 
     if rot is not None:
         # Rotate by displacing coordinates and then fixing the polarization

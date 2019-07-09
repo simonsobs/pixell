@@ -13,7 +13,8 @@ pixell
 		   :target: https://coveralls.io/github/simonsobs/pixell?branch=master
 
 
-This is an early development repository for a CMB map analysis library. The API for core modules will likely remain the same as in amaurea/enlib, but module and repository names are very likely to change!
+``pixell`` is a library for loading, manipulating and analyzing maps stored in rectangular pixelization. It is mainly targeted for use with maps of the sky (e.g. CMB maps) in cylindrical projection, but its core functionality is more general. It extends numpy's ``ndarray`` to an ``ndmap`` class that associates a World Coordinate System (WCS) with a numpy array.  It includes tools for Fourier and spherical harmonic transforms (through libsharp) of such maps and tools for visualization (through PIL). 
+
 
 * Free software: BSD license
 * Documentation: https://pixell.readthedocs.io.
@@ -37,10 +38,10 @@ To install, run:
 		
    $ python setup.py install --user
 
-Existing ``libsharp`` installation
+Existing ``libsharp`` installation (optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can use an existing ``libsharp`` installation by symlinking the ``libsharp`` directory into a directory called ``_deps`` in the root directory.
+Libsharp is installed automatically by setup.py. If instead you want to use an existing ``libsharp`` installation by symlinking the ``libsharp`` directory into a directory called ``_deps`` in the root directory, such that the file ``pixell/_deps/libsharp/libsharp/sharp.c`` exists.
 
    
 Intel compilers

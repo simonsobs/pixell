@@ -56,21 +56,23 @@ An entire map in ``FITS`` or ``HDF`` format can be loaded using ``read_map``, wh
 
 .. code-block:: python
 
-		from pixell import enmap
-		imap = enmap.read_map("map_on_disk.fits")
+		>>> from pixell import enmap
+		>>> imap = enmap.read_map("map_on_disk.fits")
 
 Alternatively, one can select a rectangular region specified through its bounds using the ``box`` argument,
 
 .. code-block:: python
 
-		import numpy as np
-		dec_min = -5 ; ra_min = -5 ; dec_max = 5 ; ra_max = 5
-		# All coordinates in pixell are specified in radians
-		box = np.deg2rad([[dec_min,ra_min],[dec_max,ra_max])) 
-		imap = enmap.read_map("map_on_disk.fits",box=box) 
+		>>> import numpy as np
+		>>> from pixell import utils
+		>>> dec_min = -5 ; ra_min = -5 ; dec_max = 5 ; ra_max = 5
+		>>> # All coordinates in pixell are specified in radians
+		>>> box = np.array([[dec_min,ra_min],[dec_max,ra_max])) * utils.degree
+		>>> imap = enmap.read_map("map_on_disk.fits",box=box) 
 
 
-Note the convention used to define coordinate boxes in pixell. To learn how to use a pixel box or a numpy slice, please read the docstring for ``read_map``.
+Note the convention used to define coordinate boxes in pixell. To learn how to
+use a pixel coordinate box or a numpy slice, please read the docstring for ``read_map``.
 
 Inspecting a map
 ----------------
@@ -225,8 +227,54 @@ A filter can be applied to a map in three steps:
 3. multiply the filter and k-map
 4. inverse Fourier transform the result
 
-Manipulating map geometries
+Building a map geometry
 ----------
+
+Patches
+~~~~~~~
+
+You can create a geometry if you know what its bounding box and pixel size are:
+
+.. code-block:: python
+
+		>>> from pixell import enmap, utils
+		>>> box = np.array([[-5,-5],[5,5]]) * utils.degree
+		>>> shape,wcs = enmap.geometry(pos=box,res=0.5 * utils.arcmin,proj='car')
+
+This creates a CAR geometry centered on RA=0d,DEC=0d with a width and height of
+10 degrees and a pixel size of 0.5 arcminutes.
+
+Full sky
+~~~~~~~~
+
+You can create a full-sky geometry by just specifying the resolution:
+
+.. code-block:: python
+
+		>>> from pixell import enmap, utils
+		>>> shape,wcs = enmap.fullsky_geometry(res=0.5 * utils.arcmin,proj='car')
+
+This creates a CAR geometry with pixel size of 0.5 arcminutes that wraps around
+the whole sky.
+
+Declination-cut sky
+~~~~~~~~
+
+You can create a geometry that wraps around the full sky but does not extend
+everywhere in declination:
+
+.. code-block:: python
+
+		>>> shape,wcs = enmap.band_geometry(dec_cut=20*utils.degree, res=0.5 * utils.arcmin,proj='car')
+
+This creates a CAR geometry with pixel size of 0.5 arcminutes that wraps around
+the whole sky but is limited to DEC=-20d to 20d. The following creates the same
+except with a declination extent from -60d to 30d.
+
+.. code-block:: python
+
+		>>> shape,wcs = enmap.band_geometry(dec_cut=np.array([-60,30])*utils.degree, res=0.5 * utils.arcmin,proj='car')
+
 
 Resampling maps
 --------
