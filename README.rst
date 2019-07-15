@@ -79,6 +79,15 @@ If you also need non-Python code to be recompiled, run:
 
 before the above steps.
 
+To test the installation under development mode, you can run:
+
+.. code-block:: console
+		
+   $ py.test
+   
+   
+This requires the pytest Python package to be installed.
+
 
 
 Contributing
