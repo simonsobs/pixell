@@ -18,7 +18,7 @@ pixell
 
 * Free software: BSD license
 * Documentation: https://pixell.readthedocs.io.
-* Tutorial_
+* Tutorials_
 
 Dependencies
 ------------
@@ -102,5 +102,5 @@ If you have write access to this repository, please:
 
 If you do not have write access, create a fork of this repository and proceed as described above. For more details, see Contributing_.
   
-.. _Tutorial: https://github.com/simonsobs/pixell_tutorials/blob/master/Tutorial.ipynb
+.. _Tutorials: https://github.com/simonsobs/pixell_tutorials/
 .. _Contributing: https://pixell.readthedocs.io/en/latest/contributing.html
