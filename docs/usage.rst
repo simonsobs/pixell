@@ -6,11 +6,60 @@ Usage
 
 .. sectnum:: :start: 1
 
-Any map can be completely specified by two objects, a numpy array (of at least two dimensions) whose two trailing dimensions correspond to two coordinate axes of the map, and a ``wcs`` object that specifies the World Coordinate System. The latter specifies the correspondence between pixels and physical sky coordinates. This library allows for the manipulation of an object ``ndmap``, which has all the properties of numpy arrays but is in addition enriched by the ``wcs`` object (specifically an instantiation of Astropy's ``astropy.wcs.wcs.WCS`` object). The ``shape`` of the numpy array and the ``wcs`` completely specifies the geometry and footprint of a map of the sky.
+The ``ndmap`` object
+--------------------
 
-All ``ndmap`` s must have at least two dimensions. The trailing two axes are interpreted as the Y (typically, declination) and X (typically, right ascension) axes. Maps can have arbitrary number of leading dimensions, but many of ``pixell``' CMB-related tools interpret a 3D array of shape ``(ncomp,Ny,Nx)`` to consist of three ``Ny`` x ``Nx`` maps of intensity, polarization Q and U Stokes parameters in that order.
+Any map can be completely specified by two objects, a numpy array (of
+at least two dimensions) whose two trailing dimensions correspond to
+two coordinate axes of the map, and a ``wcs`` object that specifies
+the World Coordinate System. The latter specifies the correspondence
+between pixels and physical sky coordinates. This library allows for
+the manipulation of an object ``ndmap``, which has all the properties
+of numpy arrays but is in addition enriched by the ``wcs`` object
+(specifically an instantiation of Astropy's ``astropy.wcs.wcs.WCS``
+object). The combination of the ``shape`` of the numpy array and the
+``wcs`` completely specifies the footprint of a map of the sky, and is
+called the ``geometry``.
+
+An ``ndmap`` must have at least two dimensions. The two right-most
+axes represent celestial coordinates (typically Declination and Right
+Ascension).  Maps can have arbitrary number of leading dimensions, but
+many of the ``pixell`` CMB-related tools interpret 3D arrays with
+shape ``(ncomp,Ny,Nx)`` as representing ``Ny`` x ``Nx`` maps of
+intensity, polarization Q and U Stokes parameters, in that order.
+
+In the two celestial axes, the "first" pixel (index [0,0]) corresponds
+to the lower left-hand corner of the map, as it would be displayed on
+a screen or printed page.  The first index represents the row,
+parallel to the Cartesian Y-axis, typically associated with increasing
+Declination.  The second index represents the column, parallel to the
+Cartesian X-axis, typically associated with decreasing Right
+Ascension.
 
 TODO: I've listed below common operations that would be useful to demonstrate here.  Finish this! (See :ref:`ReferencePage` for a dump of all member functions)
+
+Creating an ``ndmap``
+---------------------
+
+To create an empty ``ndmap``, call the ``enmap.zeros`` or
+``enmap.empty`` functions and specify the map shape as well as the
+pixelization information (the WCS).  Here is a basic example:
+
+.. code-block:: python
+
+   >>> from pixell import enmap, utils
+   >>> box = np.array([[-5,10],[5,-10]]) * utils.degree
+   >>> shape,wcs = enmap.geometry(pos=box,res=0.5 * utils.arcmin,proj='car')
+   >>> imap = enmap.zeros((3,) + shape, wcs=wcs)
+
+In this example we are requesting a pixelization that spans from -5
+to +5 in declination, and +10 to -10 in Right Ascension.  Note that we
+need to specify the Right Ascension coordinates in decreasing order,
+or the map, when we display it with pixel [0,0] in the lower left-hand
+corner, will not have the usual astronomical orientation.
+
+For more information on designing the geometry, see
+:ref:`geometry-section`.
 
 Maps are extensions of ``numpy`` arrays
 ---------------------------------------
@@ -226,6 +275,9 @@ A filter can be applied to a map in three steps:
 2. Fourier transform the map ``imap`` to ``kmap``
 3. multiply the filter and k-map
 4. inverse Fourier transform the result
+
+
+.. _geometry-section:
 
 Building a map geometry
 ----------
