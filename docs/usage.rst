@@ -290,11 +290,12 @@ You can create a geometry if you know what its bounding box and pixel size are:
 .. code-block:: python
 
 		>>> from pixell import enmap, utils
-		>>> box = np.array([[-5,-5],[5,5]]) * utils.degree
+		>>> box = np.array([[-5,10],[5,-10]]) * utils.degree
 		>>> shape,wcs = enmap.geometry(pos=box,res=0.5 * utils.arcmin,proj='car')
 
-This creates a CAR geometry centered on RA=0d,DEC=0d with a width and height of
-10 degrees and a pixel size of 0.5 arcminutes.
+This creates a CAR geometry centered on RA=0d,DEC=0d with a width of
+20 degrees, a height of 10 degrees, and a pixel size of 0.5
+arcminutes.
 
 Full sky
 ~~~~~~~~
