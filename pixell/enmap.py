@@ -276,12 +276,28 @@ def enmap(arr, wcs=None, dtype=None, copy=True):
 	return ndmap(arr, wcs)
 
 def empty(shape, wcs=None, dtype=None):
+	"""
+	Return an enmap with entries uninitialized (like numpy.empty).
+	"""
 	return enmap(np.empty(shape, dtype=dtype), wcs, copy=False)
+
 def zeros(shape, wcs=None, dtype=None):
+	"""
+	Return an enmap with entries initialized to zero (like
+	numpy.zeros).
+	"""
 	return enmap(np.zeros(shape, dtype=dtype), wcs, copy=False)
+
 def ones(shape, wcs=None, dtype=None):
+	"""
+	Return an enmap with entries initialized to one (like numpy.ones).
+	"""
 	return enmap(np.ones(shape, dtype=dtype), wcs, copy=False)
+
 def full(shape, wcs, val, dtype=None):
+	"""
+	Return an enmap with entries initialized to val (like numpy.full).
+	"""
 	return enmap(np.full(shape, val, dtype=dtype), wcs, copy=False)
 
 def posmap(shape, wcs, safe=True, corner=False, separable=False, dtype=np.float64, bsize=1e6):
