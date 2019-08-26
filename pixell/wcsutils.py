@@ -229,18 +229,11 @@ def finalize(w, pos, res, shape, ref=None):
 		off = w.wcs_world2pix(pos[0,None],0)[0]+0.5
 		w.wcs.crpix -= off
 	if ref is not None:
-		# Tweak wcs so that crval is an integer number of pixels
-		# away from ref. We do that by constructing a new wcs centered
-		# on ref, measuring the pixel coordinates of crval in this system
-		# and truncating it to a whole pixel number.
-		wtmp = w.deepcopy()
-		wtmp.wcs.crpix = (1,1)
-		wtmp.wcs.crval = ref
-		w.wcs.crval = wtmp.wcs_pix2world(np.round(wtmp.wcs_world2pix(w.wcs.crval[None],1)),1)[0]
-		# We can then simply round the crpix to the closest integer. Together with the
-		# previous operation, this will displace us by around 1 pixel, which is the
-		# cost one has to pay for this realignment.
-		w.wcs.crpix = np.round(w.wcs.crpix)
+		# Tweak wcs so that crval is an integer number of
+		# pixels away from ref.  This is most straight-forward
+		# if one simply adjusts crpix.
+		off = (w.wcs_world2pix(np.asarray(ref)[None], 1)[0] + 0.5) % 1 - 0.5
+		w.wcs.crpix -= off
 	return w
 
 def angdist(lon1,lat1,lon2,lat2):
