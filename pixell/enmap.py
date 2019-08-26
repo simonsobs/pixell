@@ -878,8 +878,8 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	spherical harmonics transform ring weights. The cost of this tweaking is that the
 	resulting bounding box can differ by a fraction of a pixel from the one requested.
 	To force the geometry to exactly match the bounding box provided you can pass force=True.
-	It is also possible to manually choose the reference pixel via the ref argument, which
-	must be a dec,ra coordinate pair."""
+	It is also possible to manually choose the reference point via the ref argument, which
+	must be a ra,dec (note the order) coordinate pair, in degrees."""
 	# We use radians by default, while wcslib uses degrees, so need to rescale.
 	# The exception is when we are using a plain, non-spherical wcs, in which case
 	# both are unitless. So undo the scaling in this case.
