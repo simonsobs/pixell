@@ -1,5 +1,6 @@
 """Utilities for making mpi use safer and easier."""
-import sys, os
+from __future__ import print_function
+import sys, os, traceback
 
 class FakeCommunicator:
     def __init__(self):
