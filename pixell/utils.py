@@ -297,7 +297,7 @@ def dedup(a):
 	The original is not modified."""
 	return a[np.concatenate([[True],a[1:]!=a[:-1]])]
 
-def interpol(a, inds, order=3, mode="nearest", mask_nan=True, cval=0.0, prefilter=True):
+def interpol(a, inds, order=3, mode="nearest", mask_nan=False, cval=0.0, prefilter=True):
 	"""Given an array a[{x},{y}] and a list of float indices into a,
 	inds[len(y),{z}], returns interpolated values at these positions as [{x},{z}]."""
 	a    = np.asanyarray(a)
