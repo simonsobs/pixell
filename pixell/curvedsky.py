@@ -28,12 +28,17 @@ def rand_map(shape, wcs, ps, lmax=None, dtype=np.float64, seed=None, oversample=
 	if len(shape) == 2: map = map[0]
 	return map
 
+def pad_spectrum(ps, lmax):
+	ps  = np.asarray(ps)
+	ops = np.zeros(ps.shape[:-1]+(lmax+1,),ps.dtype)
+	ops[...,:ps.shape[-1]] = ps[...,:ps.shape[-1]]
+	return ops
+
 def rand_alm_healpy(ps, lmax=None, seed=None, dtype=np.complex128):
 	import healpy
 	if seed is not None: np.random.seed(seed)
 	ps  = np.asarray(ps)
 	if lmax is None: lmax = ps.shape[-1]-1
-	lmax = min(lmax, ps.shape[-1]-1)
 	# Handle various shaped input spectra
 	if   ps.ndim == 1: wps = ps[None,None]
 	elif ps.ndim == 2: wps = powspec.sym_expand(ps, scheme="diag")
@@ -499,7 +504,7 @@ def prepare_ps(ps, ainfo=None, lmax=None):
 	ps    = np.asarray(ps)
 	if ainfo is None:
 		if lmax is None: lmax = ps.shape[-1]-1
-		if lmax > ps.shape[-1]-1: lmax = ps.shape[-1]-1
+		if lmax > ps.shape[-1]-1: ps = pad_spectrum(ps, lmax)
 		ainfo = sharp.alm_info(lmax)
 	if   ps.ndim == 1: wps = ps[None,None]
 	elif ps.ndim == 2: wps = powspec.sym_expand(ps, scheme="diag")
