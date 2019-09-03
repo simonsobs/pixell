@@ -12,6 +12,7 @@ h  = 6.62606957e-34
 k  = 1.3806488e-23
 AU = 149597870700.0
 day2sec = 86400.
+yr2days = 365.2422
 
 # These are like degree, arcmin and arcsec, but turn any lists
 # they touch into arrays.
@@ -296,7 +297,7 @@ def dedup(a):
 	The original is not modified."""
 	return a[np.concatenate([[True],a[1:]!=a[:-1]])]
 
-def interpol(a, inds, order=3, mode="nearest", mask_nan=True, cval=0.0, prefilter=True):
+def interpol(a, inds, order=3, mode="nearest", mask_nan=False, cval=0.0, prefilter=True):
 	"""Given an array a[{x},{y}] and a list of float indices into a,
 	inds[len(y),{z}], returns interpolated values at these positions as [{x},{z}]."""
 	a    = np.asanyarray(a)
@@ -865,6 +866,12 @@ def allreduce(a, comm, op=None):
 	res = a.copy()
 	if op is None: comm.Allreduce(a, res)
 	else:          comm.Allreduce(a, res, op)
+	return res
+
+def reduce(a, comm, root=0, op=None):
+	res = a.copy() if comm.rank == root else None
+	if op is None: comm.Reduce(a, res, root=root)
+	else:          comm.Reduce(a, res, op, root=root)
 	return res
 
 def allgather(a, comm):
@@ -1914,9 +1921,10 @@ def expand_slice(sel, n, nowrap=False):
 	def cycle(i,n):
 		if nowrap: return i
 		else: return min(i,n) if i >= 0 else n+i
+	def default(a, val): return a if a is not None else val
 	if step == 0: raise ValueError("slice step cannot be zero")
-	if step > 0: return slice(cycle(sel.start or 0,n),cycle(sel.stop or n,n),step)
-	else: return slice(cycle(sel.start or n-1, n), cycle(sel.stop,n) if sel.stop else -1, step)
+	if step > 0: return slice(cycle(default(sel.start,0),n),cycle(default(sel.stop,n),n),step)
+	else: return slice(cycle(default(sel.start,n-1), n), cycle(sel.stop,n) if sel.stop is not None else -1, step)
 
 def split_slice(sel, ndims):
 	"""Splits a numpy-compatible slice "sel" into sub-slices sub[:], such that

@@ -78,7 +78,7 @@ class ndmap(np.ndarray):
 	def extract(self, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract(self, shape, wcs, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def extract_pixbox(self, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract_pixbox(self, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def insert(self, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert(self, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
-	def insert_at(self, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert_at(self, pix, imap, wrap=wrap, op=op, cval=cval, iwcs=wcs)
+	def insert_at(self, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert_at(self, pix, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
 	def at(self, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=True, safe=True): return at(self, pos, order, mode=mode, cval=0, unit=unit, prefilter=prefilter, mask_nan=mask_nan, safe=safe)
 	def autocrop(self, method="plain", value="auto", margin=0, factors=None, return_info=False): return autocrop(self, method, value, margin, factors, return_info)
 	def apod(self, width, profile="cos", fill="zero"): return apod(self, width, profile=profile, fill=fill)
@@ -276,12 +276,28 @@ def enmap(arr, wcs=None, dtype=None, copy=True):
 	return ndmap(arr, wcs)
 
 def empty(shape, wcs=None, dtype=None):
+	"""
+	Return an enmap with entries uninitialized (like numpy.empty).
+	"""
 	return enmap(np.empty(shape, dtype=dtype), wcs, copy=False)
+
 def zeros(shape, wcs=None, dtype=None):
+	"""
+	Return an enmap with entries initialized to zero (like
+	numpy.zeros).
+	"""
 	return enmap(np.zeros(shape, dtype=dtype), wcs, copy=False)
+
 def ones(shape, wcs=None, dtype=None):
+	"""
+	Return an enmap with entries initialized to one (like numpy.ones).
+	"""
 	return enmap(np.ones(shape, dtype=dtype), wcs, copy=False)
+
 def full(shape, wcs, val, dtype=None):
+	"""
+	Return an enmap with entries initialized to val (like numpy.full).
+	"""
 	return enmap(np.full(shape, val, dtype=dtype), wcs, copy=False)
 
 def posmap(shape, wcs, safe=True, corner=False, separable=False, dtype=np.float64, bsize=1e6):
@@ -434,8 +450,8 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 	at the edge of a (horizontally) fullsky map work."""
 	if iwcs is None: iwcs = map.wcs
 	pixbox = np.asarray(pixbox)
-	oshape, owcs = slice_geometry(map.shape, iwcs, (slice(*pixbox[:,-2]),slice(*pixbox[:,-1])), nowrap=True)
 	if omap is None:
+		oshape, owcs = slice_geometry(map.shape, iwcs, (slice(*pixbox[:,-2]),slice(*pixbox[:,-1])), nowrap=True)
 		omap = full(map.shape[:-2]+tuple(oshape[-2:]), owcs, cval, map.dtype)
 	nphi = utils.nint(360/np.abs(iwcs.wcs.cdelt[0]))
 	# If our map is wider than the wrapping length, assume we're a lower-spin field
@@ -462,6 +478,29 @@ def insert_at(omap, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
 	pixbox = np.array(pix)
 	if pixbox.ndim == 1: pixbox = np.array([pixbox,pixbox+imap.shape[-2:]])
 	return extract_pixbox(omap, pixbox, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=True)
+
+def neighborhood_pixboxes(shape, wcs, poss, r):
+	"""Given a set of positions poss[npos,2] in radians and a distance r in radians,
+	return pixboxes[npos][{from,to},{y,x}] corresponding to the regions within a
+	distance of r from each entry in poss."""
+	poss = np.asarray(poss)
+	res  = np.zeros([len(poss),2,2])
+	for i, pos in enumerate(poss):
+		# Find the coordinate box we need
+		dec, ra = pos[:2]
+		dec1, dec2 = max(dec-r,-np.pi/2), min(dec+r,np.pi/2)
+		with utils.nowarn():
+			scale = 1/min(np.cos(dec1), np.cos(dec2))
+		dra        = min(r*scale, np.pi)
+		ra1, ra2   = ra-dra, ra+dra
+		box        = np.array([[dec1,ra1],[dec2,ra2]])
+		# And get the corresponding pixbox
+		res[i]     = skybox2pixbox(shape, wcs, box)
+	# Turn ranges into from-inclusive, to-exclusive integers.
+	res = utils.nint(res)
+	res = np.sort(res, 1)
+	res[:,1] += 1
+	return res
 
 def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=True, safe=True):
 	if unit != "pix": pos = sky2pix(map.shape, map.wcs, pos, safe=safe)
@@ -892,7 +931,7 @@ def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
     fullsky_geometry and pertain to the geometry before cropping to the
     cut-sky.
     """
-    dec_cut = np.asarray(dec_cut)
+    dec_cut = np.atleast_1d(dec_cut)
     if dec_cut.size == 1:
         dec_cut_min = -dec_cut[0]
         dec_cut_max = dec_cut[0]
@@ -1056,6 +1095,16 @@ def upgrade(emap, factor):
 		res.wcs.wcs.crpix[j] += 0.5
 	return res
 
+def downgrade_geometry(shape, wcs, factor):
+	"""Returns the oshape, owcs corresponding to a map with geometry
+	shape, wcs that has been downgraded by the given factor. Similar
+	to scale_geometry, but truncates the same way as downgrade, and only
+	supports integer factors."""
+	factor = np.full(2, 1, dtype=int)*factor
+	oshape = shape[-2:]//factor
+	owcs   = wcsutils.scale(wcs, 1.0/factor)
+	return oshape, owcs
+
 def pad(emap, pix, return_slice=False, wrap=False):
 	"""Pad enmap "emap", creating a larger map with zeros filled in on the sides.
 	How much to pad is controlled via pix. If pix is a scalar, it specifies the number
@@ -1173,6 +1222,14 @@ def _widen(map,n):
 	return map[(slice(None),) + (None,)*(n-3) + (slice(None),slice(None))]
 
 def apod(m, width, profile="cos", fill="zero"):
+	"""Apodize the provided map. Currently only cosine apodization is
+	implemented.
+
+    Args:
+        imap: (...,Ny,Nx) or (Ny,Nx) ndarray to be apodized
+        width: The width in pixels of the apodization on each edge.
+        profile: The shape of the apodization. Only "cos" is supported.
+	"""
 	width = np.minimum(np.zeros(2)+width,m.shape[-2:]).astype(np.int32)
 	if profile == "cos":
 		a = [0.5*(1-np.cos(np.linspace(0,np.pi,w))) for w in width]
@@ -1545,7 +1602,7 @@ class hdf_wrapper:
 	@property
 	def ndim(self): return len(self.shape)
 	@property
-	def dtype(self): return self.dset.shape
+	def dtype(self): return self.dset.dtype
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [self.ndim-2,2])
 		if len(psel) > 2: raise IndexError("too many indices")

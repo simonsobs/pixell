@@ -46,8 +46,8 @@ def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=
 	# Scale alms by spectrum, taking into account which alms are complex
 	ps12 = enmap.multi_pow(wps, 0.5)
 	ainfo.lmul(alm, (ps12/2**0.5).astype(rtype), alm)
-	alm[:,:ainfo.lmax].imag  = 0
-	alm[:,:ainfo.lmax].real *= 2**0.5
+	alm[:,:ainfo.lmax+1].imag  = 0
+	alm[:,:ainfo.lmax+1].real *= 2**0.5
 	if ps.ndim == 1: alm = alm[0]
 	if return_ainfo: return alm, ainfo
 	else: return alm
