@@ -879,7 +879,7 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	resulting bounding box can differ by a fraction of a pixel from the one requested.
 	To force the geometry to exactly match the bounding box provided you can pass force=True.
 	It is also possible to manually choose the reference point via the ref argument, which
-	must be a ra,dec (note the order) coordinate pair, in degrees."""
+	must be a dec,ra coordinate pair (in radians)."""
 	# We use radians by default, while wcslib uses degrees, so need to rescale.
 	# The exception is when we are using a plain, non-spherical wcs, in which case
 	# both are unitless. So undo the scaling in this case.
@@ -889,6 +889,12 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	if res is not None: res = np.asarray(res)*scale
 	# Apply a standard reference points unless one is manually specified, or we
 	# want to force the bounding box to exactly match the input.
+	try:
+		# if it's a (dec,ra) tuple in radians, make it (ra,dec) in degrees.
+		ref = (ref[1] * scale, ref[0] * scale)
+		assert(len(ref) == 2)
+	except (TypeError, ValueError):
+		pass
 	if ref is None and not force: ref = "standard"
 	wcs = wcsutils.build(pos, res, shape, rowmajor=True, system=proj, ref=ref, **kwargs)
 	if shape is None:

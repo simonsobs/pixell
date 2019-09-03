@@ -46,7 +46,7 @@ class GeometryTests(unittest.TestCase):
             shape, wcs = enmap.geometry(pos=patch.pos(),
                                         res=DELT*DEG,
                                         proj='cea',
-                                        ref=(ra1,0))
+                                        ref=(0, ra1*DEG))
             ref = np.array([[ra1,0]])
             ref_pix = wcs.wcs_world2pix(ref, 0)
             assert(np.all(is_centered(ref_pix)))
@@ -55,19 +55,20 @@ class GeometryTests(unittest.TestCase):
         DELT = 0.05
         patch0 = Patch.centered_at(308., -38., 1.+DELT, 1.+DELT)
         patch1 = Patch.centered_at(309., -39., 1.+DELT, 1.+DELT)
-        ref = patch0.center()[::-1]
+        ref = patch0.center()   # (dec,ra) in degrees.
         for proj in ['tan', 'zea', 'air']:
             print('Checking reference tracking of "%s"...' % proj)
             shape0, wcs0 = enmap.geometry(pos=patch0.pos(),
                                           res=DELT*utils.degree,
                                           proj=proj,
-                                          ref=ref)
+                                          ref=ref*DEG)
             shape1, wcs1 = enmap.geometry(pos=patch1.pos(),
                                           res=DELT*utils.degree,
                                           proj=proj,
-                                          ref=ref)
-            pix0 = wcs0.wcs_world2pix(ref[None],0)
-            pix1 = wcs1.wcs_world2pix(ref[None],0)
+                                          ref=ref*DEG)
+            # Note world2pix wants [(ra,dec)], in degrees...
+            pix0 = wcs0.wcs_world2pix(ref[::-1][None],0)
+            pix1 = wcs1.wcs_world2pix(ref[::-1][None],0)
             print(shape0,wcs0,pix0)
             assert(np.all(is_centered(pix0)))
             assert(np.all(is_centered(pix1)))
