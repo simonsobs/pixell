@@ -1,4 +1,6 @@
 from pixell import sharp
+import sys
+sys.path.append('../../tests')
 import pixel_tests as ptests
 import pickle
 import os

@@ -38,6 +38,13 @@ To install, run:
 		
    $ python setup.py install --user
 
+To test the installation, you can run:
+
+.. code-block:: console
+		
+   $ python setup.py test
+   
+
 Existing ``libsharp`` installation (optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
