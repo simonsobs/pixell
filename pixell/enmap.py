@@ -785,10 +785,10 @@ def smooth_gauss(emap, sigma):
 	"""Smooth the map given as the first argument with a gaussian beam
 	with the given standard deviation in radians."""
 	if np.all(sigma == 0): return emap.copy()
-	f  = map2harm(emap)
+	f  = fft(emap)
 	x2 = np.sum(emap.lmap()**2*sigma**2,0)
 	f *= np.exp(-0.5*x2)
-	return harm2map(f)
+	return ifft(f).real
 
 def calc_window(shape):
 	"""Compute fourier-space window function. Like the other fourier-based

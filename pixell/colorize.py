@@ -3,6 +3,8 @@ import numpy as np, time
 has_fortran = True
 try: from . import _colorize
 except ImportError: has_fortran = False
+try: basestring
+except NameError: basestring = str
 
 # Predefined schemes
 schemes = {}
@@ -138,7 +140,7 @@ def to_mpl_colormap(name, data=None):
 	import matplotlib.colors
 	if data is None: data = schemes[name]
 	return matplotlib.colors.LinearSegmentedColormap.from_list(name,
-			[(val,"#%02x%02x%02x%02x"%tuple(col)) for val,col in zip(data.vals, data.cols)])
+			[(val,"#%02x%02x%02x%02x"%tuple(col)) for val,col in zip(data.vals, data.cols.astype(int))])
 
 def mpl_register(names=None):
 	import matplotlib.cm

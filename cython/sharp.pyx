@@ -176,6 +176,9 @@ cdef class alm_info:
 		naming layout (triangular or rectangular), or as an array containing the
 		index of the first l for each m. Once constructed, an alm_info is immutable.
 		The layouts are all m-major, with all the ls for each m consecutive."""
+		if lmax is not None: lmax = int(lmax)
+		if mmax is not None: mmax = int(mmax)
+		if nalm is not None: nalm = int(nalm)
 		if isinstance(layout,basestring):
 			if layout == "triangular" or layout == "tri":
 				if lmax is None: lmax = nalm2lmax(nalm)
