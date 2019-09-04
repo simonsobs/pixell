@@ -127,3 +127,11 @@ $ git push
 $ git push --tags
 
 Travis will then deploy to PyPI if tests pass.
+
+The role of versioneer is to automatically embed version information
+in the distributed source code or installed package, based on the
+github tags.  The role of bumpversion (in our configuration) is to
+generate sequential version numbers and create github corresponding
+git tags.  The bumpversion and versioneer configurations are in
+``setup.cfg``.
+
