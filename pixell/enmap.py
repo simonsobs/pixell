@@ -974,7 +974,7 @@ def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="a
 	the spectrum is properly scaled. Since this scaling depends on the shape of
 	the map, this is the appropriate place to do so, ugly as it is."""
 	oshape= tuple(shape)
-	if len(oshape) == 2: oshape = (1,)+oshape
+	if len(oshape) == 2: oshape = (1,1)+oshape
 	ls = np.sum(lmap(oshape, wcs, oversample=oversample)**2,0)**0.5
 	if smooth == "auto":
 		# Determine appropriate fourier-scale smoothing based on 2d fourer
@@ -993,6 +993,7 @@ def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="a
 	# values in spectra that must be positive (and it's faster)
 	res = ndmap(utils.interpol(cov, np.reshape(ls,(1,)+ls.shape),mode=mode, mask_nan=False, order=1),wcs)
 	res = downgrade(res, oversample)
+	res = res.reshape(shape[:-2]+res.shape[-2:])
 	return res
 
 def spec2flat_corr(shape, wcs, cov, exp=1.0, mode="constant"):
