@@ -143,7 +143,7 @@ def zea(pos, res=None, shape=None, rowmajor=False, ref=None):
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---ZEA", "DEC--ZEA"]
 	w.wcs.crval = mid
-	if ref is "standard": ref = None
+	w, ref = _apply_zenithal_ref(w, ref)
 	return finalize(w, pos, res, shape, ref=ref)
 
 # The airy distribution is a bit different, since is needs to
@@ -160,16 +160,16 @@ def air(pos, res=None, shape=None, rowmajor=False, rad=None, ref=None):
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---AIR","DEC--AIR"]
 	w.wcs.set_pv([(2,1,90-rad)])
-	if ref is "standard": ref = None
+	w, ref = _apply_zenithal_ref(w, ref)
 	return finalize(w, pos, res, shape, ref=ref)
 
 def tan(pos, res=None, shape=None, rowmajor=False, ref=None):
-	"""Set up a plate carree system. See the build function for details."""
+	"""Set up a gnomonic (tangent plane) system. See the build function for details."""
 	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
-	w.wcs.crval = np.array([mid[0],0])
-	if ref is "standard": ref = None
+	w.wcs.crval = mid
+	w, ref = _apply_zenithal_ref(w, ref)
 	return finalize(w, pos, res, shape, ref=ref)
 
 systems = {"car": car, "cea": cea, "air": air, "zea": zea, "tan": tan, "gnom": tan, "plain": plain }
@@ -229,19 +229,27 @@ def finalize(w, pos, res, shape, ref=None):
 		off = w.wcs_world2pix(pos[0,None],0)[0]+0.5
 		w.wcs.crpix -= off
 	if ref is not None:
-		# Tweak wcs so that crval is an integer number of pixels
-		# away from ref. We do that by constructing a new wcs centered
-		# on ref, measuring the pixel coordinates of crval in this system
-		# and truncating it to a whole pixel number.
-		wtmp = w.deepcopy()
-		wtmp.wcs.crpix = (1,1)
-		wtmp.wcs.crval = ref
-		w.wcs.crval = wtmp.wcs_pix2world(np.round(wtmp.wcs_world2pix(w.wcs.crval[None],1)),1)[0]
-		# We can then simply round the crpix to the closest integer. Together with the
-		# previous operation, this will displace us by around 1 pixel, which is the
-		# cost one has to pay for this realignment.
-		w.wcs.crpix = np.round(w.wcs.crpix)
+		# Tweak wcs so that crval is an integer number of
+		# pixels away from ref.  This is most straight-forward
+		# if one simply adjusts crpix.
+		off = (w.wcs_world2pix(np.asarray(ref)[None], 1)[0] + 0.5) % 1 - 0.5
+		w.wcs.crpix -= off
 	return w
+
+def _apply_zenithal_ref(w, ref):
+        """Input is a wcs w and ref is a position (dec,ra) or a special value
+        (None, 'standard').  Returns tuple (w, ref_out).  If ref is a
+        position, it is copied into w.wcs.crval and ref_out=ref.
+        Otherwise, w is unmodified and ref_out=w.wcs.crval.
+
+        """
+        if isinstance(ref, str) and ref == 'standard':
+                ref = None
+        if ref is None:
+                ref = w.wcs.crval
+        else:
+                w.wcs.crval = ref
+        return w, ref
 
 def angdist(lon1,lat1,lon2,lat2):
 	return np.arccos(np.cos(lat1)*np.cos(lat2)*(np.cos(lon1)*np.cos(lon2)+np.sin(lon1)*np.sin(lon2))+np.sin(lat1)*np.sin(lat2))
