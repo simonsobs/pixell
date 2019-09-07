@@ -48,6 +48,27 @@ def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
     return lensed
 
 class PixelTests(unittest.TestCase):
+
+
+    def test_almxfl(self):
+        import healpy as hp
+
+        for lmax in [100,400,500,1000]:
+            ainfo = sharp.alm_info(lmax)
+            alms = hp.synalm(np.ones(lmax+1),lmax = lmax)
+            filtering = np.ones(lmax+1)
+            alms0 = ainfo.lmul(alms.copy(),filtering)
+            assert np.all(np.isclose(alms0,alms))
+
+        for lmax in [100,400,500,1000]:
+            ainfo = sharp.alm_info(lmax)
+            alms = hp.synalm(np.ones(lmax+1),lmax = lmax)
+            alms0 = curvedsky.almxfl(alms.copy(),lambda x: np.ones(x.shape))
+            assert np.all(np.isclose(alms0,alms))
+            
+        
+
+    
     def test_offset(self):
         obs_pos,grad,raw_pos = get_offset_result(1.)
         obs_pos0 = enmap.read_map(DATA_PREFIX+"MM_offset_obs_pos_042219.fits")
