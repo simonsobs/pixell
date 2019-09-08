@@ -68,6 +68,24 @@ class PixelTests(unittest.TestCase):
             
         
 
+    def test_rand_alm(self):
+        def nalm(lmax):
+            return (lmax + 1) * (lmax + 2) / 2
+
+        lmaxes = [50, 100, 150, 300]
+        
+        mypower = np.ones(50)
+        for lmax in lmaxes:
+            palm = curvedsky.rand_alm(mypower, lmax = lmax)
+            halm = curvedsky.rand_alm_healpy(  mypower, lmax = lmax)
+            
+            print("nalm(%i) = %i, curvedsky.rand_alm gives %s, curvedsky.rand_alm_healpy gives %s "\
+	              % (lmax, \
+                     nalm(lmax),\
+                     palm.shape, \
+                     halm.shape)        )
+            assert np.all(np.isclose(np.asarray(palm.shape),np.asarray(halm.shape)))
+            
     
     def test_offset(self):
         obs_pos,grad,raw_pos = get_offset_result(1.)
