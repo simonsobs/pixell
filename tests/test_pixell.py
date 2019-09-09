@@ -48,6 +48,45 @@ def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
     return lensed
 
 class PixelTests(unittest.TestCase):
+
+
+    def test_almxfl(self):
+        import healpy as hp
+
+        for lmax in [100,400,500,1000]:
+            ainfo = sharp.alm_info(lmax)
+            alms = hp.synalm(np.ones(lmax+1),lmax = lmax)
+            filtering = np.ones(lmax+1)
+            alms0 = ainfo.lmul(alms.copy(),filtering)
+            assert np.all(np.isclose(alms0,alms))
+
+        for lmax in [100,400,500,1000]:
+            ainfo = sharp.alm_info(lmax)
+            alms = hp.synalm(np.ones(lmax+1),lmax = lmax)
+            alms0 = curvedsky.almxfl(alms.copy(),lambda x: np.ones(x.shape))
+            assert np.all(np.isclose(alms0,alms))
+            
+        
+
+    def test_rand_alm(self):
+        def nalm(lmax):
+            return (lmax + 1) * (lmax + 2) / 2
+
+        lmaxes = [50, 100, 150, 300]
+        
+        mypower = np.ones(50)
+        for lmax in lmaxes:
+            palm = curvedsky.rand_alm(mypower, lmax = lmax)
+            halm = curvedsky.rand_alm_healpy(  mypower, lmax = lmax)
+            
+            print("nalm(%i) = %i, curvedsky.rand_alm gives %s, curvedsky.rand_alm_healpy gives %s "\
+	              % (lmax, \
+                     nalm(lmax),\
+                     palm.shape, \
+                     halm.shape)        )
+            assert np.all(np.isclose(np.asarray(palm.shape),np.asarray(halm.shape)))
+            
+    
     def test_offset(self):
         obs_pos,grad,raw_pos = get_offset_result(1.)
         obs_pos0 = enmap.read_map(DATA_PREFIX+"MM_offset_obs_pos_042219.fits")

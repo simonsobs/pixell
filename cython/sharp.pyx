@@ -287,15 +287,16 @@ cdef class alm_info:
 	@cython.boundscheck(False)
 	@cython.wraparound(False)
 	cdef lmul_dp(self,np.ndarray[np.complex128_t,ndim=2] alm, np.ndarray[np.float64_t,ndim=3] lmat):
-		cdef int l, m, lm, c1, c2, ncomp
+		cdef int l, m, lm, c1, c2, ncomp, lcap
 		cdef np.ndarray[np.complex128_t,ndim=1] v
 		cdef np.ndarray[np.int64_t,ndim=1] mstart = self.mstart
 		l,m=0,0
 		ncomp = alm.shape[0]
+		lcap  = min(self.lmax+1,lmat.shape[2])
 		v = np.empty(ncomp,dtype=np.complex128)
 		#for m in prange(self.mmax+1,nogil=True,schedule="dynamic"):
 		for m in range(self.mmax+1):
-			for l in range(m, self.lmax+1):
+			for l in range(m, lcap):
 				lm = mstart[m]+l*self.stride
 				for c1 in range(ncomp):
 					v[c1] = alm[c1,lm]
@@ -303,18 +304,24 @@ cdef class alm_info:
 					alm[c1,lm] = 0
 					for c2 in range(ncomp):
 						alm[c1,lm] += lmat[c1,c2,l]*v[c2]
+			# If lmat is too short, interpret missing values as zero
+			for l in range(lcap, self.lmax+1):
+				lm = mstart[m]+l*self.stride
+				for c1 in range(ncomp):
+					alm[c1,lm] = 0
 	@cython.boundscheck(False)
 	@cython.wraparound(False)
 	cdef lmul_sp(self,np.ndarray[np.complex64_t,ndim=2] alm, np.ndarray[np.float32_t,ndim=3] lmat):
-		cdef int l, m, lm, c1, c2, ncomp
+		cdef int l, m, lm, c1, c2, ncomp, lcap
 		cdef np.ndarray[np.complex64_t,ndim=1] v
 		cdef np.ndarray[np.int64_t,ndim=1] mstart = self.mstart
 		l,m=0,0
 		ncomp = alm.shape[0]
+		lcap  = min(self.lmax+1,lmat.shape[2])
 		v = np.empty(ncomp,dtype=np.complex64)
 		#for m in prange(self.mmax+1,nogil=True,schedule="dynamic"):
 		for m in range(self.mmax+1):
-			for l in range(m, self.lmax+1):
+			for l in range(m, lcap):
 				lm = mstart[m]+l*self.stride
 				for c1 in range(ncomp):
 					v[c1] = alm[c1,lm]
@@ -322,6 +329,10 @@ cdef class alm_info:
 					alm[c1,lm] = 0
 					for c2 in range(ncomp):
 						alm[c1,lm] += lmat[c1,c2,l]*v[c2]
+			for l in range(lcap, self.lmax+1):
+				lm = mstart[m]+l*self.stride
+				for c1 in range(ncomp):
+					alm[c1,lm] = 0
 	def __dealloc__(self):
 		csharp.sharp_destroy_alm_info(self.info)
 
