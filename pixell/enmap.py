@@ -636,10 +636,59 @@ def extent_subgrid(shape, wcs, nsub=None, safe=True, signed=False):
 	if signed: res *= np.sign(wcs.wcs.cdelt[::-1])
 	return res
 
-def area(shape, wcs, nsub=0x10):
+def area(shape, wcs, nsub=None, density=1000):
 	"""Returns the area of a patch with the given shape
-	and wcs, in steradians."""
-	return np.prod(extent(shape, wcs, nsub=nsub))
+	and wcs, in steradians.
+
+	This is achieved by integrating sin(dec) d(RA) over the closed
+	path (dec(t), ra(t)) that bounds the valid region of the map,
+	so it only works for projections where we can figure out this
+	boundary.
+
+	The present implementation works for cases where the valid
+	region of the map runs through the centers of the pixels on
+	each edge or through the outer edge of those pixels (this
+	detail can be different for each edge).  The former case is
+	needed in the full-sky cylindrical projections that have
+	pixels centered exactly on the poles.
+
+	"""
+	# For each outer edge, determine whether to use center or edge
+	# of the pixel for th eboundary.
+	n2, n1 = shape[-2:]
+	row_lims, col_lims = [], []  # Each of these lists must end up
+				     # with two (col,row) entries.
+	for dest_list, test_points in [
+			(col_lims, [(  -0.5, 0.0), (   0.0, 0.0)]),
+			(col_lims, [(n1-0.5, 0.0), (n1-1.0, 0.0)]),
+			(row_lims, [(0.0,   -0.5), (0.0,    0.0)]),
+			(row_lims, [(0.0, n2-0.5), (0.0, n2-1.0)]),
+			]:
+		for t in test_points:
+			if not np.any(np.isnan(wcs.wcs_pix2world([t], 0))):
+				dest_list.append(np.array(t, float))
+				break
+		else:
+			raise ValueError("Could not identify map_boundary; "
+					 "last test point was %s" % t)
+	# We want to draw a closed patch connecting the four corners
+	# of the boundary.
+	col_lims = [_c[0] for _c in col_lims]
+	row_lims = [_r[1] for _r in row_lims]
+	vertices = np.array([(col_lims[0], row_lims[0]),
+			     (col_lims[1], row_lims[0]),
+			     (col_lims[1], row_lims[1]),
+			     (col_lims[0], row_lims[1]),
+			     (col_lims[0], row_lims[0])])
+	total = 0.
+	for v0, v1 in zip(vertices[:-1], vertices[1:]):
+		line_pix = np.linspace(0, 1, density)[:,None] * (v1 - v0) + v0
+		line = wcs.wcs_pix2world(line_pix, 0)
+		dec = (line[1:,1] + line[:-1,1]) / 2   # average dec
+		d_ra = line[1:,0] - line[:-1,0]        # delta RA.
+		d_ra = (d_ra+180) % 360 - 180          # safetyize branch crossing.
+		total += (np.sin(dec*utils.degree) * d_ra).sum()*utils.degree
+	return abs(total)
 
 def pixsize(shape, wcs):
 	"""Returns the area of a single pixel, in steradians."""
@@ -917,16 +966,19 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
 	assert proj == "car", "Only CAR fullsky geometry implemented"
 	if shape is None:
 		res   = np.zeros(2)+res
-		shape = ([1*np.pi,2*np.pi]/res+0.5).astype(int)
-		shape[0] += 1
-	ny,nx = shape
-	ny   -= 1
+		shape_float = ([1*np.pi,2*np.pi]/res) + (1,0)
+		shape = shape_float.astype('int')
+	ny, nx = shape
+	assert abs(res[0] * (ny-1) - np.pi) < 1e-8
+	assert abs(res[1] * nx - 2*np.pi) < 1e-8
 	wcs   = wcsutils.WCS(naxis=2)
-	wcs.wcs.crval = [0,0]
-	wcs.wcs.cdelt = [-360./nx,180./ny]
-	wcs.wcs.crpix = [nx/2.+1,ny/2.+1]
+	# Note the reference point is shifted by half a pixel to keep
+	# the grid in bounds, from ra=180+cdelt/2 to ra=-180+cdelt/2.
+	wcs.wcs.crval = [res[0]/2/utils.degree,0]
+	wcs.wcs.cdelt = [-360./nx,180./(ny-1)]
+	wcs.wcs.crpix = [nx//2+0.5,ny//2+1]
 	wcs.wcs.ctype = ["RA---CAR","DEC--CAR"]
-	return dims+(ny+1,nx+0), wcs
+	return dims+(ny,nx), wcs
 
 def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
     """Return a geometry corresponding to a sky that had a full-sky
