@@ -88,6 +88,10 @@ def is_plain(wcs):
 	non-wrapping coordinates or some angular coordiante system."""
 	return wcs.wcs.ctype[0] == ""
 
+def is_cyl(wcs):
+	"""Returns True if the wcs represents a cylindrical coordinate system"""
+	return wcs.wcs.ctype[0].split("-")[-1] in ["CYP","CEA","CAR","MER"]
+
 def scale(wcs, scale=1, rowmajor=False, corner=False):
 	"""Scales the linear pixel density of a wcs by the given factor, which can be specified
 	per axis. This is the same as dividing the pixel size by the same number."""
@@ -237,19 +241,17 @@ def finalize(w, pos, res, shape, ref=None):
 	return w
 
 def _apply_zenithal_ref(w, ref):
-        """Input is a wcs w and ref is a position (dec,ra) or a special value
-        (None, 'standard').  Returns tuple (w, ref_out).  If ref is a
-        position, it is copied into w.wcs.crval and ref_out=ref.
-        Otherwise, w is unmodified and ref_out=w.wcs.crval.
-
-        """
-        if isinstance(ref, str) and ref == 'standard':
-                ref = None
-        if ref is None:
-                ref = w.wcs.crval
-        else:
-                w.wcs.crval = ref
-        return w, ref
+	"""Input is a wcs w and ref is a position (dec,ra) or a special value
+	(None, 'standard').  Returns tuple (w, ref_out).  If ref is a
+	position, it is copied into w.wcs.crval and ref_out=ref.
+	Otherwise, w is unmodified and ref_out=w.wcs.crval."""
+	if isinstance(ref, str) and ref == 'standard':
+		ref = None
+	if ref is None:
+		ref = w.wcs.crval
+	else:
+		w.wcs.crval = ref
+	return w, ref
 
 def angdist(lon1,lat1,lon2,lat2):
 	return np.arccos(np.cos(lat1)*np.cos(lat2)*(np.cos(lon1)*np.cos(lon2)+np.sin(lon1)*np.sin(lon2))+np.sin(lat1)*np.sin(lat2))
