@@ -8,7 +8,7 @@ aclocal
 if [ $? -eq 0 ]; then
     echo Found automake.
 else
-    echo WARNING: automake not found. Please install this or libsharp will not be installed correctly.
+    echo ERROR: automake not found. Please install this or libsharp will not be installed correctly.
     exit 127
 fi
 autoconf

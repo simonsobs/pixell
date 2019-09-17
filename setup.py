@@ -103,7 +103,7 @@ cmdclass = versioneer.get_cmdclass(cmdclass)
 
 setup(
     author="Simons Observatory Collaboration Analysis Library Task Force",
-    author_email='',
+    author_email='mathewsyriac@gmail.com',
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',

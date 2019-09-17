@@ -38,8 +38,15 @@ To install, run:
 		
    $ python setup.py install --user
 
+To test the installation, you can run:
+
+.. code-block:: console
+		
+   $ python setup.py test
+   
+
 Existing ``libsharp`` installation (optional)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Libsharp is installed automatically by setup.py. If instead you want to use an existing ``libsharp`` installation, you can do so by symlinking the ``libsharp`` directory into a directory called ``_deps`` in the root directory, such that the file ``pixell/_deps/libsharp/libsharp/sharp.c`` exists.
 
@@ -90,8 +97,8 @@ This requires the pytest Python package to be installed.
 
 
 
-Contributing
-------------
+Contributions
+-------------
 
 If you have write access to this repository, please:
 

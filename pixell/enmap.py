@@ -859,10 +859,10 @@ def smooth_gauss(emap, sigma):
 	"""Smooth the map given as the first argument with a gaussian beam
 	with the given standard deviation in radians."""
 	if np.all(sigma == 0): return emap.copy()
-	f  = map2harm(emap)
+	f  = fft(emap)
 	x2 = np.sum(emap.lmap()**2*sigma**2,0)
 	f *= np.exp(-0.5*x2)
-	return harm2map(f)
+	return ifft(f).real
 
 def calc_window(shape):
 	"""Compute fourier-space window function. Like the other fourier-based
@@ -913,8 +913,8 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	spherical harmonics transform ring weights. The cost of this tweaking is that the
 	resulting bounding box can differ by a fraction of a pixel from the one requested.
 	To force the geometry to exactly match the bounding box provided you can pass force=True.
-	It is also possible to manually choose the reference pixel via the ref argument, which
-	must be a dec,ra coordinate pair."""
+	It is also possible to manually choose the reference point via the ref argument, which
+	must be a dec,ra coordinate pair (in radians)."""
 	# We use radians by default, while wcslib uses degrees, so need to rescale.
 	# The exception is when we are using a plain, non-spherical wcs, in which case
 	# both are unitless. So undo the scaling in this case.
@@ -924,6 +924,12 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	if res is not None: res = np.asarray(res)*scale
 	# Apply a standard reference points unless one is manually specified, or we
 	# want to force the bounding box to exactly match the input.
+	try:
+		# if it's a (dec,ra) tuple in radians, make it (ra,dec) in degrees.
+		ref = (ref[1] * scale, ref[0] * scale)
+		assert(len(ref) == 2)
+	except (TypeError, ValueError):
+		pass
 	if ref is None and not force: ref = "standard"
 	wcs = wcsutils.build(pos, res, shape, rowmajor=True, system=proj, ref=ref, **kwargs)
 	if shape is None:
@@ -1009,7 +1015,7 @@ def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="a
 	the spectrum is properly scaled. Since this scaling depends on the shape of
 	the map, this is the appropriate place to do so, ugly as it is."""
 	oshape= tuple(shape)
-	if len(oshape) == 2: oshape = (1,)+oshape
+	if len(oshape) == 2: oshape = (1,1)+oshape
 	ls = np.sum(lmap(oshape, wcs, oversample=oversample)**2,0)**0.5
 	if smooth == "auto":
 		# Determine appropriate fourier-scale smoothing based on 2d fourer
@@ -1028,6 +1034,7 @@ def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="a
 	# values in spectra that must be positive (and it's faster)
 	res = ndmap(utils.interpol(cov, np.reshape(ls,(1,)+ls.shape),mode=mode, mask_nan=False, order=1),wcs)
 	res = downgrade(res, oversample)
+	res = res.reshape(shape[:-2]+res.shape[-2:])
 	return res
 
 def spec2flat_corr(shape, wcs, cov, exp=1.0, mode="constant"):

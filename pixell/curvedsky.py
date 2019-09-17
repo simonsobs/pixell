@@ -28,11 +28,28 @@ def rand_map(shape, wcs, ps, lmax=None, dtype=np.float64, seed=None, oversample=
 	if len(shape) == 2: map = map[0]
 	return map
 
+def pad_spectrum(ps, lmax):
+	ps  = np.asarray(ps)
+	ops = np.zeros(ps.shape[:-1]+(lmax+1,),ps.dtype)
+	ops[...,:ps.shape[-1]] = ps[...,:ps.shape[-1]]
+	return ops
+
 def rand_alm_healpy(ps, lmax=None, seed=None, dtype=np.complex128):
 	import healpy
 	if seed is not None: np.random.seed(seed)
-	ps = powspec.sym_compress(ps, scheme="diag")
-	return np.asarray(healpy.synalm(ps, lmax=lmax, new=True))
+	ps  = np.asarray(ps)
+	if lmax is None: lmax = ps.shape[-1]-1
+	# Handle various shaped input spectra
+	if   ps.ndim == 1: wps = ps[None,None]
+	elif ps.ndim == 2: wps = powspec.sym_expand(ps, scheme="diag")
+	elif ps.ndim == 3: wps = ps
+	else: raise ValueError("ps must be either [nl], [nspec,nl] or [ncomp,ncomp,nl] in rand_alm_healpy")
+	# Flatten, since healpy wants only the non-redundant components in the diagonal-first scheme
+	fps = powspec.sym_compress(wps, scheme="diag")
+	alm = np.asarray(healpy.synalm(fps, lmax=lmax, new=True))
+	# Produce scalar output for scalar inputs
+	if ps.ndim == 1: alm = alm[0]
+	return alm
 
 def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=True, return_ainfo=False):
 	"""This is a replacement for healpy.synalm. It generates the random
@@ -485,11 +502,14 @@ def fill_gauss(arr, bsize=0x10000):
 
 def prepare_ps(ps, ainfo=None, lmax=None):
 	ps    = np.asarray(ps)
-	if ainfo is None: ainfo = sharp.alm_info(min(lmax,ps.shape[-1]-1) or ps.shape[-1]-1)
+	if ainfo is None:
+		if lmax is None: lmax = ps.shape[-1]-1
+		if lmax > ps.shape[-1]-1: ps = pad_spectrum(ps, lmax)
+		ainfo = sharp.alm_info(lmax)
 	if   ps.ndim == 1: wps = ps[None,None]
 	elif ps.ndim == 2: wps = powspec.sym_expand(ps, scheme="diag")
 	elif ps.ndim == 3: wps = ps
-	else: raise ValuerError("power spectrum must be [nl], [nspec,nl] or [ncomp,ncomp,nl]")
+	else: raise ValueError("power spectrum must be [nl], [nspec,nl] or [ncomp,ncomp,nl]")
 	return wps, ainfo
 
 def rand_alm_white(ainfo, pre=None, alm=None, seed=None, dtype=np.complex128, m_major=True):
