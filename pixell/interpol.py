@@ -58,7 +58,7 @@ def map_coordinates(idata, points, odata=None, mode="spline", order=3, border="c
 	if not trans:
 		if odata is None:
 			if not deriv:
-				odata = np.empty(points.shape[1:]+dpre,dtype=idata.dtype)
+				odata = np.empty(dpre+points.shape[1:],dtype=idata.dtype)
 			else:
 				# When using derivatives, the output will have shape [ndim,{idims},{pdims}]
 				odata = np.empty((ndim,)+dpre+points.shape[1:],dtype=idata.dtype)
