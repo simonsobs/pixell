@@ -16,8 +16,8 @@ class Patch:
     @classmethod
     def centered_at(cls, ra0, dec0, width, height):
         self = cls()
-        self.ra_range = (ra0+width/2, ra0-width/2)
-        self.dec_range = (dec0-height/2, dec0+height/2)
+        self.ra_range = np.array((ra0+width/2, ra0-width/2))
+        self.dec_range = np.array((dec0-height/2, dec0+height/2))
         return self
 
     def pos(self):
@@ -72,6 +72,52 @@ class GeometryTests(unittest.TestCase):
             print(shape0,wcs0,pix0)
             assert(np.all(is_centered(pix0)))
             assert(np.all(is_centered(pix1)))
+
+    def test_full_sky(self):
+        """Test that fullsky_geometry returns sensible objects.
+
+        Or at least the objects that we considered sensible when we
+        wrote this test.
+
+        """
+        shape, w = enmap.fullsky_geometry(res=0.01*DEG, proj='car')
+        ny, nx = shape
+        for delta, expect_nans in [(0., False), (.001, True)]:
+            for ix in [-0.5-delta,nx-0.5+delta]:
+                for iy in [0-delta, ny-1+delta]:
+                    c = w.wcs_pix2world([(ix,iy)], 0)
+                    #print(ix,iy,c)
+                    assert np.any(np.isnan(c)) == expect_nans
+
+
+    def test_area(self):
+        """Test that map area is computed accurately."""
+        test_patches = []
+        # Small CAR patch
+        DELT = 0.01
+        patch = Patch.centered_at(-52., -38., 12. + DELT, 12.0 + DELT)
+        shape, w = enmap.geometry(pos=patch.pos(),
+                                  res=DELT*DEG,
+                                  proj='car',
+                                  ref=(0, 0))
+        exact_area = (np.dot(patch.ra_range*DEG, [-1,1]) *
+                      np.dot(np.sin(patch.dec_range*DEG), [1,-1]))
+
+        test_patches.append((shape, w, exact_area))
+        # Full sky CAR patch
+        shape, w = enmap.fullsky_geometry(res=0.01*DEG, proj='car')
+        exact_area = 4*np.pi
+        test_patches.append((shape, w, exact_area))
+        # Small ZEA patch at pole
+        shape, w = enmap.geometry(pos=[90*DEG,0], res=DELT*DEG, proj='zea', shape=[100,100])
+        exact_area = 1*DEG**2
+        test_patches.append((shape, w, exact_area))
+
+        for shape, w, exact_area in test_patches:
+            ratio = enmap.area(shape, w)/exact_area
+            print(ratio)
+            assert(abs(ratio-1) < 1e-6)
+
 
 if __name__ == '__main__':
     unittest.main()
