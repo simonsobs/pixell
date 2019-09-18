@@ -108,11 +108,16 @@ class GeometryTests(unittest.TestCase):
         shape, w = enmap.fullsky_geometry(res=0.01*DEG, proj='car')
         exact_area = 4*np.pi
         test_patches.append((shape, w, exact_area))
+        # Small ZEA patch at pole
+        shape, w = enmap.geometry(pos=[90*DEG,0], res=DELT*DEG, proj='zea', shape=[100,100])
+        exact_area = 1*DEG**2
+        test_patches.append((shape, w, exact_area))
 
         for shape, w, exact_area in test_patches:
             ratio = enmap.area(shape, w)/exact_area
             print(ratio)
-            assert(abs(ratio-1) < 1e-8)
+            assert(abs(ratio-1) < 1e-6)
+
 
 if __name__ == '__main__':
     unittest.main()
