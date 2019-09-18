@@ -571,7 +571,7 @@ def extent(shape, wcs, nsub=None, signed=False, method="auto"):
 	if method == "auto":
 		if   wcsutils.is_plain(wcs): method = "intermediate"
 		elif wcsutils.is_cyl(wcs):   method = "cylindrical"
-		else:                        method = "contour"
+		else:                        method = "subgrid"
 	if   method in ["inter","intermediate"]: return extent_intermediate(shape, wcs, signed=signed)
 	elif method in ["cyl",  "cylindrical"]:  return extent_cyl(shape, wcs, signed=signed)
 	elif method in ["sub", "subgrid"]:       return extent_subgrid(shape, wcs, nsub=nsub, signed=signed)
