@@ -147,7 +147,7 @@ class PixelTests(unittest.TestCase):
         test_res_arcmin = 0.5
         shape,wcs = enmap.fullsky_geometry(res=np.deg2rad(test_res_arcmin/60.),proj='car')
         assert shape[0]==21601 and shape[1]==43200
-        assert 50000 < (enmap.area(shape,wcs)*(180./np.pi)**2.) < 51000
+        assert abs(enmap.area(shape,wcs) - 4*np.pi) < 1e-6
 
     def test_pixels(self):
         """Runs reference pixel and mean-square comparisons on extracts from randomly generated
