@@ -65,7 +65,7 @@ class ndmap(np.ndarray):
 	def pixshape(self, signed=False): return pixshape(self.shape, self.wcs, signed=signed)
 	def pixsizemap(self): return pixsizemap(self.shape, self.wcs)
 	def pixshapemap(self): return pixshapemap(self.shape, self.wcs)
-	def extent(self, method="default", signed=False): return extent(self.shape, self.wcs, method=method, signed=signed)
+	def extent(self, method="auto", signed=False): return extent(self.shape, self.wcs, method=method, signed=signed)
 	@property
 	def preflat(self):
 		"""Returns a view of the map with the non-pixel dimensions flattened."""
@@ -572,9 +572,9 @@ def extent(shape, wcs, nsub=None, signed=False, method="auto"):
 		if   wcsutils.is_plain(wcs): method = "intermediate"
 		elif wcsutils.is_cyl(wcs):   method = "cylindrical"
 		else:                        method = "contour"
-	if   method in ["inter","intermediate"]: return extent_intermediate(shape, wcs)
-	elif method in ["cyl",  "cylindrical"]:  return extent_cyl(shape, wcs)
-	elif method in ["sub", "subgrid"]:       return extent_subgrid(shape, wcs, nsub=nsub)
+	if   method in ["inter","intermediate"]: return extent_intermediate(shape, wcs, signed=signed)
+	elif method in ["cyl",  "cylindrical"]:  return extent_cyl(shape, wcs, signed=signed)
+	elif method in ["sub", "subgrid"]:       return extent_subgrid(shape, wcs, nsub=nsub, signed=signed)
 	else: raise ValueError("Unrecognized method '%s' in extent()" % method)
 
 def extent_intermediate(shape, wcs, signed=False):
