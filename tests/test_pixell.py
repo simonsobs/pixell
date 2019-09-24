@@ -26,6 +26,7 @@ except ImportError:               # when imported through py.test
 
 TEST_DIR = ptests.TEST_DIR
 DATA_PREFIX = ptests.DATA_PREFIX
+lens_version = '091819'
 
 def get_offset_result(res=1.,dtype=np.float64,seed=1):
     shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res))
@@ -89,9 +90,9 @@ class PixelTests(unittest.TestCase):
     
     def test_offset(self):
         obs_pos,grad,raw_pos = get_offset_result(1.)
-        obs_pos0 = enmap.read_map(DATA_PREFIX+"MM_offset_obs_pos_042219.fits")
-        grad0 = enmap.read_map(DATA_PREFIX+"MM_offset_grad_042219.fits")
-        raw_pos0 = enmap.read_map(DATA_PREFIX+"MM_offset_raw_pos_042219.fits")
+        obs_pos0 = enmap.read_map(DATA_PREFIX+"MM_offset_obs_pos_%s.fits" % lens_version)
+        grad0 = enmap.read_map(DATA_PREFIX+"MM_offset_grad_%s.fits"  % lens_version)
+        raw_pos0 = enmap.read_map(DATA_PREFIX+"MM_offset_raw_pos_%s.fits"  % lens_version)
         assert np.all(np.isclose(obs_pos,obs_pos0))
         assert np.all(np.isclose(raw_pos,raw_pos0))
         assert np.all(np.isclose(grad,grad0))
@@ -101,8 +102,8 @@ class PixelTests(unittest.TestCase):
 
     def test_lensing(self):
         lensed,unlensed = get_lens_result(1.,400,np.float64)
-        lensed0 = enmap.read_map(DATA_PREFIX+"MM_lensed_042219.fits")
-        unlensed0 = enmap.read_map(DATA_PREFIX+"MM_unlensed_042219.fits")
+        lensed0 = enmap.read_map(DATA_PREFIX+"MM_lensed_%s.fits"  % lens_version)
+        unlensed0 = enmap.read_map(DATA_PREFIX+"MM_unlensed_%s.fits"  % lens_version)
         y,x = lensed0.posmap()
         assert np.all(np.isclose(lensed,lensed0))
         assert np.all(np.isclose(unlensed,unlensed0))
@@ -147,7 +148,7 @@ class PixelTests(unittest.TestCase):
         test_res_arcmin = 0.5
         shape,wcs = enmap.fullsky_geometry(res=np.deg2rad(test_res_arcmin/60.),proj='car')
         assert shape[0]==21601 and shape[1]==43200
-        assert 50000 < (enmap.area(shape,wcs)*(180./np.pi)**2.) < 51000
+        assert abs(enmap.area(shape,wcs) - 4*np.pi) < 1e-6
 
     def test_pixels(self):
         """Runs reference pixel and mean-square comparisons on extracts from randomly generated

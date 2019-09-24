@@ -18,8 +18,6 @@ from . import utils, wcsutils, powspec, fft as enfft
 #     geometry object would make this less tedious, as long as it is
 #     simple to override individual properties.
 
-extent_model = ["subgrid"]
-
 # Python 2/3 compatibility
 try: basestring
 except NameError: basestring = str
@@ -65,7 +63,7 @@ class ndmap(np.ndarray):
 	def pixshape(self, signed=False): return pixshape(self.shape, self.wcs, signed=signed)
 	def pixsizemap(self): return pixsizemap(self.shape, self.wcs)
 	def pixshapemap(self): return pixshapemap(self.shape, self.wcs)
-	def extent(self, method="default", signed=False): return extent(self.shape, self.wcs, method=method, signed=signed)
+	def extent(self, method="auto", signed=False): return extent(self.shape, self.wcs, method=method, signed=signed)
 	@property
 	def preflat(self):
 		"""Returns a view of the map with the non-pixel dimensions flattened."""
@@ -614,20 +612,22 @@ def massage_spectrum(cov, shape):
 	ocov[:nmin,:nmin] = cov[:nmin,:nmin]
 	return ocov
 
-def extent(shape, wcs, method="default", nsub=None, signed=False):
-	if method == "default": method = extent_model[-1]
-	# consider always choosing intermediate for plain wcses
-	# it doesn't look like subgrid makes sense for these
-	if method == "intermediate":
-		return extent_intermediate(shape, wcs, signed=signed)
-	elif method == "subgrid":
-		return extent_subgrid(shape, wcs, nsub=nsub, signed=signed)
-	else:
-		raise ValueError("Unrecognized extent method '%s'" % method)
+def extent(shape, wcs, nsub=None, signed=False, method="auto"):
+	"""Returns the area of a patch with the given shape
+	and wcs, in steradians."""
+	if method == "auto":
+		if   wcsutils.is_plain(wcs): method = "intermediate"
+		elif wcsutils.is_cyl(wcs):   method = "cylindrical"
+		else:                        method = "subgrid"
+	if   method in ["inter","intermediate"]: return extent_intermediate(shape, wcs, signed=signed)
+	elif method in ["cyl",  "cylindrical"]:  return extent_cyl(shape, wcs, signed=signed)
+	elif method in ["sub", "subgrid"]:       return extent_subgrid(shape, wcs, nsub=nsub, signed=signed)
+	else: raise ValueError("Unrecognized method '%s' in extent()" % method)
 
 def extent_intermediate(shape, wcs, signed=False):
 	"""Estimate the flat-sky extent of the map as the WCS
-	intermediate coordinate extent."""
+	intermediate coordinate extent. This is very simple, but
+	is only appropriate for very flat coordinate systems"""
 	res = wcs.wcs.cdelt[::-1]*shape[-2:]*get_unit(wcs)
 	if not signed: res = np.abs(res)
 	return res
@@ -656,7 +656,8 @@ def extent_subgrid(shape, wcs, nsub=None, safe=True, signed=False):
 	tall and wide the patch is. These are defined such that
 	their product equals the physical area of the patch.
 	Obs: Has trouble with areas near poles."""
-	if nsub is None: nsub = 16
+	total_area = area(shape, wcs)
+	if nsub is None: nsub = 17
 	# Create a new wcs with (nsub,nsub) pixels
 	wcs = wcs.deepcopy()
 	step = (np.asfarray(shape[-2:])/nsub)[::-1]
@@ -664,31 +665,132 @@ def extent_subgrid(shape, wcs, nsub=None, safe=True, signed=False):
 	wcs.wcs.cdelt *= step
 	wcs.wcs.crpix /= step
 	wcs.wcs.crpix += 0.5
-	# Get position of all the corners, including the far ones
-	pos = posmap([nsub+1,nsub+1], wcs, corner=True, safe=safe)
-	# Apply az scaling
-	scale = np.zeros([2,nsub,nsub])
-	scale[1] = np.cos(0.5*(pos[0,1:,:-1]+pos[0,:-1,:-1]))
-	scale[0] = 1
-	ly = np.sum(((pos[:,1:,:-1]-pos[:,:-1,:-1])*scale)**2,0)**0.5
-	lx = np.sum(((pos[:,:-1,1:]-pos[:,:-1,:-1])*scale)**2,0)**0.5
-	# Replace invalid areas with mean
-	bad = ~np.isfinite(ly) | ~np.isfinite(lx)
-	ly[bad] = np.mean(ly[~bad])
-	lx[bad] = np.mean(lx[~bad])
-	areas = ly*lx
-	# Compute approximate overall lengths
-	Ay, Ax = np.sum(areas,0), np.sum(areas,1)
-	Ly = np.sum(np.sum(ly,0)*Ay)/np.sum(Ay)
-	Lx = np.sum(np.sum(lx,1)*Ax)/np.sum(Ax)
-	res= np.array([Ly,Lx])
-	if signed: res *= np.sign(wcs.wcs.cdelt[::-1])
-	return res
+	# We need a representative cos(dec) for each pixel. Will use the center
+	coss = np.cos(posmap([nsub,nsub], wcs, safe=False)[0])
+	# Get the length of each row in the image. This will be the distance
+	# from the middle of the left edge of the left-most pixel to the middle
+	# of the right edge of the right-most pixel
+	pixs  = np.mgrid[:nsub,:nsub+1].astype(float)
+	pixs[1] -= 0.5
+	decs, ras = pix2sky(nsub, wcs, pixs, safe=False)
+	pix_lengths = (utils.rewind(decs[:,1:]-decs[:,:-1])**2 + (utils.rewind(ras[:,1:]-ras[:,:-1])*coss)**2)**0.5
+	# Get the height of each col in the image
+	pixs  = np.mgrid[:nsub+1,:nsub].astype(float)
+	pixs[0] -= 0.5
+	decs, ras = pix2sky(nsub, wcs, pixs, safe=False)
+	pix_heights = (utils.rewind(decs[1:,:]-decs[:-1,:])**2 + (utils.rewind(ras[1:,:]-ras[:-1,:])*coss)**2)**0.5
+	# The area is the sum of their product
+	pix_areas  = pix_lengths*pix_heights
+	# The extent should be a compromise between the different lengths and heights
+	# that gives the right area.
+	mean_length = np.mean(pix_lengths)*nsub
+	mean_height = np.mean(pix_heights)*nsub
+	# Then scale both to ensure we get the right area
+	correction  = (total_area/(mean_length*mean_height))**0.5
+	mean_length *= correction
+	mean_height *= correction
+	ext = np.array([mean_height, mean_length])
+	if signed: ext *= np.sign(wcs.wcs.cdelt[::-1])
+	return ext
 
-def area(shape, wcs, nsub=0x10):
+def extent_cyl(shape, wcs, signed=False):
+	"""Extent specialized for a cylindrical projection.
+	Vertical: ny*cdelt[1]
+	Horizontal: Each row is nx*cdelt[0]*cos(dec), but we
+	want a single representative number, which will be
+	some kind of average, and we're free to choose which. We choose
+	the one that makes the product equal the true area.
+	Area = nx*ny*cdelt[0]*cdelt[1]*mean(cos(dec)) = vertical*(nx*cdelt[0]*mean(cos)),
+	so horizontal = nx*cdelt[0]*mean(cos)"""
+	dec1, dec2 = pix2sky(shape, wcs, [[-0.5,shape[-2]-1+0.5],[0,0]], safe=False)[0]
+	if dec1 <= dec2: ysign = 1
+	else: dec1, dec2, ysign = dec2, dec1, -1
+	dec1, dec2 = max(-np.pi/2, dec1), min(np.pi/2, dec2)
+	mean_cos   = (np.sin(dec2)-np.sin(dec1))/(dec2-dec1)
+	ext = np.array([(dec2-dec1)*ysign, shape[-1]*wcs.wcs.cdelt[0]*mean_cos*get_unit(wcs)])
+	if not signed: ext = np.abs(ext)
+	return ext
+
+def area(shape, wcs, nsamp=1000, method="auto"):
 	"""Returns the area of a patch with the given shape
 	and wcs, in steradians."""
-	return np.prod(extent(shape, wcs, nsub=nsub))
+	if method == "auto":
+		if   wcsutils.is_plain(wcs): method = "intermediate"
+		elif wcsutils.is_cyl(wcs):   method = "cylindrical"
+		else:                        method = "contour"
+	if   method in ["inter","intermediate"]: return area_intermediate(shape, wcs)
+	elif method in ["cyl",  "cylindrical"]:  return area_cyl(shape, wcs)
+	elif method in ["cont", "contour"]:      return area_contour(shape, wcs, nsamp=nsamp)
+	else: raise ValueError("Unrecognized method '%s' in area()" % method)
+
+def area_intermediate(shape, wcs):
+	"""Get the area of a completely flat sky"""
+	return shape[-2]*shape[-1]*wcs.wcs.cdelt[0]*wcs.wcs.cdelt[1]*get_unit(wcs)**2
+
+def area_cyl(shape, wcs):
+	"""Get the area of a cylindrical projection. Fast and exact."""
+	dec1, dec2 = np.sort(pix2sky(shape, wcs, [[-0.5,shape[-2]-1+0.5],[0,0]], safe=False)[0])
+	dec1, dec2 = max(-np.pi/2, dec1), min(np.pi/2, dec2)
+	return (np.sin(dec2)-np.sin(dec1))*abs(wcs.wcs.cdelt[0])*shape[-1]*get_unit(wcs)
+
+def area_contour(shape, wcs, nsamp=1000):
+	"""Get the area of the map by doing a contour integral (1-sin(dec)) d(RA)
+	over the closed path (dec(t), ra(t)) that bounds the valid region of
+	the map, so it only works for projections where we can figure out this
+	boundary. Using only d(RA) in the integral corresponds to doing a top-hat
+	integral instead of something trapezoidal, but this method is fast enough
+	that we can afford many points to compensate.
+	The present implementation works for cases where the valid
+	region of the map runs through the centers of the pixels on
+	each edge or through the outer edge of those pixels (this
+	detail can be different for each edge).  The former case is
+	needed in the full-sky cylindrical projections that have
+	pixels centered exactly on the poles.
+	"""
+	n2, n1 = shape[-2:]
+	row_lims, col_lims = [], []
+	# Ideally we want to integrate around the real outer edge
+	# of our patch, which is displaced by half a pixel coordinate
+	# from the pixel centers, but sometimes those coordinates are
+	# not valid. The nobcheck should avoid that, but we still include
+	# them to be safe. For the case where nobcheck avoids invalid values,
+	# the clip() later cuts off the parts of the pixels that go outside
+	# bounds. This differs from using the backup points by also handling
+	# pixels that are offset from the poles by a non-half-integer amount.
+	for dest_list, test_points in [
+			(col_lims, [(  -0.5, 0.0), (   0.0, 0.0)]),
+			(col_lims, [(n1-0.5, 0.0), (n1-1.0, 0.0)]),
+			(row_lims, [(0.0,   -0.5), (0.0,    0.0)]),
+			(row_lims, [(0.0, n2-0.5), (0.0, n2-1.0)]),
+			]:
+		for t in test_points:
+			if not np.any(np.isnan(wcsutils.nobcheck(wcs).wcs_pix2world([t], 0))):
+				dest_list.append(np.array(t, float))
+				break
+		else:
+			raise ValueError("Could not identify map_boundary; last test point was %s" % t)
+	# We want to draw a closed patch connecting the four corners
+	# of the boundary.
+	col_lims = [_c[0] for _c in col_lims]
+	row_lims = [_r[1] for _r in row_lims]
+	vertices = np.array([
+			(col_lims[0], row_lims[0]),
+			(col_lims[1], row_lims[0]),
+			(col_lims[1], row_lims[1]),
+			(col_lims[0], row_lims[1]),
+			(col_lims[0], row_lims[0])])
+	total   = 0
+	tot_dra = 0
+	for v0, v1 in zip(vertices[:-1], vertices[1:]):
+	 line_pix = np.linspace(0, 1, nsamp)[:,None] * (v1 - v0) + v0
+	 line = wcsutils.nobcheck(wcs).wcs_pix2world(line_pix, 0)
+	 # Stay within valid dec values. Used for pixels at the poles
+	 line[:,1] = np.clip(line[:,1], -90, 90)
+	 dec      = (line[1:,1] + line[:-1,1]) / 2  # average dec
+	 dra      = line[1:,0] - line[:-1,0]        # delta RA
+	 dra      = (dra+180) % 360 - 180          # safetyize branch crossing.
+	 total   += ((1-np.sin(dec*utils.degree)) * dra).sum()*utils.degree
+	return abs(total)
 
 def pixsize(shape, wcs):
 	"""Returns the area of a single pixel, in steradians."""
@@ -965,45 +1067,47 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
 	projection for now."""
 	assert proj == "car", "Only CAR fullsky geometry implemented"
 	if shape is None:
-		res   = np.zeros(2)+res
-		shape = ([1*np.pi,2*np.pi]/res+0.5).astype(int)
-		shape[0] += 1
-	ny,nx = shape
-	ny   -= 1
+	 res   = np.zeros(2)+res
+	 shape = utils.nint(([1*np.pi,2*np.pi]/res) + (1,0))
+	ny, nx = shape
+	assert abs(res[0] * (ny-1) - np.pi) < 1e-8
+	assert abs(res[1] * nx - 2*np.pi)   < 1e-8
 	wcs   = wcsutils.WCS(naxis=2)
-	wcs.wcs.crval = [0,0]
-	wcs.wcs.cdelt = [-360./nx,180./ny]
-	wcs.wcs.crpix = [nx/2.+1,ny/2.+1]
+	# Note the reference point is shifted by half a pixel to keep
+	# the grid in bounds, from ra=180+cdelt/2 to ra=-180+cdelt/2.
+	wcs.wcs.crval = [res[0]/2/utils.degree,0]
+	wcs.wcs.cdelt = [-360./nx,180./(ny-1)]
+	wcs.wcs.crpix = [nx//2+0.5,ny//2+1]
 	wcs.wcs.ctype = ["RA---CAR","DEC--CAR"]
-	return dims+(ny+1,nx+0), wcs
+	return dims+(ny,nx), wcs
 
 def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
-    """Return a geometry corresponding to a sky that had a full-sky
-    geometry but to which a declination cut was applied. If dec_cut
-    is a single number, the declination range will be (-dec_cut,dec_cut)
-    radians, and if specified with two components, it is interpreted as
-    (dec_cut_min,dec_cut_max). The remaining arguments are the same as
-    fullsky_geometry and pertain to the geometry before cropping to the
-    cut-sky.
-    """
-    dec_cut = np.atleast_1d(dec_cut)
-    if dec_cut.size == 1:
-        dec_cut_min = -dec_cut[0]
-        dec_cut_max = dec_cut[0]
-        assert dec_cut_max>0
-    elif dec_cut.size == 2:
-        dec_cut_min,dec_cut_max = dec_cut
-        assert dec_cut_max>dec_cut_min
-    else:
-        raise ValueError
-    ishape,iwcs = fullsky_geometry(res=res, shape=shape, dims=dims, proj=proj)
-    start = sky2pix(ishape,iwcs,(dec_cut_min,0))[0]
-    stop = sky2pix(ishape,iwcs,(dec_cut_max,0))[0]
-    Ny,_ = ishape[-2:]
-    start = max(int(np.round(start)),0); stop = min(int(np.round(stop)),Ny)
-    assert start>=0 and start<Ny
-    assert stop>=0 and stop<Ny
-    return slice_geometry(ishape,iwcs,np.s_[start:stop,:])
+	"""Return a geometry corresponding to a sky that had a full-sky
+	geometry but to which a declination cut was applied. If dec_cut
+	is a single number, the declination range will be (-dec_cut,dec_cut)
+	radians, and if specified with two components, it is interpreted as
+	(dec_cut_min,dec_cut_max). The remaining arguments are the same as
+	fullsky_geometry and pertain to the geometry before cropping to the
+	cut-sky.
+	"""
+	dec_cut = np.atleast_1d(dec_cut)
+	if dec_cut.size == 1:
+		dec_cut_min = -dec_cut[0]
+		dec_cut_max = dec_cut[0]
+		assert dec_cut_max>0
+	elif dec_cut.size == 2:
+		dec_cut_min,dec_cut_max = dec_cut
+		assert dec_cut_max>dec_cut_min
+	else:
+		raise ValueError
+	ishape,iwcs = fullsky_geometry(res=res, shape=shape, dims=dims, proj=proj)
+	start = sky2pix(ishape,iwcs,(dec_cut_min,0))[0]
+	stop = sky2pix(ishape,iwcs,(dec_cut_max,0))[0]
+	Ny,_ = ishape[-2:]
+	start = max(int(np.round(start)),0); stop = min(int(np.round(stop)),Ny)
+	assert start>=0 and start<Ny
+	assert stop>=0 and stop<Ny
+	return slice_geometry(ishape,iwcs,np.s_[start:stop,:])
 
 def create_wcs(shape, box=None, proj="cea"):
 	if box is None:

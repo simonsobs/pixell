@@ -27,4 +27,4 @@ if args.output is None:
 else:
     pkl_file = args.output
 results,_ = ptests.get_extraction_test_results(yaml_file)
-pickle.dump(results,open("data/%s.pkl" % pkl_file,'wb'),protocol=2)
+pickle.dump(results,open("%s.pkl" % pkl_file,'wb'),protocol=2)
