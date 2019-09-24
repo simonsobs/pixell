@@ -53,10 +53,11 @@ def boost_map(imap, dir=dir_equ, beta=beta, pol=True, modulation="thermo", T0=T_
 
 def apply_aberration(imap, ipos, boundary="wrap", order=3):
 	omap = enmap.samewcs(imap.at(ipos[1::-1], mode=boundary, order=order), imap)
-	if len(ipos >= 3):
+	if len(ipos) >= 3:
 		c,s = np.cos(2*ipos[2]), np.sin(2*ipos[2])
-		omap[1] = c*omap[1] + s*omap[2]
-		omap[2] =-s*omap[1] + c*omap[2]
+		omap1 = omap[1].copy()
+		omap[1] = c*omap1 + s*omap[2]
+		omap[2] =-s*omap1 + c*omap[2]
 	return omap
 
 def apply_modulation(imap, A, T0=T_cmb, freq=150e9, map_unit=1e-6, mode="thermo",

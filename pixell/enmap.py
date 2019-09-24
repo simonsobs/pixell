@@ -957,19 +957,13 @@ def rotate_pol(emap, angle, comps=[-2,-1]):
 
 def map_mul(mat, vec):
 	"""Elementwise matrix multiplication mat*vec. Result will have
-	the same shape as vec. Multiplication happens along the first indices.
-	This function is buggy when mat is not square (in the multiplication
-	dimensions). This is due to the reshape at the end. I should figure out
-	what code depends on that, and decide what I really want this function
-	to do."""
-	oshape= vec.shape
-	if len(oshape) == 2: oshape = (1,)+oshape
-	tvec = np.reshape(vec, oshape)
-	# It is a bit clunky to get einsum to handle arbitrary numbers of dimensions.
-	vpre  = "".join([chr(ord('a')+i) for i in range(len(oshape)-3)])
-	mpre  = vpre[vec.ndim-(mat.ndim-1):]
-	data  = np.reshape(np.einsum("%sxyzw,%syzw->%sxzw" % (mpre,vpre,vpre), mat, tvec), vec.shape)
-	return samewcs(data, mat, vec)
+	the same shape as vec. Multiplication happens along the last non-pixel
+	indices."""
+	# Allow scalar product
+	if mat.ndim == 2 and vec.ndim == 2: return mat*vec
+	# Otherwise we do a matrix product along the last axes
+	ovec = samewcs(np.einsum("...abyx,...byx->...ayx", mat, vec), mat, vec)
+	return ovec
 
 def smooth_gauss(emap, sigma):
 	"""Smooth the map given as the first argument with a gaussian beam
@@ -1134,6 +1128,7 @@ def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="a
 	the map, this is the appropriate place to do so, ugly as it is."""
 	cov    = np.asarray(cov)
 	oshape = cov.shape[:-1] + tuple(shape)[-2:]
+	if cov.ndim == 1: cov = cov[None,None]
 	ls = np.sum(lmap(oshape, wcs, oversample=oversample)**2,0)**0.5
 	if smooth == "auto":
 		# Determine appropriate fourier-scale smoothing based on 2d fourer
@@ -1157,6 +1152,7 @@ def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="a
 def spec2flat_corr(shape, wcs, cov, exp=1.0, mode="constant"):
 	cov    = np.asarray(cov)
 	oshape = cov.shape[:-1] + tuple(shape)[-2:]
+	if cov.ndim == 1: cov = cov[None,None]
 	if exp != 1.0: cov = multi_pow(cov, exp)
 	cov[~np.isfinite(cov)] = 0
 	# Convert power spectrum to correlation
