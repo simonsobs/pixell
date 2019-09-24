@@ -2,7 +2,7 @@
 seed: 10
 lmax: 1500
 lmax_pad: 500
-result_name: MM_051519
+result_name: MM_091819
 
 spectra:
   - name: white_10

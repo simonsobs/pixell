@@ -231,6 +231,41 @@ def get_unit(wcs):
 	if wcsutils.is_plain(wcs): return 1
 	else: return utils.degree
 
+class Geometry:
+	def __init__(self, shape, wcs=None):
+		try: self.shape, self.wcs = shape.shape, shape.wcs
+		except AttributeError: self.shape, self.wcs = shape, wcs
+		assert wcs is not None, "Geometry __init__ needs either a Geometry object or a shape, wcs pair"
+	# Make it behave a bit like a tuple, so we can use it interchangably with a shape, wcs pair
+	# for compatibility
+	def __len__(self): return 2
+	def __iter__(self):
+		yield self.shape
+		yield self.wcs
+	def __getitem__(self, sel):
+		shape, wcs = slice_geometry(self.shape, self.wcs, sel)
+		return Geometry(shape, wcs)
+	def submap(self, box=None, pixbox=None, mode=None, wrap="auto"):
+		if pixbox is None:
+			pixbox = subinds(self.shape, self.wcs, box, mode=mode, cap=False)
+		def helper(b):
+			if b[2] >= 0: return False, slice(b[0],b[1],b[2])
+			else:         return True,  slice(b[1]-b[2],b[0]-b[2],-b[2])
+		yflip, yslice = helper(pixbox[:,0])
+		xflip, xslice = helper(pixbox[:,1])
+		shape, wcs = slice_geometry(self.shape, self.wcs, (yslice, xslice), nowrap=True)
+		res = Geometry(shape,wcs)
+		# Unflip if neccessary
+		if yflip: res = res[::-1,:]
+		if xflip: res = res[:,::-1]
+		return res
+	def scale(self, scale):
+		shape, wcs = scale_geometry(self.shape, self.wcs, scale)
+		return Geometry(shape, wcs)
+	def downgrade(self, factor):
+		shape, wcs = downgrade_geometry(self.shape, self.wcs, factor)
+		return Geometry(shape, wcs)
+
 def box(shape, wcs, npoint=10, corner=True):
 	"""Compute a bounding box for the given geometry."""
 	# Because of wcs's wrapping, we need to evaluate several
@@ -1527,7 +1562,7 @@ def write_map(fname, emap, fmt=None, extra={}):
 	else:
 		raise ValueError
 
-def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None):
+def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None):
 	"""Read an enmap from file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'."""
@@ -1539,9 +1574,9 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, wrap="auto", mode
 		elif fname.endswith(".fits.gz"): fmt = "fits"
 		else: fmt = "fits"
 	if fmt == "fits":
-		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu)
+		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu)
 	elif fmt == "hdf":
-		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs)
+		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs)
 	else:
 		raise ValueError
 	if len(toks) > 1:
@@ -1588,7 +1623,7 @@ def write_fits(fname, emap, extra={}):
 		warnings.filterwarnings('ignore')
 		hdus.writeto(fname, clobber=True)
 
-def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None):
+def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None):
 	"""Read an enmap from the specified fits file. By default,
 	the map and coordinate system will be read from HDU 0. Use
 	the hdu argument to change this. The map must be stored as
@@ -1605,7 +1640,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mod
 		with warnings.catch_warnings():
 			wcs = wcsutils.WCS(hdu.header).sub(2)
 	wrapper = fits_wrapper(hdu, wcs, threshold=sel_threshold)
-	return read_helper(wrapper, sel=sel, box=box, pixbox=pixbox, wrap=wrap, mode=mode)
+	return read_helper(wrapper, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode)
 
 def read_fits_geometry(fname, hdu=None):
 	"""Read an enmap wcs from the specified fits file. By default,
@@ -1634,7 +1669,7 @@ def write_hdf(fname, emap, extra={}):
 		for key, val in extra.items():
 			hfile[key] = val
 
-def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None):
+def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None):
 	"""Read an enmap from the specified hdf file. Two formats
 	are supported. The old enmap format, which simply used
 	a bounding box to specify the coordinates, and the new
@@ -1652,7 +1687,7 @@ def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, wrap="auto", mode
 		if wcs is None:
 			wcs = wcsutils.WCS(header).sub(2)
 		wrapper = hdf_wrapper(data, wcs, threshold=sel_threshold)
-		return read_helper(wrapper, sel=sel, box=box, pixbox=pixbox, wrap=wrap, mode=mode)
+		return read_helper(wrapper, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode)
 
 def read_hdf_geometry(fname):
 	"""Read an enmap wcs from the specified hdf file."""
@@ -1674,11 +1709,12 @@ def fix_python3(s):
 		else: return s
 	except TypeError: return s
 
-def read_helper(data, sel=None, box=None, pixbox=None, wrap="auto", mode=None, sel_threshold=10e6):
+def read_helper(data, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6):
 	"""Helper function for map reading. Handles the slicing, sky-wrapping and capping, etc."""
-	if box    is not None: data = submap(data, box, wrap=wrap)
-	if pixbox is not None: data = extract_pixbox(data, pixbox, wrap=wrap)
-	if sel    is not None: data = data[sel]
+	if geometry is not None: data = extract(data, *geometry, wrap=wrap)
+	if box      is not None: data = submap(data, box, wrap=wrap)
+	if pixbox   is not None: data = extract_pixbox(data, pixbox, wrap=wrap)
+	if sel      is not None: data = data[sel]
 	data = data[:] # Get rid of the wrapper if it still remains
 	data = data.copy()
 	return data
@@ -1742,6 +1778,16 @@ def shift(map, off, inplace=False):
 	for i, o in enumerate(off):
 		if o != 0:
 			map[:] = np.roll(map, o, -len(off)+i)
+	return map
+
+def fftshift(map, inplace=False):
+	if not inplace: map = map.copy()
+	map[:] = np.fft.fftshift(map, axes=[-2,-1])
+	return map
+
+def ifftshift(map, inplace=False):
+	if not inplace: map = map.copy()
+	map[:] = np.fft.ifftshift(map, axes=[-2,-1])
 	return map
 
 def fillbad(map, val=0, inplace=False):
