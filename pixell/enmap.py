@@ -596,9 +596,23 @@ def rand_gauss_iso_harm(shape, wcs, cov, pixel_units=False):
 		if not(pixel_units): cov = cov * np.prod(shape[-2:])/area(shape,wcs )
 		covsqrt = multi_pow(cov, 0.5)
 	else:
-		covsqrt = spec2flat(shape, wcs, cov, 0.5, mode="constant")
+		covsqrt = spec2flat(shape, wcs, massage_spectrum(cov, shape), 0.5, mode="constant")
 	data = map_mul(covsqrt, rand_gauss_harm(shape, wcs))
 	return ndmap(data, wcs)
+
+def massage_spectrum(cov, shape):
+	"""given a spectrum cov[nl] or cov[n,n,nl] and a shape
+	(stokes,ny,nx) or (ny,nx), return a new ocov that has
+	a shape compatible with shape, padded with zeros if necessary.
+	If shape is scalar (ny,nx), then ocov will be scalar (nl).
+	If shape is (stokes,ny,nx), then ocov will be (stokes,stokes,nl)."""
+	cov = np.asarray(cov)
+	if cov.ndim == 1: cov = cov[None,None]
+	if len(shape) == 2: return cov[0,0]
+	ocov = np.zeros((shape[0],shape[0])+cov.shape[2:])
+	nmin = min(cov.shape[0],ocov.shape[0])
+	ocov[:nmin,:nmin] = cov[:nmin,:nmin]
+	return ocov
 
 def extent(shape, wcs, method="default", nsub=None, signed=False):
 	if method == "default": method = extent_model[-1]
@@ -1014,8 +1028,8 @@ def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="a
 	The map m is independent of the units of harmonic space, and will be wrong unless
 	the spectrum is properly scaled. Since this scaling depends on the shape of
 	the map, this is the appropriate place to do so, ugly as it is."""
-	oshape= tuple(shape)
-	if len(oshape) == 2: oshape = (1,1)+oshape
+	cov    = np.asarray(cov)
+	oshape = cov.shape[:-1] + tuple(shape)[-2:]
 	ls = np.sum(lmap(oshape, wcs, oversample=oversample)**2,0)**0.5
 	if smooth == "auto":
 		# Determine appropriate fourier-scale smoothing based on 2d fourer
@@ -1029,20 +1043,18 @@ def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="a
 	cov = cov * np.prod(shape[-2:])/area(shape,wcs)
 	if exp != 1.0: cov = multi_pow(cov, exp)
 	cov[~np.isfinite(cov)] = 0
-	cov   = cov[:oshape[-3],:oshape[-3]]
 	# Use order 1 because we will perform very short interpolation, and to avoid negative
 	# values in spectra that must be positive (and it's faster)
 	res = ndmap(utils.interpol(cov, np.reshape(ls,(1,)+ls.shape),mode=mode, mask_nan=False, order=1),wcs)
 	res = downgrade(res, oversample)
-	res = res.reshape(shape[:-2]+res.shape[-2:])
+	res = res.reshape(oshape[:-2]+res.shape[-2:])
 	return res
 
 def spec2flat_corr(shape, wcs, cov, exp=1.0, mode="constant"):
-	oshape= tuple(shape)
-	if len(oshape) == 2: oshape = (1,)+oshape
+	cov    = np.asarray(cov)
+	oshape = cov.shape[:-1] + tuple(shape)[-2:]
 	if exp != 1.0: cov = multi_pow(cov, exp)
 	cov[~np.isfinite(cov)] = 0
-	cov = cov[:oshape[-3],:oshape[-3]]
 	# Convert power spectrum to correlation
 	ext  = extent(shape,wcs)
 	rmax = np.sum(ext**2)**0.5

@@ -1996,3 +1996,7 @@ def beam_transform_to_profile(bl, theta, normalize=False):
 	profile = np.polynomial.legendre.legval(x,a)
 	if normalize: profile /= np.sum(a)
 	return profile
+
+def fix_dtype_mpi4py(dtype):
+	"""Work around mpi4py bug, where it refuses to accept dtypes with endian info"""
+	return np.dtype(np.dtype(dtype).char)
