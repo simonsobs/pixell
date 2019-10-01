@@ -967,12 +967,42 @@ def map_mul(mat, vec):
 
 def smooth_gauss(emap, sigma):
 	"""Smooth the map given as the first argument with a gaussian beam
-	with the given standard deviation in radians."""
+	with the given standard deviation sigma in radians. If sigma is negative,
+	then the complement of the smoothed map will be returned instead (so
+	it will be a highpass filter)."""
 	if np.all(sigma == 0): return emap.copy()
 	f  = fft(emap)
 	x2 = np.sum(emap.lmap()**2*sigma**2,0)
-	f *= np.exp(-0.5*x2)
+	if sigma >= 0: f *= np.exp(-0.5*x2)
+	else:          f *= 1-np.exp(-0.5*x2)
 	return ifft(f).real
+
+def inpaint(map, mask, method="nearest"):
+	"""Inpaint regions in emap where mask==True based on the nearest unmasked pixels.
+	Uses scipy.interpolate.griddata internally. See its documentation for the meaning of
+	method. Note that if method is not "nearest", then areas where the mask touches the edge
+	will be filled with NaN instead of sensible values.
+
+	The purpose of this function is mainly to allow inapinting bad values with a
+	continuous signal with the right order of magnitude, for example to allow fourier
+	operations of masked data with large values near the edge of the mask (e.g. a
+	galactic mask). Its goal is not to inpaint with something realistic-looking. For
+	that heavier methods are needed."""
+	from scipy import interpolate
+	# Find innermost good pixels at border of mask. These are the pixels the interpolation
+	# will actually be based on, so isolating them makes things much faster than just sending
+	# in every valid pixel
+	border = scipy.ndimage.distance_transform_edt(~mask)==1
+	pix      = map.pixmap()
+	pix_good = pix[:,border].reshape(2,-1).T
+	pix_bad  = pix[:,mask].reshape(2,-1).T
+	omap = map.copy()
+	# Loop over each scalar component of omap
+	for m in omap.preflat:
+		val_good = m[border].reshape(-1)
+		val_ipol = interpolate.griddata(pix_good, val_good, pix_bad, method=method)
+		m[pix_bad[:,0],pix_bad[:,1]] = val_ipol
+	return omap
 
 def calc_window(shape):
 	"""Compute fourier-space window function. Like the other fourier-based
