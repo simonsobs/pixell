@@ -215,7 +215,7 @@ def write(fname, plot):
 					plot.img.savefig(fname,bbox_inches="tight",dpi=plot.dpi)
 			else:
 				raise ValueError("Unknown plot type '%s'" % plot.type)
-		except AttributeError:
+		except (AttributeError, TypeError):
 			# Apparently we don't have a plot object. Check if it's a plain image
 			try: plot.save(fname)
 			except AttributeError:
