@@ -149,7 +149,7 @@ def _unwrap_minpos(minpos1d, ny, nx):
 	mask = (minpos1d >= 2*ny) & (minpos1d < 2*ny+nx)
 	minpos[0,mask], minpos[1,mask] = 0, minpos1d[mask]-2*ny
 	mask = minpos1d >= 2*ny+nx
-	minpos[0,mask], minpos[1,mask] = nx-1, minpos1d[mask]-(2*ny+nx)
+	minpos[0,mask], minpos[1,mask] = ny-1, minpos1d[mask]-(2*ny+nx)
 	return minpos
 
 def distance_from_points_bubble(posmap, point_pos, point_pix, omap=None, odomains=None, domains=False):
