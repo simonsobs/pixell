@@ -241,6 +241,7 @@ class Geometry:
 		yield self.shape
 		yield self.wcs
 	def __getitem__(self, sel):
+		if not isinstance(sel,tuple): sel = (sel,)
 		shape, wcs = slice_geometry(self.shape, self.wcs, sel)
 		return Geometry(shape, wcs)
 	def submap(self, box=None, pixbox=None, mode=None, wrap="auto"):
@@ -1288,6 +1289,31 @@ def downgrade_geometry(shape, wcs, factor):
 	oshape = shape[-2:]//factor
 	owcs   = wcsutils.scale(wcs, 1.0/factor)
 	return oshape, owcs
+
+def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, step=1024):
+	"""Find the distance from each pixel in the geometry (shape, wcs) to the
+	nearest of the points[{dec,ra},npoint], returning a [ny,nx] map of distances.
+	If domains==True, then it will also return a [ny,nx] map of the index of the point
+	that was closest to each pixel."""
+	from pixell import distances
+	if wcsutils.is_cyl(wcs):
+		dec, ra = posaxes(shape, wcs)
+		return ndmap(distances.distance_from_points_separable(dec, ra, points, omap=omap, odomains=odomains, domains=domains), wcs)
+	else:
+		# We have a general geometry, so we need the full posmap. But to avoid wasting memory we
+		# can loop over chunks of the posmap.
+		if omap is None: omap = empty(shape[-2:], wcs)
+		if domains and odomains is None: odomains = empty(shape[-2:], wcs, np.int32)
+		geo = Geometry(shape, wcs)
+		for y in range(0, shape[-2], step):
+			sub_geo = geo[y:y+step]
+			pos     = posmap(*sub_geo, safe=False)
+			if domains:
+				distances.distance_from_points(pos, points, omap=omap[y:y+step], odomains=odomains[y:y+step], domains=True)
+			else:
+				distances.distance_from_points(pos, points, omap=omap[y:y+step])
+		if domains: return omap, odomains
+		else:       return omap
 
 def pad(emap, pix, return_slice=False, wrap=False):
 	"""Pad enmap "emap", creating a larger map with zeros filled in on the sides.

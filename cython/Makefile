@@ -1,8 +1,12 @@
+all: sharp.c distances.c
+
 %.c: %.pyx
 	cython -o $@ $<
 	perl -pi -e 's/typedef npy_float64 _Complex/typedef double _Complex/; s/typedef npy_float32 _Complex/typedef float _Complex/' $@
 
 sharp.c: sharp.pyx csharp.pxd csharp.h
 
+distances.c: distances.pyx distances.pxd distances_core.h distances_core.c
+
 clean:
-	rm -f sharp.c
+	rm -f sharp.c distances.c

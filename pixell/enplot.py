@@ -349,6 +349,8 @@ def get_map(ifile, args, return_info=False, name=None):
 			m0    = ifile
 			slice = ""
 			if name is None: name = ".fits"
+		# This fills in a dummy, plain wcs if one does not exist
+		m0 = enmap.enmap(m0, copy=False)
 		if args.fix_wcs:
 			m0.wcs = wcsutils.fix_wcs(m0.wcs)
 		# Save the original map, so we can compare its wcs later
