@@ -1290,30 +1290,73 @@ def downgrade_geometry(shape, wcs, factor):
 	owcs   = wcsutils.scale(wcs, 1.0/factor)
 	return oshape, owcs
 
-def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, step=1024):
+def distance_transform(mask, omap=None):
+	"""Given a boolean mask, produce an output map where the value in each pixel is the distance
+	to the closest false pixel in the mask."""
+	from pixell import distances
+	if omap is None: omap = zeros(mask.shape, mask.wcs)
+	for i in range(len(mask.preflat)):
+		edge_pix = np.array(distances.find_edges(mask.preflat[0]))
+		edge_pos = mask.pix2sky(edge_pix, safe=False)
+		omap.preflat[i] = distance_from(mask.shape, mask.wcs, edge_pos)
+	# Distance is always zero inside mask
+	omap *= mask
+	return omap
+
+def labeled_distance_transform(labels, omap=None, odomains=None):
+	"""Given a map of labels going from 1 to nlabel, produce an output map where the value
+	in each pixel is the distance to the closest nonzero pixel in the labels, as well as a
+	map of which label each pixel was closest to."""
+	from pixell import distances
+	if omap is None: omap = zeros(labels.shape, labels.wcs)
+	if odomains is None: odomains = zeros(omap.shape, omap.wcs, np.int32)
+	for i in range(len(labels.preflat)):
+		edge_pix = np.array(distances.find_edges_labeled(labels.preflat[i]))
+		edge_pos = labels.pix2sky(edge_pix, safe=False)
+		_, domains = distance_from(labels.shape, labels.wcs, edge_pos, omap=omap.preflat[i], domains=True)
+		# Get the edge_pix to label mapping
+		mapping = labels.preflat[i][edge_pix[0],edge_pix[1]]
+		odomains.preflat[i] = mapping[domains]
+		mask = labels.preflat[i] != 0
+		# Distance is always zero inside each labeled region
+		omap.preflat[i][mask] = 0
+	return omap, odomains
+
+def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, method="bubble", step=1024):
 	"""Find the distance from each pixel in the geometry (shape, wcs) to the
 	nearest of the points[{dec,ra},npoint], returning a [ny,nx] map of distances.
 	If domains==True, then it will also return a [ny,nx] map of the index of the point
 	that was closest to each pixel."""
 	from pixell import distances
+	if omap is None: omap = empty(shape[-2:], wcs)
+	if domains and odomains is None: odomains = empty(shape[-2:], wcs, np.int32)
 	if wcsutils.is_cyl(wcs):
 		dec, ra = posaxes(shape, wcs)
-		return ndmap(distances.distance_from_points_separable(dec, ra, points, omap=omap, odomains=odomains, domains=domains), wcs)
+		if method == "bubble":
+			point_pix = utils.nint(sky2pix(shape, wcs, points))
+			return distances.distance_from_points_bubble_separable(dec, ra, points, point_pix, omap=omap, odomains=odomains, domains=domains)
+		elif method == "simple":
+			return distances.distance_from_points_simple_separable(dec, ra, points, omap=omap, odomains=odomains, domains=domains)
+		else: raise ValueError("Unknown method '%s'" % str(method))
 	else:
 		# We have a general geometry, so we need the full posmap. But to avoid wasting memory we
 		# can loop over chunks of the posmap.
-		if omap is None: omap = empty(shape[-2:], wcs)
-		if domains and odomains is None: odomains = empty(shape[-2:], wcs, np.int32)
-		geo = Geometry(shape, wcs)
-		for y in range(0, shape[-2], step):
-			sub_geo = geo[y:y+step]
-			pos     = posmap(*sub_geo, safe=False)
-			if domains:
-				distances.distance_from_points(pos, points, omap=omap[y:y+step], odomains=odomains[y:y+step], domains=True)
-			else:
-				distances.distance_from_points(pos, points, omap=omap[y:y+step])
-		if domains: return omap, odomains
-		else:       return omap
+		if method == "bubble":
+			# Not sure how to slice bubble. Just do it in one go for now
+			pos = posmap(shape, wcs, safe=False)
+			point_pix = utils.nint(sky2pix(shape, wcs, points))
+			return distances.distance_from_points(posmap, points, omap=omap, odomains=odomains, domains=domains)
+		elif method == "simple":
+			geo = Geometry(shape, wcs)
+			for y in range(0, shape[-2], step):
+				sub_geo = geo[y:y+step]
+				pos     = posmap(*sub_geo, safe=False)
+				if domains:
+					distances.distance_from_points_simple(pos, points, omap=omap[y:y+step], odomains=odomains[y:y+step], domains=True)
+				else:
+					distances.distance_from_points_simple(pos, points, omap=omap[y:y+step])
+			if domains: return omap, odomains
+			else:       return omap
 
 def pad(emap, pix, return_slice=False, wrap=False):
 	"""Pad enmap "emap", creating a larger map with zeros filled in on the sides.

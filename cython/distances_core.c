@@ -6,7 +6,7 @@
 
 double wall_time() { struct timeval tv; gettimeofday(&tv,0); return tv.tv_sec + 1e-6*tv.tv_usec; }
 
-// These functions are too slow to serve as the basis for a distance transform.
+// The simple functions are too slow to serve as the basis for a distance transform.
 // I can't afford the full O(npix*nedge) scaling.
 //
 // A faster algorithm would be one that starts from the pixels closest to each point,
@@ -33,21 +33,7 @@ double wall_time() { struct timeval tv; gettimeofday(&tv,0); return tv.tv_sec + 
 
 // coordinate ordering: dec,ra
 
-void distance_transform(inum ny, inum nx, uint8_t * mask, double * posmap, double * dists)
-{
-	inum n, npix = ny*nx, *edges;
-	n = find_edges(ny, nx, mask, &edges);
-	double * points = realloc(NULL, 2*sizeof(double)*n);
-	for(inum i = 0; i < n; i++) points[i]   = posmap[edges[i]];      // dec
-	for(inum i = 0; i < n; i++) points[i+n] = posmap[edges[i]+npix]; // ra
-	distance_from_points(npix, posmap, n, points, dists, NULL);
-	// Mask interior of regions too
-	for(inum i = 0; i < npix; i++) if(mask[i] == 0) dists[i] = 0;
-	free(edges);
-	free(points);
-}
-
-void distance_from_points(inum npix, double * posmap, inum npoint, double * points, double * dists, int * areas)
+void distance_from_points_simple(inum npix, double * posmap, inum npoint, double * points, double * dists, int * areas)
 {
 	// Compute the distance from each entry in postmap to the closest entry in points, storing the
 	// result in dists. Use Vincenty formula for distances. It's a bit slower than the simplest formula, but
@@ -86,7 +72,7 @@ void distance_from_points(inum npix, double * posmap, inum npoint, double * poin
 	free(edge_sin_dec);
 }
 
-void distance_from_points_separable(inum ny, inum nx, double * ypos, double * xpos, inum npoint, double * points, double * dists, int * areas)
+void distance_from_points_simple_separable(inum ny, inum nx, double * ypos, double * xpos, inum npoint, double * points, double * dists, int * areas)
 {
 	// Compute the distance from each entry in postmap to the closest entry in points, storing the
 	// result in dists. Use Vincenty formula for distances. It's a bit slower than the simplest formula, but
@@ -145,17 +131,124 @@ double dist_vincenty_helper(double ra1, double cos_dec1, double sin_dec1, double
 	return d;
 }
 
+typedef struct { inum n, cap; int * y, * x; } PointVec;
+PointVec * pointvec_new() {
+	PointVec * v = realloc(NULL, sizeof(PointVec));
+	v->n   = 0;
+	v->cap = 1024;
+	v->y   = realloc(NULL, v->cap*sizeof(int));
+	v->x   = realloc(NULL, v->cap*sizeof(int));
+	return v;
+}
+void pointvec_push(PointVec * v, int y, int x) {
+	if(v->n >= v->cap) {
+		v->cap *= 2;
+		v->y = realloc(v->y, v->cap*sizeof(int));
+		v->x = realloc(v->x, v->cap*sizeof(int));
+	}
+	v->y[v->n] = y;
+	v->x[v->n] = x;
+	v->n++;
+}
+void pointvec_free(PointVec * v) { free(v->y); free(v->x); free(v); }
+void pointvec_swap(PointVec ** a, PointVec ** b) { PointVec * tmp = *a; *a = *b; *b = tmp; }
+
 #define nneigh 4
-#define calc_dist(ipoint, y, x) dist_vincenty_helper(point_pos[ipoint+npoint], point_cos_dec[ipoint], point_sin_dec[ipoint], xpos[x], pix_cos_dec[y], pix_sin_dec[y])
-#define update(y, x, dist, i) { dists[(inum)y*nx+x]=dist; domains[(inum)y*nx+x]=i; if(next_n >= next_cap) { next_cap *= 2; next_y = realloc(next_y, sizeof(int)*next_cap); next_x = realloc(next_x, sizeof(int)*next_cap); } next_y[next_n] = y; next_x[next_n] = x; next_n++; }
-#define swap_buffers() { inum tmp_cap = curr_cap; curr_cap = next_cap; next_cap = tmp_cap; int * tmp = curr_y; curr_y = next_y; next_y = tmp; tmp = curr_x; curr_x = next_x; next_x = tmp; curr_n = next_n; next_n = 0; }
-void distance_from_points_treerings_separable(int ny, int nx, double * ypos, double * xpos, inum npoint, double * point_pos, int * point_y, int * point_x, double * dists, int * domains)
+void distance_from_points_bubble(int ny, int nx, double * posmap, inum npoint, double * point_pos, int * point_pix, double * dists, int * domains)
 {
 	// Compute the distance from each entry in postmap to the closest entry in points, storing the
 	// result in dists. Works by starting from the closest pixels to the points, then working outwards
 	// through neighbors, keeping track of the shortest distance to each pixel and which point that
 	// corresponded to. It is possible for this approach to fail for the case of very narrow (less than
 	// a pixel wide) domains, but this will only result in a tiny error in the distance, so it's acceptable.
+	inum npix = (inum)ny*nx;
+	double * point_dec = point_pos;
+	double * point_ra  = point_pos+npoint;
+	int    * point_y   = point_pix;
+	int    * point_x   = point_pix+npoint;
+	double * pix_dec   = posmap;
+	double * pix_ra    = posmap+npix;
+	
+	// Fill dists and domains with unvisited values
+	for(inum i = 0; i < ny*nx; i++) {
+		dists[i] = 1e300; // would use inf, but harder to generate
+		domains[i] = -1;
+	}
+
+	// Precompute cos and sin dec for the points
+	double * point_cos_dec = realloc(NULL, sizeof(double)*npoint);
+	double * point_sin_dec = realloc(NULL, sizeof(double)*npoint);
+	for(inum j = 0; j < npoint; j++) {
+		double dec = point_dec[j];
+		point_cos_dec[j] = cos(dec);
+		point_sin_dec[j] = sin(dec);
+	}
+
+	// offsets in neigborhood search
+	int yoffs[nneigh] = { 0,  0, -1, +1};
+	int xoffs[nneigh] = {-1, +1,  0,  0};
+
+	// These data structures will keep track of which points we're visiting
+	PointVec * curr = pointvec_new();
+	PointVec * next = pointvec_new();
+	// Initialize our working set of points to the input points
+	for(inum i = 0; i < npoint; i++) {
+		int y = point_y[i], x = point_x[i];
+		inum pix = (inum)y*nx+x;
+		double dist = dist_vincenty_helper(point_ra[i], point_cos_dec[i], point_sin_dec[i], pix_ra[pix], cos(pix_dec[pix]), sin(pix_dec[pix]));
+		pointvec_push(curr, y, x);
+		dists[y*nx+x]   = dist;
+		domains[y*nx+x] = i;
+	}
+
+	inum it = 0;
+	while(curr->n > 0) {
+		//fprintf(stderr, "%5ld %10ld\n", it, curr->n);
+		// For each of our current points, see if we can improve on their neighbors
+		for(inum i = 0; i < curr->n; i++) {
+			int y = curr->y[i], x = curr->x[i];
+			inum pix    = (inum)y*nx+x;
+			inum ipoint = domains[pix];
+			for(int oi = 0; oi < nneigh; oi++) {
+				int y2 = y+yoffs[oi], x2 = x+xoffs[oi];
+				// Handle edge wrapping. This doesn't cover all the ways wrapping can happen, though...
+				if(y2 < 0) { y2 += ny; } else if(y2 >= ny) { y2 -= ny; }
+				if(x2 < 0) { x2 += nx; } else if(x2 >= nx) { x2 -= nx; }
+				inum pix2 = y2*nx+x2;
+				if(domains[pix2] == ipoint) continue;
+				double cand_dist = dist_vincenty_helper(point_ra[ipoint], point_cos_dec[ipoint], point_sin_dec[ipoint], pix_ra[pix2], cos(pix_dec[pix2]), sin(pix_dec[pix2]));
+				if(cand_dist < dists[pix2]) {
+					dists[pix2]   = cand_dist;
+					domains[pix2] = ipoint;
+					pointvec_push(next, y2, x2);
+				}
+			}
+		}
+		pointvec_swap(&curr, &next);
+		next->n = 0;
+		it++;
+	}
+
+	// Done. Free all our structurs
+	free(point_cos_dec);
+	free(point_sin_dec);
+	pointvec_free(curr);
+	pointvec_free(next);
+}
+#undef nneigh
+
+#define nneigh 4
+void distance_from_points_bubble_separable(int ny, int nx, double * ypos, double * xpos, inum npoint, double * point_pos, int * point_pix, double * dists, int * domains)
+{
+	// Compute the distance from each entry in postmap to the closest entry in points, storing the
+	// result in dists. Works by starting from the closest pixels to the points, then working outwards
+	// through neighbors, keeping track of the shortest distance to each pixel and which point that
+	// corresponded to. It is possible for this approach to fail for the case of very narrow (less than
+	// a pixel wide) domains, but this will only result in a tiny error in the distance, so it's acceptable.
+	double * point_dec = point_pos;
+	double * point_ra  = point_pos+npoint;
+	int    * point_y   = point_pix;
+	int    * point_x   = point_pix+npoint;
 	
 	// Fill dists and domains with unvisited values
 	for(inum i = 0; i < ny*nx; i++) {
@@ -165,11 +258,10 @@ void distance_from_points_treerings_separable(int ny, int nx, double * ypos, dou
 
 	// Precompute cos and sin dec for the points, as well as for the relatively
 	// few dec values we have along the y axis due to our separable pixelization.
-	double t1 = wall_time();
 	double * point_cos_dec = realloc(NULL, sizeof(double)*npoint);
 	double * point_sin_dec = realloc(NULL, sizeof(double)*npoint);
 	for(inum j = 0; j < npoint; j++) {
-		double dec = point_pos[j];
+		double dec = point_dec[j];
 		point_cos_dec[j] = cos(dec);
 		point_sin_dec[j] = sin(dec);
 	}
@@ -180,31 +272,28 @@ void distance_from_points_treerings_separable(int ny, int nx, double * ypos, dou
 		pix_sin_dec[y] = sin(ypos[y]);
 	}
 
-	// These data structures will keep track of which points we're visiting
-	inum curr_cap = 1024, curr_n = 0;
-	inum next_cap = 1024, next_n = 0;
-	int * curr_y = realloc(NULL, sizeof(int)*curr_cap);
-	int * curr_x = realloc(NULL, sizeof(int)*curr_cap);
-	int * next_y = realloc(NULL, sizeof(int)*next_cap);
-	int * next_x = realloc(NULL, sizeof(int)*next_cap);
-
 	// offsets in neigborhood search
 	int yoffs[nneigh] = { 0,  0, -1, +1};
 	int xoffs[nneigh] = {-1, +1,  0,  0};
 
+	// These data structures will keep track of which points we're visiting
+	PointVec * curr = pointvec_new();
+	PointVec * next = pointvec_new();
 	// Initialize our working set of points to the input points
 	for(inum i = 0; i < npoint; i++) {
-		double dist = calc_dist(i, point_y[i], point_x[i]);
-		update(point_y[i], point_x[i], dist, i);
+		int y = point_y[i], x = point_x[i];
+		double dist = dist_vincenty_helper(point_ra[i], point_cos_dec[i], point_sin_dec[i], xpos[x], pix_cos_dec[y], pix_sin_dec[y]);
+		pointvec_push(curr, y, x);
+		dists[y*nx+x]   = dist;
+		domains[y*nx+x] = i;
 	}
-	swap_buffers();
 
 	inum it = 0;
-	while(curr_n > 0) {
-		fprintf(stderr, "%5ld %10ld\n", it, curr_n);
+	while(curr->n > 0) {
+		//fprintf(stderr, "%5ld %10ld\n", it, curr->n);
 		// For each of our current points, see if we can improve on their neighbors
-		for(inum i = 0; i < curr_n; i++) {
-			int y = curr_y[i], x = curr_x[i];
+		for(inum i = 0; i < curr->n; i++) {
+			int y = curr->y[i], x = curr->x[i];
 			inum pix    = (inum)y*nx+x;
 			inum ipoint = domains[pix];
 			for(int oi = 0; oi < nneigh; oi++) {
@@ -212,16 +301,18 @@ void distance_from_points_treerings_separable(int ny, int nx, double * ypos, dou
 				// Handle edge wrapping. This doesn't cover all the ways wrapping can happen, though...
 				if(y2 < 0) { y2 += ny; } else if(y2 >= ny) { y2 -= ny; }
 				if(x2 < 0) { x2 += nx; } else if(x2 >= nx) { x2 -= nx; }
-				inum pix2 = y2*ny+x2;
+				inum pix2 = y2*nx+x2;
 				if(domains[pix2] == ipoint) continue;
-				double cand_dist = calc_dist(ipoint, y2, x2);
+				double cand_dist = dist_vincenty_helper(point_ra[ipoint], point_cos_dec[ipoint], point_sin_dec[ipoint], xpos[x2], pix_cos_dec[y2], pix_sin_dec[y2]);
 				if(cand_dist < dists[pix2]) {
-					// This will add y2,x2 to the set of points for the next iteration
-					update(y2, x2, cand_dist, ipoint);
+					dists[pix2]   = cand_dist;
+					domains[pix2] = ipoint;
+					pointvec_push(next, y2, x2);
 				}
 			}
 		}
-		swap_buffers();
+		pointvec_swap(&curr, &next);
+		next->n = 0;
 		it++;
 	}
 
@@ -230,15 +321,12 @@ void distance_from_points_treerings_separable(int ny, int nx, double * ypos, dou
 	free(point_sin_dec);
 	free(pix_cos_dec);
 	free(pix_sin_dec);
-	free(curr_y);
-	free(curr_x);
-	free(next_y);
-	free(next_x);
+	pointvec_free(curr);
+	pointvec_free(next);
 }
 #undef nneigh
-#undef calc_dist
-#undef update
-#undef swap_buffers
+
+
 
 #define push(vec,cap,n,i) { if(n >= cap) { cap *= 2; vec = realloc(vec, sizeof(inum)*cap); } vec[n++] = i; }
 inum find_edges(inum ny, inum nx, uint8_t * mask, inum ** edges)
@@ -276,7 +364,7 @@ inum find_edges_labeled(inum ny, inum nx, int32_t * labels, inum ** edges)
 	inum y, x, i, n = 0, capacity = 0x100;
 	inum * edges_ = realloc(NULL, sizeof(inum)*capacity);
 	for(i = 0; i < nx; i++)            if(labels[i]) push(edges_, capacity, n, i);
-	for(i = (ny-1)*nx; i < nx*nx; i++) if(labels[i]) push(edges_, capacity, n, i);
+	for(i = (ny-1)*nx; i < ny*nx; i++) if(labels[i]) push(edges_, capacity, n, i);
 	for(i = nx; i < ny*nx; i += nx)    if(labels[i]) push(edges_, capacity, n, i);
 	for(i = nx-1; i < ny*nx; i += nx)  if(labels[i]) push(edges_, capacity, n, i);
 	// Then do the interior
