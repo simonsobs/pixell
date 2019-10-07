@@ -41,10 +41,10 @@ if (
 
 
 compile_opts = {
-    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-O0'],
+    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g'],
     'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
-    'extra_link_args': ['-fopenmp', '-g', '-O0']
+    'extra_link_args': ['-fopenmp', '-g']
     }
 
 fcflags = os.getenv('FCFLAGS')

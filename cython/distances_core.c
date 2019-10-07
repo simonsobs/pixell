@@ -209,10 +209,11 @@ void distance_from_points_treerings_separable(int ny, int nx, double * ypos, dou
 			inum ipoint = domains[pix];
 			for(int oi = 0; oi < nneigh; oi++) {
 				int y2 = y+yoffs[oi], x2 = x+xoffs[oi];
-				// Handle edge wrapping. This doesn't cover all the ways wrapping can handle, though...
+				// Handle edge wrapping. This doesn't cover all the ways wrapping can happen, though...
 				if(y2 < 0) { y2 += ny; } else if(y2 >= ny) { y2 -= ny; }
 				if(x2 < 0) { x2 += nx; } else if(x2 >= nx) { x2 -= nx; }
 				inum pix2 = y2*ny+x2;
+				if(domains[pix2] == ipoint) continue;
 				double cand_dist = calc_dist(ipoint, y2, x2);
 				if(cand_dist < dists[pix2]) {
 					// This will add y2,x2 to the set of points for the next iteration
