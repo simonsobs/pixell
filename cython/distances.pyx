@@ -152,8 +152,8 @@ def _unwrap_minpos(minpos1d, ny, nx):
 	minpos[0,mask], minpos[1,mask] = ny-1, minpos1d[mask]-(2*ny+nx)
 	return minpos
 
-def distance_from_points_bubble(posmap, point_pos, point_pix, omap=None, odomains=None, domains=False):
-	"""distance_from_points_buble(posmap, points, omap=None, odomains=None, domains=False)"""
+def distance_from_points_bubble(posmap, point_pos, point_pix, rmax=None, omap=None, odomains=None, domains=False):
+	"""distance_from_points_buble(posmap, point_pos, point_pix, rmax=None, omap=None, odomains=None, domains=False)"""
 	# Check that our inputs make sense
 	posmap    = np.asanyarray(posmap).astype(float, order="C", copy=False)
 	point_pos = np.asanyarray(point_pos).astype(float,    order="C", copy=False)
@@ -171,23 +171,27 @@ def distance_from_points_bubble(posmap, point_pos, point_pix, omap=None, odomain
 	cdef int ny = posmap.shape[1]
 	cdef int nx = posmap.shape[2]
 	cdef inum npoint = point_pos.shape[1]
+	cdef double      rmax_      = (0 if rmax is None else rmax)
 	cdef double[::1] posmap_    = posmap.reshape(-1)
 	cdef double[::1] point_pos_ = point_pos.reshape(-1)
 	cdef int[::1]    point_pix_ = point_pix.reshape(-1)
 	cdef double[::1] omap_   = omap.reshape(-1)
 	cdef int[::1]    odomains_ = odomains.reshape(-1)
-	distance_from_points_bubble_c(ny, nx, &posmap_[0], npoint, &point_pos_[0], &point_pix_[0], &omap_[0], &odomains_[0])
+	distance_from_points_bubble_c(ny, nx, &posmap_[0], npoint, &point_pos_[0], &point_pix_[0], rmax_, &omap_[0], &odomains_[0])
 	if domains: return omap, odomains
 	else:       return omap
 
-def distance_from_points_bubble_separable(ypos, xpos, point_pos, point_pix, omap=None, odomains=None, domains=False):
-	"""distance_from_points_bubble_separable(ypos, xpos, points, omap=None, odomains=None, domains=False)
+def distance_from_points_bubble_separable(ypos, xpos, point_pos, point_pix, rmax=None, omap=None, odomains=None, domains=False):
+	"""distance_from_points_bubble_separable(ypos, xpos, point_pos, point_pix, rmax=None, omap=None, odomains=None, domains=False)
 
 	Like distance_from_points_bubble, but optimized for the case where the coordinate system
 	is separable, as is typically the case for cylindrical projections. Instead of a full
 	posmap[{dec,ra},ny,nx] it takes ypos[ny] which gives the dec of each point along the y axis
 	and xpos[nx] which gives the ra of each point along the x axis. The main advantage of this
-	is that one can avoid the somewhat heavy computation of the full posmap."""
+	is that one can avoid the somewhat heavy computation of the full posmap. If rmax is specified,
+	the calculation will stop at the distance rmax. Beyond that distance domain will be set to -1 and
+	distance will be set to rmax. This can be used to speed up the calculation if one only cares about
+	distances up to a certain point."""
 	# Check that our inputs make sense
 	ypos   = np.asanyarray(ypos).astype(float, order="C", copy=False)
 	xpos   = np.asanyarray(xpos).astype(float, order="C", copy=False)
@@ -207,13 +211,14 @@ def distance_from_points_bubble_separable(ypos, xpos, point_pos, point_pix, omap
 	cdef int ny = len(ypos)
 	cdef int nx = len(xpos)
 	cdef inum npoint = point_pos.shape[1]
+	cdef double      rmax_   = (0 if rmax is None else rmax)
 	cdef double[::1] ypos_   = ypos.reshape(-1)
 	cdef double[::1] xpos_   = xpos.reshape(-1)
 	cdef double[::1] point_pos_ = point_pos.reshape(-1)
 	cdef int[::1]    point_pix_ = point_pix.reshape(-1)
 	cdef double[::1] omap_   = omap.reshape(-1)
 	cdef int[::1]    odomains_ = odomains.reshape(-1)
-	distance_from_points_bubble_separable_c(ny, nx, &ypos_[0], &xpos_[0], npoint, &point_pos_[0], &point_pix_[0], &omap_[0], &odomains_[0])
+	distance_from_points_bubble_separable_c(ny, nx, &ypos_[0], &xpos_[0], npoint, &point_pos_[0], &point_pix_[0], rmax_, &omap_[0], &odomains_[0])
 	if domains: return omap, odomains
 	else:       return omap
 

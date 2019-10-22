@@ -154,7 +154,7 @@ void pointvec_free(PointVec * v) { free(v->y); free(v->x); free(v); }
 void pointvec_swap(PointVec ** a, PointVec ** b) { PointVec * tmp = *a; *a = *b; *b = tmp; }
 
 #define nneigh 4
-void distance_from_points_bubble(int ny, int nx, double * posmap, inum npoint, double * point_pos, int * point_pix, double * dists, int * domains)
+void distance_from_points_bubble(int ny, int nx, double * posmap, inum npoint, double * point_pos, int * point_pix, double rmax, double * dists, int * domains)
 {
 	// Compute the distance from each entry in postmap to the closest entry in points, storing the
 	// result in dists. Works by starting from the closest pixels to the points, then working outwards
@@ -168,10 +168,13 @@ void distance_from_points_bubble(int ny, int nx, double * posmap, inum npoint, d
 	int    * point_x   = point_pix+npoint;
 	double * pix_dec   = posmap;
 	double * pix_ra    = posmap+npix;
+
+	// Allow us to disable rmax by setting it to zero
+	if(rmax <= 0) rmax = 1e300; // might consider using inf
 	
 	// Fill dists and domains with unvisited values
 	for(inum i = 0; i < ny*nx; i++) {
-		dists[i] = 1e300; // would use inf, but harder to generate
+		dists[i] = rmax;
 		domains[i] = -1;
 	}
 
@@ -217,7 +220,7 @@ void distance_from_points_bubble(int ny, int nx, double * posmap, inum npoint, d
 				inum pix2 = y2*nx+x2;
 				if(domains[pix2] == ipoint) continue;
 				double cand_dist = dist_vincenty_helper(point_ra[ipoint], point_cos_dec[ipoint], point_sin_dec[ipoint], pix_ra[pix2], cos(pix_dec[pix2]), sin(pix_dec[pix2]));
-				if(cand_dist < dists[pix2]) {
+				if(cand_dist < dists[pix2] && cand_dist < rmax) {
 					dists[pix2]   = cand_dist;
 					domains[pix2] = ipoint;
 					pointvec_push(next, y2, x2);
@@ -238,7 +241,7 @@ void distance_from_points_bubble(int ny, int nx, double * posmap, inum npoint, d
 #undef nneigh
 
 #define nneigh 4
-void distance_from_points_bubble_separable(int ny, int nx, double * ypos, double * xpos, inum npoint, double * point_pos, int * point_pix, double * dists, int * domains)
+void distance_from_points_bubble_separable(int ny, int nx, double * ypos, double * xpos, inum npoint, double * point_pos, int * point_pix, double rmax, double * dists, int * domains)
 {
 	// Compute the distance from each entry in postmap to the closest entry in points, storing the
 	// result in dists. Works by starting from the closest pixels to the points, then working outwards
@@ -249,10 +252,13 @@ void distance_from_points_bubble_separable(int ny, int nx, double * ypos, double
 	double * point_ra  = point_pos+npoint;
 	int    * point_y   = point_pix;
 	int    * point_x   = point_pix+npoint;
+
+	// Allow us to disable rmax by setting it to zero
+	if(rmax <= 0) rmax = 1e300; // might consider using inf
 	
 	// Fill dists and domains with unvisited values
 	for(inum i = 0; i < ny*nx; i++) {
-		dists[i] = 1e300; // would use inf, but harder to generate
+		dists[i] = rmax;
 		domains[i] = -1;
 	}
 
@@ -304,7 +310,8 @@ void distance_from_points_bubble_separable(int ny, int nx, double * ypos, double
 				inum pix2 = y2*nx+x2;
 				if(domains[pix2] == ipoint) continue;
 				double cand_dist = dist_vincenty_helper(point_ra[ipoint], point_cos_dec[ipoint], point_sin_dec[ipoint], xpos[x2], pix_cos_dec[y2], pix_sin_dec[y2]);
-				if(cand_dist < dists[pix2]) {
+				// Stop exploration if we're not the best so far, or if we are beyond rmax
+				if(cand_dist < dists[pix2] && cand_dist < rmax) {
 					dists[pix2]   = cand_dist;
 					domains[pix2] = ipoint;
 					pointvec_push(next, y2, x2);

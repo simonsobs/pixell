@@ -1290,43 +1290,47 @@ def downgrade_geometry(shape, wcs, factor):
 	owcs   = wcsutils.scale(wcs, 1.0/factor)
 	return oshape, owcs
 
-def distance_transform(mask, omap=None):
+def distance_transform(mask, omap=None, rmax=None):
 	"""Given a boolean mask, produce an output map where the value in each pixel is the distance
-	to the closest false pixel in the mask."""
+	to the closest false pixel in the mask. See distance_from for the meaning of rmax."""
 	from pixell import distances
 	if omap is None: omap = zeros(mask.shape, mask.wcs)
 	for i in range(len(mask.preflat)):
 		edge_pix = np.array(distances.find_edges(mask.preflat[0]))
 		edge_pos = mask.pix2sky(edge_pix, safe=False)
-		omap.preflat[i] = distance_from(mask.shape, mask.wcs, edge_pos)
+		omap.preflat[i] = distance_from(mask.shape, mask.wcs, edge_pos, rmax=rmax)
 	# Distance is always zero inside mask
 	omap *= mask
 	return omap
 
-def labeled_distance_transform(labels, omap=None, odomains=None):
+def labeled_distance_transform(labels, omap=None, odomains=None, rmax=None):
 	"""Given a map of labels going from 1 to nlabel, produce an output map where the value
 	in each pixel is the distance to the closest nonzero pixel in the labels, as well as a
-	map of which label each pixel was closest to."""
+	map of which label each pixel was closest to. See distance_from for the meaning of rmax."""
 	from pixell import distances
 	if omap is None: omap = zeros(labels.shape, labels.wcs)
 	if odomains is None: odomains = zeros(omap.shape, omap.wcs, np.int32)
 	for i in range(len(labels.preflat)):
 		edge_pix = np.array(distances.find_edges_labeled(labels.preflat[i]))
 		edge_pos = labels.pix2sky(edge_pix, safe=False)
-		_, domains = distance_from(labels.shape, labels.wcs, edge_pos, omap=omap.preflat[i], domains=True)
+		_, domains = distance_from(labels.shape, labels.wcs, edge_pos, omap=omap.preflat[i], domains=True, rmax=rmax)
 		# Get the edge_pix to label mapping
 		mapping = labels.preflat[i][edge_pix[0],edge_pix[1]]
-		odomains.preflat[i] = mapping[domains]
-		mask = labels.preflat[i] != 0
+		mask    = domains >= 0
+		odomains.preflat[i,mask] = mapping[domains[mask]]
 		# Distance is always zero inside each labeled region
+		mask    = labels.preflat[i] != 0
 		omap.preflat[i][mask] = 0
 	return omap, odomains
 
-def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, method="bubble", step=1024):
+def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, method="bubble", rmax=None, step=1024):
 	"""Find the distance from each pixel in the geometry (shape, wcs) to the
 	nearest of the points[{dec,ra},npoint], returning a [ny,nx] map of distances.
 	If domains==True, then it will also return a [ny,nx] map of the index of the point
-	that was closest to each pixel."""
+	that was closest to each pixel. If rmax is specified and the method is "bubble", then
+	distances will only be computed up to rmax. Beyond that distance will be set to rmax
+	and domains to -1. This can be used to speed up the calculation when one only cares
+	about nearby areas."""
 	from pixell import distances
 	if omap is None: omap = empty(shape[-2:], wcs)
 	if domains and odomains is None: odomains = empty(shape[-2:], wcs, np.int32)
@@ -1334,7 +1338,7 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 		dec, ra = posaxes(shape, wcs)
 		if method == "bubble":
 			point_pix = utils.nint(sky2pix(shape, wcs, points))
-			return distances.distance_from_points_bubble_separable(dec, ra, points, point_pix, omap=omap, odomains=odomains, domains=domains)
+			return distances.distance_from_points_bubble_separable(dec, ra, points, point_pix, rmax=rmax, omap=omap, odomains=odomains, domains=domains)
 		elif method == "simple":
 			return distances.distance_from_points_simple_separable(dec, ra, points, omap=omap, odomains=odomains, domains=domains)
 		else: raise ValueError("Unknown method '%s'" % str(method))
@@ -1345,7 +1349,7 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 			# Not sure how to slice bubble. Just do it in one go for now
 			pos = posmap(shape, wcs, safe=False)
 			point_pix = utils.nint(sky2pix(shape, wcs, points))
-			return distances.distance_from_points(posmap, points, omap=omap, odomains=odomains, domains=domains)
+			return distances.distance_from_points_bubble(posmap, points, rmax=rmax, omap=omap, odomains=odomains, domains=domains)
 		elif method == "simple":
 			geo = Geometry(shape, wcs)
 			for y in range(0, shape[-2], step):
