@@ -346,7 +346,7 @@ inum find_edges(inum ny, inum nx, uint8_t * mask, inum ** edges)
 	inum y, x, i, n = 0, capacity = 0x100;
 	inum * edges_ = realloc(NULL, sizeof(inum)*capacity);
 	for(i = 0; i < nx; i++)            if(mask[i] == 0) push(edges_, capacity, n, i);
-	for(i = (ny-1)*nx; i < nx*nx; i++) if(mask[i] == 0) push(edges_, capacity, n, i);
+	for(i = (ny-1)*nx; i < ny*nx; i++) if(mask[i] == 0) push(edges_, capacity, n, i);
 	for(i = nx; i < ny*nx; i += nx)    if(mask[i] == 0) push(edges_, capacity, n, i);
 	for(i = nx-1; i < ny*nx; i += nx)  if(mask[i] == 0) push(edges_, capacity, n, i);
 	// Then do the interior
