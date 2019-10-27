@@ -6,7 +6,7 @@ all: sharp.c distances.c
 
 sharp.c: sharp.pyx csharp.pxd csharp.h
 
-distances.c: distances.pyx distances.pxd distances_core.h distances_core.c
+distances.c: distances.pyx distances_wrap.pxd distances_core.h distances_core.c
 
 clean:
 	rm -f sharp.c distances.c

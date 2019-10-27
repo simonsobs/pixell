@@ -2,13 +2,11 @@ import cython, numpy as np
 from scipy import ndimage
 cimport numpy as np
 from libc.stdlib cimport free
-from distances cimport inum
-from distances cimport find_edges as find_edges_c
-from distances cimport find_edges_labeled as find_edges_labeled_c
-from distances cimport distance_from_points_simple as distance_from_points_simple_c
-from distances cimport distance_from_points_simple_separable as distance_from_points_simple_separable_c
-from distances cimport distance_from_points_bubble as distance_from_points_bubble_c
-from distances cimport distance_from_points_bubble_separable as distance_from_points_bubble_separable_c
+# I had to call this distances_wrap instead of just distances because
+# .pdx files with the same name get automatically imported into the current
+# namespace, which means I would have to give stupid names to the functions here
+cimport distances_wrap as c
+from distances_wrap cimport inum, uint8_t
 
 __version__ = 1.0
 
@@ -38,11 +36,11 @@ def distance_from_points_simple(posmap, points, omap=None, odomains=None, domain
 	cdef double[::1] omap_   = omap.reshape(-1)
 	cdef int[::1]    odomains_
 	if not domains:
-		distance_from_points_simple_c(npix, &posmap_[0], npoint, &points_[0], &omap_[0], NULL)
+		c.distance_from_points_simple(npix, &posmap_[0], npoint, &points_[0], &omap_[0], NULL)
 		return omap
 	else:
 		odomains_ = odomains.reshape(-1)
-		distance_from_points_simple_c(npix, &posmap_[0], npoint, &points_[0], &omap_[0], &odomains_[0])
+		c.distance_from_points_simple(npix, &posmap_[0], npoint, &points_[0], &omap_[0], &odomains_[0])
 		return omap, odomains
 
 def distance_from_points_simple_separable(ypos, xpos, points, omap=None, odomains=None, domains=False):
@@ -75,11 +73,11 @@ def distance_from_points_simple_separable(ypos, xpos, points, omap=None, odomain
 	cdef double[::1] omap_   = omap.reshape(-1)
 	cdef int[::1]    odomains_
 	if not domains:
-		distance_from_points_simple_separable_c(ny, nx, &ypos_[0], &xpos_[0], npoint, &points_[0], &omap_[0], NULL)
+		c.distance_from_points_simple_separable(ny, nx, &ypos_[0], &xpos_[0], npoint, &points_[0], &omap_[0], NULL)
 		return omap
 	else:
 		odomains_ = odomains.reshape(-1)
-		distance_from_points_simple_separable_c(ny, nx, &ypos_[0], &xpos_[0], npoint, &points_[0], &omap_[0], &odomains_[0])
+		c.distance_from_points_simple_separable(ny, nx, &ypos_[0], &xpos_[0], npoint, &points_[0], &omap_[0], &odomains_[0])
 		return omap, odomains
 
 def fix_point_pix(posmap, point_pos, point_pix):
@@ -177,7 +175,7 @@ def distance_from_points_bubble(posmap, point_pos, point_pix, rmax=None, omap=No
 	cdef int[::1]    point_pix_ = point_pix.reshape(-1)
 	cdef double[::1] omap_   = omap.reshape(-1)
 	cdef int[::1]    odomains_ = odomains.reshape(-1)
-	distance_from_points_bubble_c(ny, nx, &posmap_[0], npoint, &point_pos_[0], &point_pix_[0], rmax_, &omap_[0], &odomains_[0])
+	c.distance_from_points_bubble(ny, nx, &posmap_[0], npoint, &point_pos_[0], &point_pix_[0], rmax_, &omap_[0], &odomains_[0])
 	if domains: return omap, odomains
 	else:       return omap
 
@@ -218,7 +216,7 @@ def distance_from_points_bubble_separable(ypos, xpos, point_pos, point_pix, rmax
 	cdef int[::1]    point_pix_ = point_pix.reshape(-1)
 	cdef double[::1] omap_   = omap.reshape(-1)
 	cdef int[::1]    odomains_ = odomains.reshape(-1)
-	distance_from_points_bubble_separable_c(ny, nx, &ypos_[0], &xpos_[0], npoint, &point_pos_[0], &point_pix_[0], rmax_, &omap_[0], &odomains_[0])
+	c.distance_from_points_bubble_separable(ny, nx, &ypos_[0], &xpos_[0], npoint, &point_pos_[0], &point_pix_[0], rmax_, &omap_[0], &odomains_[0])
 	if domains: return omap, odomains
 	else:       return omap
 
@@ -239,7 +237,7 @@ def find_edges(mask, flat=False):
 	cdef inum n = 0
 	cdef inum * edges_raw = NULL;
 	cdef uint8_t[::1] mask_ = mask.reshape(-1)
-	n = find_edges_c(mask.shape[0], mask.shape[1], &mask_[0], &edges_raw)
+	n = c.find_edges(mask.shape[0], mask.shape[1], &mask_[0], &edges_raw)
 	# Copy into numpy array
 	cdef inum[::1] view = <inum[:n]> edges_raw;
 	edges = np.array(view)
@@ -265,7 +263,7 @@ def find_edges_labeled(labels, flat=False):
 	cdef inum n = 0
 	cdef inum * edges_raw = NULL;
 	cdef int[::1] labels_ = labels.reshape(-1)
-	n = find_edges_labeled_c(labels.shape[0], labels.shape[1], &labels_[0], &edges_raw)
+	n = c.find_edges_labeled(labels.shape[0], labels.shape[1], &labels_[0], &edges_raw)
 	# Copy into numpy array
 	cdef inum[::1] view = <inum[:n]> edges_raw;
 	edges = np.array(view)
@@ -273,3 +271,150 @@ def find_edges_labeled(labels, flat=False):
 	if not flat:
 		edges = np.unravel_index(edges, labels.shape)
 	return edges
+
+#### healpix stuff below here ####
+
+# Why is this so verbose?
+cdef class healpix_info:
+	cdef c.healpix_info * info
+	def __init__(self, int nside):
+		self.info = c.build_healpix_info(nside)
+	def __dealloc__(self):
+		c.free_healpix_info(self.info)
+	@property
+	def nside(self):   return self.info.nside
+	@property
+	def npix(self):   return self.info.npix
+	@property
+	def ny(self):      return self.info.ny
+	@property
+	def nx(self):      return np.asarray(<int[:self.info.ny]> self.info.nx)
+	@property
+	def off(self):     return np.asarray(<inum[:self.info.ny]> self.info.off)
+	@property
+	def shift(self):   return np.asarray(<int[:self.info.ny]> self.info.shift)
+	@property
+	def ra0(self):     return np.asarray(<double[:self.info.ny]> self.info.ra0)
+	@property
+	def dec(self):     return np.asarray(<double[:self.info.ny]> self.info.dec)
+	@property
+	def cos_dec(self): return np.asarray(<double[:self.info.ny]> self.info.cos_dec)
+	@property
+	def sin_dec(self): return np.asarray(<double[:self.info.ny]> self.info.sin_dec)
+
+def find_edges_healpix(healpix_info info, mask, flat=True):
+	"""find_edges_healpix(healpix_info info, mask, flat=True)
+
+	Given a healpix_info info and a boolean mask[:], returns
+	the pixel indices of all the pixels at the edge of the zero
+	region of the mask. If flat=False, then the indices will be
+	returned as [{row,col},:]. The default is to return them as
+	plain 1d indices."""
+	# Flat is the default for healpix because healpix is usually 1d
+	cdef int * edges_raw
+	cdef inum nedge = 0
+	mask = np.asanyarray(mask)
+	if mask.dtype in [np.uint8, np.int8, np.bool]:
+		mask = mask.astype(mask.dtype, order="C", copy=False).view(np.uint8)
+	else:
+		mask = mask.astype(np.uint8, order="C", copy=False)
+	assert mask.ndim == 1, "mask must be 1D"
+	cdef uint8_t[::1] mask_ = mask
+	nedge = c.find_edges_healpix(info.info, &mask_[0], &edges_raw)
+	# Copy info numpy array
+	cdef int[::1] view = <int[:2*nedge]> edges_raw
+	edges = np.array(view).reshape(2,-1)
+	free(edges_raw)
+	if flat:
+		edges = info.off[edges[0]]+edges[1]
+	return edges
+
+def find_edges_labeled_healpix(healpix_info info, labels, flat=True):
+	"""find_edges_labeled_healpix(healpix_info info, labels, flat=True)
+
+	Given a healpix_info info and integer labels[:], returns
+	the pixel indices of all the pixels at the the edge of a
+	region with the same, nonzero value in labels. If flat=False,
+	then the indices will be returned as [{row,col},:]. The default
+	is to return them as plain 1d indices."""
+	cdef int * edges_raw
+	cdef inum nedge = 0
+	labels = np.asanyarray(labels)
+	if labels.dtype in [np.uint32, np.int32]:
+		labels = labels.astype(labels.dtype, order="C", copy=False).view(np.int32)
+	else:
+		labels = labels.astype(np.int32, order="C", copy=False)
+	assert labels.ndim == 1, "labels must be 2D"
+	cdef int[::1] labels_ = labels.reshape(-1)
+	nedge = c.find_edges_labeled_healpix(info.info, &labels_[0], &edges_raw)
+	# Copy info numpy array
+	cdef int[::1] view = <int[:2*nedge]> edges_raw
+	edges = np.array(view).reshape(2,-1)
+	free(edges_raw)
+	if flat:
+		edges = info.off[edges[0]]+edges[1]
+	return edges
+
+def distance_from_points_healpix(healpix_info info, point_pos, point_pix, rmax=None, omap=None, odomains=None, domains=False, method="bubble"):
+	"""distance_from_points_healpix(healpix_info info, point_pos, point_pix, rmax=None, omap=None, odomains=None, domains=False)
+
+	Computes the distance of each healpix pixel in the sky described by healpix_info info to
+	the closest of the points with position point_pos[{dec,ra},npoint] and corresponding
+	pixel position point_pix[{y,x},npoint]. If omap is specified, the result is written there.
+	In any case the result is also returned. If domains=True then a domain map is also returned.
+	In this map the value of each pixel is the index of the closest point in the point_pos array,
+	or -1 if no valid point was found. The main way this could happen is if rmax is specified,
+	which makes the search stop after a distance of rmax radians. Distances larger than this
+	will be capped to this value."""
+	# Check that our inputs make sense
+	point_pos = np.asanyarray(point_pos).astype(float,    order="C", copy=False)
+	assert point_pos.ndim == 2 and len(point_pos) == 2, "point_pos must be [{dec,ra},npoint]"
+	# point_pix can be standard 1d or our internal 2d format
+	point_pix = np.asanyarray(point_pix)
+	if point_pix.ndim == 1:
+		point_pix = unravel_healpix(info, point_pix)
+	point_pix = point_pix.astype(np.int32, order="C", copy=False)
+	assert point_pix.ndim == 2 and len(point_pix) == 2 and point_pix.shape[1] == point_pos.shape[1], "point_pos must be [npoint] or [{y,x},npoint]"
+	if omap is None: omap = np.empty(info.npix, dtype=np.float64)
+	assert omap.ndim == 1 and omap.size == info.npix and omap.dtype==np.float64, "omap must be [npix] float64"
+	if odomains is None: odomains = np.empty(info.npix, dtype=np.int32)
+	assert odomains.ndim == 1 and odomains.size == info.npix and odomains.dtype==np.int32, "odomains must be [npix] int32"
+	# Prepare to call C
+	cdef inum npoint = point_pos.shape[1]
+	cdef double      rmax_   = (0 if rmax is None else rmax)
+	cdef double[::1] point_pos_ = point_pos.reshape(-1)
+	cdef int[::1]    point_pix_ = point_pix.reshape(-1)
+	cdef double[::1] omap_   = omap.reshape(-1)
+	cdef int[::1]    odomains_ = odomains.reshape(-1)
+	if method == "bubble":
+		c.distance_from_points_bubble_healpix(info.info, npoint, &point_pos_[0], &point_pix_[0], rmax_, &omap_[0], &odomains_[0])
+	elif method == "heap":
+		c.distance_from_points_heap_healpix(info.info, npoint, &point_pos_[0], &point_pix_[0], rmax_, &omap_[0], &odomains_[0])
+	else: raise ValueError("Unrecognized method '%s'" % str(method))
+	if domains: return omap, odomains
+	else:       return omap
+
+def unravel_healpix(healpix_info info, pix1d):
+	pix1d = np.asanyarray(pix1d).astype(np.int64, order="C", copy=False)
+	pix2d = np.empty((2,)+pix1d.shape, np.int32)
+	cdef npoint = pix1d.size
+	cdef inum[::1] pix1d_ = pix1d.reshape(-1)
+	cdef int[::1]  pix2d_ = pix2d.reshape(-1)
+	c.unravel_healpix(info.info, npoint, &pix1d_[0], &pix2d_[0])
+	return pix2d
+
+def ravel_healpix(healpix_info info, pix2d):
+	pix2d = np.asanyarray(pix2d).astype(np.int32, order="C", copy=False)
+	pix1d = np.empty(pix2d.shape[1:], np.int64)
+	cdef npoint = pix1d.size
+	cdef int[::1]  pix2d_ = pix2d.reshape(-1)
+	cdef inum[::1] pix1d_ = pix1d.reshape(-1)
+	c.ravel_healpix(info.info, npoint, &pix2d_[0], &pix1d_[0])
+	return pix1d
+
+def get_healpix_neighs(healpix_info info, int y, int x):
+	res = np.zeros([2,4],np.int32)
+	cdef int[::1] yneigh = res[0]
+	cdef int[::1] xneigh = res[1]
+	c.get_healpix_neighs(info.info, y, x, &yneigh[0], &xneigh[0])
+	return res
