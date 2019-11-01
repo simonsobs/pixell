@@ -161,7 +161,7 @@ def submap(map, box, mode=None, wrap="auto", iwcs=None):
 	if xflip: omap = omap[...,:,::-1]
 	return omap
 
-def subinds(shape, wcs, box, mode=None, cap=True):
+def subinds(shape, wcs, box, mode=None, cap=True, noflip=False):
 	"""Helper function for submap. Translates the bounding
 	box provided into a pixel units. Assumes rectangular
 	coordinates.
@@ -186,6 +186,9 @@ def subinds(shape, wcs, box, mode=None, cap=True):
 	box = np.asarray(box)
 	# Translate the box to pixels
 	bpix = skybox2pixbox(shape, wcs, box, include_direction=True)
+	if noflip:
+		for b in bpix.T:
+			if b[2] < 0: b[:] = [b[1],b[0],-b[2]]
 	if   mode == "round": bpix = np.round(bpix)
 	elif mode == "floor": bpix = np.floor(bpix)
 	elif mode == "ceil":  bpix = np.ceil(bpix)
@@ -244,9 +247,9 @@ class Geometry:
 		if not isinstance(sel,tuple): sel = (sel,)
 		shape, wcs = slice_geometry(self.shape, self.wcs, sel)
 		return Geometry(shape, wcs)
-	def submap(self, box=None, pixbox=None, mode=None, wrap="auto"):
+	def submap(self, box=None, pixbox=None, mode=None, wrap="auto", noflip=False):
 		if pixbox is None:
-			pixbox = subinds(self.shape, self.wcs, box, mode=mode, cap=False)
+			pixbox = subinds(self.shape, self.wcs, box, mode=mode, cap=False, noflip=noflip)
 		def helper(b):
 			if b[2] >= 0: return False, slice(b[0],b[1],b[2])
 			else:         return True,  slice(b[1]-b[2],b[0]-b[2],-b[2])
@@ -410,7 +413,7 @@ def sky2pix(shape, wcs, coords, safe=True, corner=False):
 
 def skybox2pixbox(shape, wcs, skybox, npoint=10, corner=False, include_direction=False):
 	"""Given a coordinate box [{from,to},{dec,ra}], compute a
-	corresponding pixel box [{from,to},{y,x}]. We avoiding
+	corresponding pixel box [{from,to},{y,x}]. We avoid
 	wrapping issues by evaluating a number of subpoints."""
 	coords = np.array([
 		np.linspace(skybox[0,0],skybox[1,0],num=npoint,endpoint=True),
