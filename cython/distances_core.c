@@ -44,8 +44,8 @@ void distance_from_points_simple(inum npix, double * posmap, inum npoint, double
 	// result in dists. Use Vincenty formula for distances. It's a bit slower than the simplest formula, but
 	// it's very stable. Can optimize later
 	// Precompute cos and sin dec for the edge pixels
-	double * edge_cos_dec = reallocarray(NULL, npoint, sizeof(double));
-	double * edge_sin_dec = reallocarray(NULL, npoint, sizeof(double));
+	double * edge_cos_dec = realloc(NULL, (inum)npoint*sizeof(double));
+	double * edge_sin_dec = realloc(NULL, (inum)npoint*sizeof(double));
 	for(inum j = 0; j < npoint; j++) {
 		double dec = points[j];
 		edge_cos_dec[j] = cos(dec);
@@ -84,8 +84,8 @@ void distance_from_points_simple_separable(inum ny, inum nx, double * ypos, doub
 	// it's very stable. Can optimize later
 	// Precompute cos and sin dec for the edge pixels
 	double t1 = wall_time();
-	double * edge_cos_dec = reallocarray(NULL, npoint, sizeof(double));
-	double * edge_sin_dec = reallocarray(NULL, npoint, sizeof(double));
+	double * edge_cos_dec = realloc(NULL, (inum)npoint*sizeof(double));
+	double * edge_sin_dec = realloc(NULL, (inum)npoint*sizeof(double));
 	for(inum j = 0; j < npoint; j++) {
 		double dec = points[j];
 		edge_cos_dec[j] = cos(dec);
@@ -141,15 +141,15 @@ PointVec * pointvec_new() {
 	PointVec * v = realloc(NULL, sizeof(PointVec));
 	v->n   = 0;
 	v->cap = 1024;
-	v->y   = reallocarray(NULL, v->cap, sizeof(int));
-	v->x   = reallocarray(NULL, v->cap, sizeof(int));
+	v->y   = realloc(NULL, (inum)v->cap*sizeof(int));
+	v->x   = realloc(NULL, (inum)v->cap*sizeof(int));
 	return v;
 }
 void pointvec_push(PointVec * v, int y, int x) {
 	if(v->n >= v->cap) {
 		v->cap *= 2;
-		v->y = reallocarray(v->y, v->cap, sizeof(int));
-		v->x = reallocarray(v->x, v->cap, sizeof(int));
+		v->y = realloc(v->y, (inum)v->cap*sizeof(int));
+		v->x = realloc(v->x, (inum)v->cap*sizeof(int));
 	}
 	v->y[v->n] = y;
 	v->x[v->n] = x;
@@ -183,8 +183,8 @@ void distance_from_points_bubble(int ny, int nx, double * posmap, inum npoint, d
 	}
 
 	// Precompute cos and sin dec for the points
-	double * point_cos_dec = reallocarray(NULL, npoint, sizeof(double));
-	double * point_sin_dec = reallocarray(NULL, npoint, sizeof(double));
+	double * point_cos_dec = realloc(NULL, (inum)npoint*sizeof(double));
+	double * point_sin_dec = realloc(NULL, (inum)npoint*sizeof(double));
 	for(inum j = 0; j < npoint; j++) {
 		double dec = point_dec[j];
 		point_cos_dec[j] = cos(dec);
@@ -266,15 +266,15 @@ void distance_from_points_bubble_separable(int ny, int nx, double * ypos, double
 
 	// Precompute cos and sin dec for the points, as well as for the relatively
 	// few dec values we have along the y axis due to our separable pixelization.
-	double * point_cos_dec = reallocarray(NULL, npoint, sizeof(double));
-	double * point_sin_dec = reallocarray(NULL, npoint, sizeof(double));
+	double * point_cos_dec = realloc(NULL, (inum)npoint*sizeof(double));
+	double * point_sin_dec = realloc(NULL, (inum)npoint*sizeof(double));
 	for(inum j = 0; j < npoint; j++) {
 		double dec = point_dec[j];
 		point_cos_dec[j] = cos(dec);
 		point_sin_dec[j] = sin(dec);
 	}
-	double * pix_cos_dec  = reallocarray(NULL, ny, sizeof(double));
-	double * pix_sin_dec  = reallocarray(NULL, ny, sizeof(double));
+	double * pix_cos_dec  = realloc(NULL, (inum)ny*sizeof(double));
+	double * pix_sin_dec  = realloc(NULL, (inum)ny*sizeof(double));
 	for(int y = 0; y < ny; y++) {
 		pix_cos_dec[y] = cos(ypos[y]);
 		pix_sin_dec[y] = sin(ypos[y]);
@@ -557,8 +557,8 @@ void distance_from_points_bubble_healpix(healpix_info * geo, inum npoint, double
 	int yneigh[nneigh];
 	int xneigh[nneigh];
 	// Precompute cos and sin dec for the points
-	double * point_cos_dec = reallocarray(NULL, npoint, sizeof(double));
-	double * point_sin_dec = reallocarray(NULL, npoint, sizeof(double));
+	double * point_cos_dec = realloc(NULL, (inum)npoint*sizeof(double));
+	double * point_sin_dec = realloc(NULL, (inum)npoint*sizeof(double));
 	for(inum j = 0; j < npoint; j++) {
 		double dec = point_dec[j];
 		point_cos_dec[j] = cos(dec);
@@ -632,7 +632,7 @@ PointHeap * pointheap_new() {
 	PointHeap * heap = realloc(NULL, sizeof(PointHeap));
 	heap->n    = 0;
 	heap->cap  = 1024;
-	heap->data = reallocarray(NULL, heap->cap, sizeof(HeapEntry));
+	heap->data = realloc(NULL, (inum)heap->cap*sizeof(HeapEntry));
 	return heap;
 }
 void pointheap_free(PointHeap * heap) {
@@ -644,7 +644,7 @@ void pointheap_push(PointHeap * heap, HeapEntry e) {
 	// First append it to the end
 	if(heap->n >= heap->cap) {
 		heap->cap *= 2;
-		heap->data = reallocarray(heap->data, heap->cap, sizeof(HeapEntry));
+		heap->data = realloc(heap->data, (inum)heap->cap*sizeof(HeapEntry));
 	}
 	heap->data[heap->n] = e;
 	// Then update the heap condition
@@ -693,8 +693,8 @@ void distance_from_points_heap_healpix(healpix_info * geo, inum npoint, double *
 	int yneigh[nneigh];
 	int xneigh[nneigh];
 	// Precompute cos and sin dec for the points
-	double * point_cos_dec = reallocarray(NULL, npoint, sizeof(double));
-	double * point_sin_dec = reallocarray(NULL, npoint, sizeof(double));
+	double * point_cos_dec = realloc(NULL, (inum)npoint*sizeof(double));
+	double * point_sin_dec = realloc(NULL, (inum)npoint*sizeof(double));
 	for(inum j = 0; j < npoint; j++) {
 		double dec = point_dec[j];
 		point_cos_dec[j] = cos(dec);
@@ -757,7 +757,7 @@ void distance_from_points_heap_healpix(healpix_info * geo, inum npoint, double *
 	pointheap_free(heap);
 }
 
-#define push(vec,cap,n,i) { if(n >= cap) { cap *= 2; vec = reallocarray(vec, cap, sizeof(inum)); } vec[n++] = i; }
+#define push(vec,cap,n,i) { if(n >= cap) { cap *= 2; vec = realloc(vec, (inum)cap*sizeof(inum)); } vec[n++] = i; }
 inum find_edges(inum ny, inum nx, uint8_t * mask, inum ** edges)
 {
 	// Return the pixels defining the boundary of the zero regions in mask. These
@@ -766,7 +766,7 @@ inum find_edges(inum ny, inum nx, uint8_t * mask, inum ** edges)
 	// might wrap around.
 	// Start with the boundary
 	inum y, x, i, n = 0, capacity = 0x100;
-	inum * edges_ = reallocarray(NULL, capacity, sizeof(inum));
+	inum * edges_ = realloc(NULL, (inum)capacity*sizeof(inum));
 	for(i = 0; i < nx; i++)            if(mask[i] == 0) push(edges_, capacity, n, i);
 	for(i = (ny-1)*nx; i < ny*nx; i++) if(mask[i] == 0) push(edges_, capacity, n, i);
 	for(i = nx; i < ny*nx; i += nx)    if(mask[i] == 0) push(edges_, capacity, n, i);
@@ -778,7 +778,7 @@ inum find_edges(inum ny, inum nx, uint8_t * mask, inum ** edges)
 		if(mask[i] == 0 && (mask[i-1] != 0 || mask[i+1] != 0 || mask[i-nx] != 0 || mask[i+nx] != 0))
 			push(edges_, capacity, n, i);
 	}
-	*edges = reallocarray(edges_, n, sizeof(inum));
+	*edges = realloc(edges_, (inum)n*sizeof(inum));
 	return n;
 }
 
@@ -791,7 +791,7 @@ inum find_edges_labeled(inum ny, inum nx, int32_t * labels, inum ** edges)
 	// of the regions, and elabs with the label 
 	// Start with the boundary
 	inum y, x, i, n = 0, capacity = 0x100;
-	inum * edges_ = reallocarray(NULL, capacity, sizeof(inum));
+	inum * edges_ = realloc(NULL, (inum)capacity*sizeof(inum));
 	for(i = 0; i < nx; i++)            if(labels[i]) push(edges_, capacity, n, i);
 	for(i = (ny-1)*nx; i < ny*nx; i++) if(labels[i]) push(edges_, capacity, n, i);
 	for(i = nx; i < ny*nx; i += nx)    if(labels[i]) push(edges_, capacity, n, i);
@@ -803,7 +803,7 @@ inum find_edges_labeled(inum ny, inum nx, int32_t * labels, inum ** edges)
 		if(labels[i] && (labels[i-1] != labels[i] || labels[i+1] != labels[i] || labels[i-nx] != labels[i] || labels[i+nx] != labels[i]))
 			push(edges_, capacity, n, i);
 	}
-	*edges = reallocarray(edges_, n, sizeof(inum));
+	*edges = realloc(edges_, (inum)n*sizeof(inum));
 	return n;
 }
 
