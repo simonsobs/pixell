@@ -281,6 +281,7 @@ def define_arg_parser():
 		t[ext]   lat lon dy dx text [size [color]]
 		l[ine]   lat lon dy dx lat lon dy dx [width [color]]
 	dy and dx are pixel-unit offsets from the specified lat/lon.""")
+	add_argument("--annotate-maxrad", type=int, default=0, help="Assume that annotations do not extend further than this from their center, in pixels. This is used to prune which annotations to attempt to draw, as they can be a bit slow. The special value 0 disables this.")
 	add_argument("--stamps", type=str, default=None, help="Plot stamps instead of the whole map. Format is srcfile:size:nmax, where the last two are optional. srcfile is a file with [dec ra] in degrees, size is the size in pixels of each stamp, and nmax is the max number of stamps to produce.")
 	add_argument("--tile",  type=str, default=None, help="Stack components vertically and horizontally. --tile 5,4 stacks into 5 rows and 4 columns. --tile 5 or --tile 5,-1 stacks into 5 rows and however many columns are needed. --tile -1,5 stacks into 5 columns and as many rows are needed. --tile -1 allocates both rows and columns to make the result as square as possible. The result is treated as a single enmap, so the wcs will only be right for one of the tiles.")
 	add_argument("--tile-transpose", action="store_true", help="Transpose the ordering of the fields when tacking. Normally row-major stacking is used. This sets column-major order instead.")
@@ -744,12 +745,17 @@ def draw_annotations(map, annots, args):
 		pix = map.sky2pix(np.array([float(w) for w in pos_off[:2]])*unit)
 		pix += np.array([float(w) for w in pos_off[2:]])
 		return pix[::-1].astype(int)
+	def skippable(x,y):
+		rmax = args.annotate_maxrad
+		if rmax is 0: return False
+		return x <= -rmax or y <= -rmax or x >= map.shape[-1]-1+rmax or y >= map.shape[-2]-1+rmax
 	for annot in annots:
 		atype = annot[0].lower()
 		color = "black"
 		width = 2
 		if atype in ["c","circle"]:
 			x,y = topix(annot[1:5])
+			if skippable(x,y): continue
 			rad = 8
 			if len(annot) > 5: rad   = int(annot[5])
 			if len(annot) > 6: width = int(annot[6])
@@ -761,6 +767,9 @@ def draw_annotations(map, annots, args):
 		elif atype in ["l","line"] or atype in ["r","rect"]:
 			x1,y1 = topix(annot[1:5])
 			x2,y2 = topix(annot[5:9])
+			nphi   = utils.nint(abs(360/map.wcs.wcs.cdelt[0]))
+			x1, x2 = utils.unwind([x1,x2], nphi, ref=nphi//2)
+			if skippable(x1,y1) and skippable(x2,y2): continue
 			if len(annot) >  9: width = int(annot[9])
 			if len(annot) > 10: color = annot[10]
 			if atype[0] == "l":
@@ -772,6 +781,7 @@ def draw_annotations(map, annots, args):
 					draw.rectangle((x1+i,y1+i,x2-i,y2-i), outline=color)
 		elif atype in ["t", "text"]:
 			x,y  = topix(annot[1:5])
+			if skippable(x,y): continue
 			text = annot[5]
 			size = 16
 			if len(annot) > 6: size  = int(annot[6])

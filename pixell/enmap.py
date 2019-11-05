@@ -1289,6 +1289,9 @@ def downgrade_geometry(shape, wcs, factor):
 	owcs   = wcsutils.scale(wcs, 1.0/factor)
 	return oshape, owcs
 
+def upgrade_geometry(shape, wcs, factor):
+	return scale_geometry(shape, wcs, factor)
+
 def pad(emap, pix, return_slice=False, wrap=False):
 	"""Pad enmap "emap", creating a larger map with zeros filled in on the sides.
 	How much to pad is controlled via pix. If pix is a scalar, it specifies the number
