@@ -161,7 +161,7 @@ def submap(map, box, mode=None, wrap="auto", iwcs=None):
 	if xflip: omap = omap[...,:,::-1]
 	return omap
 
-def subinds(shape, wcs, box, mode=None, cap=True):
+def subinds(shape, wcs, box, mode=None, cap=True, noflip=False):
 	"""Helper function for submap. Translates the bounding
 	box provided into a pixel units. Assumes rectangular
 	coordinates.
@@ -186,6 +186,9 @@ def subinds(shape, wcs, box, mode=None, cap=True):
 	box = np.asarray(box)
 	# Translate the box to pixels
 	bpix = skybox2pixbox(shape, wcs, box, include_direction=True)
+	if noflip:
+		for b in bpix.T:
+			if b[2] < 0: b[:] = [b[1],b[0],-b[2]]
 	if   mode == "round": bpix = np.round(bpix)
 	elif mode == "floor": bpix = np.floor(bpix)
 	elif mode == "ceil":  bpix = np.ceil(bpix)
@@ -241,11 +244,12 @@ class Geometry:
 		yield self.shape
 		yield self.wcs
 	def __getitem__(self, sel):
+		if not isinstance(sel,tuple): sel = (sel,)
 		shape, wcs = slice_geometry(self.shape, self.wcs, sel)
 		return Geometry(shape, wcs)
-	def submap(self, box=None, pixbox=None, mode=None, wrap="auto"):
+	def submap(self, box=None, pixbox=None, mode=None, wrap="auto", noflip=False):
 		if pixbox is None:
-			pixbox = subinds(self.shape, self.wcs, box, mode=mode, cap=False)
+			pixbox = subinds(self.shape, self.wcs, box, mode=mode, cap=False, noflip=noflip)
 		def helper(b):
 			if b[2] >= 0: return False, slice(b[0],b[1],b[2])
 			else:         return True,  slice(b[1]-b[2],b[0]-b[2],-b[2])
@@ -409,7 +413,7 @@ def sky2pix(shape, wcs, coords, safe=True, corner=False):
 
 def skybox2pixbox(shape, wcs, skybox, npoint=10, corner=False, include_direction=False):
 	"""Given a coordinate box [{from,to},{dec,ra}], compute a
-	corresponding pixel box [{from,to},{y,x}]. We avoiding
+	corresponding pixel box [{from,to},{y,x}]. We avoid
 	wrapping issues by evaluating a number of subpoints."""
 	coords = np.array([
 		np.linspace(skybox[0,0],skybox[1,0],num=npoint,endpoint=True),
@@ -1291,6 +1295,141 @@ def downgrade_geometry(shape, wcs, factor):
 
 def upgrade_geometry(shape, wcs, factor):
 	return scale_geometry(shape, wcs, factor)
+
+def distance_transform(mask, omap=None, rmax=None):
+	"""Given a boolean mask, produce an output map where the value in each pixel is the distance
+	to the closest false pixel in the mask. See distance_from for the meaning of rmax."""
+	from pixell import distances
+	if omap is None: omap = zeros(mask.shape, mask.wcs)
+	for i in range(len(mask.preflat)):
+		edge_pix = np.array(distances.find_edges(mask.preflat[i]))
+		edge_pos = mask.pix2sky(edge_pix, safe=False)
+		omap.preflat[i] = distance_from(mask.shape, mask.wcs, edge_pos, rmax=rmax)
+	# Distance is always zero inside mask
+	omap *= mask
+	return omap
+
+def labeled_distance_transform(labels, omap=None, odomains=None, rmax=None):
+	"""Given a map of labels going from 1 to nlabel, produce an output map where the value
+	in each pixel is the distance to the closest nonzero pixel in the labels, as well as a
+	map of which label each pixel was closest to. See distance_from for the meaning of rmax."""
+	from pixell import distances
+	if omap is None: omap = zeros(labels.shape, labels.wcs)
+	if odomains is None: odomains = zeros(omap.shape, omap.wcs, np.int32)
+	for i in range(len(labels.preflat)):
+		edge_pix = np.array(distances.find_edges_labeled(labels.preflat[i]))
+		edge_pos = labels.pix2sky(edge_pix, safe=False)
+		_, domains = distance_from(labels.shape, labels.wcs, edge_pos, omap=omap.preflat[i], domains=True, rmax=rmax)
+		# Get the edge_pix to label mapping
+		mapping = labels.preflat[i][edge_pix[0],edge_pix[1]]
+		mask    = domains >= 0
+		odomains.preflat[i,mask] = mapping[domains[mask]]
+		# Distance is always zero inside each labeled region
+		mask    = labels.preflat[i] != 0
+		omap.preflat[i][mask] = 0
+	return omap, odomains
+
+def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, method="bubble", rmax=None, step=1024):
+	"""Find the distance from each pixel in the geometry (shape, wcs) to the
+	nearest of the points[{dec,ra},npoint], returning a [ny,nx] map of distances.
+	If domains==True, then it will also return a [ny,nx] map of the index of the point
+	that was closest to each pixel. If rmax is specified and the method is "bubble", then
+	distances will only be computed up to rmax. Beyond that distance will be set to rmax
+	and domains to -1. This can be used to speed up the calculation when one only cares
+	about nearby areas."""
+	from pixell import distances
+	if omap is None: omap = empty(shape[-2:], wcs)
+	if domains and odomains is None: odomains = empty(shape[-2:], wcs, np.int32)
+	if wcsutils.is_cyl(wcs):
+		dec, ra = posaxes(shape, wcs)
+		if method == "bubble":
+			point_pix = utils.nint(sky2pix(shape, wcs, points))
+			return distances.distance_from_points_bubble_separable(dec, ra, points, point_pix, rmax=rmax, omap=omap, odomains=odomains, domains=domains)
+		elif method == "simple":
+			return distances.distance_from_points_simple_separable(dec, ra, points, omap=omap, odomains=odomains, domains=domains)
+		else: raise ValueError("Unknown method '%s'" % str(method))
+	else:
+		# We have a general geometry, so we need the full posmap. But to avoid wasting memory we
+		# can loop over chunks of the posmap.
+		if method == "bubble":
+			# Not sure how to slice bubble. Just do it in one go for now
+			pos = posmap(shape, wcs, safe=False)
+			point_pix = utils.nint(sky2pix(shape, wcs, points))
+			return distances.distance_from_points_bubble(pos, points, point_pix, rmax=rmax, omap=omap, odomains=odomains, domains=domains)
+		elif method == "simple":
+			geo = Geometry(shape, wcs)
+			for y in range(0, shape[-2], step):
+				sub_geo = geo[y:y+step]
+				pos     = posmap(*sub_geo, safe=False)
+				if domains:
+					distances.distance_from_points_simple(pos, points, omap=omap[y:y+step], odomains=odomains[y:y+step], domains=True)
+				else:
+					distances.distance_from_points_simple(pos, points, omap=omap[y:y+step])
+			if domains: return omap, odomains
+			else:       return omap
+
+def distance_transform_healpix(mask, omap=None, rmax=None, method="heap"):
+	"""Given a boolean healpix mask, produce an output map where the value in each pixel is the distance
+	to the closest false pixel in the mask. See distance_from for the meaning of rmax."""
+	import healpy
+	from pixell import distances
+	npix  = mask.shape[-1]
+	mflat = mask.reshape(-1,npix)
+	nside = healpy.npix2nside(npix)
+	info  = distances.healpix_info(nside)
+	if omap is None: omap = np.zeros(mflat.shape)
+	for i in range(len(mflat)):
+		edge_pix = distances.find_edges_healpix(info, mflat[i])
+		edge_pos = np.array(healpy.pix2ang(info.nside, edge_pix))
+		edge_pos[0] = np.pi/2-edge_pos[0]
+		distances.distance_from_points_healpix(info, edge_pos, edge_pix, omap=omap[i], rmax=rmax, method=method)
+	omap = omap.reshape(mask.shape)
+	# Distance is always zero inside mask
+	omap *= mask
+	return omap
+
+def labeled_distance_transform_healpix(labels, omap=None, odomains=None, rmax=None, method="heap"):
+	"""Given a healpix map of labels going from 1 to nlabel, produce an output map where the value
+	in each pixel is the distance to the closest nonzero pixel in the labels, as well as a
+	map of which label each pixel was closest to. See distance_from for the meaning of rmax."""
+	import healpy
+	from pixell import distances
+	npix  = labels.shape[-1]
+	lflat = labels.reshape(-1,npix)
+	nside = healpy.npix2nside(npix)
+	info  = distances.healpix_info(nside)
+	if omap is None: omap = np.zeros(lflat.shape)
+	if odomains is None: odomains = np.zeros(lflat.shape)
+	for i in range(len(lflat)):
+		edge_pix = distances.find_edges_labeled_healpix(info, lflat[i])
+		edge_pos = np.array(healpy.pix2ang(info.nside, edge_pix))
+		edge_pos[0] = np.pi/2-edge_pos[0]
+		_, domains = distances.distance_from_points_healpix(info, edge_pos, edge_pix, omap=omap[i], domains=True, rmax=rmax, method=method)
+		# Get the edge_pix to label mapping
+		mapping = lflat[i][edge_pix]
+		mask    = domains >= 0
+		odomains[i,mask] = mapping[domains[mask]]
+		# Distance is always zero inside each labeled region
+		mask = lflat[i] != 0
+		omap[i][mask] = 0
+	omap = omap.reshape(labels.shape)
+	odomains = odomains.reshape(labels.shape)
+	return omap, odomains
+
+def distance_from_healpix(nside, points, omap=None, odomains=None, domains=False, rmax=None, method="bubble"):
+	"""Find the distance from each pixel in healpix map with nside nside to the
+	nearest of the points[{dec,ra},npoint], returning a [ny,nx] map of distances.
+	If domains==True, then it will also return a [ny,nx] map of the index of the point
+	that was closest to each pixel. If rmax is specified, then distances will only be
+	computed up to rmax. Beyond that distance will be set to rmax and domains to -1.
+	This can be used to speed up the calculation when one only cares about nearby areas."""
+	import healpy
+	from pixell import distances
+	info = distances.healpix_info(nside)
+	if omap is None: omap = np.empty(info.npix)
+	if domains and odomains is None: odomains = np.empty(info.npix, np.int32)
+	pixs = utils.nint(healpy.ang2pix(nside, np.pi/2-points[0], points[1]))
+	return distances.distance_from_points_healpix(info, points, pixs, rmax=rmax, omap=omap, odomains=odomains, domains=domains, method=method)
 
 def pad(emap, pix, return_slice=False, wrap=False):
 	"""Pad enmap "emap", creating a larger map with zeros filled in on the sides.

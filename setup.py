@@ -41,10 +41,10 @@ if (
 
 
 compile_opts = {
-    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing'],
+    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g'],
     'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
-    'extra_link_args': ['-fopenmp']
+    'extra_link_args': ['-fopenmp', '-g']
     }
 
 fcflags = os.getenv('FCFLAGS')
@@ -128,6 +128,10 @@ setup(
             sources=['cython/sharp.c'],
             libraries=['sharp','c_utils', 'fftpack'],
             library_dirs=['_deps/libsharp/auto/lib'],
+            include_dirs=[np.get_include()],
+            **compile_opts),
+        Extension('pixell.distances',
+            sources=['cython/distances.c','cython/distances_core.c'],
             include_dirs=[np.get_include()],
             **compile_opts),
         Extension('pixell._interpol_32',

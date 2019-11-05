@@ -163,7 +163,7 @@ def healpix_from_enmap(imap, lmax, nside):
     if alm.ndim > 1:
         assert alm.shape[0] == 1
         alm = alm[0]
-    retmap = hp.alm2map(alm, nside, lmax=lmax)
+    retmap = hp.alm2map(alm.astype(np.complex128), nside, lmax=lmax)
     return retmap
 
 

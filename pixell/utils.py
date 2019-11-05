@@ -1268,6 +1268,7 @@ def ang2rect(angs, zenith=False, axis=0):
 	the theta angle will be taken to go from 0 to pi, and measure
 	the angle from the z axis. If zenith is False, then theta
 	goes from -pi/2 to pi/2, and measures the angle up from the xy plane."""
+	angs       = np.asanyarray(angs)
 	phi, theta = moveaxis(angs, axis, 0)
 	ct, st, cp, sp = np.cos(theta), np.sin(theta), np.cos(phi), np.sin(phi)
 	if zenith: res = np.array([st*cp,st*sp,ct])
@@ -1304,6 +1305,19 @@ def angdist(a, b, zenith=False, axis=0):
 	x = a_sin_dec*b_sin_dec + a_cos_dec*b_cos_dec*cos_dra
 	del a_sin_dec, a_cos_dec, b_sin_dec, b_cos_dec, a, b
 	return np.arctan2(y,x)
+
+def vec_angdist(v1, v2, axis=0):
+	"""Use Kahan's version of Heron's formula to compute a stable angular
+	distance between to vectors v1 and v2, which don't have to be unit vectors.
+	See https://scicomp.stackexchange.com/a/27694"""
+	v1 = np.asanyarray(v1)
+	v2 = np.asanyarray(v2)
+	a  = np.sum(v1**2,axis)**0.5
+	b  = np.sum(v2**2,axis)**0.5
+	c  = np.sum((v1-v2)**2,axis)**0.5
+	mu = np.where(b>=c, c-(a-b), b-(a-c))
+	ang= 2*np.arctan(((((a-b)+c)*mu)/((a+(b+c))*((a-c)+b)))**0.5)
+	return ang
 
 def rotmatrix(ang, raxis, axis=0):
 	"""Construct a 3d rotation matrix representing a rotation of
