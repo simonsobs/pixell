@@ -1,6 +1,8 @@
 import numpy as np, scipy.ndimage, os, errno, scipy.optimize, time, datetime, warnings, re, sys
 try: xrange
 except: xrange = range
+try: basestring
+except: basestring = str
 
 degree = np.pi/180
 arcmin = degree/60
@@ -895,7 +897,7 @@ def allgatherv(a, comm, axis=0):
 	fa = moveaxis(a, axis, 0)
 	# mpi4py doesn't handle all types. But why not just do this
 	# for everything?
-	must_fix = np.issubdtype(a.dtype, np.string_) or a.dtype == bool
+	must_fix = np.issubdtype(a.dtype, np.str_) or a.dtype == bool
 	if must_fix:
 		fa = fa.view(dtype=np.uint8)
 	ra = fa.reshape(fa.shape[0],-1) if fa.size > 0 else fa.reshape(0,np.product(fa.shape[1:],dtype=int))
@@ -1985,8 +1987,8 @@ def slice_downgrade(d, s, axis=-1):
 	a = a[s.start:s.stop:-1 if step < 0 else 1]
 	step = abs(step)
 	# Handle the whole blocks first
-	a2 = a[:len(a)/step*step]
-	a2 = np.mean(a2.reshape((len(a2)/step,step)+a2.shape[1:]),1)
+	a2 = a[:len(a)//step*step]
+	a2 = np.mean(a2.reshape((len(a2)//step,step)+a2.shape[1:]),1)
 	# Then append the incomplete block
 	if len(a2)*step != len(a):
 		rest = a[len(a2)*step:]
@@ -2014,3 +2016,15 @@ def beam_transform_to_profile(bl, theta, normalize=False):
 def fix_dtype_mpi4py(dtype):
 	"""Work around mpi4py bug, where it refuses to accept dtypes with endian info"""
 	return np.dtype(np.dtype(dtype).char)
+
+def decode_array_if_necessary(arr):
+	"""Given an arbitrary numpy array arr, decode it if it is of type S and we're in a
+	version of python that doesn't like that"""
+	try:
+		np.array(["a"],"S")[0] in "a"
+		return arr
+	except TypeError:
+		if arr.dtype.type is np.bytes_:
+			return np.char.decode(arr)
+		else:
+			return arr
