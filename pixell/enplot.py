@@ -820,6 +820,12 @@ def merge_images(images):
 		res = PIL.Image.alpha_composite(res, img)
 	return res
 
+def merge_plots(plots):
+	res = plots[0].copy()
+	for plot in plots[1:]:
+		res.img = PIL.Image.alpha_composite(res.img, plot.img)
+	return res
+
 def prepare_map_field(map, args, crange=None, printer=noprint):
 	if crange is None:
 		with printer.time("ranges", 3):

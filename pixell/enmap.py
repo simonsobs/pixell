@@ -1948,7 +1948,7 @@ def fix_endian(map):
 		map = map.byteswap(True).newbyteorder()
 	return map
 
-def shift(map, off, inplace=False):
+def shift(map, off, inplace=False, keepwcs=False):
 	"""Cyclicly shift the pixels in map such that a pixel at
 	position (i,j) ends up at position (i+off[0],j+off[1])"""
 	if not inplace: map = map.copy()
@@ -1956,6 +1956,8 @@ def shift(map, off, inplace=False):
 	for i, o in enumerate(off):
 		if o != 0:
 			map[:] = np.roll(map, o, -len(off)+i)
+	if not keepwcs:
+		map.wcs.wcs.crval -= map.wcs.wcs.cdelt*off[::-1]
 	return map
 
 def fftshift(map, inplace=False):
