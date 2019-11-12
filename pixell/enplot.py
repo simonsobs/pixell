@@ -822,8 +822,11 @@ def merge_images(images):
 
 def merge_plots(plots):
 	res = plots[0].copy()
-	for plot in plots[1:]:
-		res.img = PIL.Image.alpha_composite(res.img, plot.img)
+	imgs, bounds = standardize_images([(plot.img, plot.info.bounds) for plot in plots])
+	res.img         = imgs[0]
+	res.info.bounds = bounds
+	for img in imgs[1:]:
+		res.img = PIL.Image.alpha_composite(res.img, img)
 	return res
 
 def prepare_map_field(map, args, crange=None, printer=noprint):
