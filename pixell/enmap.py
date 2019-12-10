@@ -569,7 +569,7 @@ def rand_map(shape, wcs, cov, scalar=False, seed=None, pixel_units=False, iau=Fa
 	if seed is not None: np.random.seed(seed)
 	kmap = rand_gauss_iso_harm(shape, wcs, cov, pixel_units)
 	if scalar:
-		return ifft(kmap).real
+		return ifft(kmap,normalize=True).real
 	else:
 		return harm2map(kmap, iau=iau, spin=spin)
 

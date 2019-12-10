@@ -177,6 +177,68 @@ class PixelTests(unittest.TestCase):
         assert np.all(np.isclose(nmap/omap,2.))
 
 
+    def test_b_sign(self):
+        """
+        We generate a random IQU map with geometry such that cdelt[0]<0
+        We transform this to TEB with map2harm and map2alm followed by 
+        scalar harm2map and alm2map and use these as reference T,E,B maps.
+        We flip the original map along the RA direction.
+        We transform this to TEB with map2harm and map2alm followed by 
+        scalar harm2map and alm2map and use these as comparison T,E,B maps.
+        We compare these maps.
+        """
+        ells,cltt,clee,clbb,clte = np.loadtxt(DATA_PREFIX+"cosmo2017_10K_acc3_lensedCls.dat",unpack=True)
+        ps_cmb = np.zeros((3,3,ells.size))
+        ps_cmb[0,0] = cltt
+        ps_cmb[1,1] = clee
+        ps_cmb[2,2] = clbb
+        ps_cmb[1,0] = clte
+        ps_cmb[0,1] = clte
+        np.random.seed(100)
+
+        # Curved-sky is fine
+        lmax = 1000
+        alm = curvedsky.rand_alm_healpy(ps_cmb,lmax=lmax)
+        shape,iwcs = enmap.fullsky_geometry(res=np.deg2rad(10/60))
+        wcs = enmap.empty(shape,iwcs)[...,::-1].wcs
+        shape = (3,) + shape
+        imap = curvedsky.alm2map(alm,enmap.empty(shape,wcs))
+        oalm = curvedsky.map2alm(imap.copy(),lmax=lmax)
+        rmap = curvedsky.alm2map(oalm,enmap.empty(shape,wcs),spin=0)
+
+        imap2 = imap.copy()[...,::-1]
+        oalm = curvedsky.map2alm(imap2.copy(),lmax=lmax)
+        rmap2 = curvedsky.alm2map(oalm,enmap.empty(shape,wcs),spin=0)
+
+        assert np.all(np.isclose(rmap[0],rmap2[0]))
+        assert np.all(np.isclose(rmap[1],rmap2[1]))
+        assert np.all(np.isclose(rmap[2],rmap2[2]))
+        
+
+        # Flat-sky
+        px = 2.0
+        N = 300
+        shape,iwcs = enmap.geometry(pos=(0,0),res=np.deg2rad(px/60.),shape=(300,300))
+        shape = (3,) + shape
+        a = enmap.zeros(shape,iwcs)
+        a = a[...,::-1]
+        wcs = a.wcs
+
+        seed = 100
+        imap = enmap.rand_map(shape,wcs,ps_cmb,seed=seed)
+        kmap = enmap.map2harm(imap.copy())
+        rmap = enmap.harm2map(kmap,spin=0) # reference map
+
+        imap = imap[...,::-1]
+        kmap = enmap.map2harm(imap.copy())
+        rmap2 = enmap.harm2map(kmap,spin=0)[...,::-1] # comparison map
+        
+        assert np.all(np.isclose(rmap[0],rmap2[0]))
+        assert np.all(np.isclose(rmap[1],rmap2[1],atol=1e0))
+        assert np.all(np.isclose(rmap[2],rmap2[2],atol=1e0))
+
+        
+
 if __name__ == '__main__':
     unittest.main()
     test_sim_slice()
