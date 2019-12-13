@@ -199,7 +199,7 @@ class PixelTests(unittest.TestCase):
         # Curved-sky is fine
         lmax = 1000
         alm = curvedsky.rand_alm_healpy(ps_cmb,lmax=lmax)
-        shape,iwcs = enmap.fullsky_geometry(res=np.deg2rad(10/60))
+        shape,iwcs = enmap.fullsky_geometry(res=np.deg2rad(10./60.))
         wcs = enmap.empty(shape,iwcs)[...,::-1].wcs
         shape = (3,) + shape
         imap = curvedsky.alm2map(alm,enmap.empty(shape,wcs))
