@@ -814,8 +814,8 @@ def pixshapemap(shape, wcs, bsize=1000):
 	res    = zeros((2,)+shape[-2:], wcs)
 	if wcsutils.is_plain(wcs):
 		cdelt = wcs.wcs.cdelt
-		res[0] = wcs.wcs.cdelt[1]*utils.degree
-		res[1] = wcs.wcs.cdelt[0]*utils.degree
+		res[0] = wcs.wcs.cdelt[1]*get_unit(wcs)
+		res[1] = wcs.wcs.cdelt[0]*get_unit(wcs)
 		return np.abs(res)
 	# Loop over blocks in y to reduce memory usage
 	for i1 in range(0, shape[-2], bsize):
