@@ -493,7 +493,7 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 	# If our map is wider than the wrapping length, assume we're a lower-spin field
 	nphi *= (nphi+map.shape[-1]-1)//nphi
 	if wrap is "auto":
-		wrap = [0,0] if wcsutils.is_plain(wcs) else [0,nphi]
+		wrap = [0,0] if wcsutils.is_plain(iwcs) else [0,nphi]
 	else: wrap = np.zeros(2,int)+wrap
 	for ibox, obox in utils.sbox_wrap(pixbox.T, wrap=wrap, cap=map.shape[-2:]):
 		islice = utils.sbox2slice(ibox)
