@@ -276,9 +276,9 @@ def box(shape, wcs, npoint=10, corner=True):
 	if corner: pix -= 0.5
 	coords = wcsutils.nobcheck(wcs).wcs_pix2world(pix[1],pix[0],0)[::-1]
 	if wcsutils.is_plain(wcs):
-		return np.array(coords).T[[0,-1]]*utils.degree
+		return np.array(coords).T[[0,-1]]*get_unit(wcs)
 	else:
-		return utils.unwind(np.array(coords)*utils.degree).T[[0,-1]]
+		return utils.unwind(np.array(coords)*get_unit(wcs)).T[[0,-1]]
 
 def enmap(arr, wcs=None, dtype=None, copy=True):
 	"""Construct an ndmap from data.
