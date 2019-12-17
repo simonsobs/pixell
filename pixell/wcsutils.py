@@ -56,6 +56,7 @@ def describe(wcs):
 	return "%s:{%s}" % (sys, fields)
 # Add this to all WCSes in this class
 WCS.__repr__ = describe
+WCS.__str__ = describe
 
 def equal(wcs1, wcs2):
 	return repr(wcs1.to_header()) == repr(wcs2.to_header())
