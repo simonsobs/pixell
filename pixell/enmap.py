@@ -1107,8 +1107,8 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
 	 res   = np.zeros(2)+res
 	 shape = utils.nint(([1*np.pi,2*np.pi]/res) + (1,0))
 	ny, nx = shape
-	assert abs(res[0] * (ny-1) - np.pi) < 1e-8
-	assert abs(res[1] * nx - 2*np.pi)   < 1e-8
+	assert abs(res[0] * (ny-1) - np.pi) < 1e-8, "Vertical resolution does not evenly divide the sky; this is required for SHTs."
+	assert abs(res[1] * nx - 2*np.pi)   < 1e-8, "Horizontal resolution does not evenly divide the sky; this is required for SHTs."
 	wcs   = wcsutils.WCS(naxis=2)
 	# Note the reference point is shifted by half a pixel to keep
 	# the grid in bounds, from ra=180+cdelt/2 to ra=-180+cdelt/2.
