@@ -46,3 +46,6 @@ To update your installation,
     pip install -e . --user
 
 	
+Note that all of this assumes you will be using the default Intel suite on
+NERSC. If for some reason you have set up your environment to use GNU, then you
+should not include `--fcompiler=intelem --compiler=intelem` in any of the above.
