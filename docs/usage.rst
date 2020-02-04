@@ -12,7 +12,10 @@ The ``ndmap`` object
 The ``pixell`` library supports manipulation of sky maps that are
 represented as 2-dimensional grids of rectangular pixels.  The
 supported projection and pixelization schemes are a subset of the
-schemes supported by FITS conventions.
+schemes supported by FITS conventions. In addition, we provide
+support for a `plain' coordinate system, corresponding to a
+Cartesian plane with identically shaped pixels (useful for true
+flat-sky calculations).
 
 In ``pixell``, a map is encapsulated in an ``ndmap``, which combines
 two objects: a numpy array (of at least two dimensions) whose two

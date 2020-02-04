@@ -21,10 +21,10 @@ try:
         # leading to thousands of wasted CPU hours. That may have been system-specific,
         # though. Perhaps this isn't necessary in general.
         from mpi4py.MPI import *
-        def cleanup(type, value, traceback):
-            sys.__excepthook__(type, value, traceback)
-            COMM_WORLD.Abort(1)
-        sys.excepthook = cleanup
+        #def cleanup(type, value, traceback):
+        #    sys.__excepthook__(type, value, traceback)
+        #    COMM_WORLD.Abort(1)
+        #sys.excepthook = cleanup
         disabled = False
 except:
     pass

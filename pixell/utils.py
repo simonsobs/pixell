@@ -1579,7 +1579,10 @@ def flux_factor(beam_area, freq, T0=T_cmb):
 	temperature increment dT around T0 (in K) at the given frequency freq
 	in Hz and integrated over the given beam_area in steradians, produces
 	the corresponding flux = A*dT. This is useful for converting between
-	point source amplitudes and point source fluxes."""
+	point source amplitudes and point source fluxes.
+
+	For uK to mJy use flux_factor(beam_area, freq)/1e3
+	"""
 	# A blackbody has intensity I = 2hf**3/c**2/(exp(hf/kT)-1) = V/(exp(x)-1)
 	# with V = 2hf**3/c**2, x = hf/kT.
 	# dI/dx = -V/(exp(x)-1)**2 * exp(x)
@@ -1592,6 +1595,17 @@ def flux_factor(beam_area, freq, T0=T_cmb):
 	dIdT  = 2*x**4 * k**3*T0**2/(h**2*c**2) / (4*np.sinh(x/2)**2)
 	dJydK = dIdT * 1e26 * beam_area
 	return dJydK
+
+def noise_flux_factor(beam_area, freq, T0=T_cmb):
+	"""Compute the factor A that converts from white noise level in K sqrt(steradian)
+	to uncertainty in Jy for the given beam area in steradians and frequency in Hz.
+	This assumes a gaussian beam, so that the area of the real-space squared beam is
+	just half that of the normal beam area.
+
+	For uK arcmin to mJy, use noise_flux_factor(beam_area, freq)*arcmin/1e3
+	"""
+	squared_beam_area = beam_area/2
+	return flux_factor(beam_area/squared_beam_area**0.5, freq, T0=T0)
 
 def planck(f, T):
 	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""

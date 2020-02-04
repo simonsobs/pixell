@@ -229,8 +229,7 @@ def scale_geometry(shape, wcs, scale):
 	return oshape, owcs
 
 def get_unit(wcs):
-	if wcsutils.is_plain(wcs): return 1
-	else: return utils.degree
+	return utils.degree
 
 class Geometry:
 	def __init__(self, shape, wcs=None):
@@ -277,9 +276,9 @@ def box(shape, wcs, npoint=10, corner=True):
 	if corner: pix -= 0.5
 	coords = wcsutils.nobcheck(wcs).wcs_pix2world(pix[1],pix[0],0)[::-1]
 	if wcsutils.is_plain(wcs):
-		return np.array(coords).T[[0,-1]]
+		return np.array(coords).T[[0,-1]]*get_unit(wcs)
 	else:
-		return utils.unwind(np.array(coords)*utils.degree).T[[0,-1]]
+		return utils.unwind(np.array(coords)*get_unit(wcs)).T[[0,-1]]
 
 def enmap(arr, wcs=None, dtype=None, copy=True):
 	"""Construct an ndmap from data.
@@ -493,7 +492,8 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 	nphi = utils.nint(360/np.abs(iwcs.wcs.cdelt[0]))
 	# If our map is wider than the wrapping length, assume we're a lower-spin field
 	nphi *= (nphi+map.shape[-1]-1)//nphi
-	if wrap is "auto": wrap = [0,nphi]
+	if wrap is "auto":
+		wrap = [0,0] if wcsutils.is_plain(iwcs) else [0,nphi]
 	else: wrap = np.zeros(2,int)+wrap
 	for ibox, obox in utils.sbox_wrap(pixbox.T, wrap=wrap, cap=map.shape[-2:]):
 		islice = utils.sbox2slice(ibox)
@@ -520,6 +520,10 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 	"""Given a set of positions poss[npos,2] in radians and a distance r in radians,
 	return pixboxes[npos][{from,to},{y,x}] corresponding to the regions within a
 	distance of r from each entry in poss."""
+	if wcsutils.is_plain(wcs):
+		rpix = r/pixsize(shape, wcs)
+		centers = sky2pix(poss.T).T
+		return np.moveaxis([centers-rpix,center+rpix+1],0,1)
 	poss = np.asarray(poss)
 	res  = np.zeros([len(poss),2,2])
 	for i, pos in enumerate(poss):
@@ -569,7 +573,7 @@ def rand_map(shape, wcs, cov, scalar=False, seed=None, pixel_units=False, iau=Fa
 	if seed is not None: np.random.seed(seed)
 	kmap = rand_gauss_iso_harm(shape, wcs, cov, pixel_units)
 	if scalar:
-		return ifft(kmap).real
+		return ifft(kmap,normalize=True).real
 	else:
 		return harm2map(kmap, iau=iau, spin=spin)
 
@@ -808,6 +812,11 @@ def pixshapemap(shape, wcs, bsize=1000):
 	"""Returns the physical width and heigh of each pixel in the map in radians.
 	Heavy for big maps. Much faster approaches are possible for known pixelizations."""
 	res    = zeros((2,)+shape[-2:], wcs)
+	if wcsutils.is_plain(wcs):
+		cdelt = wcs.wcs.cdelt
+		res[0] = wcs.wcs.cdelt[1]*get_unit(wcs)
+		res[1] = wcs.wcs.cdelt[0]*get_unit(wcs)
+		return np.abs(res)
 	# Loop over blocks in y to reduce memory usage
 	for i1 in range(0, shape[-2], bsize):
 		i2 = min(i1+bsize, shape[-2])
@@ -868,6 +877,7 @@ def modrmap(shape, wcs, ref="center", safe=True, corner=False):
 		if ref=="center": ref = center(shape,wcs)
 		else:             raise ValueError
 	ref = np.array(ref)[:,None,None]
+	if wcsutils.is_plain(wcs): return np.sum((slmap-ref)**2,0)**0.5
 	return ndmap(utils.angdist(slmap[::-1],ref[::-1],zenith=False),wcs)
 
 
@@ -1063,7 +1073,6 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	# The exception is when we are using a plain, non-spherical wcs, in which case
 	# both are unitless. So undo the scaling in this case.
 	scale = 1 if deg else 1/utils.degree
-	if proj == "plain": scale *= utils.degree
 	pos = np.asarray(pos)*scale
 	if res is not None: res = np.asarray(res)*scale
 	# Apply a standard reference points unless one is manually specified, or we
@@ -1098,8 +1107,8 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
 	 res   = np.zeros(2)+res
 	 shape = utils.nint(([1*np.pi,2*np.pi]/res) + (1,0))
 	ny, nx = shape
-	assert abs(res[0] * (ny-1) - np.pi) < 1e-8
-	assert abs(res[1] * nx - 2*np.pi)   < 1e-8
+	assert abs(res[0] * (ny-1) - np.pi) < 1e-8, "Vertical resolution does not evenly divide the sky; this is required for SHTs."
+	assert abs(res[1] * nx - 2*np.pi)   < 1e-8, "Horizontal resolution does not evenly divide the sky; this is required for SHTs."
 	wcs   = wcsutils.WCS(naxis=2)
 	# Note the reference point is shifted by half a pixel to keep
 	# the grid in bounds, from ra=180+cdelt/2 to ra=-180+cdelt/2.
@@ -1140,7 +1149,7 @@ def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
 def create_wcs(shape, box=None, proj="cea"):
 	if box is None:
 		box = np.array([[-1,-1],[1,1]])*0.5*10
-		if proj != "plain": box *= utils.degree
+		box *= utils.degree
 	return wcsutils.build(box, shape=shape, rowmajor=True, system=proj)
 
 def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="auto"):
@@ -1338,6 +1347,7 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 	and domains to -1. This can be used to speed up the calculation when one only cares
 	about nearby areas."""
 	from pixell import distances
+	if wcsutils.is_plain(wcs): warnings.warn("Distance functions are not tested on plain coordinate systems.")
 	if omap is None: omap = empty(shape[-2:], wcs)
 	if domains and odomains is None: odomains = empty(shape[-2:], wcs, np.int32)
 	if wcsutils.is_cyl(wcs):

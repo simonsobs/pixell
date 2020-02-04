@@ -406,7 +406,7 @@ def map2minfo(m):
 	return sharp.map_info(theta, nphi, phi0)
 
 def match_predefined_minfo(m, rtol=None, atol=None):
-	"""Given an enmapwith constant-latitude rows and constant longitude
+	"""Given an enmap with constant-latitude rows and constant longitude
 	intervals, return the libsharp predefined minfo with ringweights that's
 	the closest match to our pixelization."""
 	if rtol is None: rtol = 1e-3*utils.arcmin
