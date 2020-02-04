@@ -48,8 +48,9 @@ To test the installation, you can run:
 
 .. code-block:: console
 		
-   $ python setup.py test
+   $ py.test
    
+You may need to install pytest for the above to work (with `pip install pytest --user`).
 
 Existing ``libsharp`` installation (optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
