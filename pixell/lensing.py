@@ -185,10 +185,10 @@ def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64
 	# for the cmb was the one that fits the resolution. FIXME: Can't slice alm this way.
 	#if maplmax: cmb_alm = cmb_alm[:,:maplmax]
 	return lens_map_curved(shape=shape, wcs=wcs, phi_alm=phi_alm,
-						   cmb_alm=cmb_alm, phi_ainfo=ainfo, maplmax=maplmax,
-						   dtype=dtype, oversample=oversample, spin=spin,
-						   output=output, geodesic=geodesic, verbose=verbose,
-						   delta_theta=delta_theta)
+		cmb_alm=cmb_alm, phi_ainfo=ainfo, maplmax=maplmax,
+		dtype=dtype, oversample=oversample, spin=spin,
+		output=output, geodesic=geodesic, verbose=verbose,
+		delta_theta=delta_theta)
 
 def offset_by_grad(ipos, grad, geodesic=True, pol=None):
 	"""Given a set of coordinates ipos[{dec,ra},...] and a gradient
