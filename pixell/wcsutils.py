@@ -7,6 +7,10 @@ is where the 0.5 stuff comes from."""
 import numpy as np
 from astropy.wcs import WCS
 
+try: basestring
+except: basestring = str
+def streq(x, s): return isinstance(x, basestring) and x == s
+
 # The origin argument used in the wcs pix<->world routines seems to
 # have to be 1 rather than the 0 one would expect. For example,
 # if wcs is CAR(crval=(0,0),crpix=(0,0),cdelt=(1,1)), then
@@ -116,7 +120,7 @@ def plain(pos, res=None, shape=None, rowmajor=False, ref=None):
 	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
 	w = WCS(naxis=2)
 	w.wcs.crval = mid
-	if ref is "standard": ref = None
+	if streq(ref, "standard"): ref = None
 	return finalize(w, pos, res, shape, ref=ref)
 
 def car(pos, res=None, shape=None, rowmajor=False, ref=None):
@@ -125,7 +129,7 @@ def car(pos, res=None, shape=None, rowmajor=False, ref=None):
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---CAR", "DEC--CAR"]
 	w.wcs.crval = np.array([mid[0],0])
-	if ref is "standard": ref = (0,0)
+	if streq(ref, "standard"): ref = (0,0)
 	return finalize(w, pos, res, shape, ref=ref)
 
 def cea(pos, res=None, shape=None, rowmajor=False, lam=None, ref=None):
@@ -137,7 +141,7 @@ def cea(pos, res=None, shape=None, rowmajor=False, lam=None, ref=None):
 	w.wcs.ctype = ["RA---CEA", "DEC--CEA"]
 	w.wcs.set_pv([(2,1,lam)])
 	w.wcs.crval = np.array([mid[0],0])
-	if ref is "standard": ref = (0,0)
+	if streq(ref, "standard"): ref = (0,0)
 	return finalize(w, pos, res, shape, ref=ref)
 
 def zea(pos, res=None, shape=None, rowmajor=False, ref=None):
