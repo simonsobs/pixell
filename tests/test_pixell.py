@@ -199,7 +199,7 @@ class PixelTests(unittest.TestCase):
         # Curved-sky is fine
         lmax = 1000
         alm = curvedsky.rand_alm_healpy(ps_cmb,lmax=lmax)
-        shape,iwcs = enmap.fullsky_geometry(res=np.deg2rad(10/60))
+        shape,iwcs = enmap.fullsky_geometry(res=np.deg2rad(10./60.))
         wcs = enmap.empty(shape,iwcs)[...,::-1].wcs
         shape = (3,) + shape
         imap = curvedsky.alm2map(alm,enmap.empty(shape,wcs))
@@ -237,6 +237,21 @@ class PixelTests(unittest.TestCase):
         assert np.all(np.isclose(rmap[1],rmap2[1],atol=1e0))
         assert np.all(np.isclose(rmap[2],rmap2[2],atol=1e0))
 
+    def test_plain_wcs(self):
+        # Test area and box for a small Cartesian geometry
+        shape,wcs = enmap.geometry(res=np.deg2rad(1./60.),shape=(600,600),pos=(0,0),proj='plain')
+        box = np.rad2deg(enmap.box(shape,wcs))
+        area = np.rad2deg(np.rad2deg(enmap.area(shape,wcs)))
+        assert np.all(np.isclose(box,np.array([[-5,-5],[5,5]])))
+        assert np.isclose(area,100.)
+
+        # and for an artifical Cartesian geometry with area>4pi
+        shape,wcs = enmap.geometry(res=np.deg2rad(10),shape=(100,100),pos=(0,0),proj='plain')
+        box = np.rad2deg(enmap.box(shape,wcs))
+        area = np.rad2deg(np.rad2deg(enmap.area(shape,wcs)))
+        assert np.all(np.isclose(box,np.array([[-500,-500],[500,500]])))
+        assert np.isclose(area,1000000)
+                                
         
 
 if __name__ == '__main__':
