@@ -57,6 +57,13 @@ lensing - Lensing
    :members:
    :undoc-members:
 
+pointsrcs - Point Sources
+-------------------------
+      
+.. automodule:: pixell.pointsrcs
+   :members:
+   :undoc-members:
+      
 interpol - Interpolation
 ------------------------
       
