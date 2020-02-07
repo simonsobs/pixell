@@ -81,6 +81,9 @@ class ndmap(np.ndarray):
 	def autocrop(self, method="plain", value="auto", margin=0, factors=None, return_info=False): return autocrop(self, method, value, margin, factors, return_info)
 	def apod(self, width, profile="cos", fill="zero"): return apod(self, width, profile=profile, fill=fill)
 	def stamps(self, pos, shape, aslist=False): return stamps(self, pos, shape, aslist=aslist)
+	def distance_from(self, points, omap=None, odomains=None, domains=False, method="bubble", rmax=None, step=1024): return distance_from(self.shape, self.wcs, points, omap=omap, odomains=odomains, domains=domains, method=method, rmax=rmax, step=step)
+	def distance_transform(self, omap=None, rmax=None): return distance_transform(self, omap=omap, rmax=rmax)
+	def labeled_distance_transform(self, omap=None, odomains=None, rmax=None): return labeled_distance_transform(self, omap=omap, odomains=odomains, rmax=rmax)
 	@property
 	def plain(self): return ndmap(self, wcsutils.WCS(naxis=2))
 	def padslice(self, box, default=np.nan): return padslice(self, box, default=default)
@@ -493,7 +496,7 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 	nphi = utils.nint(360/np.abs(iwcs.wcs.cdelt[0]))
 	# If our map is wider than the wrapping length, assume we're a lower-spin field
 	nphi *= (nphi+map.shape[-1]-1)//nphi
-	if wrap is "auto": wrap = [0,nphi]
+	if utils.streq(wrap, "auto"): wrap = [0,nphi]
 	else: wrap = np.zeros(2,int)+wrap
 	for ibox, obox in utils.sbox_wrap(pixbox.T, wrap=wrap, cap=map.shape[-2:]):
 		islice = utils.sbox2slice(ibox)
@@ -1462,14 +1465,14 @@ def find_blank_edges(m, value="auto"):
 	"value" determines which value is considered blank. Can be a float value,
 	or the strings "auto" or "none". Auto will choose the value that maximizes
 	the edge area considered blank. None will result in nothing being consideered blank."""
-	if value is "auto":
+	if value == "auto":
 		# Find the median value along each edge
 		medians = [np.median(m[...,:,i],-1) for i in [0,-1]] + [np.median(m[...,i,:],-1) for i in [0,-1]]
 		bs = [find_blank_edges(m, med) for med in medians]
 		nb = [np.product(np.sum(b,0)) for b in bs]
 		blanks = bs[np.argmax(nb)]
 		return blanks
-	elif value is "none":
+	elif value == "none":
 		# Don't use any values for cropping, so no cropping is done
 		return np.zeros([2,2],dtype=int)
 	else:
