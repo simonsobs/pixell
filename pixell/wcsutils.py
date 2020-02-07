@@ -4,8 +4,11 @@ the same ordering as WCS, i.e. column major (so {ra,dec} rather than
 {dec,ra}). Coordinates are assigned to pixel centers, as WCS does natively,
 but bounding boxes include the whole pixels, not just their centers, which
 is where the 0.5 stuff comes from."""
-import numpy as np
-from astropy.wcs import WCS
+import numpy as np, warnings
+from astropy.wcs import WCS, FITSFixedWarning
+
+# Turn off annoying warning every time a WCS object is constructed
+warnings.filterwarnings("ignore", category=FITSFixedWarning) 
 
 try: basestring
 except: basestring = str

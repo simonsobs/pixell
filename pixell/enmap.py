@@ -56,8 +56,11 @@ class ndmap(np.ndarray):
 	def posmap(self, safe=True, corner=False, separable=False, dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
+	def lform(self, shift=True): return lform(self, shift=shift)
 	def modlmap(self, oversample=1): return modlmap(self.shape, self.wcs, oversample=oversample)
 	def modrmap(self, ref="center", safe=True, corner=False): return modrmap(self.shape, self.wcs, ref=ref, safe=safe, corner=corner)
+	def lbin(self, bsize=None, brel=1.0): return lbin(self, bsize=bsize, brel=brel)
+	def rbin(self, center=[0,0], bsize=None, brel=1.0): return rbin(self, center=center, bsize=bsize, brel=brel)
 	def area(self): return area(self.shape, self.wcs)
 	def pixsize(self): return pixsize(self.shape, self.wcs)
 	def pixshape(self, signed=False): return pixshape(self.shape, self.wcs, signed=signed)
@@ -883,7 +886,6 @@ def modrmap(shape, wcs, ref="center", safe=True, corner=False):
 	if wcsutils.is_plain(wcs): return np.sum((slmap-ref)**2,0)**0.5
 	return ndmap(utils.angdist(slmap[::-1],ref[::-1],zenith=False),wcs)
 
-
 def laxes(shape, wcs, oversample=1):
 	oversample = int(oversample)
 	step = extent(shape, wcs, signed=True)/shape[-2:]
@@ -1588,16 +1590,54 @@ def apod(m, width, profile="cos", fill="zero"):
 		res += offset
 	return res
 
-def radial_average(map, center=[0,0], step=1.0):
-	"""Produce a radial average of the given map that's centered on zero"""
-	center = np.asarray(center)
-	pos  = map.posmap()-center[:,None,None]
-	rads = np.sum(pos**2,0)**0.5
-	# Our resolution should be step times the highest resolution direction.
-	res = np.min(map.extent()/map.shape[-2:])*step
-	n   = int(np.max(rads/res))
-	orads = np.arange(n)*res
-	rinds = (rads/res).reshape(-1).astype(int)
+def lform(map, shift=True):
+	"""Given an enmap, return a new enmap that has been fftshifted (unless shift=False),
+	and which has had the wcs replaced by one describing fourier space. This is mostly
+	useful for plotting or writing 2d power spectra.
+
+	It could have been useful more generally, but because all "plain" coordinate systems
+	are assumed to need conversion between degrees and radians, sky2pix etc. get confused
+	when applied to lform-maps."""
+	omap = fftshift(map)
+	omap.wcs = lwcs(map.shape, map.wcs)
+	return omap
+
+def lwcs(shape, wcs):
+	"""Build world coordinate system for l-space"""
+	lres   = 2*np.pi/extent(shape, wcs, signed=True)
+	ny, nx = shape[-2:]
+	owcs   = wcsutils.explicit(crpix=[nx//2+1,ny//2+1], crval=[0,0], cdelt=lres[::-1])
+	return owcs
+
+def rbin(map, center=[0,0], bsize=None, brel=1.0):
+	"""Radially bin map around the given center point ([0,0] by default).
+	If bsize it given it will be the constant bin width. This defaults to
+	the pixel size. brel can be used to scale up the bin size. This is
+	mostly useful when using automatic bsize.
+
+	Returns bvals[...,nbin] and r[nbin], where bvals is the mean
+	of the map in each radial bin and r is the mid-point of each bin
+	"""
+	r = map.modrmap(ref=center)
+	if bsize is None:
+		bsize = np.min(map.extent()/map.shape[-2:])
+	return _bin_helper(map, r, bsize*brel)
+
+def lbin(map, bsize=None, brel=1.0):
+	"""Like rbin, but for fourier space"""
+	l = map.modlmap()
+	if bsize is None: bsize = min(abs(l[0,1]),abs(l[1,0]))
+	return _bin_helper(map, l, bsize*brel)
+
+def _bin_helper(map, r, bsize):
+	"""This is very similar to a function in utils, but was sufficiently different
+	that it didn't make sense to reuse that one. This is often the case with the
+	binning in utils. I should clean that up, and probably base one of the new
+	functions on this one."""
+	# Get the number of bins
+	n     = int(np.max(r/bsize))
+	orads = (0.5+np.arange(n))*bsize
+	rinds = (r/bsize).reshape(-1).astype(int)
 	# Ok, rebin the map. We use this using bincount, which can be a bit slow
 	mflat = map.reshape((-1,)+map.shape[-2:])
 	mout = np.zeros((len(mflat),n))
@@ -1605,6 +1645,10 @@ def radial_average(map, center=[0,0], step=1.0):
 		mout[i] = (np.bincount(rinds, weights=m.reshape(-1))/np.bincount(rinds))[:n]
 	mout = mout.reshape(map.shape[:-2]+mout.shape[1:])
 	return mout, orads
+
+def radial_average(map, center=[0,0], step=1.0):
+	warnings.warn("radial_average has been renamed to rbin", DeprecationWarning)
+	return rbin(map, center=center, brel=step)
 
 def padslice(map, box, default=np.nan):
 	"""Equivalent to map[...,box[0,0]:box[1,0],box[0,1]:box[1,1]], except that
