@@ -9,7 +9,7 @@ from astropy.wcs import WCS, FITSFixedWarning
 
 # Turn off annoying warning every time a WCS object is constructed
 warnings.filterwarnings("ignore", category=FITSFixedWarning) 
-
+# Handle annoying python3 stuff
 try: basestring
 except: basestring = str
 def streq(x, s): return isinstance(x, basestring) and x == s
