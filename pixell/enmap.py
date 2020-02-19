@@ -256,8 +256,9 @@ class Geometry:
 		if pixbox is None:
 			pixbox = subinds(self.shape, self.wcs, box, mode=mode, cap=False, noflip=noflip)
 		def helper(b):
-			if b[2] >= 0: return False, slice(b[0],b[1],b[2])
-			else:         return True,  slice(b[1]-b[2],b[0]-b[2],-b[2])
+			if   len(b) < 3: return False, slice(b[0],b[1],1)
+			elif b[2] >= 0:  return False, slice(b[0],b[1],b[2])
+			else:            return True,  slice(b[1]-b[2],b[0]-b[2],-b[2])
 		yflip, yslice = helper(pixbox[:,0])
 		xflip, xslice = helper(pixbox[:,1])
 		shape, wcs = slice_geometry(self.shape, self.wcs, (yslice, xslice), nowrap=True)
@@ -949,6 +950,7 @@ def map2harm(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
 	return emap
 def harm2map(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
 	if emap.ndim > 2:
+		emap = emap.copy()
 		rot, s0 = None, None
 		for s, i1, i2 in spin_helper(spin, emap.shape[-3]):
 			if s == 0:  continue
