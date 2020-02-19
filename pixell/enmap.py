@@ -429,22 +429,29 @@ def skybox2pixbox(shape, wcs, skybox, npoint=10, corner=False, include_direction
 	if include_direction: res = np.concatenate([res,dir[None]],0)
 	return res
 
-def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, prefilter=True, mask_nan=False, safe=True):
+def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, prefilter=True, mask_nan=False, safe=True, bsize=1000):
 	"""Project the map into a new map given by the specified
 	shape and wcs, interpolating as necessary. Handles nan
 	regions in the map by masking them before interpolating.
 	This uses local interpolation, and will lose information
 	when downgrading compared to averaging down."""
-	map  = map.copy()
 	# Skip expensive operation is map is compatible
 	if not force:
 		if wcsutils.equal(map.wcs, wcs) and tuple(shape[-2:]) == tuple(shape[-2:]):
-			return map
+			return map.copy()
 		elif wcsutils.is_compatible(map.wcs, wcs) and mode == "constant":
 			return extract(map, shape, wcs, cval=cval)
-	pix  = map.sky2pix(posmap(shape, wcs), safe=safe)
-	pmap = utils.interpol(map, pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
-	return ndmap(pmap, wcs)
+	omap = zeros(map.shape[:-2]+shape[-2:], wcs, map.dtype)
+	# Save memory by looping over rows
+	for i1 in range(0, shape[-2], bsize):
+		i2     = min(i1+bsize, shape[-2])
+		somap  = omap[...,i1:i2,:]
+		pix    = map.sky2pix(somap.posmap(), safe=safe)
+		y1     = max(np.min(pix[0]).astype(int)-1,0)
+		y2     = min(np.max(pix[1]).astype(int)+1,map.shape[-2])
+		pix[0] -= y1
+		somap[:] = utils.interpol(map[...,y1:y2,:], pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
+	return omap
 
 def pixbox_of(iwcs,oshape,owcs):
 	"""Obtain the pixbox which when extracted from a map with WCS=iwcs
