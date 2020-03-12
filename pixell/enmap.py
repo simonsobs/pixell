@@ -59,8 +59,8 @@ class ndmap(np.ndarray):
 	def lform(self, shift=True): return lform(self, shift=shift)
 	def modlmap(self, oversample=1): return modlmap(self.shape, self.wcs, oversample=oversample)
 	def modrmap(self, ref="center", safe=True, corner=False): return modrmap(self.shape, self.wcs, ref=ref, safe=safe, corner=corner)
-	def lbin(self, bsize=None, brel=1.0): return lbin(self, bsize=bsize, brel=brel)
-	def rbin(self, center=[0,0], bsize=None, brel=1.0): return rbin(self, center=center, bsize=bsize, brel=brel)
+	def lbin(self, bsize=None, brel=1.0, return_nhit=False): return lbin(self, bsize=bsize, brel=brel, return_nhit=return_nhit)
+	def rbin(self, center=[0,0], bsize=None, brel=1.0, return_nhit=False): return rbin(self, center=center, bsize=bsize, brel=brel, return_nhit=return_nhit)
 	def area(self): return area(self.shape, self.wcs)
 	def pixsize(self): return pixsize(self.shape, self.wcs)
 	def pixshape(self, signed=False): return pixshape(self.shape, self.wcs, signed=signed)
@@ -75,6 +75,7 @@ class ndmap(np.ndarray):
 	def npix(self): return np.product(self.shape[-2:])
 	@property
 	def geometry(self): return self.shape, self.wcs
+	def resample(self, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3): return resample(self, oshape, off=off, method=method, mode=mode, corner=corner, order=order)
 	def project(self, shape, wcs, order=3, mode="constant", cval=0, prefilter=True, mask_nan=False, safe=True): return project(self, shape, wcs, order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan, safe=safe)
 	def extract(self, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract(self, shape, wcs, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def extract_pixbox(self, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract_pixbox(self, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
@@ -273,6 +274,8 @@ class Geometry:
 	def downgrade(self, factor):
 		shape, wcs = downgrade_geometry(self.shape, self.wcs, factor)
 		return Geometry(shape, wcs)
+	def copy(self):
+		return Geometry(tuple(self.shape), self.wcs.deepcopy())
 
 def box(shape, wcs, npoint=10, corner=True):
 	"""Compute a bounding box for the given geometry."""
@@ -522,6 +525,40 @@ def insert_at(omap, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
 	pixbox = np.array(pix)
 	if pixbox.ndim == 1: pixbox = np.array([pixbox,pixbox+imap.shape[-2:]])
 	return extract_pixbox(omap, pixbox, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=True)
+
+def overlap(shape, wcs, shape2_or_pixbox, wcs2=None, wrap="auto"):
+	"""Compute the overlap between the given geometry (shape, wcs) and another *compatible*
+	geometry. This can be either another shape, wcs pair or a pixbox[{from,to},{y,x}].
+	Returns the geometry of the overlapping region."""
+	# Is it a shape or a pixbox
+	tmp = np.asarray(shape2_or_pixbox)
+	if   tmp.ndim == 1: pixbox = pixbox_of(wcs, shape2_or_pixbox, wcs2)
+	elif tmp.ndim == 2: pixbox = shape2_or_pixbox
+	else: raise ValueError("3rd argument of overlap should be an enmap, a shape tuple or a pixbox")
+	# Handle wrapping
+	nphi = utils.nint(360/np.abs(wcs.wcs.cdelt[0]))
+	# If our map is wider than the wrapping length, assume we're a lower-spin field
+	nphi *= (nphi+shape[-1]-1)//nphi
+	if utils.streq(wrap, "auto"):
+		wrap = [0,0] if wcsutils.is_plain(wcs) else [0,nphi]
+	# Looks like the sbox stuff in utils doesn't do this, so do it ourself.
+	for i in range(2):
+		# If pixbox goes below 0, truncate it unless it goes negative
+		# enough to reach our wrapped end.
+		if pixbox[0,i] < 0 and (not wrap[i] or pixbox[0,i]+wrap[i] >= shape[-2+i]):
+			pixbox[0,i] = 0
+		# Similarly, if it goes above our end, truncate it unless it
+		# goes far enough to reach our wrapped beginning
+		if pixbox[1,i] > shape[-2+i] and (not wrap[i] or pixbox[1,i]-wrap[i] <= 0):
+			pixbox[1,i] = shape[-2+i]
+	# This will ensure that we get a zero shape instead of a negative one if
+	# there is no overlap
+	pixbox[1] = np.maximum(pixbox[1],pixbox[0])
+	# Good, we now have the capped, wrapped pixbox
+	oshape = tuple(pixbox[1]-pixbox[0])
+	owcs   = wcs.deepcopy()
+	owcs.wcs.crpix -= pixbox[0,1::-1]
+	return oshape, owcs
 
 def neighborhood_pixboxes(shape, wcs, poss, r):
 	"""Given a set of positions poss[npos,2] in radians and a distance r in radians,
@@ -1582,13 +1619,16 @@ def apod(m, width, profile="cos", fill="zero"):
 	if fill == "mean":
 		offset = np.asarray(np.mean(res,(-2,-1)))[...,None,None]
 		res -= offset
+	elif fill == "median":
+		offset = np.asarray(np.median(res,(-2,-1)))[...,None,None]
+		res -= offset
 	if width[0] > 0:
 		res[...,:width[0],:] *= a[0][:,None]
 		res[...,-width[0]:,:] *= a[0][::-1,None]
 	if width[1] > 0:
 		res[...,:,:width[1]] *= a[1][None,:]
 		res[...,:,-width[1]:]  *= a[1][None,::-1]
-	if fill == "mean":
+	if fill == "mean" or fill == "median":
 		res += offset
 	return res
 
@@ -1611,7 +1651,7 @@ def lwcs(shape, wcs):
 	owcs   = wcsutils.explicit(crpix=[nx//2+1,ny//2+1], crval=[0,0], cdelt=lres[::-1])
 	return owcs
 
-def rbin(map, center=[0,0], bsize=None, brel=1.0):
+def rbin(map, center=[0,0], bsize=None, brel=1.0, return_nhit=False):
 	"""Radially bin map around the given center point ([0,0] by default).
 	If bsize it given it will be the constant bin width. This defaults to
 	the pixel size. brel can be used to scale up the bin size. This is
@@ -1623,15 +1663,15 @@ def rbin(map, center=[0,0], bsize=None, brel=1.0):
 	r = map.modrmap(ref=center)
 	if bsize is None:
 		bsize = np.min(map.extent()/map.shape[-2:])
-	return _bin_helper(map, r, bsize*brel)
+	return _bin_helper(map, r, bsize*brel, return_nhit=return_nhit)
 
-def lbin(map, bsize=None, brel=1.0):
+def lbin(map, bsize=None, brel=1.0, return_nhit=False):
 	"""Like rbin, but for fourier space"""
 	l = map.modlmap()
 	if bsize is None: bsize = min(abs(l[0,1]),abs(l[1,0]))
-	return _bin_helper(map, l, bsize*brel)
+	return _bin_helper(map, l, bsize*brel, return_nhit=return_nhit)
 
-def _bin_helper(map, r, bsize):
+def _bin_helper(map, r, bsize, return_nhit=False):
 	"""This is very similar to a function in utils, but was sufficiently different
 	that it didn't make sense to reuse that one. This is often the case with the
 	binning in utils. I should clean that up, and probably base one of the new
@@ -1643,10 +1683,12 @@ def _bin_helper(map, r, bsize):
 	# Ok, rebin the map. We use this using bincount, which can be a bit slow
 	mflat = map.reshape((-1,)+map.shape[-2:])
 	mout = np.zeros((len(mflat),n))
+	nhit = np.bincount(rinds)[:n]
 	for i, m in enumerate(mflat):
-		mout[i] = (np.bincount(rinds, weights=m.reshape(-1))/np.bincount(rinds))[:n]
+		mout[i] = np.bincount(rinds, weights=m.reshape(-1))[:n]/nhit
 	mout = mout.reshape(map.shape[:-2]+mout.shape[1:])
-	return mout, orads
+	if return_nhit: return mout, orads, nhit
+	else: return mout, orads
 
 def radial_average(map, center=[0,0], step=1.0):
 	warnings.warn("radial_average has been renamed to rbin", DeprecationWarning)
@@ -1842,6 +1884,23 @@ def read_map_geometry(fname, fmt=None, hdu=None):
 		shape, wcs = slice_geometry(shape, wcs, sel)
 	return shape, wcs
 
+def write_map_geometry(fname, shape, wcs, fmt=None):
+	"""Write an enmap geometry to file. The file type is inferred
+	from the file extension, unless fmt is passed.
+	fmt must be one of 'fits' and 'hdf'. Only fits is supposed for now, though."""
+	toks = fname.split(":")
+	fname = toks[0]
+	if fmt == None:
+		if   fname.endswith(".hdf"):     fmt = "hdf"
+		elif fname.endswith(".fits"):    fmt = "fits"
+		else: fmt = "fits"
+	if fmt == "fits":
+		write_fits_geometry(fname, shape, wcs)
+	elif fmt == "hdf":
+		raise NotImplementedError("Write write_hdf_geometry not implemented yet")
+	else:
+		raise ValueError
+
 def write_fits(fname, emap, extra={}):
 	"""Write an enmap to a fits file."""
 	# The fits write routines may attempt to modify
@@ -1859,6 +1918,16 @@ def write_fits(fname, emap, extra={}):
 	with warnings.catch_warnings():
 		warnings.filterwarnings('ignore')
 		hdus.writeto(fname, clobber=True)
+
+def write_fits_geometry(fname, shape, wcs):
+	"""Write just the geometry to a fits file that will only contain the header"""
+	header = wcs.to_header(relax=True)
+	header["NAXIS"] = len(shape)
+	for i, s in enumerate(shape[::-1]):
+		header["NAXIS%d"%(i+1)] = s
+	# Dummy, but must be present
+	header["BITPIX"] = -32
+	header.tofile(fname, overwrite=True)
 
 def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None):
 	"""Read an enmap from the specified fits file. By default,
@@ -1885,7 +1954,8 @@ def read_fits_geometry(fname, hdu=None):
 	the hdu argument to change this. The map must be stored as
 	a fits image."""
 	if hdu is None: hdu = 0
-	hdu = astropy.io.fits.open(fname)[hdu]
+	with utils.nowarn():
+		hdu = astropy.io.fits.open(fname)[hdu]
 	if hdu.header["NAXIS"] < 2:
 		raise ValueError("%s is not an enmap (only %d axes)" % (fname, hdu.header["NAXIS"]))
 	with warnings.catch_warnings():
