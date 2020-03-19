@@ -311,6 +311,62 @@ def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
         del x
     return enmap.ndmap(imap, wcs)
 
+
+
+def ivar_hp_to_cyl(hmap, shape, wcs, rot=False,do_mask=True):
+    from . import mpi, utils
+    import healpy as hp
+    comm = mpi.COMM_WORLD
+    rstep = 100
+    dtype = np.float32
+    nside = hp.npix2nside(hmap.size)
+    dec, ra = enmap.posaxes(shape, wcs)
+    pix = np.zeros(shape, np.int32)
+    psi = np.zeros(shape, dtype)
+    # Get the pixel area. We assume a rectangular pixelization, so this is just
+    # a function of y
+    ipixsize = 4 * np.pi / (12 * nside ** 2)
+    opixsize = get_pixsize_rect(shape, wcs)
+    nblock = (shape[-2] + rstep - 1) // rstep
+    for bi in range(comm.rank, nblock, comm.size):
+        if bi % comm.size != comm.rank:
+            continue
+        i = bi * rstep
+        rdec = dec[i : i + rstep]
+        opos = np.zeros((2, len(rdec), len(ra)))
+        opos[0] = rdec[:, None]
+        opos[1] = ra[None, :]
+        if rot:
+            # This is unreasonably slow
+            ipos = coordinates.transform("equ", "gal", opos[::-1], pol=True)
+        else:
+            ipos = opos[::-1]
+        pix[i : i + rstep, :] = hp.ang2pix(nside, np.pi / 2 - ipos[1], ipos[0])
+        psi[i:i+rstep,:] = -ipos[2]
+        del ipos, opos
+    for i in range(0, shape[-2], rstep):
+        pix[i : i + rstep] = utils.allreduce(pix[i : i + rstep], comm)
+        psi[i:i+rstep] = utils.allreduce(psi[i:i+rstep], comm)
+    omap = enmap.zeros((1,) + shape, wcs, dtype)
+    imap = np.array(hmap).astype(dtype)
+    imap = imap[None]
+    if do_mask:
+        bad = hp.mask_bad(imap)
+        bad |= imap <= 0
+        imap[bad] = 0
+        del bad
+    # Read off the nearest neighbor values
+    omap[:] = imap[:, pix]
+    omap *= opixsize[:, None] / ipixsize
+    # We ignore QU mixing during rotation for the noise level, so
+    # it makes no sense to maintain distinct levels for them
+    if do_mask:
+        mask = omap[1:] > 0
+        omap[1:] = np.mean(omap[1:], 0)
+        omap[1:] *= mask
+        del mask
+    return omap
+
 # Helper functions
 
 
@@ -417,6 +473,19 @@ def rect_box(width, center=(0., 0.), height=None):
                     [height / 2. + ycen, width / 2. + xcen]])
     return box
 
+
+def get_pixsize_rect(shape, wcs):
+    """Return the exact pixel size in steradians for the rectangular cylindrical
+    projection given by shape, wcs. Returns area[ny], where ny = shape[-2] is the
+    number of rows in the image. All pixels on the same row have the same area."""
+    ymin = enmap.sky2pix(shape, wcs, [-np.pi / 2, 0])[0]
+    ymax = enmap.sky2pix(shape, wcs, [np.pi / 2, 0])[0]
+    y = np.arange(shape[-2])
+    x = y * 0
+    dec1 = enmap.pix2sky(shape, wcs, [np.maximum(ymin, y - 0.5), x])[0]
+    dec2 = enmap.pix2sky(shape, wcs, [np.minimum(ymax, y + 0.5), x])[0]
+    area = np.abs((np.sin(dec2) - np.sin(dec1)) * wcs.wcs.cdelt[0] * np.pi / 180)
+    return area
 
 def rect_geometry(width, res, height=None, center=(0., 0.), proj="car"):
     shape, wcs = enmap.geometry(pos=rect_box(
