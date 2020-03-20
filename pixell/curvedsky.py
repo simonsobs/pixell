@@ -538,3 +538,108 @@ def almxfl(alm,lfunc,ainfo=None):
 	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
 	l = np.arange(ainfo.lmax+1.0)
 	return ainfo.lmul(alm, lfunc(l))
+
+
+def spin2eb(alm_plus, alm_minus, alm_E=None, alm_B=None, batchsize=100000):
+	"""Transform maps from + and - coefficients into E and B.
+	
+	The spin-weighted spherical harmonics are related to the E and B
+	with a simple linear combination. This function performs the calculation
+	in batches to avoid filling up memory.
+
+	.. math::
+		a_{E, lm} = - (a_{2,lm} + a_{-2,lm}) / 2
+		a_{B, lm} = - (a_{2,lm} - a_{-2,lm}) / 2i
+
+	Parameters
+	----------
+	alm_plus : complex ndarray
+		Array containing the + spherical harmonic coefficient
+	alm_minus : complex ndarray
+		Array containing the - spherical harmonic coefficient
+	alm_E : complex ndarray, optional
+		Destination array for the E coefficients. If None, the destination
+		will be created based on the type and shape of the `alm_plus` array.
+	alm_B : complex ndarray, optional
+		Destination array for the B coefficients. If None, the destination
+		will be created based on the type and shape of the `alm_plus` array.
+	batchsize : int, optional
+		Number of elements to compute with at a time, by default 100000.
+	
+	Returns
+	-------
+	ndarray, ndarray
+		tuple of ndarrays containing the E and B alms.
+	"""
+	# ensure we have the complex version of the dtype of the array
+	complex_dtype = (np.zeros(1, alm_plus.dtype) + 0j).dtype
+	shape, dtype = alm_plus.shape, complex_dtype
+
+	# generate new arrays if we didn't get passed destinations
+	if alm_E is None: alm_E = np.zeros(shape, dtype)
+	if alm_B is None: alm_B = np.zeros(shape, dtype)
+	n = alm_plus.size
+
+	# loop over batches
+	for i1 in range(0, n, batchsize):
+		i2 = min(i1+batchsize, n)
+		# reshape to allow processing stacks of maps
+		P = alm_plus.reshape(-1)[i1:i2].copy()
+		M = alm_minus.reshape(-1)[i1:i2].copy()
+		alm_E.reshape(-1)[i1:i2] = -0.5*(P+M)
+		alm_B.reshape(-1)[i1:i2] = 0.5j*(P-M)
+	
+	return alm_E, alm_B
+
+
+def eb2spin(alm_E, alm_B, alm_plus=None, alm_minus=None, batchsize=100000):
+	"""Transform maps from E and B coefficients into + and -.
+	
+	The spin-weighted spherical harmonics are related to the E and B
+	with a simple linear combination. This function performs the calculation
+	in batches to avoid filling up memory.
+
+	.. math::
+		a_{2, lm} = - a_{E, lm} - i a_{B,lm}
+		a_{-2, lm} = - a_{E, lm} + i a_{B,lm}
+
+	Parameters
+	----------
+	alm_E : complex ndarray
+		Array containing the E spherical harmonic coefficient
+	alm_B : complex ndarray
+		Array containing the B spherical harmonic coefficient
+	alm_plus : complex ndarray, optional
+		Destination array for the + coefficients. If None, the destination
+		will be created based on the type and shape of the `alm_E` array.
+	alm_minus : complex ndarray, optional
+		Destination array for the - coefficients. If None, the destination
+		will be created based on the type and shape of the `alm_E` array.
+	batchsize : int, optional
+		Number of elements to compute with at a time, by default 100000.
+	
+	Returns
+	-------
+	ndarray, ndarray
+		tuple of ndarrays containing the + and - alms.
+	"""
+	# ensure we have the complex version of the dtype of the array
+	complex_dtype = (np.zeros(1, alm_E.dtype) + 0j).dtype
+	shape, dtype = alm_E.shape, complex_dtype
+
+	# generate new arrays if we didn't get passed destinations
+	if alm_plus is None: alm_plus = np.zeros(shape, dtype)
+	if alm_minus is None: alm_minus = np.zeros(shape, dtype)
+	n = alm_E.size
+
+	# loop over batches
+	for i1 in range(0, n, batchsize):
+		i2 = min(i1+batchsize, n)
+		# reshape to allow processing stacks of maps
+		E = alm_E.reshape(-1)[i1:i2].copy()
+		B = alm_B.reshape(-1)[i1:i2].copy()
+		alm_plus.reshape(-1)[i1:i2]  = -E - 1j * B
+		alm_minus.reshape(-1)[i1:i2] = -E + 1j * B
+	
+	return alm_plus, alm_minus
+

@@ -253,6 +253,79 @@ class PixelTests(unittest.TestCase):
         assert np.isclose(area,1000000)
                                 
         
+    def test_spin2eb(self):
+        # test spin2eb without passing a destination
+        p = np.array([1., 2., 3., 4.], dtype=complex)
+        m = np.array([0.1, 0.2, 0.3, 0.4], dtype=complex)
+        true_e = -(p + m) / 2
+        true_b = -(p - m) / 2j
+        e, b = curvedsky.spin2eb(p, m)
+        assert np.all(np.isclose(true_e, e))
+        assert np.all(np.isclose(true_b, b))
+
+        # test in-place spin2eb
+        p = np.array([1., 2., 3., 4.], dtype=complex)
+        m = np.array([0.1, 0.2, 0.3, 0.4], dtype=complex)
+        true_e = -(p + m) / 2
+        true_b = -(p - m) / 2j
+        e = np.zeros_like(p)
+        b = np.zeros_like(p)
+        curvedsky.spin2eb(p, m, e, b)
+        assert np.all(np.isclose(true_e, e))
+        assert np.all(np.isclose(true_b, b))
+
+        # test a variety of batch sizes
+        for batchsize in range(1,4):
+            e, b = curvedsky.spin2eb(p, m, batchsize=batchsize)
+            assert np.all(np.isclose(true_e, e))
+            assert np.all(np.isclose(true_b, b))
+
+    
+    def test_eb2spin(self):
+        # test eb2spin without passing a destination
+        e = np.array([1., 2., 3., 4.], dtype=complex)
+        b = np.array([0.1, 0.2, 0.3, 0.4], dtype=complex)
+        true_p = -e - 1j * b
+        true_m = -e + 1j * b
+        p, m = curvedsky.eb2spin(e, b)
+        assert np.all(np.isclose(true_p, p))
+        assert np.all(np.isclose(true_m, m))
+
+        # test in-place eb2spin 
+        e = np.array([1., 2., 3., 4.], dtype=complex)
+        b = np.array([0.1, 0.2, 0.3, 0.4], dtype=complex)
+        true_p = -e - 1j * b
+        true_m = -e + 1j * b
+        p = np.zeros_like(e)
+        m = np.zeros_like(e)
+        curvedsky.eb2spin(e, b, p, m)
+        assert np.all(np.isclose(true_p, p))
+        assert np.all(np.isclose(true_m, m))
+        
+        # test a variety of batch sizes
+        for batchsize in range(1,4):
+            p, m = curvedsky.eb2spin(e, b, batchsize=batchsize)
+            assert np.all(np.isclose(true_p, p))
+            assert np.all(np.isclose(true_m, m))
+
+    def test_eb2spin_spin2eb(self):
+        # test that eb2spin is the inverse of spin2eb
+        e = np.array([1., 2., 3., 4.], dtype=complex)
+        b = np.array([0.1, 0.2, 0.3, 0.4], dtype=complex)
+        p, m = curvedsky.eb2spin(e, b)
+        e_prime, b_prime = curvedsky.spin2eb(p, m)
+        assert np.all(np.isclose(e, e_prime))
+        assert np.all(np.isclose(b, b_prime))
+
+        # test that spin2eb is the inverse of eb2spin
+        p = np.array([1., 2., 3., 4.], dtype=complex)
+        m = np.array([0.1, 0.2, 0.3, 0.4], dtype=complex)
+        e, b = curvedsky.spin2eb(p, m)
+        p_prime, m_prime = curvedsky.eb2spin(e, b)
+        assert np.all(np.isclose(p, p_prime))
+        assert np.all(np.isclose(m, m_prime))
+
+
 
 if __name__ == '__main__':
     unittest.main()
