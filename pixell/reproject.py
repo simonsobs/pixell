@@ -1,12 +1,14 @@
 from __future__ import print_function
 import numpy as np
-from . import wcsutils, enmap, coordinates, curvedsky
+from . import wcsutils, utils, enmap, coordinates, curvedsky, fft
 try: from . import sharp
 except ImportError: pass
 
 # Python 2/3 compatibility
 try: basestring
 except NameError: basestring = str
+
+# ----------------------------
 
 # Analyst-facing functions
 
@@ -468,3 +470,89 @@ def populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400):
         sny += tNys[i]
         print(done , " / ", ntiles, " tiles done...")
     return omap
+
+# --------- Candidate replacement functions below. Please comment. ----------------
+
+def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*utils.arcmin,
+		order=3, oversample=4, pol=None, oshape=None, owcs=None, extensive=False, verbose=False):
+	"""Given an enmap [...,ny,nx] and a set of coords [n,{dec,ra}], extract a set
+	of thumbnail images [n,...,thumby,thumbx] centered on each set of
+	coordinates. Each of these thumbnail images is projected onto a local tangent
+	plane, removing the effect of size and shape distortions in the input map.
+
+	If oshape, owcs are specified, then the thumbnails will have this geometry,
+	which should be centered on [0,0]. Otherwise, a geometry with the given
+	projection (defaults to "tan" = gnomonic projection) will be constructed,
+	going up to a maximum radius of r.
+
+	The reprojection involved in this operation implies interpolation. The default
+	is to use fft rescaling to oversample the input pixels by the given pixel, and
+	then use bicubic spline interpolation to read off the values at the output
+	pixel centers. The fft oversampling can be controlled with the oversample argument.
+	Values <= 1 turns this off. The other interpolation step is controlled using the
+	"order" argument. 0/1/3 corresponds to nearest neighbor, bilinear and bicubic spline
+	interpolation respectively.
+
+	If pol == True, then Q,U will be rotated to take into account the change in
+	the local northward direction impled in the reprojection. The default is to
+	do polarization rotation automatically if the input map has a compatible shape,
+	e.g. at least 3 axes and a length of 3 for the 3rd last one. TODO: I haven't
+	tested this yet.
+
+	If extensive == True (not the default), then the map is assumed to contain an
+	extensive field rather than an intensive one. An extensive field is one where
+	the values in the pixels depend on the size of the pixel. For example, if the
+	inverse variance in the map is given per pixel, then this ivar map will be
+	extensive, but if it's given in units of inverse variance per square arcmin
+	then it's intensive.
+
+	For reprojecting inverse variance maps, consider using the wrapper thumbnails_ivar,
+	which makes it easier to avoid common pitfalls."""
+	# If the output geometry was not given explicitly, then build one
+	if oshape is None:
+		if res is None: res = min(np.abs(imap.wcs.wcs.cdelt))*utils.degree/2
+		oshape, owcs = enmap.geometry(pos=[[-r,r],[r,-r]], res=res, proj=proj)
+	# Check if we should be doing polarization rotation
+	pol_compat = imap.ndim >= 3 and imap.shape[-3] == 3
+	if pol is None: pol = pol_compat
+	if pol and not pol_compat: raise ValueError("Polarization rotation requested, but can't interpret map shape %s as IQU map" % (str(imap.shape)))
+	nsrc = len(coords)
+	if verbose: print("Extracting %d %dx%d thumbnails from %s map" % (nsrc, oshape[-2], oshape[-1], str(imap.shape)))
+	opos = enmap.posmap(oshape, owcs)
+	# Get the pixel area around each of the coordinates
+	rtot     = r + apod
+	pixboxes = enmap.neighborhood_pixboxes(imap.shape, imap.wcs, coords, rtot)
+	# Define our output maps, which we will fill below
+	omaps = enmap.zeros((nsrc,)+imap.shape[:-2]+oshape, owcs, imap.dtype)
+	for si, pixbox in enumerate(pixboxes):
+		if oversample > 1:
+			# Make the pixbox fft-friendly
+			for i in range(2):
+				pixbox[1,i] = pixbox[0,i] + fft.fft_len(pixbox[1,i]-pixbox[0,i], direction="above", factors=[2,3,5])
+		ithumb = imap.extract_pixbox(pixbox)
+		if extensive: ithumb /= ithumb.pixsizemap()
+		ithumb = ithumb.apod(apod, fill="median")
+		print("%4d/%d %6.2f %6.2f %8.2f %dx%d" % (si+1, nsrc, coords[si,0]/utils.degree, coords[si,1]/utils.degree, np.max(ithumb), ithumb.shape[-2], ithumb.shape[-1]))
+		# Oversample using fourier if requested. We do this because fourier
+		# interpolation is better than spline interpolation overall
+		if oversample > 1:
+			fshape = utils.nint(np.array(oshape[-2:])*oversample)
+			ithumb = ithumb.resample(fshape, method="fft")
+		# I apologize for the syntax. There should be a better way of doing this
+		ipos = coordinates.transform("cel", ["cel",[[0,0,coords[si,1],coords[si,0]],False]], opos[::-1], pol=pol)
+		ipos, rest = ipos[1::-1], ipos[2:]
+		omaps[si] = ithumb.at(ipos, order=order)
+		# Apply the polarization rotation. The sign is flipped because we computed the
+		# rotation from the output to the input
+		if pol: omaps[si] = enmap.rotate_pol(omaps[si], -rest[0])
+	if extensive: omaps *= omaps.pixsizemap()
+	return omaps
+
+def thumbnails_ivar(imap, coords, r=5*utils.arcmin, res=None, proj="tan",
+		oshape=None, owcs=None, extensive=False, verbose=False):
+	"""Like thumbnails, but for hitcounts, ivars, masks, and other quantities that
+	should stay positive and local. Remember to set extensive to True if you have an
+	extensive quantity, e.g. if the values in each pixel would go up if multiple pixels
+	combined. Hitcounts are an example of an extensive quantity."""
+	return thumbnails(imap, coords, r=r, res=res, proj=proj, oshape=oshape, owcs=owcs,
+			order=1, oversample=1, pol=False, extensive=extensive, verbose=verbose)

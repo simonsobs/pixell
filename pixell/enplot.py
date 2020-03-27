@@ -342,6 +342,8 @@ def get_map(ifile, args, return_info=False, name=None):
 	in args. Relevant ones are sub, autocrop, slice, op, downgrade, scale,
 	mask. Retuns with shape [:,ny,nx], where any extra dimensions have been
 	flattened into a single one."""
+	# TODO: this should be reorganized so that slicing can happen earlier.
+	# Currently the whole file needs to be read.
 	with warnings.catch_warnings():
 		warnings.filterwarnings("ignore")
 		if isinstance(ifile, basestring):
