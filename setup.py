@@ -126,7 +126,7 @@ setup(
     ext_modules=[
         Extension('pixell.sharp',
             sources=['cython/sharp.c'],
-            libraries=['sharp','c_utils', 'fftpack'],
+            libraries=['sharp','c_utils', 'fftpack', 'm'],
             library_dirs=['_deps/libsharp/auto/lib'],
             include_dirs=[np.get_include()],
             **compile_opts),
