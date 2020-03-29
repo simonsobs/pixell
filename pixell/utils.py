@@ -42,8 +42,15 @@ def listsplit(seq, elem):
 	ranges = zip([0]+[i+1 for i in inds],inds+[len(seq)])
 	return [seq[a:b] for a,b in ranges]
 
+def streq(x, s):
+	"""Check if x is the string s. This used to be simply "x is s",
+	but that now causes a warning. One can't just do "x == s", as
+	that causes a numpy warning and will fail in the future."""
+	return isinstance(x, basestring) and x == s
+
 def find(array, vals, default=None):
 	"""Return the indices of each value of vals in the given array."""
+	if len(vals) == 0: return []
 	array   = np.asarray(array)
 	order   = np.argsort(array)
 	cands   = np.minimum(np.searchsorted(array, vals, sorter=order),len(array)-1)
@@ -126,7 +133,7 @@ def rewind(a, ref=0, period=2*np.pi):
 	specifies the angle furthest away from the cut, i.e. the
 	period cut will be at ref+period/2."""
 	a = np.asanyarray(a)
-	if ref is "auto": ref = np.sort(a.reshape(-1))[a.size//2]
+	if streq(ref, "auto"): ref = np.sort(a.reshape(-1))[a.size//2]
 	return ref + (a-ref+period/2.)%period - period/2.
 
 def cumsplit(sizes, capacities):
@@ -1578,7 +1585,10 @@ def flux_factor(beam_area, freq, T0=T_cmb):
 	temperature increment dT around T0 (in K) at the given frequency freq
 	in Hz and integrated over the given beam_area in steradians, produces
 	the corresponding flux = A*dT. This is useful for converting between
-	point source amplitudes and point source fluxes."""
+	point source amplitudes and point source fluxes.
+
+	For uK to mJy use flux_factor(beam_area, freq)/1e3
+	"""
 	# A blackbody has intensity I = 2hf**3/c**2/(exp(hf/kT)-1) = V/(exp(x)-1)
 	# with V = 2hf**3/c**2, x = hf/kT.
 	# dI/dx = -V/(exp(x)-1)**2 * exp(x)
@@ -1592,9 +1602,25 @@ def flux_factor(beam_area, freq, T0=T_cmb):
 	dJydK = dIdT * 1e26 * beam_area
 	return dJydK
 
+def noise_flux_factor(beam_area, freq, T0=T_cmb):
+	"""Compute the factor A that converts from white noise level in K sqrt(steradian)
+	to uncertainty in Jy for the given beam area in steradians and frequency in Hz.
+	This assumes white noise and a gaussian beam, so that the area of the real-space squared beam is
+	just half that of the normal beam area.
+
+	For uK arcmin to mJy, use noise_flux_factor(beam_area, freq)*arcmin/1e3
+	"""
+	squared_beam_area = beam_area/2
+	return flux_factor(beam_area/squared_beam_area**0.5, freq, T0=T0)
+
 def planck(f, T):
 	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
 	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
+blackbody = planck
+
+def graybody(f, T, beta=1):
+	"""Return a graybody spectrum at the frequency f and temperature T in Jy/sr"""
+	return  2*h*f**(3+beta)/c**2/(np.exp(h*f/(k*T))-1) * 1e26
 
 ### Binning ####
 

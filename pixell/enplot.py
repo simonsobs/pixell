@@ -1,3 +1,4 @@
+from __future__ import division, print_function
 import numpy as np, argparse, time, sys, warnings, os, shlex, glob, PIL.Image, PIL.ImageDraw
 from scipy import ndimage
 from . import enmap, colorize, mpi, cgrid, utils, memory, bunch, wcsutils
@@ -156,6 +157,7 @@ def plot_iterator(*arglist, **kwargs):
 			ndigits  = [get_num_digits(n) for n in N]
 			subprint = printer.push(("%%0%dd/%%d " % ndigit) % (i+1,ncomp))
 			dir, base, ext = split_file_name(minfo.fname)
+			if args.odir is not None: dir = args.odir
 			map_field = map[i:i+ngroup]
 			if minfo.wcslist:
 				# HACK: If stamp extraction messed with the wcs, fix it here
@@ -249,6 +251,7 @@ def define_arg_parser():
 	add_argument("-d", "--downgrade", type=str, default="1", help="Downsacale the map by this factor before plotting. This is done by averaging nearby pixels. See --upgrade for syntax.")
 	add_argument("--prefix", type=str, default="", help="Specify a prefix for the output file. See --oname.")
 	add_argument("--suffix", type=str, default="", help="Specify a suffix for the output file. See --oname.")
+	add_argument("--odir",   type=str, default=None, help="Override the output directory. See --oname.")
 	add_argument("--ext", type=str, default="png", help="Specify an extension for the output file. This will determine the file type of the resulting image. Can be anything PIL recognizes. The default is png.")
 	add_argument("-m", "--mask", type=float, help="Mask this value, making it transparent in the output image. For example -m 0 would mark all values exactly equal to zero as missing.")
 	add_argument("--mask-tol", type=float, default=1e-14, help="The tolerance to use with --mask.")
@@ -282,7 +285,7 @@ def define_arg_parser():
 		l[ine]   lat lon dy dx lat lon dy dx [width [color]]
 	dy and dx are pixel-unit offsets from the specified lat/lon.""")
 	add_argument("--annotate-maxrad", type=int, default=0, help="Assume that annotations do not extend further than this from their center, in pixels. This is used to prune which annotations to attempt to draw, as they can be a bit slow. The special value 0 disables this.")
-	add_argument("--stamps", type=str, default=None, help="Plot stamps instead of the whole map. Format is srcfile:size:nmax, where the last two are optional. srcfile is a file with [dec ra] in degrees, size is the size in pixels of each stamp, and nmax is the max number of stamps to produce.")
+	add_argument("--stamps", type=str, default=None, help="Plot stamps instead of the whole map. Format is srcfile:size:nmax, where the last two are optional. srcfile is a file with [ra dec] in degrees, size is the size in pixels of each stamp, and nmax is the max number of stamps to produce.")
 	add_argument("--tile",  type=str, default=None, help="Stack components vertically and horizontally. --tile 5,4 stacks into 5 rows and 4 columns. --tile 5 or --tile 5,-1 stacks into 5 rows and however many columns are needed. --tile -1,5 stacks into 5 columns and as many rows are needed. --tile -1 allocates both rows and columns to make the result as square as possible. The result is treated as a single enmap, so the wcs will only be right for one of the tiles.")
 	add_argument("--tile-transpose", action="store_true", help="Transpose the ordering of the fields when tacking. Normally row-major stacking is used. This sets column-major order instead.")
 	add_argument("-S", "--symmetric", action="store_true", help="Treat the non-pixel axes as being asymmetric matrix, and only plot a non-redundant triangle of this matrix.")
@@ -339,6 +342,8 @@ def get_map(ifile, args, return_info=False, name=None):
 	in args. Relevant ones are sub, autocrop, slice, op, downgrade, scale,
 	mask. Retuns with shape [:,ny,nx], where any extra dimensions have been
 	flattened into a single one."""
+	# TODO: this should be reorganized so that slicing can happen earlier.
+	# Currently the whole file needs to be read.
 	with warnings.catch_warnings():
 		warnings.filterwarnings("ignore")
 		if isinstance(ifile, basestring):
@@ -882,8 +887,8 @@ def hwexpand(mflat, nrow=-1, ncol=-1, transpose=False):
 	n, ny, nx = mflat.shape
 	if nrow < 0 and ncol < 0:
 		ncol = int(np.ceil(n**0.5))
-	if nrow < 0: nrow = (n+ncol-1)/ncol
-	if ncol < 0: ncol = (n+nrow-1)/nrow
+	if nrow < 0: nrow = (n+ncol-1)//ncol
+	if ncol < 0: ncol = (n+nrow-1)//nrow
 	if not transpose:
 		omap = enmap.zeros([nrow,ncol,ny,nx],mflat.wcs,mflat.dtype)
 		omap.reshape(-1,ny,nx)[:n] = mflat

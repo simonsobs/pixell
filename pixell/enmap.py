@@ -56,8 +56,11 @@ class ndmap(np.ndarray):
 	def posmap(self, safe=True, corner=False, separable=False, dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
+	def lform(self, shift=True): return lform(self, shift=shift)
 	def modlmap(self, oversample=1): return modlmap(self.shape, self.wcs, oversample=oversample)
 	def modrmap(self, ref="center", safe=True, corner=False): return modrmap(self.shape, self.wcs, ref=ref, safe=safe, corner=corner)
+	def lbin(self, bsize=None, brel=1.0, return_nhit=False): return lbin(self, bsize=bsize, brel=brel, return_nhit=return_nhit)
+	def rbin(self, center=[0,0], bsize=None, brel=1.0, return_nhit=False): return rbin(self, center=center, bsize=bsize, brel=brel, return_nhit=return_nhit)
 	def area(self): return area(self.shape, self.wcs)
 	def pixsize(self): return pixsize(self.shape, self.wcs)
 	def pixshape(self, signed=False): return pixshape(self.shape, self.wcs, signed=signed)
@@ -72,6 +75,7 @@ class ndmap(np.ndarray):
 	def npix(self): return np.product(self.shape[-2:])
 	@property
 	def geometry(self): return self.shape, self.wcs
+	def resample(self, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3): return resample(self, oshape, off=off, method=method, mode=mode, corner=corner, order=order)
 	def project(self, shape, wcs, order=3, mode="constant", cval=0, prefilter=True, mask_nan=False, safe=True): return project(self, shape, wcs, order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan, safe=safe)
 	def extract(self, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract(self, shape, wcs, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def extract_pixbox(self, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract_pixbox(self, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
@@ -81,6 +85,9 @@ class ndmap(np.ndarray):
 	def autocrop(self, method="plain", value="auto", margin=0, factors=None, return_info=False): return autocrop(self, method, value, margin, factors, return_info)
 	def apod(self, width, profile="cos", fill="zero"): return apod(self, width, profile=profile, fill=fill)
 	def stamps(self, pos, shape, aslist=False): return stamps(self, pos, shape, aslist=aslist)
+	def distance_from(self, points, omap=None, odomains=None, domains=False, method="bubble", rmax=None, step=1024): return distance_from(self.shape, self.wcs, points, omap=omap, odomains=odomains, domains=domains, method=method, rmax=rmax, step=step)
+	def distance_transform(self, omap=None, rmax=None): return distance_transform(self, omap=omap, rmax=rmax)
+	def labeled_distance_transform(self, omap=None, odomains=None, rmax=None): return labeled_distance_transform(self, omap=omap, odomains=odomains, rmax=rmax)
 	@property
 	def plain(self): return ndmap(self, wcsutils.WCS(naxis=2))
 	def padslice(self, box, default=np.nan): return padslice(self, box, default=default)
@@ -229,8 +236,7 @@ def scale_geometry(shape, wcs, scale):
 	return oshape, owcs
 
 def get_unit(wcs):
-	if wcsutils.is_plain(wcs): return 1
-	else: return utils.degree
+	return utils.degree
 
 class Geometry:
 	def __init__(self, shape, wcs=None):
@@ -251,8 +257,9 @@ class Geometry:
 		if pixbox is None:
 			pixbox = subinds(self.shape, self.wcs, box, mode=mode, cap=False, noflip=noflip)
 		def helper(b):
-			if b[2] >= 0: return False, slice(b[0],b[1],b[2])
-			else:         return True,  slice(b[1]-b[2],b[0]-b[2],-b[2])
+			if   len(b) < 3: return False, slice(b[0],b[1],1)
+			elif b[2] >= 0:  return False, slice(b[0],b[1],b[2])
+			else:            return True,  slice(b[1]-b[2],b[0]-b[2],-b[2])
 		yflip, yslice = helper(pixbox[:,0])
 		xflip, xslice = helper(pixbox[:,1])
 		shape, wcs = slice_geometry(self.shape, self.wcs, (yslice, xslice), nowrap=True)
@@ -267,6 +274,8 @@ class Geometry:
 	def downgrade(self, factor):
 		shape, wcs = downgrade_geometry(self.shape, self.wcs, factor)
 		return Geometry(shape, wcs)
+	def copy(self):
+		return Geometry(tuple(self.shape), self.wcs.deepcopy())
 
 def box(shape, wcs, npoint=10, corner=True):
 	"""Compute a bounding box for the given geometry."""
@@ -277,9 +286,9 @@ def box(shape, wcs, npoint=10, corner=True):
 	if corner: pix -= 0.5
 	coords = wcsutils.nobcheck(wcs).wcs_pix2world(pix[1],pix[0],0)[::-1]
 	if wcsutils.is_plain(wcs):
-		return np.array(coords).T[[0,-1]]
+		return np.array(coords).T[[0,-1]]*get_unit(wcs)
 	else:
-		return utils.unwind(np.array(coords)*utils.degree).T[[0,-1]]
+		return utils.unwind(np.array(coords)*get_unit(wcs)).T[[0,-1]]
 
 def enmap(arr, wcs=None, dtype=None, copy=True):
 	"""Construct an ndmap from data.
@@ -424,22 +433,29 @@ def skybox2pixbox(shape, wcs, skybox, npoint=10, corner=False, include_direction
 	if include_direction: res = np.concatenate([res,dir[None]],0)
 	return res
 
-def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, prefilter=True, mask_nan=False, safe=True):
+def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, prefilter=True, mask_nan=False, safe=True, bsize=1000):
 	"""Project the map into a new map given by the specified
 	shape and wcs, interpolating as necessary. Handles nan
 	regions in the map by masking them before interpolating.
 	This uses local interpolation, and will lose information
 	when downgrading compared to averaging down."""
-	map  = map.copy()
 	# Skip expensive operation is map is compatible
 	if not force:
 		if wcsutils.equal(map.wcs, wcs) and tuple(shape[-2:]) == tuple(shape[-2:]):
-			return map
+			return map.copy()
 		elif wcsutils.is_compatible(map.wcs, wcs) and mode == "constant":
 			return extract(map, shape, wcs, cval=cval)
-	pix  = map.sky2pix(posmap(shape, wcs), safe=safe)
-	pmap = utils.interpol(map, pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
-	return ndmap(pmap, wcs)
+	omap = zeros(map.shape[:-2]+shape[-2:], wcs, map.dtype)
+	# Save memory by looping over rows
+	for i1 in range(0, shape[-2], bsize):
+		i2     = min(i1+bsize, shape[-2])
+		somap  = omap[...,i1:i2,:]
+		pix    = map.sky2pix(somap.posmap(), safe=safe)
+		y1     = max(np.min(pix[0]).astype(int)-1,0)
+		y2     = min(np.max(pix[1]).astype(int)+1,map.shape[-2])
+		pix[0] -= y1
+		somap[:] = utils.interpol(map[...,y1:y2,:], pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
+	return omap
 
 def pixbox_of(iwcs,oshape,owcs):
 	"""Obtain the pixbox which when extracted from a map with WCS=iwcs
@@ -493,7 +509,8 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 	nphi = utils.nint(360/np.abs(iwcs.wcs.cdelt[0]))
 	# If our map is wider than the wrapping length, assume we're a lower-spin field
 	nphi *= (nphi+map.shape[-1]-1)//nphi
-	if wrap is "auto": wrap = [0,nphi]
+	if utils.streq(wrap, "auto"):
+		wrap = [0,0] if wcsutils.is_plain(iwcs) else [0,nphi]
 	else: wrap = np.zeros(2,int)+wrap
 	for ibox, obox in utils.sbox_wrap(pixbox.T, wrap=wrap, cap=map.shape[-2:]):
 		islice = utils.sbox2slice(ibox)
@@ -516,10 +533,48 @@ def insert_at(omap, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
 	if pixbox.ndim == 1: pixbox = np.array([pixbox,pixbox+imap.shape[-2:]])
 	return extract_pixbox(omap, pixbox, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=True)
 
+def overlap(shape, wcs, shape2_or_pixbox, wcs2=None, wrap="auto"):
+	"""Compute the overlap between the given geometry (shape, wcs) and another *compatible*
+	geometry. This can be either another shape, wcs pair or a pixbox[{from,to},{y,x}].
+	Returns the geometry of the overlapping region."""
+	# Is it a shape or a pixbox
+	tmp = np.asarray(shape2_or_pixbox)
+	if   tmp.ndim == 1: pixbox = pixbox_of(wcs, shape2_or_pixbox, wcs2)
+	elif tmp.ndim == 2: pixbox = shape2_or_pixbox
+	else: raise ValueError("3rd argument of overlap should be an enmap, a shape tuple or a pixbox")
+	# Handle wrapping
+	nphi = utils.nint(360/np.abs(wcs.wcs.cdelt[0]))
+	# If our map is wider than the wrapping length, assume we're a lower-spin field
+	nphi *= (nphi+shape[-1]-1)//nphi
+	if utils.streq(wrap, "auto"):
+		wrap = [0,0] if wcsutils.is_plain(wcs) else [0,nphi]
+	# Looks like the sbox stuff in utils doesn't do this, so do it ourself.
+	for i in range(2):
+		# If pixbox goes below 0, truncate it unless it goes negative
+		# enough to reach our wrapped end.
+		if pixbox[0,i] < 0 and (not wrap[i] or pixbox[0,i]+wrap[i] >= shape[-2+i]):
+			pixbox[0,i] = 0
+		# Similarly, if it goes above our end, truncate it unless it
+		# goes far enough to reach our wrapped beginning
+		if pixbox[1,i] > shape[-2+i] and (not wrap[i] or pixbox[1,i]-wrap[i] <= 0):
+			pixbox[1,i] = shape[-2+i]
+	# This will ensure that we get a zero shape instead of a negative one if
+	# there is no overlap
+	pixbox[1] = np.maximum(pixbox[1],pixbox[0])
+	# Good, we now have the capped, wrapped pixbox
+	oshape = tuple(pixbox[1]-pixbox[0])
+	owcs   = wcs.deepcopy()
+	owcs.wcs.crpix -= pixbox[0,1::-1]
+	return oshape, owcs
+
 def neighborhood_pixboxes(shape, wcs, poss, r):
 	"""Given a set of positions poss[npos,2] in radians and a distance r in radians,
 	return pixboxes[npos][{from,to},{y,x}] corresponding to the regions within a
 	distance of r from each entry in poss."""
+	if wcsutils.is_plain(wcs):
+		rpix = r/pixsize(shape, wcs)
+		centers = sky2pix(poss.T).T
+		return np.moveaxis([centers-rpix,center+rpix+1],0,1)
 	poss = np.asarray(poss)
 	res  = np.zeros([len(poss),2,2])
 	for i, pos in enumerate(poss):
@@ -569,7 +624,7 @@ def rand_map(shape, wcs, cov, scalar=False, seed=None, pixel_units=False, iau=Fa
 	if seed is not None: np.random.seed(seed)
 	kmap = rand_gauss_iso_harm(shape, wcs, cov, pixel_units)
 	if scalar:
-		return ifft(kmap).real
+		return ifft(kmap,normalize=True).real
 	else:
 		return harm2map(kmap, iau=iau, spin=spin)
 
@@ -808,6 +863,11 @@ def pixshapemap(shape, wcs, bsize=1000):
 	"""Returns the physical width and heigh of each pixel in the map in radians.
 	Heavy for big maps. Much faster approaches are possible for known pixelizations."""
 	res    = zeros((2,)+shape[-2:], wcs)
+	if wcsutils.is_plain(wcs):
+		cdelt = wcs.wcs.cdelt
+		res[0] = wcs.wcs.cdelt[1]*get_unit(wcs)
+		res[1] = wcs.wcs.cdelt[0]*get_unit(wcs)
+		return np.abs(res)
 	# Loop over blocks in y to reduce memory usage
 	for i1 in range(0, shape[-2], bsize):
 		i2 = min(i1+bsize, shape[-2])
@@ -868,8 +928,8 @@ def modrmap(shape, wcs, ref="center", safe=True, corner=False):
 		if ref=="center": ref = center(shape,wcs)
 		else:             raise ValueError
 	ref = np.array(ref)[:,None,None]
+	if wcsutils.is_plain(wcs): return np.sum((slmap-ref)**2,0)**0.5
 	return ndmap(utils.angdist(slmap[::-1],ref[::-1],zenith=False),wcs)
-
 
 def laxes(shape, wcs, oversample=1):
 	oversample = int(oversample)
@@ -934,6 +994,7 @@ def map2harm(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
 	return emap
 def harm2map(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
 	if emap.ndim > 2:
+		emap = emap.copy()
 		rot, s0 = None, None
 		for s, i1, i2 in spin_helper(spin, emap.shape[-3]):
 			if s == 0:  continue
@@ -1063,7 +1124,6 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	# The exception is when we are using a plain, non-spherical wcs, in which case
 	# both are unitless. So undo the scaling in this case.
 	scale = 1 if deg else 1/utils.degree
-	if proj == "plain": scale *= utils.degree
 	pos = np.asarray(pos)*scale
 	if res is not None: res = np.asarray(res)*scale
 	# Apply a standard reference points unless one is manually specified, or we
@@ -1098,8 +1158,8 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
 	 res   = np.zeros(2)+res
 	 shape = utils.nint(([1*np.pi,2*np.pi]/res) + (1,0))
 	ny, nx = shape
-	assert abs(res[0] * (ny-1) - np.pi) < 1e-8
-	assert abs(res[1] * nx - 2*np.pi)   < 1e-8
+	assert abs(res[0] * (ny-1) - np.pi) < 1e-8, "Vertical resolution does not evenly divide the sky; this is required for SHTs."
+	assert abs(res[1] * nx - 2*np.pi)   < 1e-8, "Horizontal resolution does not evenly divide the sky; this is required for SHTs."
 	wcs   = wcsutils.WCS(naxis=2)
 	# Note the reference point is shifted by half a pixel to keep
 	# the grid in bounds, from ra=180+cdelt/2 to ra=-180+cdelt/2.
@@ -1140,7 +1200,7 @@ def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
 def create_wcs(shape, box=None, proj="cea"):
 	if box is None:
 		box = np.array([[-1,-1],[1,1]])*0.5*10
-		if proj != "plain": box *= utils.degree
+		box *= utils.degree
 	return wcsutils.build(box, shape=shape, rowmajor=True, system=proj)
 
 def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="auto"):
@@ -1338,6 +1398,7 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 	and domains to -1. This can be used to speed up the calculation when one only cares
 	about nearby areas."""
 	from pixell import distances
+	if wcsutils.is_plain(wcs): warnings.warn("Distance functions are not tested on plain coordinate systems.")
 	if omap is None: omap = empty(shape[-2:], wcs)
 	if domains and odomains is None: odomains = empty(shape[-2:], wcs, np.int32)
 	if wcsutils.is_cyl(wcs):
@@ -1462,14 +1523,14 @@ def find_blank_edges(m, value="auto"):
 	"value" determines which value is considered blank. Can be a float value,
 	or the strings "auto" or "none". Auto will choose the value that maximizes
 	the edge area considered blank. None will result in nothing being consideered blank."""
-	if value is "auto":
+	if value == "auto":
 		# Find the median value along each edge
 		medians = [np.median(m[...,:,i],-1) for i in [0,-1]] + [np.median(m[...,i,:],-1) for i in [0,-1]]
 		bs = [find_blank_edges(m, med) for med in medians]
 		nb = [np.product(np.sum(b,0)) for b in bs]
 		blanks = bs[np.argmax(nb)]
 		return blanks
-	elif value is "none":
+	elif value == "none":
 		# Don't use any values for cropping, so no cropping is done
 		return np.zeros([2,2],dtype=int)
 	else:
@@ -1565,33 +1626,80 @@ def apod(m, width, profile="cos", fill="zero"):
 	if fill == "mean":
 		offset = np.asarray(np.mean(res,(-2,-1)))[...,None,None]
 		res -= offset
+	elif fill == "median":
+		offset = np.asarray(np.median(res,(-2,-1)))[...,None,None]
+		res -= offset
 	if width[0] > 0:
 		res[...,:width[0],:] *= a[0][:,None]
 		res[...,-width[0]:,:] *= a[0][::-1,None]
 	if width[1] > 0:
 		res[...,:,:width[1]] *= a[1][None,:]
 		res[...,:,-width[1]:]  *= a[1][None,::-1]
-	if fill == "mean":
+	if fill == "mean" or fill == "median":
 		res += offset
 	return res
 
-def radial_average(map, center=[0,0], step=1.0):
-	"""Produce a radial average of the given map that's centered on zero"""
-	center = np.asarray(center)
-	pos  = map.posmap()-center[:,None,None]
-	rads = np.sum(pos**2,0)**0.5
-	# Our resolution should be step times the highest resolution direction.
-	res = np.min(map.extent()/map.shape[-2:])*step
-	n   = int(np.max(rads/res))
-	orads = np.arange(n)*res
-	rinds = (rads/res).reshape(-1).astype(int)
+def lform(map, shift=True):
+	"""Given an enmap, return a new enmap that has been fftshifted (unless shift=False),
+	and which has had the wcs replaced by one describing fourier space. This is mostly
+	useful for plotting or writing 2d power spectra.
+
+	It could have been useful more generally, but because all "plain" coordinate systems
+	are assumed to need conversion between degrees and radians, sky2pix etc. get confused
+	when applied to lform-maps."""
+	omap = fftshift(map)
+	omap.wcs = lwcs(map.shape, map.wcs)
+	return omap
+
+def lwcs(shape, wcs):
+	"""Build world coordinate system for l-space"""
+	lres   = 2*np.pi/extent(shape, wcs, signed=True)
+	ny, nx = shape[-2:]
+	owcs   = wcsutils.explicit(crpix=[nx//2+1,ny//2+1], crval=[0,0], cdelt=lres[::-1])
+	return owcs
+
+def rbin(map, center=[0,0], bsize=None, brel=1.0, return_nhit=False):
+	"""Radially bin map around the given center point ([0,0] by default).
+	If bsize it given it will be the constant bin width. This defaults to
+	the pixel size. brel can be used to scale up the bin size. This is
+	mostly useful when using automatic bsize.
+
+	Returns bvals[...,nbin] and r[nbin], where bvals is the mean
+	of the map in each radial bin and r is the mid-point of each bin
+	"""
+	r = map.modrmap(ref=center)
+	if bsize is None:
+		bsize = np.min(map.extent()/map.shape[-2:])
+	return _bin_helper(map, r, bsize*brel, return_nhit=return_nhit)
+
+def lbin(map, bsize=None, brel=1.0, return_nhit=False):
+	"""Like rbin, but for fourier space"""
+	l = map.modlmap()
+	if bsize is None: bsize = min(abs(l[0,1]),abs(l[1,0]))
+	return _bin_helper(map, l, bsize*brel, return_nhit=return_nhit)
+
+def _bin_helper(map, r, bsize, return_nhit=False):
+	"""This is very similar to a function in utils, but was sufficiently different
+	that it didn't make sense to reuse that one. This is often the case with the
+	binning in utils. I should clean that up, and probably base one of the new
+	functions on this one."""
+	# Get the number of bins
+	n     = int(np.max(r/bsize))
+	orads = (0.5+np.arange(n))*bsize
+	rinds = (r/bsize).reshape(-1).astype(int)
 	# Ok, rebin the map. We use this using bincount, which can be a bit slow
 	mflat = map.reshape((-1,)+map.shape[-2:])
 	mout = np.zeros((len(mflat),n))
+	nhit = np.bincount(rinds)[:n]
 	for i, m in enumerate(mflat):
-		mout[i] = (np.bincount(rinds, weights=m.reshape(-1))/np.bincount(rinds))[:n]
+		mout[i] = np.bincount(rinds, weights=m.reshape(-1))[:n]/nhit
 	mout = mout.reshape(map.shape[:-2]+mout.shape[1:])
-	return mout, orads
+	if return_nhit: return mout, orads, nhit
+	else: return mout, orads
+
+def radial_average(map, center=[0,0], step=1.0):
+	warnings.warn("radial_average has been renamed to rbin", DeprecationWarning)
+	return rbin(map, center=center, brel=step)
 
 def padslice(map, box, default=np.nan):
 	"""Equivalent to map[...,box[0,0]:box[1,0],box[0,1]:box[1,1]], except that
@@ -1783,6 +1891,23 @@ def read_map_geometry(fname, fmt=None, hdu=None):
 		shape, wcs = slice_geometry(shape, wcs, sel)
 	return shape, wcs
 
+def write_map_geometry(fname, shape, wcs, fmt=None):
+	"""Write an enmap geometry to file. The file type is inferred
+	from the file extension, unless fmt is passed.
+	fmt must be one of 'fits' and 'hdf'. Only fits is supposed for now, though."""
+	toks = fname.split(":")
+	fname = toks[0]
+	if fmt == None:
+		if   fname.endswith(".hdf"):     fmt = "hdf"
+		elif fname.endswith(".fits"):    fmt = "fits"
+		else: fmt = "fits"
+	if fmt == "fits":
+		write_fits_geometry(fname, shape, wcs)
+	elif fmt == "hdf":
+		raise NotImplementedError("Write write_hdf_geometry not implemented yet")
+	else:
+		raise ValueError
+
 def write_fits(fname, emap, extra={}):
 	"""Write an enmap to a fits file."""
 	# The fits write routines may attempt to modify
@@ -1800,6 +1925,16 @@ def write_fits(fname, emap, extra={}):
 	with warnings.catch_warnings():
 		warnings.filterwarnings('ignore')
 		hdus.writeto(fname, clobber=True)
+
+def write_fits_geometry(fname, shape, wcs):
+	"""Write just the geometry to a fits file that will only contain the header"""
+	header = wcs.to_header(relax=True)
+	header["NAXIS"] = len(shape)
+	for i, s in enumerate(shape[::-1]):
+		header["NAXIS%d"%(i+1)] = s
+	# Dummy, but must be present
+	header["BITPIX"] = -32
+	header.tofile(fname, overwrite=True)
 
 def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None):
 	"""Read an enmap from the specified fits file. By default,
@@ -1826,7 +1961,8 @@ def read_fits_geometry(fname, hdu=None):
 	the hdu argument to change this. The map must be stored as
 	a fits image."""
 	if hdu is None: hdu = 0
-	hdu = astropy.io.fits.open(fname)[hdu]
+	with utils.nowarn():
+		hdu = astropy.io.fits.open(fname)[hdu]
 	if hdu.header["NAXIS"] < 2:
 		raise ValueError("%s is not an enmap (only %d axes)" % (fname, hdu.header["NAXIS"]))
 	with warnings.catch_warnings():

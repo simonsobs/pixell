@@ -32,7 +32,13 @@ Dependencies
 Installing
 ----------
 
-To install, run:
+For installation instructions specific to NERSC/cori, see NERSC_.
+
+For installation instructions specific to MacOS X, see MACOSX_ (h/t Thibaut Louis).
+
+For all other, below are general instructions.
+
+To install, clone this repository and run:
 
 .. code-block:: console
 		
@@ -42,8 +48,9 @@ To test the installation, you can run:
 
 .. code-block:: console
 		
-   $ python setup.py test
+   $ py.test
    
+You may need to install pytest for the above to work (with `pip install pytest --user`).
 
 Existing ``libsharp`` installation (optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -111,3 +118,5 @@ If you do not have write access, create a fork of this repository and proceed as
   
 .. _Tutorials: https://github.com/simonsobs/pixell_tutorials/
 .. _Contributing: https://pixell.readthedocs.io/en/latest/contributing.html
+.. _NERSC: https://pixell.readthedocs.io/en/latest/nersc.html
+.. _MACOSX: https://github.com/simonsobs/pspy/blob/master/INSTALL_MACOS.rst
