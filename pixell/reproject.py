@@ -315,7 +315,7 @@ def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
 
 
 
-def ivar_hp_to_cyl(hmap, shape, wcs, rot=False,do_mask=True):
+def ivar_hp_to_cyl(hmap, shape, wcs, rot=False,do_mask=True,extensive=True):
     from . import mpi, utils
     import healpy as hp
     comm = mpi.COMM_WORLD
@@ -324,7 +324,6 @@ def ivar_hp_to_cyl(hmap, shape, wcs, rot=False,do_mask=True):
     nside = hp.npix2nside(hmap.size)
     dec, ra = enmap.posaxes(shape, wcs)
     pix = np.zeros(shape, np.int32)
-    psi = np.zeros(shape, dtype)
     # Get the pixel area. We assume a rectangular pixelization, so this is just
     # a function of y
     ipixsize = 4 * np.pi / (12 * nside ** 2)
@@ -344,11 +343,9 @@ def ivar_hp_to_cyl(hmap, shape, wcs, rot=False,do_mask=True):
         else:
             ipos = opos[::-1]
         pix[i : i + rstep, :] = hp.ang2pix(nside, np.pi / 2 - ipos[1], ipos[0])
-        psi[i:i+rstep,:] = -ipos[2]
         del ipos, opos
     for i in range(0, shape[-2], rstep):
         pix[i : i + rstep] = utils.allreduce(pix[i : i + rstep], comm)
-        psi[i:i+rstep] = utils.allreduce(psi[i:i+rstep], comm)
     omap = enmap.zeros((1,) + shape, wcs, dtype)
     imap = np.array(hmap).astype(dtype)
     imap = imap[None]
@@ -359,7 +356,7 @@ def ivar_hp_to_cyl(hmap, shape, wcs, rot=False,do_mask=True):
         del bad
     # Read off the nearest neighbor values
     omap[:] = imap[:, pix]
-    omap *= opixsize[:, None] / ipixsize
+    if extensive: omap *= opixsize[:, None] / ipixsize
     # We ignore QU mixing during rotation for the noise level, so
     # it makes no sense to maintain distinct levels for them
     if do_mask:
@@ -442,7 +439,7 @@ def get_rotated_pixels(shape_source, wcs_source, shape_target, wcs_target,
 
 
 def cutout(imap, width=None, ra=None, dec=None, pad=1, corner=False,
-           res=None, npix=None, return_slice=False):
+           res=None, npix=None, return_slice=False,sindex=None):
     if type(imap) == str:
         shape, wcs = enmap.read_map_geometry(imap)
     else:
@@ -459,8 +456,13 @@ def cutout(imap, width=None, ra=None, dec=None, pad=1, corner=False,
        fround(iy + npix / 2) > (Ny - pad) or \
        fround(ix + npix / 2) > (Nx - pad):
         return None
-    s = np.s_[...,fround(iy - npix / 2. + 0.5):fround(iy + npix / 2. + 0.5),
-              fround(ix - npix / 2. + 0.5):fround(ix + npix / 2. + 0.5)]
+    if sindex is None:
+        s = np.s_[...,fround(iy - npix / 2. + 0.5):fround(iy + npix / 2. + 0.5),
+                  fround(ix - npix / 2. + 0.5):fround(ix + npix / 2. + 0.5)]
+    else:
+        s = np.s_[sindex,fround(iy - npix / 2. + 0.5):fround(iy + npix / 2. + 0.5),
+                  fround(ix - npix / 2. + 0.5):fround(ix + npix / 2. + 0.5)]
+
     if return_slice:
         return s
     cutout = imap[s]
