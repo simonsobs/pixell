@@ -48,7 +48,7 @@ To test the installation, you can run:
 
 .. code-block:: console
 		
-   $ py.test
+   $ python setup.py test
    
 You may need to install pytest for the above to work (with `pip install pytest --user`).
 
@@ -77,6 +77,7 @@ If you are a developer, run:
 .. code-block:: console
 		
    $ python setup.py build_ext -i
+   $ py.test
 
 and add the cloned directory to your Python path so that changes you make in any python file are immediately reflected. e.g., in your ``.bashrc`` file,
 
