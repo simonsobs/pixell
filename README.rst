@@ -68,6 +68,13 @@ Intel compilers might require a two step installation as follows
    $ python setup.py build_ext -i --fcompiler=intelem --compiler=intelem
    $ python setup.py install --user
 
+On some systems, further specification might be required (make sure to get a fresh copy of the repository before trying out a new install method), e.g.:
+
+.. code-block:: console
+
+   $ LDSHARED="icc -shared" LD=icc LINKCC=icc CC=icc python setup.py build_ext -i --fcompiler=intelem --compiler=intelem
+   $ python setup.py install --user
+
 
 Development workflow (recommended)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
