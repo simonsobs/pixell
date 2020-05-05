@@ -628,6 +628,30 @@ def combine_beams(irads_array):
 		Ctot = B.dot(Ctot).dot(B.T)
 	return np.array([Ctot[0,0],Ctot[1,1],Ctot[0,1]])
 
+def regularize_beam(beam, cutoff=1e-2, nl=None):
+	"""Given a beam transfer function beam[...,nl], replace
+	small values with an extrapolation that has the property
+	that the ratio of any pair of such regularized beams is
+	constant in the extrapolated region."""
+	beam  = np.asarray(beam)
+	# Get the length of the output beam, and the l to which both exist
+	if nl is None: nl = beam.shape[-1]
+	nl_both = min(nl, beam.shape[-1])
+	# Build the extrapolation for the full range. We will overwrite the part
+	# we want to keep unextrapolated later.
+	l     = np.maximum(1,np.arange(nl))
+	vcut  = np.max(beam,-1)*cutoff
+	lcut  = np.argmin(beam > vcut, -1)
+	obeam = vcut * (l/lcut)**(2*np.log(cutoff))
+	# Get the mask for what we want to keep. This looks complicated, but that's
+	# just to support arbitrary-dimensionality (maybe that wasn't really necessary).
+	mask  = np.zeros(obeam.shape, int)
+	iflat = lcut.reshape(-1) + np.arange(lcut.size)*nl
+	mask.reshape(-1)[iflat] = 1
+	mask  = np.cumsum(mask,-1) < 0.5
+	obeam[:nl_both] = np.where(mask[:nl_both], beam[:nl_both], obeam[:nl_both])
+	return obeam
+
 def read_lines(fname, col=0):
 	"""Read lines from file fname, returning them as a list of strings.
 	If fname ends with :slice, then the specified slice will be applied
@@ -868,6 +892,11 @@ def pole_wrap(pos):
 	lat[back] = -lat[back]
 	lon[back]+= np.pi
 	return pos
+
+def parse_box(desc):
+	"""Given a string of the form from:to,from:to,from:to,... returns
+	an array [{from,to},:]"""
+	return np.array([[float(word) for word in pair] for pair in desc.split(",")]).T
 
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result
