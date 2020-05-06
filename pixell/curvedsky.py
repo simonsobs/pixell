@@ -540,6 +540,7 @@ def almxfl(alm,lfunc,ainfo=None):
 	return ainfo.lmul(alm, lfunc(l))
 
 
+
 def spin2eb(alm_plus, alm_minus, alm_E=None, alm_B=None, batchsize=100000):
 	"""Transform maps from + and - coefficients into E and B.
 	
@@ -642,4 +643,3 @@ def eb2spin(alm_E, alm_B, alm_plus=None, alm_minus=None, batchsize=100000):
 		alm_minus.reshape(-1)[i1:i2] = -E + 1j * B
 	
 	return alm_plus, alm_minus
-
