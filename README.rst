@@ -48,7 +48,7 @@ To test the installation, you can run:
 
 .. code-block:: console
 		
-   $ py.test
+   $ python setup.py test
    
 You may need to install pytest for the above to work (with `pip install pytest --user`).
 
@@ -68,6 +68,13 @@ Intel compilers might require a two step installation as follows
    $ python setup.py build_ext -i --fcompiler=intelem --compiler=intelem
    $ python setup.py install --user
 
+On some systems, further specification might be required (make sure to get a fresh copy of the repository before trying out a new install method), e.g.:
+
+.. code-block:: console
+
+   $ LDSHARED="icc -shared" LD=icc LINKCC=icc CC=icc python setup.py build_ext -i --fcompiler=intelem --compiler=intelem
+   $ python setup.py install --user
+
 
 Development workflow (recommended)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -77,6 +84,7 @@ If you are a developer, run:
 .. code-block:: console
 		
    $ python setup.py build_ext -i
+   $ py.test
 
 and add the cloned directory to your Python path so that changes you make in any python file are immediately reflected. e.g., in your ``.bashrc`` file,
 

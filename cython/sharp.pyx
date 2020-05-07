@@ -69,7 +69,7 @@ def map_info_healpix(int nside, int stride=1, weights=None):
 	cdef np.ndarray[np.float64_t,ndim=1] w = weights
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_weighted_healpix_geom_info (nside, stride, &w[0], &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_gauss_legendre(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Gauss-Legendre pixelization. Optimal
@@ -81,7 +81,7 @@ def map_info_gauss_legendre(int nrings, nphi=None, double phi0=0, stride_lon=Non
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_gauss_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_clenshaw_curtis(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Cylindrical Equi-rectangular pixelization
@@ -93,7 +93,7 @@ def map_info_clenshaw_curtis(int nrings, nphi=None, double phi0=0, stride_lon=No
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_cc_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_fejer1(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Cylindrical Equi-rectangular pixelization
@@ -105,7 +105,7 @@ def map_info_fejer1(int nrings, nphi=None, double phi0=0, stride_lon=None, strid
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_fejer1_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_fejer2(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Cylindrical Equi-rectangular pixelization
@@ -117,7 +117,7 @@ def map_info_fejer2(int nrings, nphi=None, double phi0=0, stride_lon=None, strid
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_fejer2_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_mw(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Cylindrical Equi-rectangular pixelization
@@ -129,7 +129,7 @@ def map_info_mw(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_la
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_mw_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 cdef map_info_from_geom(csharp.sharp_geom_info * geom):
 	"""Constructs a map_info from a gemoetry pointer."""
@@ -161,6 +161,11 @@ cdef map_info_from_geom(csharp.sharp_geom_info * geom):
 				ring += 1
 	cdef np.ndarray[np.int_t,ndim=1] order = np.argsort(offsets[:ring])
 	return map_info(theta[order],nphi[order],phi0[order],offsets[order],stride[order],weight[order])
+
+cdef map_info_from_geom_and_free(csharp.sharp_geom_info * geom):
+	res = map_info_from_geom(geom)
+	csharp.sharp_destroy_geom_info(geom)
+	return res
 
 cdef class alm_info:
 	cdef csharp.sharp_alm_info * info

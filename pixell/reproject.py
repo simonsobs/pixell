@@ -313,6 +313,59 @@ def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
         del x
     return enmap.ndmap(imap, wcs)
 
+
+
+def ivar_hp_to_cyl(hmap, shape, wcs, rot=False,do_mask=True,extensive=True):
+    from . import mpi, utils
+    import healpy as hp
+    comm = mpi.COMM_WORLD
+    rstep = 100
+    dtype = np.float32
+    nside = hp.npix2nside(hmap.size)
+    dec, ra = enmap.posaxes(shape, wcs)
+    pix = np.zeros(shape, np.int32)
+    # Get the pixel area. We assume a rectangular pixelization, so this is just
+    # a function of y
+    ipixsize = 4 * np.pi / (12 * nside ** 2)
+    opixsize = get_pixsize_rect(shape, wcs)
+    nblock = (shape[-2] + rstep - 1) // rstep
+    for bi in range(comm.rank, nblock, comm.size):
+        if bi % comm.size != comm.rank:
+            continue
+        i = bi * rstep
+        rdec = dec[i : i + rstep]
+        opos = np.zeros((2, len(rdec), len(ra)))
+        opos[0] = rdec[:, None]
+        opos[1] = ra[None, :]
+        if rot:
+            # This is unreasonably slow
+            ipos = coordinates.transform("equ", "gal", opos[::-1], pol=True)
+        else:
+            ipos = opos[::-1]
+        pix[i : i + rstep, :] = hp.ang2pix(nside, np.pi / 2 - ipos[1], ipos[0])
+        del ipos, opos
+    for i in range(0, shape[-2], rstep):
+        pix[i : i + rstep] = utils.allreduce(pix[i : i + rstep], comm)
+    omap = enmap.zeros((1,) + shape, wcs, dtype)
+    imap = np.array(hmap).astype(dtype)
+    imap = imap[None]
+    if do_mask:
+        bad = hp.mask_bad(imap)
+        bad |= imap <= 0
+        imap[bad] = 0
+        del bad
+    # Read off the nearest neighbor values
+    omap[:] = imap[:, pix]
+    if extensive: omap *= opixsize[:, None] / ipixsize
+    # We ignore QU mixing during rotation for the noise level, so
+    # it makes no sense to maintain distinct levels for them
+    if do_mask:
+        mask = omap[1:] > 0
+        omap[1:] = np.mean(omap[1:], 0)
+        omap[1:] *= mask
+        del mask
+    return omap
+
 # Helper functions
 
 
@@ -386,7 +439,7 @@ def get_rotated_pixels(shape_source, wcs_source, shape_target, wcs_target,
 
 
 def cutout(imap, width=None, ra=None, dec=None, pad=1, corner=False,
-           res=None, npix=None, return_slice=False):
+           res=None, npix=None, return_slice=False,sindex=None):
     if type(imap) == str:
         shape, wcs = enmap.read_map_geometry(imap)
     else:
@@ -403,8 +456,13 @@ def cutout(imap, width=None, ra=None, dec=None, pad=1, corner=False,
        fround(iy + npix / 2) > (Ny - pad) or \
        fround(ix + npix / 2) > (Nx - pad):
         return None
-    s = np.s_[...,fround(iy - npix / 2. + 0.5):fround(iy + npix / 2. + 0.5),
-              fround(ix - npix / 2. + 0.5):fround(ix + npix / 2. + 0.5)]
+    if sindex is None:
+        s = np.s_[...,fround(iy - npix / 2. + 0.5):fround(iy + npix / 2. + 0.5),
+                  fround(ix - npix / 2. + 0.5):fround(ix + npix / 2. + 0.5)]
+    else:
+        s = np.s_[sindex,fround(iy - npix / 2. + 0.5):fround(iy + npix / 2. + 0.5),
+                  fround(ix - npix / 2. + 0.5):fround(ix + npix / 2. + 0.5)]
+
     if return_slice:
         return s
     cutout = imap[s]
@@ -419,6 +477,19 @@ def rect_box(width, center=(0., 0.), height=None):
                     [height / 2. + ycen, width / 2. + xcen]])
     return box
 
+
+def get_pixsize_rect(shape, wcs):
+    """Return the exact pixel size in steradians for the rectangular cylindrical
+    projection given by shape, wcs. Returns area[ny], where ny = shape[-2] is the
+    number of rows in the image. All pixels on the same row have the same area."""
+    ymin = enmap.sky2pix(shape, wcs, [-np.pi / 2, 0])[0]
+    ymax = enmap.sky2pix(shape, wcs, [np.pi / 2, 0])[0]
+    y = np.arange(shape[-2])
+    x = y * 0
+    dec1 = enmap.pix2sky(shape, wcs, [np.maximum(ymin, y - 0.5), x])[0]
+    dec2 = enmap.pix2sky(shape, wcs, [np.minimum(ymax, y + 0.5), x])[0]
+    area = np.abs((np.sin(dec2) - np.sin(dec1)) * wcs.wcs.cdelt[0] * np.pi / 180)
+    return area
 
 def rect_geometry(width, res, height=None, center=(0., 0.), proj="car"):
     shape, wcs = enmap.geometry(pos=rect_box(
@@ -508,6 +579,10 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 
 	For reprojecting inverse variance maps, consider using the wrapper thumbnails_ivar,
 	which makes it easier to avoid common pitfalls."""
+	# Handle arbitrary coords shape
+	coords = np.asarray(coords)
+	ishape = coords.shape[:-1]
+	coords = coords.reshape(-1, coords.shape[-1])
 	# If the output geometry was not given explicitly, then build one
 	if oshape is None:
 		if res is None: res = min(np.abs(imap.wcs.wcs.cdelt))*utils.degree/2
@@ -546,6 +621,8 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 		# rotation from the output to the input
 		if pol: omaps[si] = enmap.rotate_pol(omaps[si], -rest[0])
 	if extensive: omaps *= omaps.pixsizemap()
+	# Restore original dimension
+	omaps = omaps.reshape(ishape + omaps.shape[1:])
 	return omaps
 
 def thumbnails_ivar(imap, coords, r=5*utils.arcmin, res=None, proj="tan",

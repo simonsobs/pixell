@@ -538,3 +538,5 @@ def almxfl(alm,lfunc,ainfo=None):
 	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
 	l = np.arange(ainfo.lmax+1.0)
 	return ainfo.lmul(alm, lfunc(l))
+
+	
