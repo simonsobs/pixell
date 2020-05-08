@@ -451,8 +451,8 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 		i2     = min(i1+bsize, shape[-2])
 		somap  = omap[...,i1:i2,:]
 		pix    = map.sky2pix(somap.posmap(), safe=safe)
-		y1     = max(np.min(pix[0]).astype(int)-1,0)
-		y2     = min(np.max(pix[1]).astype(int)+1,map.shape[-2])
+		y1     = max(np.min(pix[0]).astype(int)-3,0)
+		y2     = min(np.max(pix[0]).astype(int)+3,map.shape[-2])
 		pix[0] -= y1
 		somap[:] = utils.interpol(map[...,y1:y2,:], pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
 	return omap
@@ -1673,7 +1673,7 @@ def rbin(map, center=[0,0], bsize=None, brel=1.0, return_nhit=False):
 	return _bin_helper(map, r, bsize*brel, return_nhit=return_nhit)
 
 def lbin(map, bsize=None, brel=1.0, return_nhit=False):
-	"""Like rbin, but for fourier space"""
+	"""Like rbin, but for fourier space. Returns b(l),l"""
 	l = map.modlmap()
 	if bsize is None: bsize = min(abs(l[0,1]),abs(l[1,0]))
 	return _bin_helper(map, l, bsize*brel, return_nhit=return_nhit)

@@ -474,7 +474,8 @@ def populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400):
 # --------- Candidate replacement functions below. Please comment. ----------------
 
 def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*utils.arcmin,
-		order=3, oversample=4, pol=None, oshape=None, owcs=None, extensive=False, verbose=False):
+		order=3, oversample=4, pol=None, oshape=None, owcs=None, extensive=False, verbose=False,
+		filter=None):
 	"""Given an enmap [...,ny,nx] and a set of coords [n,{dec,ra}], extract a set
 	of thumbnail images [n,...,thumby,thumbx] centered on each set of
 	coordinates. Each of these thumbnail images is projected onto a local tangent
@@ -508,6 +509,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 
 	For reprojecting inverse variance maps, consider using the wrapper thumbnails_ivar,
 	which makes it easier to avoid common pitfalls."""
+	# FIXME: Specifying a geometry manually is broken - see usage of r in neighborhood_pixboxes below
 	# If the output geometry was not given explicitly, then build one
 	if oshape is None:
 		if res is None: res = min(np.abs(imap.wcs.wcs.cdelt))*utils.degree/2
@@ -521,6 +523,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 	opos = enmap.posmap(oshape, owcs)
 	# Get the pixel area around each of the coordinates
 	rtot     = r + apod
+	apod_pix = utils.nint(apod/(np.min(np.abs(imap.wcs.wcs.cdelt))*utils.degree))
 	pixboxes = enmap.neighborhood_pixboxes(imap.shape, imap.wcs, coords, rtot)
 	# Define our output maps, which we will fill below
 	omaps = enmap.zeros((nsrc,)+imap.shape[:-2]+oshape, owcs, imap.dtype)
@@ -531,8 +534,9 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 				pixbox[1,i] = pixbox[0,i] + fft.fft_len(pixbox[1,i]-pixbox[0,i], direction="above", factors=[2,3,5])
 		ithumb = imap.extract_pixbox(pixbox)
 		if extensive: ithumb /= ithumb.pixsizemap()
-		ithumb = ithumb.apod(apod, fill="median")
-		print("%4d/%d %6.2f %6.2f %8.2f %dx%d" % (si+1, nsrc, coords[si,0]/utils.degree, coords[si,1]/utils.degree, np.max(ithumb), ithumb.shape[-2], ithumb.shape[-1]))
+		ithumb = ithumb.apod(apod_pix, fill="median")
+		if filter is not None: ithumb = filter(ithumb)
+		if verbose: print("%4d/%d %6.2f %6.2f %8.2f %dx%d" % (si+1, nsrc, coords[si,0]/utils.degree, coords[si,1]/utils.degree, np.max(ithumb), ithumb.shape[-2], ithumb.shape[-1]))
 		# Oversample using fourier if requested. We do this because fourier
 		# interpolation is better than spline interpolation overall
 		if oversample > 1:

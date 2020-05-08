@@ -404,6 +404,10 @@ def nearest_product(n, factors, direction="below"):
 	return best
 
 def mkdir(path):
+	# It's useful to be able to do mkdir(os.path.dirname(fname)) to create the directory
+	# a file should be in if it's missing. If fname has no directory component dirname
+	# returns "". This check prevents this from causing an error.
+	if path == "": return
 	try:
 		os.makedirs(path)
 	except OSError as exception:
@@ -1621,6 +1625,14 @@ blackbody = planck
 def graybody(f, T, beta=1):
 	"""Return a graybody spectrum at the frequency f and temperature T in Jy/sr"""
 	return  2*h*f**(3+beta)/c**2/(np.exp(h*f/(k*T))-1) * 1e26
+
+def tsz_spectrum(f, T=T_cmb):
+	"""The increase in flux due to tsz in Jy/sr per unit of y. This is
+	just the first order approximation, but it's good enough for realistic
+	values of y, i.e. y << 1"""
+	x  = h*f/(k*T)
+	ex = np.exp(x)
+	return 2*h*f**3/c**2 * (x*ex)/(ex-1)**2 * (x*(ex+1)/(ex-1)-4) * 1e26
 
 ### Binning ####
 
