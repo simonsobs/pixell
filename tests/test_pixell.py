@@ -15,6 +15,7 @@ from pixell import enplot
 from pixell import powspec
 from pixell import reproject
 from pixell import wcsutils
+from pixell import utils as u
 import numpy as np
 import pickle
 import os,sys
@@ -56,14 +57,14 @@ class PixelTests(unittest.TestCase):
 
         for lmax in [100,400,500,1000]:
             ainfo = sharp.alm_info(lmax)
-            alms = hp.synalm(np.ones(lmax+1),lmax = lmax)
+            alms = hp.synalm(np.ones(lmax+1),lmax = lmax, new=True)
             filtering = np.ones(lmax+1)
             alms0 = ainfo.lmul(alms.copy(),filtering)
             assert np.all(np.isclose(alms0,alms))
 
         for lmax in [100,400,500,1000]:
             ainfo = sharp.alm_info(lmax)
-            alms = hp.synalm(np.ones(lmax+1),lmax = lmax)
+            alms = hp.synalm(np.ones(lmax+1),lmax = lmax, new=True)
             alms0 = curvedsky.almxfl(alms.copy(),lambda x: np.ones(x.shape))
             assert np.all(np.isclose(alms0,alms))
             
@@ -251,6 +252,66 @@ class PixelTests(unittest.TestCase):
         area = np.rad2deg(np.rad2deg(enmap.area(shape,wcs)))
         assert np.all(np.isclose(box,np.array([[-500,-500],[500,500]])))
         assert np.isclose(area,1000000)
+
+
+    def test_pospix(self):
+        # Posmap separable and non-separable on CAR
+        for res in [6,12,24]:
+            shape,wcs = enmap.fullsky_geometry(res=np.deg2rad(res/60.),proj='car')
+            posmap1 = enmap.posmap(shape,wcs)
+            posmap2 = enmap.posmap(shape,wcs,separable=True)
+            assert np.all(np.isclose(posmap1,posmap2))
+
+        # Pixmap plain
+        pres = 0.5
+        shape,wcs = enmap.geometry(pos=(0,0),shape=(30,30),res=pres*u.degree,proj='plain')
+        yp,xp = enmap.pixshapemap(shape,wcs)
+        assert np.all(np.isclose(yp,pres*u.degree))
+        assert np.all(np.isclose(xp,pres*u.degree))
+        yp,xp = enmap.pixshape(shape,wcs)
+        parea = enmap.pixsize(shape,wcs)
+        assert np.isclose(parea,(pres*u.degree)**2)
+        assert np.isclose(yp,pres*u.degree)
+        assert np.isclose(xp,pres*u.degree)
+        pmap = enmap.pixsizemap(shape,wcs)
+        assert np.all(np.isclose(pmap,(pres*u.degree)**2))
+
+        # Pixmap CAR
+        pres = 0.1
+        dec_cut = 89.5 # pixsizemap is not accurate near the poles currently
+        shape,wcs = enmap.band_geometry(dec_cut=dec_cut*u.degree,res=pres*u.degree,proj='car')
+        # Current slow and general but inaccurate near the poles implementation
+        pmap = enmap.pixsizemap(shape,wcs)
+        # Fast CAR-specific pixsizemap implementation
+        dra, ddec = wcs.wcs.cdelt*u.degree
+        dec = enmap.posmap([shape[-2],1],wcs)[0,:,0]
+        area = np.abs(dra*(np.sin(np.minimum(np.pi/2.,dec+ddec/2))-np.sin(np.maximum(-np.pi/2.,dec-ddec/2))))
+        Nx = shape[-1]
+        pmap2 = enmap.ndmap(area[...,None].repeat(Nx,axis=-1),wcs)
+        assert np.all(np.isclose(pmap,pmap2))
+        
+
+    def test_project_nn(self):
+        shape,wcs = enmap.fullsky_geometry(res=np.deg2rad(12/60.),proj='car')
+        shape2,wcs2 = enmap.fullsky_geometry(res=np.deg2rad(6/60.),proj='car')
+        shape3,wcs3 = enmap.fullsky_geometry(res=np.deg2rad(24/60.),proj='car')
+        imap = enmap.ones(shape,wcs)
+        omap2 = enmap.project(imap,shape2,wcs2,order=0,mode='wrap')
+        omap3 = enmap.project(imap,shape3,wcs3,order=0,mode='wrap')
+        assert np.all(np.isclose(omap2,1))
+        assert np.all(np.isclose(omap3,1))
+
+    def test_wcsunequal(self):
+        shape1,wcs1 = enmap.geometry(pos=(0,0),shape=(100,100),res=1*u.arcmin,proj='car')
+        shape1,wcs2 = enmap.geometry(pos=(0,0),shape=(100,100),res=1*u.arcmin,proj='cea')
+        shape1,wcs3 = enmap.geometry(pos=(10,10),shape=(100,100),res=1*u.arcmin,proj='car')
+        shape1,wcs4 = enmap.geometry(pos=(0,0),shape=(100,100),res=2*u.arcmin,proj='car')
+        assert not(wcsutils.equal(wcs1,wcs2))
+        assert not(wcsutils.equal(wcs1,wcs3))
+        assert not(wcsutils.equal(wcs1,wcs4))
+        
+        
+        
                                 
         
 
