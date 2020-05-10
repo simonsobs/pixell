@@ -16,6 +16,7 @@ from pixell import powspec
 from pixell import reproject
 from pixell import wcsutils
 from pixell import utils as u
+from pixell import colors
 import numpy as np
 import pickle
 import os,sys
