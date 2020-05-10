@@ -579,6 +579,10 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 
 	For reprojecting inverse variance maps, consider using the wrapper thumbnails_ivar,
 	which makes it easier to avoid common pitfalls."""
+	# Handle arbitrary coords shape
+	coords = np.asarray(coords)
+	ishape = coords.shape[:-1]
+	coords = coords.reshape(-1, coords.shape[-1])
 	# If the output geometry was not given explicitly, then build one
 	if oshape is None:
 		if res is None: res = min(np.abs(imap.wcs.wcs.cdelt))*utils.degree/2
@@ -617,6 +621,8 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 		# rotation from the output to the input
 		if pol: omaps[si] = enmap.rotate_pol(omaps[si], -rest[0])
 	if extensive: omaps *= omaps.pixsizemap()
+	# Restore original dimension
+	omaps = omaps.reshape(ishape + omaps.shape[1:])
 	return omaps
 
 def thumbnails_ivar(imap, coords, r=5*utils.arcmin, res=None, proj="tan",
