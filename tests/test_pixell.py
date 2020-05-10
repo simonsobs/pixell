@@ -311,7 +311,26 @@ class PixelTests(unittest.TestCase):
         assert not(wcsutils.equal(wcs1,wcs4))
         
         
-        
+    def test_scale(self):
+        # Test (with a plain geometry) that scale_geometry
+        # will result in geometries with the same bounding box
+        # but different area pixel
+        pres = 0.5
+        ufact = 2
+        dfact = 0.5
+        shape,wcs = enmap.geometry(pos=(0,0),shape=(30,30),res=pres*u.arcmin,proj='plain')
+        ushape,uwcs = enmap.scale_geometry(shape,wcs,ufact)
+        dshape,dwcs = enmap.scale_geometry(shape,wcs,dfact)
+        box = enmap.box(shape,wcs)
+        ubox = enmap.box(ushape,uwcs)
+        dbox = enmap.box(dshape,dwcs)
+        parea = enmap.pixsize(shape,wcs)
+        uparea = enmap.pixsize(ushape,uwcs)
+        dparea = enmap.pixsize(dshape,dwcs)
+        assert np.all(np.isclose(box,ubox))
+        assert np.all(np.isclose(box,dbox))
+        assert np.isclose(parea/(ufact**2),uparea)
+        assert np.isclose(parea/(dfact**2),dparea)
                                 
         
 
