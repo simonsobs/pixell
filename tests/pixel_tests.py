@@ -2,7 +2,7 @@ from __future__ import print_function
 from pixell import sharp
 import matplotlib
 matplotlib.use('Agg')
-from pixell import enmap,curvedsky,wcsutils,reproject
+from pixell import enmap,curvedsky,wcsutils,reproject,utils
 import numpy as np
 import itertools,yaml,pickle,os,sys
 import matplotlib.pyplot as plt
@@ -164,12 +164,13 @@ def get_extraction_test_results(yaml_file):
             imap = generate_map(geos[g][0][-2:],geos[g][1],spectra[s],lmax,seed)
 
             # Do write and read test
-            filename = "temporary_map.fits" # NOT THREAD SAFE
+            filename = "temporary_map.fits"
             enmap.write_map(filename,imap)
             imap_in = enmap.read_map(filename)
             check_equality(imap,imap_in)
             for e in config['extracts']:
-                print("Doing test for extract ",e['name']," with geometry ",g," and spectrum ",s,"...")
+                print("Doing test for extract ",e['name']," with geometry ", \
+                      g," and spectrum ",s,"...")
                 if e['type']=='slice':
                     box = np.deg2rad(np.array(e['box_deg']))
                     cutout = enmap.read_map(filename,box=box)
@@ -178,8 +179,16 @@ def get_extraction_test_results(yaml_file):
                     dec_deg,ra_deg = e['center_deg']
                     width_arcmin = e['width_arcmin']
                     res_arcmin = e['res_arcmin']
-                    cutout = reproject.postage_stamp(filename,ra_deg,dec_deg,width_arcmin,res_arcmin,proj='gnomonic')
-                    cutout_internal = reproject.postage_stamp(imap,ra_deg,dec_deg,width_arcmin,res_arcmin,proj='gnomonic')
+                    file_proxy = enmap.read_map(filename,delayed=True)
+                    coords = np.array([dec_deg,ra_deg]) * utils.degree
+                    cutout = reproject.thumbnails(file_proxy,coords,
+                                                  r=width_arcmin/2.*utils.arcmin,
+                                                  res=res_arcmin*utils.arcmin,
+                                                  proj='tan')
+                    cutout_internal = reproject.thumbnails(imap,coords,
+                                                           r = width_arcmin/2.*utils.arcmin,
+                                                           res=res_arcmin*utils.arcmin,
+                                                           proj='tan')
                 check_equality(cutout,cutout_internal)
                 pixels = get_reference_pixels(cutout.shape)
                 results[g][s]['refpixels'] = get_pixel_values(cutout,pixels)
