@@ -55,7 +55,11 @@ You may need to install pytest for the above to work (with `pip install pytest -
 Existing ``libsharp`` installation (optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Libsharp is installed automatically by setup.py. If instead you want to use an existing ``libsharp`` installation, you can do so by symlinking the ``libsharp`` directory into a directory called ``_deps`` in the root directory, such that the file ``pixell/_deps/libsharp/libsharp/sharp.c`` exists.
+Libsharp is installed automatically by setup.py. The installation script will
+attempt to automatically git clone the latest version and compile it.  If
+instead you want to use an existing ``libsharp`` installation, you can do so by
+symlinking the ``libsharp`` directory into a directory called ``_deps`` in the
+root directory, such that the file ``pixell/_deps/libsharp/libsharp/sharp.c`` exists.
 
    
 Intel compilers

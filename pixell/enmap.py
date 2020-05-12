@@ -439,7 +439,7 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 	regions in the map by masking them before interpolating.
 	This uses local interpolation, and will lose information
 	when downgrading compared to averaging down."""
-	# Skip expensive operation is map is compatible
+	# Skip expensive operation if map is compatible
 	if not force:
 		if wcsutils.equal(map.wcs, wcs) and tuple(shape[-2:]) == tuple(shape[-2:]):
 			return map.copy()
@@ -1894,7 +1894,7 @@ def read_map_geometry(fname, fmt=None, hdu=None):
 def write_map_geometry(fname, shape, wcs, fmt=None):
 	"""Write an enmap geometry to file. The file type is inferred
 	from the file extension, unless fmt is passed.
-	fmt must be one of 'fits' and 'hdf'. Only fits is supposed for now, though."""
+	fmt must be one of 'fits' and 'hdf'. Only fits is supported for now, though."""
 	toks = fname.split(":")
 	fname = toks[0]
 	if fmt == None:
