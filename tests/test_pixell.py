@@ -241,14 +241,14 @@ class PixelTests(unittest.TestCase):
 
     def test_plain_wcs(self):
         # Test area and box for a small Cartesian geometry
-        shape,wcs = enmap.geometry(res=np.deg2rad(1./60.),shape=(600,600),pos=(0,0),proj='plain')
+        shape,wcs = enmap.geometry(res=np.deg2rad(1./60.),shape=(600,600),pos=(0,0),force=True,proj='plain')
         box = np.rad2deg(enmap.box(shape,wcs))
         area = np.rad2deg(np.rad2deg(enmap.area(shape,wcs)))
         assert np.all(np.isclose(box,np.array([[-5,-5],[5,5]])))
         assert np.isclose(area,100.)
 
         # and for an artifical Cartesian geometry with area>4pi
-        shape,wcs = enmap.geometry(res=np.deg2rad(10),shape=(100,100),pos=(0,0),proj='plain')
+        shape,wcs = enmap.geometry(res=np.deg2rad(10),shape=(100,100),pos=(0,0),force=True,proj='plain')
         box = np.rad2deg(enmap.box(shape,wcs))
         area = np.rad2deg(np.rad2deg(enmap.area(shape,wcs)))
         assert np.all(np.isclose(box,np.array([[-500,-500],[500,500]])))

@@ -122,24 +122,27 @@ def scale(wcs, scale=1, rowmajor=False, corner=False):
 # Should be easy to construct something that's part of a
 # clenshaw-curtis or fejer sky.
 
-def plain(pos, res=None, shape=None, rowmajor=False, ref=None):
+def plain(pos, res=None, shape=None, rowmajor=False, ref=None, align=False):
 	"""Set up a plain coordinate system (non-cyclical)"""
 	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
 	w = WCS(naxis=2)
 	w.wcs.crval = mid
 	if streq(ref, "standard"): ref = None
+	if ref is None and align:
+		ref = w.wcs.crval
 	return finalize(w, pos, res, shape, ref=ref)
 
-def car(pos, res=None, shape=None, rowmajor=False, ref=None):
+def car(pos, res=None, shape=None, rowmajor=False, ref=None, align=False):
 	"""Set up a plate carree system. See the build function for details."""
 	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---CAR", "DEC--CAR"]
 	w.wcs.crval = np.array([mid[0],0])
-	if streq(ref, "standard"): ref = (0,0)
+	if ref is None and align:
+		ref = (0,0)
 	return finalize(w, pos, res, shape, ref=ref)
 
-def cea(pos, res=None, shape=None, rowmajor=False, lam=None, ref=None):
+def cea(pos, res=None, shape=None, rowmajor=False, lam=None, ref=None, align=False):
 	"""Set up a cylindrical equal area system. See the build function for details."""
 	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
 	if lam is None:
@@ -148,7 +151,8 @@ def cea(pos, res=None, shape=None, rowmajor=False, lam=None, ref=None):
 	w.wcs.ctype = ["RA---CEA", "DEC--CEA"]
 	w.wcs.set_pv([(2,1,lam)])
 	w.wcs.crval = np.array([mid[0],0])
-	if streq(ref, "standard"): ref = (0,0)
+	if ref is None and align:
+		ref = (0,0)
 	return finalize(w, pos, res, shape, ref=ref)
 
 def mer(pos, res=None, shape=None, rowmajor=False, ref=None):
@@ -157,10 +161,11 @@ def mer(pos, res=None, shape=None, rowmajor=False, ref=None):
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---MER", "DEC--MER"]
 	w.wcs.crval = np.array([mid[0],0])
-	if streq(ref, "standard"): ref = (0,0)
+	if ref is None and align:
+		ref = (0,0)
 	return finalize(w, pos, res, shape, ref=ref)
 
-def zea(pos, res=None, shape=None, rowmajor=False, ref=None):
+def zea(pos, res=None, shape=None, rowmajor=False, ref=None, align=False):
 	"""Setups up an oblate Lambert's azimuthal equal area system.
 	See the build function for details. Don't use this if you want
 	a polar projection."""
@@ -168,12 +173,12 @@ def zea(pos, res=None, shape=None, rowmajor=False, ref=None):
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---ZEA", "DEC--ZEA"]
 	w.wcs.crval = mid
-	w, ref = _apply_zenithal_ref(w, ref)
-	return finalize(w, pos, res, shape, ref=ref)
+	ref_align = _apply_zenithal_ref(w, ref, align)
+	return finalize(w, pos, res, shape, ref=ref_align)
 
 # The airy distribution is a bit different, since is needs to
 # know the size of the patch.
-def air(pos, res=None, shape=None, rowmajor=False, rad=None, ref=None):
+def air(pos, res=None, shape=None, rowmajor=False, rad=None, ref=None, align=False):
 	"""Setups up an Airy system. See the build function for details."""
 	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
 	if rad is None:
@@ -185,29 +190,47 @@ def air(pos, res=None, shape=None, rowmajor=False, rad=None, ref=None):
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---AIR","DEC--AIR"]
 	w.wcs.set_pv([(2,1,90-rad)])
-	w, ref = _apply_zenithal_ref(w, ref)
-	return finalize(w, pos, res, shape, ref=ref)
+	ref_align = _apply_zenithal_ref(w, ref, align)
+	return finalize(w, pos, res, shape, ref=ref_align)
 
-def tan(pos, res=None, shape=None, rowmajor=False, ref=None):
+def tan(pos, res=None, shape=None, rowmajor=False, ref=None, align=False):
 	"""Set up a gnomonic (tangent plane) system. See the build function for details."""
 	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
 	w.wcs.crval = mid
-	w, ref = _apply_zenithal_ref(w, ref)
-	return finalize(w, pos, res, shape, ref=ref)
+	ref_align = _apply_zenithal_ref(w, ref, align)
+	return finalize(w, pos, res, shape, ref=ref_align)
 
 systems = {"car": car, "cea": cea, "mer": mer, "air": air, "zea": zea, "tan": tan, "gnom": tan, "plain": plain }
 
-def build(pos, res=None, shape=None, rowmajor=False, system="cea", ref=None, **kwargs):
+def build(pos, res=None, shape=None, rowmajor=False, system="cea", ref=None,
+		  align=None, **kwargs):
 	"""Set up the WCS system named by the "system" argument.
 	pos can be either a [2] center position or a [{from,to},2]
 	bounding box. At least one of res or shape must be specified.
 	If res is specified, it must either be a number, in
 	which the same resolution is used in each direction,
 	or [2]. If shape is specified, it must be [2]. All angles
-	are given in degrees."""
-	return systems[system.lower()](pos, res, shape, rowmajor, ref=ref, **kwargs)
+	are given in degrees.
+
+	Keywords ref (shape [2]) and align (bool) offer some control over
+	crval and crpix.  In zenithal projections, ref specifies CRVAL
+	directly (otherwise it defaults to be at the center of the
+	requested footprint), and is taken to be the alignment target (if
+	align is True).  In cylindrical projections, coordinates in ref
+	are the alignment target only.  If align=True, the CRPIX will be
+	tweaked slighly (less than 0.5 pixels) so that the alignment
+	target is a pixel center.  This is the final step in the WCS
+	construction and can result in a footprint that is offset slightly
+	from what was requested.
+
+	"""
+	if align is None:
+		align = (ref is not None)
+	if ref == "standard":  # deprecated?
+		ref = None
+	return systems[system.lower()](pos, res, shape, rowmajor, ref=ref, align=align, **kwargs)
 
 def validate(pos, res, shape, rowmajor=False):
 	pos = np.asarray(pos)
@@ -234,7 +257,8 @@ def validate(pos, res, shape, rowmajor=False):
 
 def finalize(w, pos, res, shape, ref=None):
 	"""Common logic for the various wcs builders. Fills in the reference
-	pixel and resolution."""
+	pixel and resolution.
+	"""
 	w.wcs.crpix = [1,1]
 	if res is None:
 		# Find the resolution that gives our box the required extent.
@@ -254,25 +278,27 @@ def finalize(w, pos, res, shape, ref=None):
 		off = w.wcs_world2pix(pos[0,None],0)[0]+0.5
 		w.wcs.crpix -= off
 	if ref is not None:
-		# Tweak wcs so that crval is an integer number of
-		# pixels away from ref.  This is most straight-forward
-		# if one simply adjusts crpix.
+		# Tweak crpix by as little as possible so that the position in
+		# ref is a pixel center.
 		off = (w.wcs_world2pix(np.asarray(ref)[None], 1)[0] + 0.5) % 1 - 0.5
 		w.wcs.crpix -= off
 	return w
 
-def _apply_zenithal_ref(w, ref):
+def _apply_zenithal_ref(w, ref, align):
 	"""Input is a wcs w and ref is a position (dec,ra) or a special value
-	(None, 'standard').  Returns tuple (w, ref_out).  If ref is a
-	position, it is copied into w.wcs.crval and ref_out=ref.
-	Otherwise, w is unmodified and ref_out=w.wcs.crval."""
-	if isinstance(ref, str) and ref == 'standard':
+	(None, 'standard').  If ref is a position, it is copied into
+	w.wcs.crval.  If align=True, the updated (or unchanged) crval is
+	returned as ref_align, to be used for grid alignment.  If
+	align=False, None is returned.
+	"""
+	if isinstance(ref, str) and ref == "standard":
 		ref = None
-	if ref is None:
-		ref = w.wcs.crval
-	else:
+	if ref is not None:
 		w.wcs.crval = ref
-	return w, ref
+	if align:
+		return w.wcs.crval
+	return None
+
 
 def angdist(lon1,lat1,lon2,lat2):
 	return np.arccos(np.cos(lat1)*np.cos(lat2)*(np.cos(lon1)*np.cos(lon2)+np.sin(lon1)*np.sin(lon2))+np.sin(lat1)*np.sin(lat2))

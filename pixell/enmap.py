@@ -1205,8 +1205,8 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 		assert(len(ref) == 2)
 	except (TypeError, ValueError):
 		pass
-	if ref is None and not force: ref = "standard"
-	wcs = wcsutils.build(pos, res, shape, rowmajor=True, system=proj, ref=ref, **kwargs)
+	wcs = wcsutils.build(pos, res, shape, rowmajor=True, system=proj,
+                             ref=ref, align=not force, **kwargs)
 	if shape is None:
 		# Infer shape. WCS does not allow us to wrap around the
 		# sky, so shape mustn't be large enough to make that happen.
