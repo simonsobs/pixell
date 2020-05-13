@@ -56,7 +56,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 		if proj=='tan':
 			oshape, owcs = gnomonic_pole_geometry(r*2., res)
 		else:
-			oshape, owcs = enmap.geometry(pos=[[-r,r],[r,-r]], res=res, proj=proj,force=True)
+			oshape, owcs = enmap.geometry(pos=[[-r,-r],[r,r]], res=res, proj=proj,force=True)
 	# Check if we should be doing polarization rotation
 	pol_compat = imap.ndim >= 3 and imap.shape[-3] == 3
 	if pol is None: pol = pol_compat
