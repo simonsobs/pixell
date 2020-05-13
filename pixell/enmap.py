@@ -439,7 +439,7 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 	regions in the map by masking them before interpolating.
 	This uses local interpolation, and will lose information
 	when downgrading compared to averaging down."""
-	# Skip expensive operation is map is compatible
+	# Skip expensive operation if map is compatible
 	if not force:
 		if wcsutils.equal(map.wcs, wcs) and tuple(shape[-2:]) == tuple(shape[-2:]):
 			return map.copy()
@@ -1685,15 +1685,18 @@ def _bin_helper(map, r, bsize, return_nhit=False):
 	functions on this one."""
 	# Get the number of bins
 	n     = int(np.max(r/bsize))
-	orads = (0.5+np.arange(n))*bsize
 	rinds = (r/bsize).reshape(-1).astype(int)
-	# Ok, rebin the map. We use this using bincount, which can be a bit slow
+	# Ok, rebin the map. We do this using bincount, which can be a bit slow
 	mflat = map.reshape((-1,)+map.shape[-2:])
 	mout = np.zeros((len(mflat),n))
 	nhit = np.bincount(rinds)[:n]
 	for i, m in enumerate(mflat):
 		mout[i] = np.bincount(rinds, weights=m.reshape(-1))[:n]/nhit
 	mout = mout.reshape(map.shape[:-2]+mout.shape[1:])
+	# What r should we assign to each bin? We could just use the bin center,
+	# but since we're averaging point samples in each bin, it makes more sense
+	# to assign the same average of the r values
+	orads = np.bincount(rinds, weights=r.reshape(-1))[:n]/nhit
 	if return_nhit: return mout, orads, nhit
 	else: return mout, orads
 
@@ -1848,7 +1851,7 @@ def write_map(fname, emap, fmt=None, extra={}):
 	else:
 		raise ValueError
 
-def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None):
+def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False):
 	"""Read an enmap from file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'."""
@@ -1860,9 +1863,9 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wr
 		elif fname.endswith(".fits.gz"): fmt = "fits"
 		else: fmt = "fits"
 	if fmt == "fits":
-		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu)
+		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu, delayed=delayed)
 	elif fmt == "hdf":
-		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs)
+		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed)
 	else:
 		raise ValueError
 	if len(toks) > 1:
@@ -1894,7 +1897,7 @@ def read_map_geometry(fname, fmt=None, hdu=None):
 def write_map_geometry(fname, shape, wcs, fmt=None):
 	"""Write an enmap geometry to file. The file type is inferred
 	from the file extension, unless fmt is passed.
-	fmt must be one of 'fits' and 'hdf'. Only fits is supposed for now, though."""
+	fmt must be one of 'fits' and 'hdf'. Only fits is supported for now, though."""
 	toks = fname.split(":")
 	fname = toks[0]
 	if fmt == None:
@@ -1936,7 +1939,7 @@ def write_fits_geometry(fname, shape, wcs):
 	header["BITPIX"] = -32
 	header.tofile(fname, overwrite=True)
 
-def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None):
+def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False):
 	"""Read an enmap from the specified fits file. By default,
 	the map and coordinate system will be read from HDU 0. Use
 	the hdu argument to change this. The map must be stored as
@@ -1952,8 +1955,8 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, w
 	if wcs is None:
 		with warnings.catch_warnings():
 			wcs = wcsutils.WCS(hdu.header).sub(2)
-	wrapper = fits_wrapper(hdu, wcs, threshold=sel_threshold)
-	return read_helper(wrapper, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode)
+	proxy = ndmap_proxy_fits(hdu, wcs, fname=fname, threshold=sel_threshold)
+	return read_helper(proxy, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, delayed=delayed)
 
 def read_fits_geometry(fname, hdu=None):
 	"""Read an enmap wcs from the specified fits file. By default,
@@ -1983,7 +1986,7 @@ def write_hdf(fname, emap, extra={}):
 		for key, val in extra.items():
 			hfile[key] = val
 
-def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None):
+def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False):
 	"""Read an enmap from the specified hdf file. Two formats
 	are supported. The old enmap format, which simply used
 	a bounding box to specify the coordinates, and the new
@@ -2000,8 +2003,8 @@ def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wr
 			header[key] = fix_python3(hwcs[key].value)
 		if wcs is None:
 			wcs = wcsutils.WCS(header).sub(2)
-		wrapper = hdf_wrapper(data, wcs, threshold=sel_threshold)
-		return read_helper(wrapper, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode)
+		proxy = ndmap_proxy_hdf(data, wcs, fname=fname, threshold=sel_threshold)
+		return read_helper(proxy, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, delayed=delayed)
 
 def read_hdf_geometry(fname):
 	"""Read an enmap wcs from the specified hdf file."""
@@ -2023,8 +2026,9 @@ def fix_python3(s):
 		else: return s
 	except TypeError: return s
 
-def read_helper(data, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6):
+def read_helper(data, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, delayed=False):
 	"""Helper function for map reading. Handles the slicing, sky-wrapping and capping, etc."""
+	if delayed: return data # Slicing not supported yet when we want to return a proxy object
 	if geometry is not None: data = extract(data, *geometry, wrap=wrap)
 	if box      is not None: data = submap(data, box, wrap=wrap)
 	if pixbox   is not None: data = extract_pixbox(data, pixbox, wrap=wrap)
@@ -2037,14 +2041,31 @@ def read_helper(data, sel=None, box=None, pixbox=None, geometry=None, wrap="auto
 # extract and submap operations on fits and hdf maps without needing
 # to read in all the data.
 
-class fits_wrapper:
-	def __init__(self, hdu, wcs, threshold=1e7):
-		self.hdu       = hdu
-		self.wcs       = wcs
+class ndmap_proxy:
+	def __init__(self, shape, wcs, dtype, fname="<none>", threshold=1e7):
+		self.fname, self.shape, self.wcs, self.dtype = fname, shape, wcs, dtype
 		self.threshold = threshold
-		self.dtype     = fix_endian(hdu.section[(slice(0,1),)*hdu.header["NAXIS"]]).dtype
 	@property
-	def shape(self): return self.hdu.shape
+	def ndim(self): return len(self.shape)
+	@property
+	def geometry(self): return self.shape, self.wcs
+	@property
+	def npix(self): return self.shape[-2]*self.shape[-1]
+	def __str__(self): return repr(self)
+	def __repr__(self): return "ndmap_proxy(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
+	def __getslice__(self, a, b=None, c=None): return self[slice(a,b,c)]
+	def __getitem__(self, sel): raise NotImplementedError("ndmap_proxy must be subclassed")
+
+# Copy over some methos from ndmap
+for name in ["sky2pix", "pix2sky", "box", "pixbox_of", "posmap", "pixmap", "lmap", "modlmap", "modrmap", "area", "pixsize", "pixshape",
+		"pixsizemap", "pixshapemap", "extent", "distance_from", "center", "extract", "extract_pixbox"]:
+	setattr(ndmap_proxy, name, getattr(ndmap, name))
+
+class ndmap_proxy_fits(ndmap_proxy):
+	def __init__(self, hdu, wcs, fname="<none>", threshold=1e7):
+		self.hdu = hdu
+		dtype    = fix_endian(hdu.section[(slice(0,1),)*hdu.header["NAXIS"]]).dtype
+		ndmap_proxy.__init__(self, hdu.shape, wcs, dtype, fname=fname, threshold=threshold)
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [len(self.shape)-2,2])
 		if len(psel) > 2: raise IndexError("too many indices")
@@ -2054,18 +2075,12 @@ class fits_wrapper:
 			res = self.hdu.section[sel1][(Ellipsis,)+sel2]
 		else: res = self.hdu.data[sel]
 		return ndmap(fix_endian(res), wcs)
+	def __repr__(self): return "ndmap_proxy_fits(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
 
-class hdf_wrapper:
-	def __init__(self, dset, wcs, threshold=1e7):
+class ndmap_proxy_hdf(ndmap_proxy):
+	def __init__(self, dset, wcs, fname="<none>", threshold=1e7):
 		self.dset      = dset
-		self.wcs       = wcs
-		self.threshold = threshold
-	@property
-	def shape(self): return self.dset.shape
-	@property
-	def ndim(self): return len(self.shape)
-	@property
-	def dtype(self): return self.dset.dtype
+		ndmap_proxy.__init__(self, dset.shape, wcs, fname=fname, threshold=threshold)
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [self.ndim-2,2])
 		if len(psel) > 2: raise IndexError("too many indices")
@@ -2076,6 +2091,7 @@ class hdf_wrapper:
 		else:
 			res = self.dset.value[sel]
 		return ndmap(fix_endian(res), wcs)
+	def __repr__(self): return "ndmap_proxy_hdf(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
 
 def fix_endian(map):
 	"""Make endianness of array map match the current machine.

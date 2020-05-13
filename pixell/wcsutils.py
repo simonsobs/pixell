@@ -65,8 +65,8 @@ def describe(wcs):
 WCS.__repr__ = describe
 WCS.__str__ = describe
 
-def equal(wcs1, wcs2):
-	return repr(wcs1.to_header()) == repr(wcs2.to_header())
+def equal(wcs1, wcs2,flags=1,tol=1e-14):
+	return wcs1.wcs.compare(wcs2.wcs, flags, tol)
 
 def nobcheck(wcs):
 	res = wcs.deepcopy()
