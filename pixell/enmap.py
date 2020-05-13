@@ -1685,15 +1685,18 @@ def _bin_helper(map, r, bsize, return_nhit=False):
 	functions on this one."""
 	# Get the number of bins
 	n     = int(np.max(r/bsize))
-	orads = (0.5+np.arange(n))*bsize
 	rinds = (r/bsize).reshape(-1).astype(int)
-	# Ok, rebin the map. We use this using bincount, which can be a bit slow
+	# Ok, rebin the map. We do this using bincount, which can be a bit slow
 	mflat = map.reshape((-1,)+map.shape[-2:])
 	mout = np.zeros((len(mflat),n))
 	nhit = np.bincount(rinds)[:n]
 	for i, m in enumerate(mflat):
 		mout[i] = np.bincount(rinds, weights=m.reshape(-1))[:n]/nhit
 	mout = mout.reshape(map.shape[:-2]+mout.shape[1:])
+	# What r should we assign to each bin? We could just use the bin center,
+	# but since we're averaging point samples in each bin, it makes more sense
+	# to assign the same average of the r values
+	orads = np.bincount(rinds, weights=r.reshape(-1))[:n]/nhit
 	if return_nhit: return mout, orads, nhit
 	else: return mout, orads
 
