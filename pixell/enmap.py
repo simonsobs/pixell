@@ -784,7 +784,7 @@ def area(shape, wcs, nsamp=1000, method="auto"):
 
 def area_intermediate(shape, wcs):
 	"""Get the area of a completely flat sky"""
-	return shape[-2]*shape[-1]*wcs.wcs.cdelt[0]*wcs.wcs.cdelt[1]*get_unit(wcs)**2
+	return np.abs(shape[-2]*shape[-1]*wcs.wcs.cdelt[0]*wcs.wcs.cdelt[1]*get_unit(wcs)**2)
 
 def area_cyl(shape, wcs):
 	"""Get the area of a cylindrical projection. Fast and exact."""
