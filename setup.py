@@ -75,7 +75,7 @@ elif sys.platform == 'darwin':
     else:
         os.system("which gcc")
         os.system("find / -name \'gcc\'")
-        raise('Cannot find gcc 4.x, 5.x, 6.x, 7.x, or 8.x in /usr/local/bin. pixell requires gcc to be installed - easily done through the Homebrew package manager (http://brew.sh). Note: gcc with OpenMP support is required.')
+        raise Exception('Cannot find gcc 4.x, 5.x, 6.x, 7.x, or 8.x in /usr/local/bin. pixell requires gcc to be installed - easily done through the Homebrew package manager (http://brew.sh). Note: gcc with OpenMP support is required.')
     compile_opts['extra_link_args'] = ['-fopenmp', '-Wl,-rpath,' + rpath]
 # Linux
 elif sys.platform == 'linux':
