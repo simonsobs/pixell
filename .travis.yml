@@ -1,9 +1,8 @@
 language: python
 python:
+- 3.8
+- 3.7
 - 3.6
-- 3.5
-- 2.7
-- 2.6
 os: linux
 install:
   - python -m pip install -U pip
@@ -20,15 +19,7 @@ matrix:
   include:
     - os: osx
       language: generic
-      env: PYTHON=3.5.1
-    
-  allow_failures:
-    - python: 3.5-dev
-    - python: 3.6-dev
-    - python: 3.7-dev
-    - python: 2.6
-    - python: 2.7
-    - python: 3.4
+      env: PYTHON=3.6.1
 
            
 deploy:
