@@ -7,6 +7,10 @@ class Bunch:
 			self._dict.update(args)
 		self._dict.update(kwargs)
 	def __getattr__(self, name):
+		# Members with names like __getattr__ could override class behavior, which
+		# is confusing. This should also resolve an issue with copy.copy, where getattr
+		# is called before __init__
+		if name.startswith("__"): raise AttributeError(name)
 		if name in self.__dict__["_dict"].keys():
 			return self.__dict__["_dict"][name]
 		raise AttributeError(name)
@@ -29,7 +33,7 @@ class Bunch:
 	def __contains__(self, name):
 		return name in self._dict
 	def __dir__(self):
-		return sorted(self.__dict__.keys() + self._dict.keys())
+		return sorted(list(self.__dict__.keys()) + list(self._dict.keys()))
 	def __iter__(self):
 		for key in self._dict:
 			yield key

@@ -31,10 +31,27 @@ if (
 ):
     os.environ["MACOSX_DEPLOYMENT_TARGET"] = get_config_var("MACOSX_DEPLOYMENT_TARGET")
 
+# The following copied from healpy might be necessary for libsharp
+# Apple switched default C++ standard libraries (from gcc's libstdc++ to
+# clang's libc++), but some pre-packaged Python environments such as Anaconda
+# are built against the old C++ standard library. Luckily, we don't have to
+# actually detect which C++ standard library was used to build the Python
+# interpreter. We just have to propagate MACOSX_DEPLOYMENT_TARGET from the
+# configuration variables to the environment.
+#
+# This workaround fixes <https://github.com/healpy/healpy/issues/151>.
+if (
+    get_config_var("MACOSX_DEPLOYMENT_TARGET")
+    and not "MACOSX_DEPLOYMENT_TARGET" in os.environ
+):
+    os.environ["MACOSX_DEPLOYMENT_TARGET"] = get_config_var("MACOSX_DEPLOYMENT_TARGET")
+
+
 compile_opts = {
-    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing'],
+    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g'],
     'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
+    'extra_link_args': ['-fopenmp', '-g']
     }
 
 # Set compiler options
@@ -157,7 +174,7 @@ cmdclass = versioneer.get_cmdclass(cmdclass)
 
 setup(
     author="Simons Observatory Collaboration Analysis Library Task Force",
-    author_email='',
+    author_email='mathewsyriac@gmail.com',
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',
@@ -177,8 +194,12 @@ setup(
     ext_modules=[
         Extension('pixell.sharp',
             sources=['cython/sharp.c'],
-            libraries=['sharp','c_utils', 'fftpack'],
+            libraries=['sharp','c_utils', 'fftpack', 'm'],
             library_dirs=['_deps/libsharp/auto/lib'],
+            include_dirs=[np.get_include()],
+            **compile_opts),
+        Extension('pixell.distances',
+            sources=['cython/distances.c','cython/distances_core.c'],
             include_dirs=[np.get_include()],
             **compile_opts),
         Extension('pixell._interpol_32',

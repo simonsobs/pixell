@@ -1,5 +1,6 @@
 """Utilities for making mpi use safer and easier."""
-import sys, os
+from __future__ import print_function
+import sys, os, traceback
 
 class FakeCommunicator:
     def __init__(self):
@@ -8,6 +9,7 @@ class FakeCommunicator:
 
 FAKE_WORLD = FakeCommunicator()
 COMM_WORLD = FAKE_WORLD
+COMM_SELF  = FAKE_WORLD
 disabled   = True
 
 # Allow us to disable real mpi, creating only a simple placeholder object
@@ -19,10 +21,10 @@ try:
         # leading to thousands of wasted CPU hours. That may have been system-specific,
         # though. Perhaps this isn't necessary in general.
         from mpi4py.MPI import *
-        def cleanup(type, value, traceback):
-            sys.__excepthook__(type, value, traceback)
-            COMM_WORLD.Abort(1)
-        sys.excepthook = cleanup
+        #def cleanup(type, value, traceback):
+        #    sys.__excepthook__(type, value, traceback)
+        #    COMM_WORLD.Abort(1)
+        #sys.excepthook = cleanup
         disabled = False
 except:
     pass

@@ -69,7 +69,7 @@ def map_info_healpix(int nside, int stride=1, weights=None):
 	cdef np.ndarray[np.float64_t,ndim=1] w = weights
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_weighted_healpix_geom_info (nside, stride, &w[0], &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_gauss_legendre(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Gauss-Legendre pixelization. Optimal
@@ -81,7 +81,7 @@ def map_info_gauss_legendre(int nrings, nphi=None, double phi0=0, stride_lon=Non
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_gauss_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_clenshaw_curtis(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Cylindrical Equi-rectangular pixelization
@@ -93,7 +93,7 @@ def map_info_clenshaw_curtis(int nrings, nphi=None, double phi0=0, stride_lon=No
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_cc_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_fejer1(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Cylindrical Equi-rectangular pixelization
@@ -105,7 +105,7 @@ def map_info_fejer1(int nrings, nphi=None, double phi0=0, stride_lon=None, strid
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_fejer1_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_fejer2(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Cylindrical Equi-rectangular pixelization
@@ -117,7 +117,7 @@ def map_info_fejer2(int nrings, nphi=None, double phi0=0, stride_lon=None, strid
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_fejer2_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_mw(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Cylindrical Equi-rectangular pixelization
@@ -129,7 +129,7 @@ def map_info_mw(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_la
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_mw_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 cdef map_info_from_geom(csharp.sharp_geom_info * geom):
 	"""Constructs a map_info from a gemoetry pointer."""
@@ -162,6 +162,11 @@ cdef map_info_from_geom(csharp.sharp_geom_info * geom):
 	cdef np.ndarray[np.int_t,ndim=1] order = np.argsort(offsets[:ring])
 	return map_info(theta[order],nphi[order],phi0[order],offsets[order],stride[order],weight[order])
 
+cdef map_info_from_geom_and_free(csharp.sharp_geom_info * geom):
+	res = map_info_from_geom(geom)
+	csharp.sharp_destroy_geom_info(geom)
+	return res
+
 cdef class alm_info:
 	cdef csharp.sharp_alm_info * info
 	cdef readonly int lmax
@@ -176,6 +181,9 @@ cdef class alm_info:
 		naming layout (triangular or rectangular), or as an array containing the
 		index of the first l for each m. Once constructed, an alm_info is immutable.
 		The layouts are all m-major, with all the ls for each m consecutive."""
+		if lmax is not None: lmax = int(lmax)
+		if mmax is not None: mmax = int(mmax)
+		if nalm is not None: nalm = int(nalm)
 		if isinstance(layout,basestring):
 			if layout == "triangular" or layout == "tri":
 				if lmax is None: lmax = nalm2lmax(nalm)
@@ -284,15 +292,16 @@ cdef class alm_info:
 	@cython.boundscheck(False)
 	@cython.wraparound(False)
 	cdef lmul_dp(self,np.ndarray[np.complex128_t,ndim=2] alm, np.ndarray[np.float64_t,ndim=3] lmat):
-		cdef int l, m, lm, c1, c2, ncomp
+		cdef int l, m, lm, c1, c2, ncomp, lcap
 		cdef np.ndarray[np.complex128_t,ndim=1] v
 		cdef np.ndarray[np.int64_t,ndim=1] mstart = self.mstart
 		l,m=0,0
 		ncomp = alm.shape[0]
+		lcap  = min(self.lmax+1,lmat.shape[2])
 		v = np.empty(ncomp,dtype=np.complex128)
 		#for m in prange(self.mmax+1,nogil=True,schedule="dynamic"):
 		for m in range(self.mmax+1):
-			for l in range(m, self.lmax+1):
+			for l in range(m, lcap):
 				lm = mstart[m]+l*self.stride
 				for c1 in range(ncomp):
 					v[c1] = alm[c1,lm]
@@ -300,18 +309,24 @@ cdef class alm_info:
 					alm[c1,lm] = 0
 					for c2 in range(ncomp):
 						alm[c1,lm] += lmat[c1,c2,l]*v[c2]
+			# If lmat is too short, interpret missing values as zero
+			for l in range(lcap, self.lmax+1):
+				lm = mstart[m]+l*self.stride
+				for c1 in range(ncomp):
+					alm[c1,lm] = 0
 	@cython.boundscheck(False)
 	@cython.wraparound(False)
 	cdef lmul_sp(self,np.ndarray[np.complex64_t,ndim=2] alm, np.ndarray[np.float32_t,ndim=3] lmat):
-		cdef int l, m, lm, c1, c2, ncomp
+		cdef int l, m, lm, c1, c2, ncomp, lcap
 		cdef np.ndarray[np.complex64_t,ndim=1] v
 		cdef np.ndarray[np.int64_t,ndim=1] mstart = self.mstart
 		l,m=0,0
 		ncomp = alm.shape[0]
+		lcap  = min(self.lmax+1,lmat.shape[2])
 		v = np.empty(ncomp,dtype=np.complex64)
 		#for m in prange(self.mmax+1,nogil=True,schedule="dynamic"):
 		for m in range(self.mmax+1):
-			for l in range(m, self.lmax+1):
+			for l in range(m, lcap):
 				lm = mstart[m]+l*self.stride
 				for c1 in range(ncomp):
 					v[c1] = alm[c1,lm]
@@ -319,6 +334,10 @@ cdef class alm_info:
 					alm[c1,lm] = 0
 					for c2 in range(ncomp):
 						alm[c1,lm] += lmat[c1,c2,l]*v[c2]
+			for l in range(lcap, self.lmax+1):
+				lm = mstart[m]+l*self.stride
+				for c1 in range(ncomp):
+					alm[c1,lm] = 0
 	def __dealloc__(self):
 		csharp.sharp_destroy_alm_info(self.info)
 

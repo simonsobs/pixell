@@ -28,11 +28,28 @@ def rand_map(shape, wcs, ps, lmax=None, dtype=np.float64, seed=None, oversample=
 	if len(shape) == 2: map = map[0]
 	return map
 
+def pad_spectrum(ps, lmax):
+	ps  = np.asarray(ps)
+	ops = np.zeros(ps.shape[:-1]+(lmax+1,),ps.dtype)
+	ops[...,:ps.shape[-1]] = ps[...,:ps.shape[-1]]
+	return ops
+
 def rand_alm_healpy(ps, lmax=None, seed=None, dtype=np.complex128):
 	import healpy
 	if seed is not None: np.random.seed(seed)
-	ps = powspec.sym_compress(ps, scheme="diag")
-	return np.asarray(healpy.synalm(ps, lmax=lmax, new=True))
+	ps  = np.asarray(ps)
+	if lmax is None: lmax = ps.shape[-1]-1
+	# Handle various shaped input spectra
+	if   ps.ndim == 1: wps = ps[None,None]
+	elif ps.ndim == 2: wps = powspec.sym_expand(ps, scheme="diag")
+	elif ps.ndim == 3: wps = ps
+	else: raise ValueError("ps must be either [nl], [nspec,nl] or [ncomp,ncomp,nl] in rand_alm_healpy")
+	# Flatten, since healpy wants only the non-redundant components in the diagonal-first scheme
+	fps = powspec.sym_compress(wps, scheme="diag")
+	alm = np.asarray(healpy.synalm(fps, lmax=lmax, new=True))
+	# Produce scalar output for scalar inputs
+	if ps.ndim == 1: alm = alm[0]
+	return alm
 
 def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=True, return_ainfo=False):
 	"""This is a replacement for healpy.synalm. It generates the random
@@ -46,8 +63,8 @@ def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=
 	# Scale alms by spectrum, taking into account which alms are complex
 	ps12 = enmap.multi_pow(wps, 0.5)
 	ainfo.lmul(alm, (ps12/2**0.5).astype(rtype), alm)
-	alm[:,:ainfo.lmax].imag  = 0
-	alm[:,:ainfo.lmax].real *= 2**0.5
+	alm[:,:ainfo.lmax+1].imag  = 0
+	alm[:,:ainfo.lmax+1].real *= 2**0.5
 	if ps.ndim == 1: alm = alm[0]
 	if return_ainfo: return alm, ainfo
 	else: return alm
@@ -389,7 +406,7 @@ def map2minfo(m):
 	return sharp.map_info(theta, nphi, phi0)
 
 def match_predefined_minfo(m, rtol=None, atol=None):
-	"""Given an enmapwith constant-latitude rows and constant longitude
+	"""Given an enmap with constant-latitude rows and constant longitude
 	intervals, return the libsharp predefined minfo with ringweights that's
 	the closest match to our pixelization."""
 	if rtol is None: rtol = 1e-3*utils.arcmin
@@ -485,11 +502,14 @@ def fill_gauss(arr, bsize=0x10000):
 
 def prepare_ps(ps, ainfo=None, lmax=None):
 	ps    = np.asarray(ps)
-	if ainfo is None: ainfo = sharp.alm_info(min(lmax,ps.shape[-1]-1) or ps.shape[-1]-1)
+	if ainfo is None:
+		if lmax is None: lmax = ps.shape[-1]-1
+		if lmax > ps.shape[-1]-1: ps = pad_spectrum(ps, lmax)
+		ainfo = sharp.alm_info(lmax)
 	if   ps.ndim == 1: wps = ps[None,None]
 	elif ps.ndim == 2: wps = powspec.sym_expand(ps, scheme="diag")
 	elif ps.ndim == 3: wps = ps
-	else: raise ValuerError("power spectrum must be [nl], [nspec,nl] or [ncomp,ncomp,nl]")
+	else: raise ValueError("power spectrum must be [nl], [nspec,nl] or [ncomp,ncomp,nl]")
 	return wps, ainfo
 
 def rand_alm_white(ainfo, pre=None, alm=None, seed=None, dtype=np.complex128, m_major=True):
@@ -501,3 +521,22 @@ def rand_alm_white(ainfo, pre=None, alm=None, seed=None, dtype=np.complex128, m_
 	# Transpose numbers to make them m-major.
 	if m_major: ainfo.transpose_alm(alm,alm)
 	return alm
+
+def almxfl(alm,lfunc,ainfo=None):
+	"""Filter alms isotropically by a function.
+	Returns alm * lfunc(ell)
+
+	Args:
+	    alm: (...,N) ndarray of spherical harmonic alms
+	    lfunc: a function mapping multipole ell to the filtering expression
+	    ainfo: 	If ainfo is provided, it is an alm_info describing the layout 
+	of the input alm. Otherwise it will be inferred from the alm itself.
+
+	Returns:
+	    falm: The filtered alms alm * lfunc(ell)
+	"""
+	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
+	l = np.arange(ainfo.lmax+1.0)
+	return ainfo.lmul(alm, lfunc(l))
+
+	

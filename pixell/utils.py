@@ -1,4 +1,8 @@
 import numpy as np, scipy.ndimage, os, errno, scipy.optimize, time, datetime, warnings, re, sys
+try: xrange
+except: xrange = range
+try: basestring
+except: basestring = str
 
 degree = np.pi/180
 arcmin = degree/60
@@ -10,6 +14,7 @@ h  = 6.62606957e-34
 k  = 1.3806488e-23
 AU = 149597870700.0
 day2sec = 86400.
+yr2days = 365.2422
 
 # These are like degree, arcmin and arcsec, but turn any lists
 # they touch into arrays.
@@ -17,6 +22,7 @@ a    = np.array(1.0)
 adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
+
 
 def lines(file_or_fname):
 	"""Iterates over lines in a file, which can be specified
@@ -36,10 +42,24 @@ def listsplit(seq, elem):
 	ranges = zip([0]+[i+1 for i in inds],inds+[len(seq)])
 	return [seq[a:b] for a,b in ranges]
 
-def find(array, vals):
+def streq(x, s):
+	"""Check if x is the string s. This used to be simply "x is s",
+	but that now causes a warning. One can't just do "x == s", as
+	that causes a numpy warning and will fail in the future."""
+	return isinstance(x, basestring) and x == s
+
+def find(array, vals, default=None):
 	"""Return the indices of each value of vals in the given array."""
-	order = np.argsort(array)
-	return order[np.searchsorted(array, vals, sorter=order)]
+	if len(vals) == 0: return []
+	array   = np.asarray(array)
+	order   = np.argsort(array)
+	cands   = np.minimum(np.searchsorted(array, vals, sorter=order),len(array)-1)
+	res     = order[cands]
+	bad     = array[res] != vals
+	if np.any(bad):
+		if default is None: raise ValueError("Value not found in array")
+		else: res[bad] = default
+	return res
 
 def contains(array, vals):
 	"""Given an array[n], returns a boolean res[n], which is True
@@ -113,7 +133,7 @@ def rewind(a, ref=0, period=2*np.pi):
 	specifies the angle furthest away from the cut, i.e. the
 	period cut will be at ref+period/2."""
 	a = np.asanyarray(a)
-	if ref is "auto": ref = np.sort(a.reshape(-1))[a.size//2]
+	if streq(ref, "auto"): ref = np.sort(a.reshape(-1))[a.size//2]
 	return ref + (a-ref+period/2.)%period - period/2.
 
 def cumsplit(sizes, capacities):
@@ -162,6 +182,8 @@ def mjd2ctime(mjd):
 	return (np.asarray(mjd)-40587.0)*86400
 def mjd2djd(mjd): return np.asarray(mjd) + 2400000.5 - 2415020
 def djd2mjd(djd): return np.asarray(djd) - 2400000.5 + 2415020
+def mjd2jd(mjd): return np.asarray(mjd) + 2400000.5
+def jd2mjd(jd): return np.asarray(jd) - 2400000.5
 def ctime2djd(ctime): return mjd2djd(ctime2mjd(ctime))
 def djd2ctime(djd):    return mjd2ctime(djd2mjd(djd))
 
@@ -284,7 +306,7 @@ def dedup(a):
 	The original is not modified."""
 	return a[np.concatenate([[True],a[1:]!=a[:-1]])]
 
-def interpol(a, inds, order=3, mode="nearest", mask_nan=True, cval=0.0, prefilter=True):
+def interpol(a, inds, order=3, mode="nearest", mask_nan=False, cval=0.0, prefilter=True):
 	"""Given an array a[{x},{y}] and a list of float indices into a,
 	inds[len(y),{z}], returns interpolated values at these positions as [{x},{z}]."""
 	a    = np.asanyarray(a)
@@ -367,7 +389,7 @@ def nearest_product(n, factors, direction="below"):
 	a = np.zeros(nmax+1,dtype=bool)
 	a[1] = True
 	best = None
-	for i in xrange(n+1):
+	for i in range(n+1):
 		if not a[i]: continue
 		for f in factors:
 			m = i*f
@@ -605,6 +627,30 @@ def combine_beams(irads_array):
 		B = (V*E[None]**0.5).dot(V.T)
 		Ctot = B.dot(Ctot).dot(B.T)
 	return np.array([Ctot[0,0],Ctot[1,1],Ctot[0,1]])
+
+def regularize_beam(beam, cutoff=1e-2, nl=None):
+	"""Given a beam transfer function beam[...,nl], replace
+	small values with an extrapolation that has the property
+	that the ratio of any pair of such regularized beams is
+	constant in the extrapolated region."""
+	beam  = np.asarray(beam)
+	# Get the length of the output beam, and the l to which both exist
+	if nl is None: nl = beam.shape[-1]
+	nl_both = min(nl, beam.shape[-1])
+	# Build the extrapolation for the full range. We will overwrite the part
+	# we want to keep unextrapolated later.
+	l     = np.maximum(1,np.arange(nl))
+	vcut  = np.max(beam,-1)*cutoff
+	lcut  = np.argmin(beam > vcut, -1)
+	obeam = vcut * (l/lcut)**(2*np.log(cutoff))
+	# Get the mask for what we want to keep. This looks complicated, but that's
+	# just to support arbitrary-dimensionality (maybe that wasn't really necessary).
+	mask  = np.zeros(obeam.shape, int)
+	iflat = lcut.reshape(-1) + np.arange(lcut.size)*nl
+	mask.reshape(-1)[iflat] = 1
+	mask  = np.cumsum(mask,-1) < 0.5
+	obeam[:nl_both] = np.where(mask[:nl_both], beam[:nl_both], obeam[:nl_both])
+	return obeam
 
 def read_lines(fname, col=0):
 	"""Read lines from file fname, returning them as a list of strings.
@@ -847,12 +893,23 @@ def pole_wrap(pos):
 	lon[back]+= np.pi
 	return pos
 
+def parse_box(desc):
+	"""Given a string of the form from:to,from:to,from:to,... returns
+	an array [{from,to},:]"""
+	return np.array([[float(word) for word in pair] for pair in desc.split(",")]).T
+
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result
 	rather than needing an output argument."""
 	res = a.copy()
 	if op is None: comm.Allreduce(a, res)
 	else:          comm.Allreduce(a, res, op)
+	return res
+
+def reduce(a, comm, root=0, op=None):
+	res = a.copy() if comm.rank == root else None
+	if op is None: comm.Reduce(a, res, root=root)
+	else:          comm.Reduce(a, res, op, root=root)
 	return res
 
 def allgather(a, comm):
@@ -876,7 +933,7 @@ def allgatherv(a, comm, axis=0):
 	fa = moveaxis(a, axis, 0)
 	# mpi4py doesn't handle all types. But why not just do this
 	# for everything?
-	must_fix = np.issubdtype(a.dtype, np.string_) or a.dtype == bool
+	must_fix = np.issubdtype(a.dtype, np.str_) or a.dtype == bool
 	if must_fix:
 		fa = fa.view(dtype=np.uint8)
 	ra = fa.reshape(fa.shape[0],-1) if fa.size > 0 else fa.reshape(0,np.product(fa.shape[1:],dtype=int))
@@ -1249,6 +1306,7 @@ def ang2rect(angs, zenith=False, axis=0):
 	the theta angle will be taken to go from 0 to pi, and measure
 	the angle from the z axis. If zenith is False, then theta
 	goes from -pi/2 to pi/2, and measures the angle up from the xy plane."""
+	angs       = np.asanyarray(angs)
 	phi, theta = moveaxis(angs, axis, 0)
 	ct, st, cp, sp = np.cos(theta), np.sin(theta), np.cos(phi), np.sin(phi)
 	if zenith: res = np.array([st*cp,st*sp,ct])
@@ -1285,6 +1343,19 @@ def angdist(a, b, zenith=False, axis=0):
 	x = a_sin_dec*b_sin_dec + a_cos_dec*b_cos_dec*cos_dra
 	del a_sin_dec, a_cos_dec, b_sin_dec, b_cos_dec, a, b
 	return np.arctan2(y,x)
+
+def vec_angdist(v1, v2, axis=0):
+	"""Use Kahan's version of Heron's formula to compute a stable angular
+	distance between to vectors v1 and v2, which don't have to be unit vectors.
+	See https://scicomp.stackexchange.com/a/27694"""
+	v1 = np.asanyarray(v1)
+	v2 = np.asanyarray(v2)
+	a  = np.sum(v1**2,axis)**0.5
+	b  = np.sum(v2**2,axis)**0.5
+	c  = np.sum((v1-v2)**2,axis)**0.5
+	mu = np.where(b>=c, c-(a-b), b-(a-c))
+	ang= 2*np.arctan(((((a-b)+c)*mu)/((a+(b+c))*((a-c)+b)))**0.5)
+	return ang
 
 def rotmatrix(ang, raxis, axis=0):
 	"""Construct a 3d rotation matrix representing a rotation of
@@ -1434,9 +1505,49 @@ def point_in_polygon(points, polys):
 	for i in range(verts.shape[-2]):
 		x1, y1 = verts[...,i-1,:].T
 		x2, y2 = verts[...,i,:].T
-		x = -y1*(x2-x1)/(y2-y1) + x1
+		with nowarn():
+			x = -y1*(x2-x1)/(y2-y1) + x1
 		ncross += ((y1*y2 < 0) & (x > 0)).T
 	return ncross.T % 2 == 1
+
+def poly_edge_dist(points, polygons):
+	"""Given points [...,2] and a set of polygons [...,nvertex,2], return
+	dists[...], which represents the distance of the points from the edges
+	of the corresponding polygons. This means that the interior of the
+	polygon will not be 0. points[...,0] and polys[...,0,0] must broadcast
+	correctly."""
+	points   = np.asarray(points)
+	polygons = np.asarray(polygons)
+	nvert    = polygons.shape[-2]
+	p        = ang2rect(points,axis=-1)
+	vertices = ang2rect(polygons,axis=-1)
+	del points, polygons
+	dists = []
+	for i in range(nvert):
+		v1   = vertices[...,i,:]
+		v2   = vertices[...,(i+1)%nvert,:]
+		vz   = np.cross(v1,v2)
+		vz  /= np.sum(vz**2,-1)[...,None]**0.5
+		# Find out if the point is inside our line segment or not
+		vx   = v1
+		vy   = np.cross(vz,vx)
+		vy  /= np.sum(vy**2,-1)[...,None]**0.5
+		pang = np.arctan2(np.sum( p*vy,-1),np.sum( p*vx,-1))
+		ang2 = np.arctan2(np.sum(v2*vy,-1),np.sum(v2*vx,-1))
+		between = (pang >= 0) & (pang < ang2)
+		# If we are inside, the distance will simply be the distance
+		# from the line segment, which is the distance from vz minus pi/2.
+		# If we are outside, then use the distance from the edge of the line segment.
+		dist_between = np.abs(np.arccos(np.clip(np.sum(p*vz,-1),-1,1))-np.pi/2)
+		dist_outside = np.minimum(
+			np.arccos(np.clip(np.sum(p*v1,-1),-1,1)),
+			np.arccos(np.clip(np.sum(p*v2,-1),-1,1))
+		)
+		dist = np.where(between, dist_between, dist_outside)
+		del v1, v2, vx, vy, vz, pang, ang2, between
+		dists.append(dist)
+	dists = np.min(dists,0)
+	return dists
 
 def block_mean_filter(a, width):
 	"""Perform a binwise smoothing of a, where all samples
@@ -1503,7 +1614,10 @@ def flux_factor(beam_area, freq, T0=T_cmb):
 	temperature increment dT around T0 (in K) at the given frequency freq
 	in Hz and integrated over the given beam_area in steradians, produces
 	the corresponding flux = A*dT. This is useful for converting between
-	point source amplitudes and point source fluxes."""
+	point source amplitudes and point source fluxes.
+
+	For uK to mJy use flux_factor(beam_area, freq)/1e3
+	"""
 	# A blackbody has intensity I = 2hf**3/c**2/(exp(hf/kT)-1) = V/(exp(x)-1)
 	# with V = 2hf**3/c**2, x = hf/kT.
 	# dI/dx = -V/(exp(x)-1)**2 * exp(x)
@@ -1516,6 +1630,26 @@ def flux_factor(beam_area, freq, T0=T_cmb):
 	dIdT  = 2*x**4 * k**3*T0**2/(h**2*c**2) / (4*np.sinh(x/2)**2)
 	dJydK = dIdT * 1e26 * beam_area
 	return dJydK
+
+def noise_flux_factor(beam_area, freq, T0=T_cmb):
+	"""Compute the factor A that converts from white noise level in K sqrt(steradian)
+	to uncertainty in Jy for the given beam area in steradians and frequency in Hz.
+	This assumes white noise and a gaussian beam, so that the area of the real-space squared beam is
+	just half that of the normal beam area.
+
+	For uK arcmin to mJy, use noise_flux_factor(beam_area, freq)*arcmin/1e3
+	"""
+	squared_beam_area = beam_area/2
+	return flux_factor(beam_area/squared_beam_area**0.5, freq, T0=T0)
+
+def planck(f, T):
+	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
+	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
+blackbody = planck
+
+def graybody(f, T, beta=1):
+	"""Return a graybody spectrum at the frequency f and temperature T in Jy/sr"""
+	return  2*h*f**(3+beta)/c**2/(np.exp(h*f/(k*T))-1) * 1e26
 
 ### Binning ####
 
@@ -1858,9 +1992,10 @@ def expand_slice(sel, n, nowrap=False):
 	def cycle(i,n):
 		if nowrap: return i
 		else: return min(i,n) if i >= 0 else n+i
+	def default(a, val): return a if a is not None else val
 	if step == 0: raise ValueError("slice step cannot be zero")
-	if step > 0: return slice(cycle(sel.start or 0,n),cycle(sel.stop or n,n),step)
-	else: return slice(cycle(sel.start or n-1, n), cycle(sel.stop,n) if sel.stop else -1, step)
+	if step > 0: return slice(cycle(default(sel.start,0),n),cycle(default(sel.stop,n),n),step)
+	else: return slice(cycle(default(sel.start,n-1), n), cycle(sel.stop,n) if sel.stop is not None else -1, step)
 
 def split_slice(sel, ndims):
 	"""Splits a numpy-compatible slice "sel" into sub-slices sub[:], such that
@@ -1907,8 +2042,8 @@ def slice_downgrade(d, s, axis=-1):
 	a = a[s.start:s.stop:-1 if step < 0 else 1]
 	step = abs(step)
 	# Handle the whole blocks first
-	a2 = a[:len(a)/step*step]
-	a2 = np.mean(a2.reshape((len(a2)/step,step)+a2.shape[1:]),1)
+	a2 = a[:len(a)//step*step]
+	a2 = np.mean(a2.reshape((len(a2)//step,step)+a2.shape[1:]),1)
 	# Then append the incomplete block
 	if len(a2)*step != len(a):
 		rest = a[len(a2)*step:]
@@ -1921,3 +2056,30 @@ def outer_stack(arrays):
 	for i, array in enumerate(arrays):
 		res[i] = array[(None,)*i + (slice(None),) + (None,)*(len(arrays)-i-1)]
 	return res
+
+def beam_transform_to_profile(bl, theta, normalize=False):
+	"""Given the transform b(l) of a beam, evaluate its real space angular profile
+	at the given radii theta."""
+	bl = np.asarray(bl)
+	l  = np.arange(bl.size)
+	x  = np.cos(theta)
+	a  = bl*(2*l+1)/(4*np.pi)
+	profile = np.polynomial.legendre.legval(x,a)
+	if normalize: profile /= np.sum(a)
+	return profile
+
+def fix_dtype_mpi4py(dtype):
+	"""Work around mpi4py bug, where it refuses to accept dtypes with endian info"""
+	return np.dtype(np.dtype(dtype).char)
+
+def decode_array_if_necessary(arr):
+	"""Given an arbitrary numpy array arr, decode it if it is of type S and we're in a
+	version of python that doesn't like that"""
+	try:
+		np.array(["a"],"S")[0] in "a"
+		return arr
+	except TypeError:
+		if arr.dtype.type is np.bytes_:
+			return np.char.decode(arr)
+		else:
+			return arr

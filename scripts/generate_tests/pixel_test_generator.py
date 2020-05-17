@@ -1,7 +1,10 @@
 from pixell import sharp
-from . import pixel_tests as ptests
+import sys
+sys.path.append('../../tests')
+import pixel_tests as ptests
 import pickle
 import os
+
 
 import argparse
 # Parse command line
@@ -24,4 +27,4 @@ if args.output is None:
 else:
     pkl_file = args.output
 results,_ = ptests.get_extraction_test_results(yaml_file)
-pickle.dump(results,open("data/%s.pkl" % pkl_file,'wb'),protocol=2)
+pickle.dump(results,open("%s.pkl" % pkl_file,'wb'),protocol=2)

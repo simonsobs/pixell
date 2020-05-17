@@ -6,23 +6,116 @@ Usage
 
 .. sectnum:: :start: 1
 
-Any map can be completely specified by two objects, a numpy array (of at least two dimensions) whose two trailing dimensions correspond to two coordinate axes of the map, and a ``wcs`` object that specifies the World Coordinate System. The latter specifies the correspondence between pixels and physical sky coordinates. This library allows for the manipulation of an object ``ndmap``, which has all the properties of numpy arrays but is in addition enriched by the ``wcs`` object (specifically an instantiation of Astropy's ``astropy.wcs.wcs.WCS`` object). The ``shape`` of the numpy array and the ``wcs`` completely specifies the geometry and footprint of a map of the sky.
+The ``ndmap`` object
+--------------------
 
-All ``ndmap`` s must have at least two dimensions. The trailing two axes are interpreted as the Y (typically, declination) and X (typically, right ascension) axes. Maps can have arbitrary number of leading dimensions, but many of ``pixell``' CMB-related tools interpret a 3D array of shape ``(ncomp,Ny,Nx)`` to consist of three ``Ny`` x ``Nx`` maps of intensity, polarization Q and U Stokes parameters in that order.
+The ``pixell`` library supports manipulation of sky maps that are
+represented as 2-dimensional grids of rectangular pixels.  The
+supported projection and pixelization schemes are a subset of the
+schemes supported by FITS conventions. In addition, we provide
+support for a `plain' coordinate system, corresponding to a
+Cartesian plane with identically shaped pixels (useful for true
+flat-sky calculations).
+
+In ``pixell``, a map is encapsulated in an ``ndmap``, which combines
+two objects: a numpy array (of at least two dimensions) whose two
+trailing dimensions correspond to two coordinate axes of the map, and
+a ``wcs`` object that specifies the World Coordinate System.  The
+``wcs`` component is an instance of Astropy's ``astropy.wcs.wcs.WCS``
+class.  The combination of the ``wcs`` and the ``shape`` of the numpy
+array completely specifies the footprint of a map of the sky, and is
+called the ``geometry``.  This library helps with manipulation of
+``ndmap`` objects in ways that are aware of and preserve the validity
+of the wcs information.
+
+``ndmap`` as an extension of ``numpy.ndarray``
+``````````````````````````````````````````````
+
+The ``ndmap`` class extends the ``numpy.ndarray`` class, and thus has
+all of the usual attributes (``.shape``, ``.dtype``, etc.) of an
+``ndarray``.  It is likely that an ``ndmap`` object can be used in any
+functions that usually operate on an ``ndarray``; this includes the
+usual numpy array arithmetic, slicing, broadcasting, etc.
+
+.. code-block:: python
+
+   >>> from pixell import enmap
+   >>> #... code that resulted in an ndmap called imap
+   >>> print(imap.shape, imap.wcs)
+   (100, 100) :{cdelt:[1,1],crval:[0,0],crpix:[0,0]}
+   >>> imap_extract = imap[:50,:50]   # A view of one corner of the map.
+   >>> imap_extract *= 1e6            # Re-calibrate. (Also affects imap!)
+
+An ``ndmap`` must have at least two dimensions. The two right-most
+axes represent celestial coordinates (typically Declination and Right
+Ascension).  Maps can have arbitrary number of leading dimensions, but
+many of the ``pixell`` CMB-related tools interpret 3D arrays with
+shape ``(ncomp,Ny,Nx)`` as representing ``Ny`` x ``Nx`` maps of
+intensity, polarization Q and U Stokes parameters, in that order.
+
+Note that ``wcs`` information is correctly adjusted when the array is
+sliced; for example the object returned by ``imap[:50,:50]`` is a view
+into the ``imap`` data attached to a new ``wcs`` object that correctly
+describes the footprint of the extracted pixels.
+
+Apart from all the numpy functionality, ``ndmap`` comes with a host of
+additional attributes and functions that utilize the WCS
+information.
+
+``ndmap.wcs``
+`````````````
+
+The ``wcs`` information describes the correspondence between celestial
+coordinates (typically the Right Ascension and Declination in the
+Equatorial system) and the pixel indices in the two right-most axes.
+In some projections, such as CEA or CAR, rows (and columns) of the
+pixel grid will often follow lines of constant Declination (and Right
+Ascension).  In other projections, this will not be the case.
+
+The WCS system is very flexible in how celestial coordinates may be
+associated with the pixel array.  By observing certain conventions, we
+can make life easier for users of our maps.  We recommend the
+following:
+
+- The first pixel, index [0,0], should be the one that you would
+  normally display (on a monitor or printed figure) in the lower
+  left-hand corner of the image.  The pixel indexed by [0,1] should
+  appear to the right of [0,0], and pixel [1,0] should be above pixel
+  [0,0].  (This recommendation originates in FITS standards
+  documentation.)
+- When working with large maps that are not near the celestial poles,
+  Right Ascension should be roughly horizontal and Declination should
+  be roughly vertical.  (It should go without saying that you should
+  also present information "as it would appear on the sky", i.e. with
+  Right Ascension increasing to the left!)
+
+The examples in the rest of this document are designed to respect
+these two conventions.
 
 TODO: I've listed below common operations that would be useful to demonstrate here.  Finish this! (See :ref:`ReferencePage` for a dump of all member functions)
 
-Maps are extensions of ``numpy`` arrays
----------------------------------------
+Creating an ``ndmap``
+---------------------
 
-Apart from all the numpy functionality, ``ndmap`` comes with a host of
-additional attributes and functions that utilize the information in the
-WCS. This usage guide will demonstrate how such maps can be manipulated using
-``pixell``. While reading about all this additional functionality, please keep
-in mind that the great thing about ``ndmap`` s is that they can be used like
-regular numpy arrays. For example if you slice the trailing axes of the array
-like you would a numpy array (e.g. ``imap[:100,:100]``), you are effectively slicing out a section of the
-map to produce a new ``ndmap`` with a reduced footprint.
+To create an empty ``ndmap``, call the ``enmap.zeros`` or
+``enmap.empty`` functions and specify the map shape as well as the
+pixelization information (the WCS).  Here is a basic example:
+
+.. code-block:: python
+
+   >>> from pixell import enmap, utils
+   >>> box = np.array([[-5,10],[5,-10]]) * utils.degree
+   >>> shape,wcs = enmap.geometry(pos=box,res=0.5 * utils.arcmin,proj='car')
+   >>> imap = enmap.zeros((3,) + shape, wcs=wcs)
+
+In this example we are requesting a pixelization that spans from -5
+to +5 in declination, and +10 to -10 in Right Ascension.  Note that we
+need to specify the Right Ascension coordinates in decreasing order,
+or the map, when we display it with pixel [0,0] in the lower left-hand
+corner, will not have the usual astronomical orientation.
+
+For more information on designing the geometry, see
+:ref:`geometry-section`.
 
 Passing maps through functions that act on ``numpy`` arrays
 -----------------------------------------------------------
@@ -56,21 +149,23 @@ An entire map in ``FITS`` or ``HDF`` format can be loaded using ``read_map``, wh
 
 .. code-block:: python
 
-		from pixell import enmap
-		imap = enmap.read_map("map_on_disk.fits")
+		>>> from pixell import enmap
+		>>> imap = enmap.read_map("map_on_disk.fits")
 
 Alternatively, one can select a rectangular region specified through its bounds using the ``box`` argument,
 
 .. code-block:: python
 
-		import numpy as np
-		dec_min = -5 ; ra_min = -5 ; dec_max = 5 ; ra_max = 5
-		# All coordinates in pixell are specified in radians
-		box = np.deg2rad([[dec_min,ra_min],[dec_max,ra_max])) 
-		imap = enmap.read_map("map_on_disk.fits",box=box) 
+		>>> import numpy as np
+		>>> from pixell import utils
+		>>> dec_min = -5 ; ra_min = -5 ; dec_max = 5 ; ra_max = 5
+		>>> # All coordinates in pixell are specified in radians
+		>>> box = np.array([[dec_min,ra_min],[dec_max,ra_max])) * utils.degree
+		>>> imap = enmap.read_map("map_on_disk.fits",box=box) 
 
 
-Note the convention used to define coordinate boxes in pixell. To learn how to use a pixel box or a numpy slice, please read the docstring for ``read_map``.
+Note the convention used to define coordinate boxes in pixell. To learn how to
+use a pixel coordinate box or a numpy slice, please read the docstring for ``read_map``.
 
 Inspecting a map
 ----------------
@@ -225,8 +320,58 @@ A filter can be applied to a map in three steps:
 3. multiply the filter and k-map
 4. inverse Fourier transform the result
 
-Manipulating map geometries
+
+.. _geometry-section:
+
+Building a map geometry
 ----------
+
+Patches
+~~~~~~~
+
+You can create a geometry if you know what its bounding box and pixel size are:
+
+.. code-block:: python
+
+		>>> from pixell import enmap, utils
+		>>> box = np.array([[-5,10],[5,-10]]) * utils.degree
+		>>> shape,wcs = enmap.geometry(pos=box,res=0.5 * utils.arcmin,proj='car')
+
+This creates a CAR geometry centered on RA=0d,DEC=0d with a width of
+20 degrees, a height of 10 degrees, and a pixel size of 0.5
+arcminutes.
+
+Full sky
+~~~~~~~~
+
+You can create a full-sky geometry by just specifying the resolution:
+
+.. code-block:: python
+
+		>>> from pixell import enmap, utils
+		>>> shape,wcs = enmap.fullsky_geometry(res=0.5 * utils.arcmin,proj='car')
+
+This creates a CAR geometry with pixel size of 0.5 arcminutes that wraps around
+the whole sky.
+
+Declination-cut sky
+~~~~~~~~
+
+You can create a geometry that wraps around the full sky but does not extend
+everywhere in declination:
+
+.. code-block:: python
+
+		>>> shape,wcs = enmap.band_geometry(dec_cut=20*utils.degree, res=0.5 * utils.arcmin,proj='car')
+
+This creates a CAR geometry with pixel size of 0.5 arcminutes that wraps around
+the whole sky but is limited to DEC=-20d to 20d. The following creates the same
+except with a declination extent from -60d to 30d.
+
+.. code-block:: python
+
+		>>> shape,wcs = enmap.band_geometry(dec_cut=np.array([-60,30])*utils.degree, res=0.5 * utils.arcmin,proj='car')
+
 
 Resampling maps
 --------

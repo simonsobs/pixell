@@ -1,3 +1,4 @@
+from __future__ import division, print_function
 import numpy as np, argparse, time, sys, warnings, os, shlex, glob, PIL.Image, PIL.ImageDraw
 from scipy import ndimage
 from . import enmap, colorize, mpi, cgrid, utils, memory, bunch, wcsutils
@@ -119,7 +120,7 @@ def plot_iterator(*arglist, **kwargs):
 	# Check for invalid kwargs
 	check_args(args)
 	if comm is None:
-		comm = mpi.COMM_WORLD
+		comm = mpi.COMM_SELF
 	# Set up verbose output
 	printer = Printer(args.verbosity)
 	cache = {}
@@ -156,6 +157,7 @@ def plot_iterator(*arglist, **kwargs):
 			ndigits  = [get_num_digits(n) for n in N]
 			subprint = printer.push(("%%0%dd/%%d " % ndigit) % (i+1,ncomp))
 			dir, base, ext = split_file_name(minfo.fname)
+			if args.odir is not None: dir = args.odir
 			map_field = map[i:i+ngroup]
 			if minfo.wcslist:
 				# HACK: If stamp extraction messed with the wcs, fix it here
@@ -215,7 +217,7 @@ def write(fname, plot):
 					plot.img.savefig(fname,bbox_inches="tight",dpi=plot.dpi)
 			else:
 				raise ValueError("Unknown plot type '%s'" % plot.type)
-		except AttributeError:
+		except (AttributeError, TypeError):
 			# Apparently we don't have a plot object. Check if it's a plain image
 			try: plot.save(fname)
 			except AttributeError:
@@ -249,6 +251,7 @@ def define_arg_parser():
 	add_argument("-d", "--downgrade", type=str, default="1", help="Downsacale the map by this factor before plotting. This is done by averaging nearby pixels. See --upgrade for syntax.")
 	add_argument("--prefix", type=str, default="", help="Specify a prefix for the output file. See --oname.")
 	add_argument("--suffix", type=str, default="", help="Specify a suffix for the output file. See --oname.")
+	add_argument("--odir",   type=str, default=None, help="Override the output directory. See --oname.")
 	add_argument("--ext", type=str, default="png", help="Specify an extension for the output file. This will determine the file type of the resulting image. Can be anything PIL recognizes. The default is png.")
 	add_argument("-m", "--mask", type=float, help="Mask this value, making it transparent in the output image. For example -m 0 would mark all values exactly equal to zero as missing.")
 	add_argument("--mask-tol", type=float, default=1e-14, help="The tolerance to use with --mask.")
@@ -271,6 +274,7 @@ def define_arg_parser():
 	add_argument("-a", "--autocrop", action="store_true", help="Automatically crop the image by removing expanses of uniform color around the edges. This is done jointly for all components in a map, making them directly comparable, but is done independently for each input file.")
 	add_argument("-A", "--autocrop-each", action="store_true", help="As --autocrop, but done individually for each component in each map.")
 	add_argument("-L", "--layers", action="store_true", help="Output the individual layers that make up the final plot (such as the map itself, the coordinate grid, the axis labels, any contours and lables) as individual files instead of compositing them into a final image.")
+	add_argument(      "--no-image", action="store_true", help="Skip the main image plotting. Useful for getting a pure contour plot, for example.")
 	add_argument("-C", "--contours", type=str, default=None, help="Enable contour lines. For example -C 10 to place a contour at every 10 units in the map, -C 5:10 to place it at every 10 units, but starting at 5, and 1,2,4,8 or similar to place contours at manually chosen locations.")
 	add_argument("--contour-type",  type=str, default="uniform", help="The type of the contour specification. Only used when the contours specification is a list of numbers rather than a string (so not from the command line interface). 'uniform': the list is [interval] or [base, interval]. 'list': the list is an explicit list of the values the contours should be at.")
 	add_argument("--contour-color", type=str, default="000000", help="The color scheme to use for contour lines. Either a single rrggbb, a val:rrggbb,val:rrggbb,... specification or a color scheme name, such as planck, wmap or gray.")
@@ -280,7 +284,8 @@ def define_arg_parser():
 		t[ext]   lat lon dy dx text [size [color]]
 		l[ine]   lat lon dy dx lat lon dy dx [width [color]]
 	dy and dx are pixel-unit offsets from the specified lat/lon.""")
-	add_argument("--stamps", type=str, default=None, help="Plot stamps instead of the whole map. Format is srcfile:size:nmax, where the last two are optional. srcfile is a file with [dec ra] in degrees, size is the size in pixels of each stamp, and nmax is the max number of stamps to produce.")
+	add_argument("--annotate-maxrad", type=int, default=0, help="Assume that annotations do not extend further than this from their center, in pixels. This is used to prune which annotations to attempt to draw, as they can be a bit slow. The special value 0 disables this.")
+	add_argument("--stamps", type=str, default=None, help="Plot stamps instead of the whole map. Format is srcfile:size:nmax, where the last two are optional. srcfile is a file with [ra dec] in degrees, size is the size in pixels of each stamp, and nmax is the max number of stamps to produce.")
 	add_argument("--tile",  type=str, default=None, help="Stack components vertically and horizontally. --tile 5,4 stacks into 5 rows and 4 columns. --tile 5 or --tile 5,-1 stacks into 5 rows and however many columns are needed. --tile -1,5 stacks into 5 columns and as many rows are needed. --tile -1 allocates both rows and columns to make the result as square as possible. The result is treated as a single enmap, so the wcs will only be right for one of the tiles.")
 	add_argument("--tile-transpose", action="store_true", help="Transpose the ordering of the fields when tacking. Normally row-major stacking is used. This sets column-major order instead.")
 	add_argument("-S", "--symmetric", action="store_true", help="Treat the non-pixel axes as being asymmetric matrix, and only plot a non-redundant triangle of this matrix.")
@@ -337,6 +342,8 @@ def get_map(ifile, args, return_info=False, name=None):
 	in args. Relevant ones are sub, autocrop, slice, op, downgrade, scale,
 	mask. Retuns with shape [:,ny,nx], where any extra dimensions have been
 	flattened into a single one."""
+	# TODO: this should be reorganized so that slicing can happen earlier.
+	# Currently the whole file needs to be read.
 	with warnings.catch_warnings():
 		warnings.filterwarnings("ignore")
 		if isinstance(ifile, basestring):
@@ -348,6 +355,8 @@ def get_map(ifile, args, return_info=False, name=None):
 			m0    = ifile
 			slice = ""
 			if name is None: name = ".fits"
+		# This fills in a dummy, plain wcs if one does not exist
+		m0 = enmap.enmap(m0, copy=False)
 		if args.fix_wcs:
 			m0.wcs = wcsutils.fix_wcs(m0.wcs)
 		# Save the original map, so we can compare its wcs later
@@ -421,10 +430,10 @@ def extract_stamps(map, args):
 	with a list of each of these' wcs object."""
 	if args.stamps is None: return [map]
 	# Stamps specified by format srcfile[:size[:nmax]], where the srcfile has
-	# lines of [dec, ra] in degrees
+	# lines of [ra, dec] in degrees
 	toks = args.stamps.split(":")
 	# Read in our positions, optionally truncating the list
-	srcs = np.loadtxt(toks[0]).T[:2]*utils.degree
+	srcs = np.loadtxt(toks[0]).T[1::-1]*utils.degree
 	size = int(toks[1]) if len(toks) > 1 else 16
 	nsrc = int(toks[2]) if len(toks) > 2 else len(srcs.T)
 	srcs = srcs[:,:nsrc]
@@ -450,10 +459,11 @@ def draw_map_field(map, args, crange=None, return_layers=False, return_info=Fals
 	names  = []
 	yoff   = map.shape[-2]
 	# Image layer
-	with printer.time("to image", 3):
-		img = PIL.Image.fromarray(utils.moveaxis(color,0,2)).convert('RGBA')
-	layers.append((img,[[0,0],img.size]))
-	names.append("img")
+	if not args.no_image:
+		with printer.time("to image", 3):
+			img = PIL.Image.fromarray(utils.moveaxis(color,0,2)).convert('RGBA')
+		layers.append((img,[[0,0],img.size]))
+		names.append("img")
 	# Contours
 	if args.contours:
 		with printer.time("draw contours", 3):
@@ -742,12 +752,17 @@ def draw_annotations(map, annots, args):
 		pix = map.sky2pix(np.array([float(w) for w in pos_off[:2]])*unit)
 		pix += np.array([float(w) for w in pos_off[2:]])
 		return pix[::-1].astype(int)
+	def skippable(x,y):
+		rmax = args.annotate_maxrad
+		if rmax is 0: return False
+		return x <= -rmax or y <= -rmax or x >= map.shape[-1]-1+rmax or y >= map.shape[-2]-1+rmax
 	for annot in annots:
 		atype = annot[0].lower()
 		color = "black"
 		width = 2
 		if atype in ["c","circle"]:
 			x,y = topix(annot[1:5])
+			if skippable(x,y): continue
 			rad = 8
 			if len(annot) > 5: rad   = int(annot[5])
 			if len(annot) > 6: width = int(annot[6])
@@ -759,6 +774,9 @@ def draw_annotations(map, annots, args):
 		elif atype in ["l","line"] or atype in ["r","rect"]:
 			x1,y1 = topix(annot[1:5])
 			x2,y2 = topix(annot[5:9])
+			nphi   = utils.nint(abs(360/map.wcs.wcs.cdelt[0]))
+			x1, x2 = utils.unwind([x1,x2], nphi, ref=nphi//2)
+			if skippable(x1,y1) and skippable(x2,y2): continue
 			if len(annot) >  9: width = int(annot[9])
 			if len(annot) > 10: color = annot[10]
 			if atype[0] == "l":
@@ -770,6 +788,7 @@ def draw_annotations(map, annots, args):
 					draw.rectangle((x1+i,y1+i,x2-i,y2-i), outline=color)
 		elif atype in ["t", "text"]:
 			x,y  = topix(annot[1:5])
+			if skippable(x,y): continue
 			text = annot[5]
 			size = 16
 			if len(annot) > 6: size  = int(annot[6])
@@ -804,6 +823,15 @@ def merge_images(images):
 	res = images[0]
 	for img in images[1:]:
 		res = PIL.Image.alpha_composite(res, img)
+	return res
+
+def merge_plots(plots):
+	res = plots[0].copy()
+	imgs, bounds = standardize_images([(plot.img, plot.info.bounds) for plot in plots])
+	res.img         = imgs[0]
+	res.info.bounds = bounds
+	for img in imgs[1:]:
+		res.img = PIL.Image.alpha_composite(res.img, img)
 	return res
 
 def prepare_map_field(map, args, crange=None, printer=noprint):
@@ -859,8 +887,8 @@ def hwexpand(mflat, nrow=-1, ncol=-1, transpose=False):
 	n, ny, nx = mflat.shape
 	if nrow < 0 and ncol < 0:
 		ncol = int(np.ceil(n**0.5))
-	if nrow < 0: nrow = (n+ncol-1)/ncol
-	if ncol < 0: ncol = (n+nrow-1)/nrow
+	if nrow < 0: nrow = (n+ncol-1)//ncol
+	if ncol < 0: ncol = (n+nrow-1)//nrow
 	if not transpose:
 		omap = enmap.zeros([nrow,ncol,ny,nx],mflat.wcs,mflat.dtype)
 		omap.reshape(-1,ny,nx)[:n] = mflat

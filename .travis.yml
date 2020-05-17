@@ -2,7 +2,6 @@ language: python
 python:
 - 3.6
 - 3.5
-- 3.4
 - 2.7
 - 2.6
 os: linux
@@ -13,8 +12,7 @@ install:
   - python setup.py develop
   
 script:
-- py.test --cov=pixell tests/
-
+- py.test --cov=pixell tests/ -s
 after_success:
   - coveralls
   

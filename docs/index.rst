@@ -6,7 +6,6 @@ Welcome to pixell's documentation!
    :caption: Contents:
 
    readme
-   installation
    usage
    reference
    contributing

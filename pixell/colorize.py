@@ -3,6 +3,8 @@ import numpy as np, time
 has_fortran = True
 try: from . import _colorize
 except ImportError: has_fortran = False
+try: basestring
+except NameError: basestring = str
 
 # Predefined schemes
 schemes = {}
@@ -42,6 +44,11 @@ class Colorscheme:
 		order = np.argsort(vals)
 		self.vals, self.cols = vals[order], cols[order]
 		self.desc = desc
+	def reverse(self):
+		res = Colorscheme(self)
+		res.vals = 1-self.vals[::-1]
+		res.cols = self.cols[::-1]
+		return res
 
 def colorize(arr, desc="planck", mode="scalar", driver="auto"):
 	"""Transform a set of values into RGB tuples. Two modes are supported.
@@ -138,7 +145,7 @@ def to_mpl_colormap(name, data=None):
 	import matplotlib.colors
 	if data is None: data = schemes[name]
 	return matplotlib.colors.LinearSegmentedColormap.from_list(name,
-			[(val,"#%02x%02x%02x%02x"%tuple(col)) for val,col in zip(data.vals, data.cols)])
+			[(val,"#%02x%02x%02x%02x"%tuple(col)) for val,col in zip(data.vals, data.cols.astype(int))])
 
 def mpl_register(names=None):
 	import matplotlib.cm

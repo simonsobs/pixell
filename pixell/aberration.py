@@ -51,12 +51,75 @@ def boost_map(imap, dir=dir_equ, beta=beta, pol=True, modulation="thermo", T0=T_
 	if return_modulation: return omap, A
 	else:                 return omap
 
+class Aberrator:
+	def __init__(self, shape, wcs, dir=dir_equ, beta=beta, pol=True, modulation="thermo", T0=T_cmb, freq=150e9,
+			boundary="wrap", order=3, recenter=False, dipole=False, map_unit=1e-6):
+		"""Initialize an Aberrator for maps with geometry (shape, wcs) in the
+		direction dir {ra,dec} with speed beta in units of c. If pol is True,
+		the (small) polarization rotation from the change in coordinate system
+		will also be computed.
+
+		If modulation == "thermo", then the input maps will be assumed to be in
+		differential thermodynamic units, e.g. what CMB maps usually have, and a
+		frequency-dependent gain factor will be applied. In this case the T0 and freq
+		arguments will be used to compute the gain factor using the thermo_boost function.
+		If modulation == "plain", then the temperature modulation is directly multiplied
+		with the map.
+		If modulation == None, then no modulation is applied at all.
+
+		If dipole == True, then the dipole induced from from an implied monopole with temperature
+		T0 will be included in the output.
+
+		The boundary and order arguments control the spline interpolation used in the
+		aberration. See enmap.at() for details.
+
+		In general
+		 aberrator = Aberrator(shape, wcs, ...)
+		 omap = aberrator.boost(imap)
+		is equivalent to
+		 omap = boost_map(imap, ...)
+		However, Aberrator will be more efficient when multiple maps with the
+		same geometry all need to be boosted the same way, as much of the calculation
+		can be precomputed in the constructor and reused for each map."""
+		# Save parameters for later
+		self.shape, self.wcs  = shape, wcs                                          # geometry
+		self.dir,   self.beta, self.pol, self.recenter = dir, beta, pol, recenter   # boost
+		self.boundary, self.order = boundary, order                                 # interpolation
+		self.T0, self.freq, self.dipole = T0, freq, dipole                          # modulation
+		self.map_unit, self.modulation = map_unit, modulation                       # modulation
+		# Precompute displacement
+		opos = enmap.posmap(shape, wcs)
+		ipos, A = calc_boost(opos[::-1], dir, -beta, pol=pol, recenter=recenter)
+		self.A = 1/A
+		self.ipix = enmap.ndmap(enmap.sky2pix(shape, wcs, ipos[1::-1]), wcs)
+		if pol:
+			self.cos = np.cos(2*ipos[2])
+			self.sin = np.sin(2*ipos[2])
+	def aberrate(self, imap):
+		"""Apply the aberration part of the doppler boost to the map imap"""
+		omap = enmap.samewcs(imap.at(self.ipix, unit="pix", mode=self.boundary, order=self.order), imap)
+		if self.pol and imap.ndim > 2:
+			omap1 = omap[...,1,:,:].copy()
+			omap[...,1,:,:] =  self.cos*omap1 + self.sin*omap[...,2,:,:]
+			omap[...,2,:,:] = -self.sin*omap1 + self.cos*omap[...,2,:,:]
+		return omap
+	def modulate(self, imap):
+		"""Apply the modulation part of the doppler boost to the map omap"""
+		omap = apply_modulation(imap, self.A, T0=self.T0, freq=self.freq, map_unit=self.map_unit, mode=self.modulation, dipole=self.dipole)
+		return omap
+	def boost(self, imap):
+		"""Apply the full doppler boost to the map imap"""
+		omap = self.aberrate(imap)
+		omap = self.modulate(omap)
+		return omap
+
 def apply_aberration(imap, ipos, boundary="wrap", order=3):
 	omap = enmap.samewcs(imap.at(ipos[1::-1], mode=boundary, order=order), imap)
-	if len(ipos >= 3):
+	if len(ipos) >= 3:
 		c,s = np.cos(2*ipos[2]), np.sin(2*ipos[2])
-		omap[1] = c*omap[1] + s*omap[2]
-		omap[2] =-s*omap[1] + c*omap[2]
+		omap1 = omap[1].copy()
+		omap[1] = c*omap1 + s*omap[2]
+		omap[2] =-s*omap1 + c*omap[2]
 	return omap
 
 def apply_modulation(imap, A, T0=T_cmb, freq=150e9, map_unit=1e-6, mode="thermo",

@@ -29,10 +29,10 @@ def downsample_bin(d, steps=[2], axes=None):
 	fullsteps = np.zeros(d.ndim,dtype=int)+1
 	for ax, step in zip(axes, steps): fullsteps[ax]=step
 	# Make each axis an even number of steps to prepare for reshape
-	s = tuple([slice(0,L/step*step) for L,step in zip(d.shape,fullsteps)])
+	s = tuple([slice(0,L//step*step) for L,step in zip(d.shape,fullsteps)])
 	d = d[s]
 	# Reshape each axis to L/step,step to prepare for mean
-	newshape = np.concatenate([[L/step,step] for L,step in zip(d.shape,fullsteps)])
+	newshape = np.concatenate([[L//step,step] for L,step in zip(d.shape,fullsteps)])
 	d = np.reshape(d, newshape)
 	# And finally take the mean over all the extra axes
 	return np.mean(d, tuple(range(1,d.ndim,2)))
@@ -110,9 +110,9 @@ def resample_fft_simple(d, n, ngroup=100):
 	for di in range(0, d.shape[0], ngroup):
 		fd = fft.fft(d[di:di+ngroup])
 		if n < nold:
-			fd = np.concatenate([fd[:,:n/2],fd[:,n/2-dn:]],1)
+			fd = np.concatenate([fd[:,:n//2],fd[:,n//2-dn:]],1)
 		else:
-			fd = np.concatenate([fd[:,:nold/2],np.zeros([len(fd),n-nold],fd.dtype),fd[:,nold/2:]],-1)
+			fd = np.concatenate([fd[:,:nold//2],np.zeros([len(fd),n-nold],fd.dtype),fd[:,nold//2:]],-1)
 		res[di:di+ngroup] = fft.ifft(fd, normalize=True).real
 	del fd
 	res *= float(n)/nold
