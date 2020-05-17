@@ -1,4 +1,4 @@
-numpy>=1.13
+numpy>=1.16
 astropy>=2.0
 setuptools>=39
 h5py>=2.7<=2.10
