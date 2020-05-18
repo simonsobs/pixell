@@ -59,7 +59,11 @@ Libsharp is installed automatically by setup.py. The installation script will
 attempt to automatically git clone the latest version and compile it.  If
 instead you want to use an existing ``libsharp`` installation, you can do so by
 symlinking the ``libsharp`` directory into a directory called ``_deps`` in the
-root directory, such that the file ``pixell/_deps/libsharp/libsharp/sharp.c`` exists.
+root directory, such that ``pixell/_deps/libsharp/libsharp/sharp.h`` exists. If
+you're convinced that the libsharp library is successfully
+compiled,  add an empty file named
+``pixell/_deps/libsharp/libsharp/success.txt`` to ensure pixell's setup.py
+knows of your existing installation.
 
    
 Intel compilers
