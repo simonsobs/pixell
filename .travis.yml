@@ -1,23 +1,27 @@
 language: python
 python:
+- 3.8
+- 3.7
 - 3.6
-- 3.5
-- 2.7
-- 2.6
 os: linux
 install:
-- pip install -r requirements.txt
-- python setup.py develop
+  - python -m pip install -U pip
+  - python -m easy_install -U setuptools
+  - pip install -r requirements.txt
+  - python setup.py develop
+  
 script:
 - py.test --cov=pixell tests/ -s
 after_success:
   - coveralls
+  
 matrix:
-  allow_failures:
-  - python: 3.5-dev
-  - python: 3.6-dev
-  - python: 3.7-dev
-  - python: 2.6
+  include:
+    - os: osx
+      osx_image: xcode11.2  # Python 3.7.4 running on macOS 10.14.4
+      language: shell
+      env: PYTHON=3.7.4
+           
 deploy:
   provider: pypi
   distributions: sdist --formats=gztar
@@ -31,3 +35,29 @@ deploy:
 addons:
   apt_packages:
   - gfortran
+  
+    
+before_install: |
+  if [ "$TRAVIS_OS_NAME" == "osx" ]; then
+    xcode-select --install
+    brew update
+    # Per the `pyenv homebrew recommendations <https://github.com/yyuu/pyenv/wiki#suggested-build-environment>`_.
+    brew install openssl readline
+    # See https://docs.travis-ci.com/user/osx-ci-environment/#A-note-on-upgrading-packages.
+    # I didn't do this above because it works and I'm lazy.
+    brew outdated pyenv || brew upgrade pyenv
+    # virtualenv doesn't work without pyenv knowledge. venv in Python 3.3
+    # doesn't provide Pip by default. So, use `pyenv-virtualenv <https://github.com/yyuu/pyenv-virtualenv/blob/master/README.md>`_.
+    brew install pyenv-virtualenv
+    pyenv install $PYTHON
+    # I would expect something like ``pyenv init; pyenv local $PYTHON`` or
+    # ``pyenv shell $PYTHON`` would work, but ``pyenv init`` doesn't seem to
+    # modify the Bash environment. ??? So, I hand-set the variables instead.
+    export PYENV_VERSION=$PYTHON
+    export PATH="/Users/travis/.pyenv/shims:${PATH}"
+    pyenv-virtualenv venv
+    source venv/bin/activate
+    # A manual check that the correct version of Python is running.
+    python --version
+  fi
+
