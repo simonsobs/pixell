@@ -1316,14 +1316,14 @@ def multi_pow(mat, exp, axes=[0,1]):
 	the given exponent in eigen-space."""
 	return samewcs(utils.eigpow(mat, exp, axes=axes), mat)
 
-def downgrade(emap, factor):
+def downgrade(emap, factor, dfunc=np.mean):
 	"""Returns enmap "emap" downgraded by the given integer factor
 	(may be a list for each direction, or just a number) by averaging
 	inside pixels."""
 	fact = np.full(2, 1, dtype=int)
 	fact[:] = factor
 	tshape = emap.shape[-2:]//fact*fact
-	res = np.mean(np.reshape(emap[...,:tshape[0],:tshape[1]],emap.shape[:-2]+(tshape[0]//fact[0],fact[0],tshape[1]//fact[1],fact[1])),(-3,-1))
+	res = dfunc(np.reshape(emap[...,:tshape[0],:tshape[1]],emap.shape[:-2]+(tshape[0]//fact[0],fact[0],tshape[1]//fact[1],fact[1])),(-3,-1))
 	try: return ndmap(res, emap[...,::fact[0],::fact[1]].wcs)
 	except AttributeError: return res
 
