@@ -213,8 +213,8 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
                 range(first, first + ncomp)))).astype(dtype)
         else:
             m = np.atleast_2d(hp_map).astype(dtype)
-            if unit != 1:
-                m /= unit
+        if unit != 1:
+            m /= unit
         # Prepare the transformation
         print("Preparing SHT")
         nside = hp.npix2nside(m.shape[1])
