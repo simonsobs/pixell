@@ -645,7 +645,9 @@ def regularize_beam(beam, cutoff=1e-2, nl=None):
 	# we want to keep unextrapolated later.
 	l     = np.maximum(1,np.arange(nl))
 	vcut  = np.max(beam,-1)*cutoff
-	lcut  = np.argmin(beam > vcut, -1)
+	above = beam > vcut
+	lcut  = np.argmin(above, -1)
+	if lcut > nl or lcut == 0: return beam[:nl]
 	obeam = vcut * (l/lcut)**(2*np.log(cutoff))
 	# Get the mask for what we want to keep. This looks complicated, but that's
 	# just to support arbitrary-dimensionality (maybe that wasn't really necessary).

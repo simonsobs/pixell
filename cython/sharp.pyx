@@ -276,6 +276,32 @@ cdef class alm_info:
 					m = 0
 			for i in range(alm.shape[1]):
 				alm[comp,i] = work[i]
+	def alm2cl(self, alm):
+		"""Computes the power spectrum for the given alm"""
+		alm   = np.asarray(alm)
+		aflat = alm.reshape(-1,alm.shape[-1])
+		cdef float[::1] cl_single_sp
+		cdef float[::1] alm_single_sp
+		cdef double[::1] cl_single_dp
+		cdef double[::1] alm_single_dp
+		if alm.dtype == np.complex64:
+			cl  = np.empty((len(aflat),self.lmax+1), np.float32)
+			# We will loop over individual spectra
+			for i in range(len(aflat)):
+				alm_single_sp = np.ascontiguousarray(aflat[i]).view(np.float32)
+				cl_single_sp = cl[i]
+				csharp.alm2cl_sp(self.info, &alm_single_sp[0], &cl_single_sp[0])
+			return cl.reshape(alm.shape[:-1]+cl.shape[-1:])
+		elif alm.dtype == np.complex128:
+			cl  = np.empty((len(aflat),self.lmax+1), np.float64)
+			# We will loop over individual spectra
+			for i in range(len(aflat)):
+				alm_single_dp = np.ascontiguousarray(aflat[i]).view(np.float64)
+				cl_single_dp = cl[i]
+				csharp.alm2cl_dp(self.info, &alm_single_dp[0], &cl_single_dp[0])
+			return cl.reshape(alm.shape[:-1]+cl.shape[-1:])
+		else:
+			raise ValueError("Only complex64 and complex128 supported, but got %s" % str(alm.dtype))
 	def lmul(self, alm, lmat, out=None):
 		"""Computes res[a,lm] = lmat[a,b,l]*alm[b,lm], where lm is the position of the
 		element with (l,m) in the alm array, as defined by this class."""

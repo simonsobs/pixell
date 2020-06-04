@@ -213,8 +213,8 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
                 range(first, first + ncomp)))).astype(dtype)
         else:
             m = np.atleast_2d(hp_map).astype(dtype)
-            if unit != 1:
-                m /= unit
+        if unit != 1:
+            m /= unit
         # Prepare the transformation
         print("Preparing SHT")
         nside = hp.npix2nside(m.shape[1])
@@ -588,7 +588,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 	# If the output geometry was not given explicitly, then build one
 	if oshape is None:
 		if res is None: res = min(np.abs(imap.wcs.wcs.cdelt))*utils.degree/2
-		oshape, owcs = enmap.geometry(pos=[[-r,r],[r,-r]], res=res, proj=proj)
+		oshape, owcs = enmap.geometry(pos=[[-r,r],[r,-r]], res=res, ref=(0,0), proj=proj)
 	# Check if we should be doing polarization rotation
 	pol_compat = imap.ndim >= 3 and imap.shape[-3] == 3
 	if pol is None: pol = pol_compat
@@ -611,7 +611,8 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 		if extensive: ithumb /= ithumb.pixsizemap()
 		ithumb = ithumb.apod(apod_pix, fill="median")
 		if filter is not None: ithumb = filter(ithumb)
-		if verbose: print("%4d/%d %6.2f %6.2f %8.2f %dx%d" % (si+1, nsrc, coords[si,0]/utils.degree, coords[si,1]/utils.degree, np.max(ithumb), ithumb.shape[-2], ithumb.shape[-1]))
+		if verbose:
+			print("%4d/%d %6.2f %6.2f %8.2f %dx%d" % (si+1, nsrc, coords[si,0]/utils.degree, coords[si,1]/utils.degree, np.max(ithumb), ithumb.shape[-2], ithumb.shape[-1]))
 		# Oversample using fourier if requested. We do this because fourier
 		# interpolation is better than spline interpolation overall
 		if oversample > 1:
@@ -630,10 +631,11 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 	return omaps
 
 def thumbnails_ivar(imap, coords, r=5*utils.arcmin, res=None, proj="tan",
-		oshape=None, owcs=None, extensive=False, verbose=False):
+		oshape=None, owcs=None, extensive=True, verbose=False):
 	"""Like thumbnails, but for hitcounts, ivars, masks, and other quantities that
 	should stay positive and local. Remember to set extensive to True if you have an
-	extensive quantity, e.g. if the values in each pixel would go up if multiple pixels
-	combined. Hitcounts are an example of an extensive quantity."""
+	extensive quantity, i.e. if the values in each pixel would go up if multiple pixels
+	combined. An example of this is a hitcount map or ivar per pixel. Conversely, if
+	you have an intensive quantity like ivar per arcmin you should set extensive=False."""
 	return thumbnails(imap, coords, r=r, res=res, proj=proj, oshape=oshape, owcs=owcs,
 			order=1, oversample=1, pol=False, extensive=extensive, verbose=verbose)

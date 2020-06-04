@@ -41,7 +41,7 @@ if (
 
 
 compile_opts = {
-    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g'],
+    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-Ofast'],
     'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
     'extra_link_args': ['-fopenmp', '-g']
@@ -125,7 +125,7 @@ setup(
     },
     ext_modules=[
         Extension('pixell.sharp',
-            sources=['cython/sharp.c'],
+            sources=['cython/sharp.c', 'cython/sharp_utils.c'],
             libraries=['sharp','c_utils', 'fftpack', 'm'],
             library_dirs=['_deps/libsharp/auto/lib'],
             include_dirs=[np.get_include()],
