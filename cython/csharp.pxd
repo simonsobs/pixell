@@ -54,3 +54,7 @@ cdef extern from "csharp.h":
 		int stride_lon, int stride_lat, sharp_geom_info **geom_info)
 	void sharp_make_mw_geom_info (int nrings, int ppring, double phi0,
 		int stride_lon, int stride_lat, sharp_geom_info **geom_info)
+
+cdef extern from "sharp_utils.h":
+	void alm2cl_sp(sharp_alm_info * alm_info, float * alm, float * cl)
+	void alm2cl_dp(sharp_alm_info * alm_info, double * alm, double * cl)
