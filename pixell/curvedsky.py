@@ -238,7 +238,6 @@ def map2alm_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False,
 	# and map[ntrans,ncomp/nderiv,ny,nx] to avoid lots of if tests later.
 	# We undo the reshape before returning.
 	alm, ainfo = prepare_alm(alm, ainfo, lmax, map.shape[:-2], map.dtype)
-	if copy: map = map.copy()
 	if direct: tmap, mslices, tslices = map, [(Ellipsis,)], [(Ellipsis,)]
 	else:      tmap, mslices, tslices = make_projectable_map_cyl(map)
 	tmap[:] = 0
@@ -247,7 +246,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False,
 	# We don't have ring weights for general cylindrical projections.
 	# See if our pixelization matches one with known weights.
 	minfo = match_predefined_minfo(tmap, rtol=rtol, atol=atol)
-	return map2alm_raw(tmap, alm, minfo, ainfo, spin=spin)
+	return map2alm_raw(tmap, alm, minfo, ainfo, spin=spin, copy=copy)
 
 def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], copy=False,
 		theta_min=None, theta_max=None):
