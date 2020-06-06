@@ -92,7 +92,7 @@ class ndmap(np.ndarray):
 	def plain(self): return ndmap(self, wcsutils.WCS(naxis=2))
 	def padslice(self, box, default=np.nan): return padslice(self, box, default=default)
 	def center(self): return center(self.shape,self.wcs)
-	def downgrade(self, factor, dfunc=np.mean): return downgrade(self, factor, dfunc=dfunc)
+	def downgrade(self, factor, op=np.mean): return downgrade(self, factor, op=op)
 	def upgrade(self, factor): return upgrade(self, factor)
 	def fillbad(self, val=0, inplace=False): fillbad(self, val=val, inplace=inplace)
 	def to_healpix(self, nside=0, order=3, omap=None, chunk=100000, destroy_input=False):
@@ -1316,14 +1316,14 @@ def multi_pow(mat, exp, axes=[0,1]):
 	the given exponent in eigen-space."""
 	return samewcs(utils.eigpow(mat, exp, axes=axes), mat)
 
-def downgrade(emap, factor, dfunc=np.mean):
+def downgrade(emap, factor, op=np.mean):
 	"""Returns enmap "emap" downgraded by the given integer factor
 	(may be a list for each direction, or just a number) by averaging
 	inside pixels."""
 	fact = np.full(2, 1, dtype=int)
 	fact[:] = factor
 	tshape = emap.shape[-2:]//fact*fact
-	res = dfunc(np.reshape(emap[...,:tshape[0],:tshape[1]],emap.shape[:-2]+(tshape[0]//fact[0],fact[0],tshape[1]//fact[1],fact[1])),(-3,-1))
+	res = op(np.reshape(emap[...,:tshape[0],:tshape[1]],emap.shape[:-2]+(tshape[0]//fact[0],fact[0],tshape[1]//fact[1],fact[1])),(-3,-1))
 	try: return ndmap(res, emap[...,::fact[0],::fact[1]].wcs)
 	except AttributeError: return res
 
