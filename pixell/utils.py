@@ -404,6 +404,10 @@ def nearest_product(n, factors, direction="below"):
 	return best
 
 def mkdir(path):
+	# It's useful to be able to do mkdir(os.path.dirname(fname)) to create the directory
+	# a file should be in if it's missing. If fname has no directory component dirname
+	# returns "". This check prevents this from causing an error.
+	if path == "": return
 	try:
 		os.makedirs(path)
 	except OSError as exception:
@@ -641,7 +645,9 @@ def regularize_beam(beam, cutoff=1e-2, nl=None):
 	# we want to keep unextrapolated later.
 	l     = np.maximum(1,np.arange(nl))
 	vcut  = np.max(beam,-1)*cutoff
-	lcut  = np.argmin(beam > vcut, -1)
+	above = beam > vcut
+	lcut  = np.argmin(above, -1)
+	if lcut > nl or lcut == 0: return beam[:nl]
 	obeam = vcut * (l/lcut)**(2*np.log(cutoff))
 	# Get the mask for what we want to keep. This looks complicated, but that's
 	# just to support arbitrary-dimensionality (maybe that wasn't really necessary).
@@ -1650,6 +1656,14 @@ blackbody = planck
 def graybody(f, T, beta=1):
 	"""Return a graybody spectrum at the frequency f and temperature T in Jy/sr"""
 	return  2*h*f**(3+beta)/c**2/(np.exp(h*f/(k*T))-1) * 1e26
+
+def tsz_spectrum(f, T=T_cmb):
+	"""The increase in flux due to tsz in Jy/sr per unit of y. This is
+	just the first order approximation, but it's good enough for realistic
+	values of y, i.e. y << 1"""
+	x  = h*f/(k*T)
+	ex = np.exp(x)
+	return 2*h*f**3/c**2 * (x*ex)/(ex-1)**2 * (x*(ex+1)/(ex-1)-4) * 1e26
 
 ### Binning ####
 

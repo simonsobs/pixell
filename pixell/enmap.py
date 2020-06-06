@@ -92,7 +92,7 @@ class ndmap(np.ndarray):
 	def plain(self): return ndmap(self, wcsutils.WCS(naxis=2))
 	def padslice(self, box, default=np.nan): return padslice(self, box, default=default)
 	def center(self): return center(self.shape,self.wcs)
-	def downgrade(self, factor): return downgrade(self, factor)
+	def downgrade(self, factor, op=np.mean): return downgrade(self, factor, op=op)
 	def upgrade(self, factor): return upgrade(self, factor)
 	def fillbad(self, val=0, inplace=False): fillbad(self, val=val, inplace=inplace)
 	def to_healpix(self, nside=0, order=3, omap=None, chunk=100000, destroy_input=False):
@@ -451,8 +451,8 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 		i2     = min(i1+bsize, shape[-2])
 		somap  = omap[...,i1:i2,:]
 		pix    = map.sky2pix(somap.posmap(), safe=safe)
-		y1     = max(np.min(pix[0]).astype(int)-1,0)
-		y2     = min(np.max(pix[1]).astype(int)+1,map.shape[-2])
+		y1     = max(np.min(pix[0]).astype(int)-3,0)
+		y2     = min(np.max(pix[0]).astype(int)+3,map.shape[-2])
 		pix[0] -= y1
 		somap[:] = utils.interpol(map[...,y1:y2,:], pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
 	return omap
@@ -1316,14 +1316,14 @@ def multi_pow(mat, exp, axes=[0,1]):
 	the given exponent in eigen-space."""
 	return samewcs(utils.eigpow(mat, exp, axes=axes), mat)
 
-def downgrade(emap, factor):
+def downgrade(emap, factor, op=np.mean):
 	"""Returns enmap "emap" downgraded by the given integer factor
 	(may be a list for each direction, or just a number) by averaging
 	inside pixels."""
 	fact = np.full(2, 1, dtype=int)
 	fact[:] = factor
 	tshape = emap.shape[-2:]//fact*fact
-	res = np.mean(np.reshape(emap[...,:tshape[0],:tshape[1]],emap.shape[:-2]+(tshape[0]//fact[0],fact[0],tshape[1]//fact[1],fact[1])),(-3,-1))
+	res = op(np.reshape(emap[...,:tshape[0],:tshape[1]],emap.shape[:-2]+(tshape[0]//fact[0],fact[0],tshape[1]//fact[1],fact[1])),(-3,-1))
 	try: return ndmap(res, emap[...,::fact[0],::fact[1]].wcs)
 	except AttributeError: return res
 
@@ -1673,7 +1673,7 @@ def rbin(map, center=[0,0], bsize=None, brel=1.0, return_nhit=False):
 	return _bin_helper(map, r, bsize*brel, return_nhit=return_nhit)
 
 def lbin(map, bsize=None, brel=1.0, return_nhit=False):
-	"""Like rbin, but for fourier space"""
+	"""Like rbin, but for fourier space. Returns b(l),l"""
 	l = map.modlmap()
 	if bsize is None: bsize = min(abs(l[0,1]),abs(l[1,0]))
 	return _bin_helper(map, l, bsize*brel, return_nhit=return_nhit)
