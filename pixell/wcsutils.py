@@ -147,6 +147,15 @@ def cea(pos, res=None, shape=None, rowmajor=False, lam=None, ref=None):
 	if streq(ref, "standard"): ref = (0,0)
 	return finalize(w, pos, res, shape, ref=ref)
 
+def mer(pos, res=None, shape=None, rowmajor=False, ref=None):
+	"""Set up a mercator system. See the build function for details."""
+	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
+	w = WCS(naxis=2)
+	w.wcs.ctype = ["RA---MER", "DEC--MER"]
+	w.wcs.crval = np.array([mid[0],0])
+	if streq(ref, "standard"): ref = (0,0)
+	return finalize(w, pos, res, shape, ref=ref)
+
 def zea(pos, res=None, shape=None, rowmajor=False, ref=None):
 	"""Setups up an oblate Lambert's azimuthal equal area system.
 	See the build function for details. Don't use this if you want
@@ -184,7 +193,7 @@ def tan(pos, res=None, shape=None, rowmajor=False, ref=None):
 	w, ref = _apply_zenithal_ref(w, ref)
 	return finalize(w, pos, res, shape, ref=ref)
 
-systems = {"car": car, "cea": cea, "air": air, "zea": zea, "tan": tan, "gnom": tan, "plain": plain }
+systems = {"car": car, "cea": cea, "mer": mer, "air": air, "zea": zea, "tan": tan, "gnom": tan, "plain": plain }
 
 def build(pos, res=None, shape=None, rowmajor=False, system="cea", ref=None, **kwargs):
 	"""Set up the WCS system named by the "system" argument.
