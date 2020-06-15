@@ -2064,13 +2064,18 @@ for name in ["sky2pix", "pix2sky", "box", "pixbox_of", "posmap", "pixmap", "lmap
 class ndmap_proxy_fits(ndmap_proxy):
 	def __init__(self, hdu, wcs, fname="<none>", threshold=1e7):
 		self.hdu = hdu
-		dtype    = fix_endian(hdu.section[(slice(0,1),)*hdu.header["NAXIS"]]).dtype
+		# Note that 'section' is not part of some HDU types, such as CompImageHDU.
+		self.use_section = hasattr(hdu, 'section')
+		if self.use_section:
+			dtype    = fix_endian(hdu.section[(slice(0,1),)*hdu.header["NAXIS"]]).dtype
+		else:
+			dtype    = fix_endian(hdu.data[(slice(0,1),)*hdu.header["NAXIS"]]).dtype
 		ndmap_proxy.__init__(self, hdu.shape, wcs, dtype, fname=fname, threshold=threshold)
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [len(self.shape)-2,2])
 		if len(psel) > 2: raise IndexError("too many indices")
 		_, wcs = slice_geometry(self.shape[-2:], self.wcs, psel)
-		if self.hdu.size > self.threshold:
+		if (self.hdu.size > self.threshold) and self.use_section:
 			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-1,1])
 			res = self.hdu.section[sel1][(Ellipsis,)+sel2]
 		else: res = self.hdu.data[sel]
