@@ -137,10 +137,10 @@ def apply_modulation(imap, A, T0=T_cmb, freq=150e9, map_unit=1e-6, mode="thermo"
 		xh = 0.5*h*freq/(k*T0)
 		f  = xh/np.tanh(xh)-1
 		A1 = A-1
-		oflat  = A*iflat
-		oflat += f*(A1**2*t0 + 2*A*A1*iflat)
-		if dipole: oflat += A1*t0
-		if tiny:   oflat += f*A**2*iflat**2/t0[0]
+		oflat  = A*iflat                             # basic modulation: ~100 uK*1e-3 = 0.1 uK (b^1)
+		oflat += f*(A1**2*t0 + 2*A*A1*iflat)         # quad: 2.7K*1e-6*f ~ 1 uK (b^2); + ~100 uK*1e-3 ~ 0.1 uK (b^1)
+		if dipole: oflat += A1*t0                    # dipole: 2.7K*1e-3 ~ 1000 uK (b^1)
+		if tiny:   oflat += f*A**2*iflat**2/t0[0]    # tiny: ~100 uK*(100uK/2.7K) ~ 0.01 uK
 		omap = oflat.reshape(imap.shape)
 		return omap
 	else: raise ValueError("Urecognized modulation mode '%s'" % mode)
@@ -175,16 +175,15 @@ def calc_boost(pos, dir, beta, pol=True, recenter=False):
 	A   = A.reshape(pos.shape[1:])
 	return res, A
 
-def calc_boost_1d(z, beta, mixed=False):
+def calc_boost_1d(z, beta):
 	"""Given the z, the cosine of the angle from the direction of travel in
 	the CMB rest frame, and beta, the speed as a fraction of c, compute the
 	observed z_obs after taking into account the effect of aberration, as well
 	as the corresponding modulation A, such that T_obs(z_obs) = A * T_rest(z).
 	Pass in -beta to get the reverse transformation, from obs to rest."""
 	gamma = (1-beta**2)**-0.5
-	beta2 = beta if not mixed else -beta
-	z_obs = (z+beta)/(1+z*beta2)
-	A     = 1/(gamma*(1-z*beta))
+	z_obs = (z+beta)/(1+z*beta)
+	A     = 1/(gamma*(1-z_obs*beta))
 	return z_obs, A
 
 ### These would be useful for exact modulation calculations,                               ###
@@ -204,7 +203,7 @@ def planck(nu, T, deriv=False):
 
 def inv_planck(nu, I, T0=T_cmb, niter=5):
 	"""Estimate the temperature T (K) given the frequency nu (Hz) and intensity I.
-	Used Newton iteration, and should be very accurate for typical CMB maps."""
+	Uses Newton iteration, and should be very accurate for typical CMB maps."""
 	T = T0
 	for i in range(niter):
 		T -= (planck(nu, T)-I)/planck(nu, T, deriv=True)
