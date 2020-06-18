@@ -7,7 +7,7 @@ os: linux
 install:
   - python -m pip install -U pip
   - python -m easy_install -U setuptools
-  - python -m pip install twine cibuildwheel==x.y.z
+  - python -m pip install twine cibuildwheel==1.4.2
   - pip install -r requirements.txt
   - python setup.py develop
   
