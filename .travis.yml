@@ -72,7 +72,7 @@ env:
     # Note: TWINE_PASSWORD is set to an API token in Travis settings
     - CIBW_TEST_REQUIRES=pytest
     - CIBW_TEST_COMMAND="py.test --cov=pixell tests/ -s"
+    - CIBW_BEFORE_BUILD="pip install numpy scipy cython"      
     - CIBW_BUILD="cp3?-*"
-      
 
 
