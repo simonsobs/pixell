@@ -7,14 +7,19 @@ os: linux
 install:
   - python -m pip install -U pip
   - python -m easy_install -U setuptools
+  - python -m pip install twine cibuildwheel==x.y.z
   - pip install -r requirements.txt
   - python setup.py develop
   
 script:
-- py.test --cov=pixell tests/ -s
+  - py.test --cov=pixell tests/ -s
+  - python -m cibuildwheel --output-dir wheelhouse
+  
+
 after_success:
   - coveralls
-  
+  - if [[ $TRAVIS_TAG ]]; then python -m twine upload wheelhouse/*.whl; fi
+
 matrix:
   include:
     - os: osx
@@ -22,16 +27,17 @@ matrix:
       language: shell
       env: PYTHON=3.7.4
            
-deploy:
-  provider: pypi
-  distributions: sdist --formats=gztar
-  user: msyriac
-  password:
-    secure: BqdgcsgF/yW8qUO+MUax9D8yRIsM7QE67d9vjhHho8nhdAbI76HvmkvWdUe3AjKULDmGQXXWFVllJUF6obO4mj9DMYnKcvsQ5SD3qKMfyiBVNZ1rdzpZvECfJrRDKMBQCRb3RzZzPBvJ6DlCCcfyslseDZ9ezFbNd+airew9ThZ+uTdn+bRJ/lLzFkM8L0fpsZEOW4RCfGEuDD0i54+TVVbhvqYUcuca9rHpWHCjZY2sNwYBB83U6/qLhF6OmvhO5RdVyZusFRNGmXCz/MmwCyBWkAJynWCs/Z4TnME4Pay2dF2/Fu6xN1A+sk34EOEI40KkcI61WW3WCpQUi/8zkgynHsLaaeHpzZAiPxTLVnsbSF1aEvfqpJeVP64sllDA+HpBhbkvbmR9r7GoEolpa3oOzfrgIZRjKI2qps9NiX+RMhMXtUB/o+cXt/nbRG5Uq5FbnWOUOIOgoHeC7nK+7YiV1mHfFkmIGD0C0aPwfp9FQL4v25CzD57ezoEbFUSl8hvQ0IdFvK9rpT8wbqBzjupjjkXd57Jlh3VegaJl/Trf0grlpjhZzbXDIgKV8mgZqiqMJfVZM7MapFfjk576EK3tL+8a4ZGrh5bW35qfEo+cj3qjmIfpTn8N/+rEQziDOKEwY7gFDBgXjf5TVZFoL/8NjIk1gCQdU0MrUzc4B5c=
-  on:
-    tags: true
-    repo: simonsobs/pixell
-    python: 3.6
+# deploy:
+#   provider: pypi
+#   distributions: sdist --formats=gztar
+#   user: msyriac
+#   password:
+#     secure: BqdgcsgF/yW8qUO+MUax9D8yRIsM7QE67d9vjhHho8nhdAbI76HvmkvWdUe3AjKULDmGQXXWFVllJUF6obO4mj9DMYnKcvsQ5SD3qKMfyiBVNZ1rdzpZvECfJrRDKMBQCRb3RzZzPBvJ6DlCCcfyslseDZ9ezFbNd+airew9ThZ+uTdn+bRJ/lLzFkM8L0fpsZEOW4RCfGEuDD0i54+TVVbhvqYUcuca9rHpWHCjZY2sNwYBB83U6/qLhF6OmvhO5RdVyZusFRNGmXCz/MmwCyBWkAJynWCs/Z4TnME4Pay2dF2/Fu6xN1A+sk34EOEI40KkcI61WW3WCpQUi/8zkgynHsLaaeHpzZAiPxTLVnsbSF1aEvfqpJeVP64sllDA+HpBhbkvbmR9r7GoEolpa3oOzfrgIZRjKI2qps9NiX+RMhMXtUB/o+cXt/nbRG5Uq5FbnWOUOIOgoHeC7nK+7YiV1mHfFkmIGD0C0aPwfp9FQL4v25CzD57ezoEbFUSl8hvQ0IdFvK9rpT8wbqBzjupjjkXd57Jlh3VegaJl/Trf0grlpjhZzbXDIgKV8mgZqiqMJfVZM7MapFfjk576EK3tL+8a4ZGrh5bW35qfEo+cj3qjmIfpTn8N/+rEQziDOKEwY7gFDBgXjf5TVZFoL/8NjIk1gCQdU0MrUzc4B5c=
+#   on:
+#     tags: true
+#     repo: simonsobs/pixell
+#     python: 3.6
+
 addons:
   apt_packages:
   - gfortran
@@ -59,4 +65,11 @@ before_install: |
     # A manual check that the correct version of Python is running.
     python --version
   fi
+
+env:
+  global:
+    - TWINE_USERNAME=__token__
+    # Note: TWINE_PASSWORD is set to an API token in Travis settings
+
+
 
