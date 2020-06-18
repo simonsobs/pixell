@@ -70,6 +70,9 @@ env:
   global:
     - TWINE_USERNAME=__token__
     # Note: TWINE_PASSWORD is set to an API token in Travis settings
-
+    - CIBW_TEST_REQUIRES=pytest
+    - CIBW_TEST_COMMAND="py.test --cov=pixell tests/ -s"
+    - CIBW_BUILD="cp3?-*"
+      
 
 
