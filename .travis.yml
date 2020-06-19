@@ -2,11 +2,6 @@ language: python
 
 jobs:
   include:
-    # perform a linux build
-    # - services: docker
-    # # and a mac build
-    # - os: osx
-    #   language: shell
 
     - language: python
       dist: xenial
@@ -22,8 +17,9 @@ env:
   global:
     - TWINE_USERNAME=__token__
     # Note: TWINE_PASSWORD is set to an API token in Travis settings
-    - CIBW_BEFORE_BUILD="pip install numpy scipy cython"      
-    - CIBW_SKIP="cp27-* cp33-* cp34-* cp35-*"
+    - CIBW_BEFORE_BUILD="pip install numpy scipy cython"
+    - CIBW_BUILD="cp3?-*"
+    - CIBW_SKIP="cp33-* cp34-* cp35-*"
     - PYTHON=python3
     - PIP=pip3
         
