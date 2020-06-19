@@ -1,50 +1,20 @@
+# Modified from https://github.com/joerick/cibuildwheel/blob/master/examples/travis-ci-test-and-deploy.yml
+# In this configuration, the package is tested against multiple versions of python
+# on Linux and on one version of Python on Windows. If and only if all tests pass
+# will the wheels be built and deployed. Further, deployment is only initiated if
+# the current branch is "master", the current commit is tagged, and the current
+# repo is yours (e.g. it won't run on a Pull Request). For convenience, a source
+# distribution is also created.
+
 language: python
 python:
-- 3.8
-- 3.7
-- 3.6
-os: linux
-install:
-  - python -m pip install -U pip
-  - python -m easy_install -U setuptools
-  - python -m pip install twine cibuildwheel==1.4.2
-  - pip install -r requirements.txt
-  - python setup.py develop
-  
-script:
-  - py.test --cov=pixell tests/ -s
-  - python -m cibuildwheel --output-dir wheelhouse
-  
+  - 3.6
+  - 3.7
+  - 3.8
 
-after_success:
-  - coveralls
-  - if [[ $TRAVIS_TAG ]]; then python -m twine upload wheelhouse/*.whl; fi
-
-matrix:
-  include:
-    - os: osx
-      osx_image: xcode11.2  # Python 3.7.4 running on macOS 10.14.4
-      language: shell
-      env: PYTHON=3.7.4
-           
-# deploy:
-#   provider: pypi
-#   distributions: sdist --formats=gztar
-#   user: msyriac
-#   password:
-#     secure: BqdgcsgF/yW8qUO+MUax9D8yRIsM7QE67d9vjhHho8nhdAbI76HvmkvWdUe3AjKULDmGQXXWFVllJUF6obO4mj9DMYnKcvsQ5SD3qKMfyiBVNZ1rdzpZvECfJrRDKMBQCRb3RzZzPBvJ6DlCCcfyslseDZ9ezFbNd+airew9ThZ+uTdn+bRJ/lLzFkM8L0fpsZEOW4RCfGEuDD0i54+TVVbhvqYUcuca9rHpWHCjZY2sNwYBB83U6/qLhF6OmvhO5RdVyZusFRNGmXCz/MmwCyBWkAJynWCs/Z4TnME4Pay2dF2/Fu6xN1A+sk34EOEI40KkcI61WW3WCpQUi/8zkgynHsLaaeHpzZAiPxTLVnsbSF1aEvfqpJeVP64sllDA+HpBhbkvbmR9r7GoEolpa3oOzfrgIZRjKI2qps9NiX+RMhMXtUB/o+cXt/nbRG5Uq5FbnWOUOIOgoHeC7nK+7YiV1mHfFkmIGD0C0aPwfp9FQL4v25CzD57ezoEbFUSl8hvQ0IdFvK9rpT8wbqBzjupjjkXd57Jlh3VegaJl/Trf0grlpjhZzbXDIgKV8mgZqiqMJfVZM7MapFfjk576EK3tL+8a4ZGrh5bW35qfEo+cj3qjmIfpTn8N/+rEQziDOKEwY7gFDBgXjf5TVZFoL/8NjIk1gCQdU0MrUzc4B5c=
-#   on:
-#     tags: true
-#     repo: simonsobs/pixell
-#     python: 3.6
-
-addons:
-  apt_packages:
-  - gfortran
-  
-    
-before_install: |
-  if [ "$TRAVIS_OS_NAME" == "osx" ]; then
+before_install:
+  - |
+    if [ "$TRAVIS_OS_NAME" == "osx" ]; then
     brew update
     # Per the `pyenv homebrew recommendations <https://github.com/yyuu/pyenv/wiki#suggested-build-environment>`_.
     brew install openssl readline
@@ -64,13 +34,64 @@ before_install: |
     source venv/bin/activate
     # A manual check that the correct version of Python is running.
     python --version
-  fi
+    fi
+
+install:
+  - python3 -m pip install -U pip
+  - python3 -m easy_install -U setuptools
+  - python3 -m pip install pytest
+
+script:
+  - python3 -m pip install -r requirements.txt
+  - python3 setup.py build_ext -i
+  - py.test --cov=pixell tests/ -s
+  - python3 setup.py install
+
+stages:
+  - test
+  # Only execute deployment stage on tagged commits, and from your repository
+  # (e.g. not PRs). Replace with your repo name.
+  - name: deploy
+    if: tag IS PRESENT AND repo = simonsobs/pixell
+    # To only build tags that look like vX.Y.Z:
+    #   if: tag =~ ^v\d+\.\d+\.\d+$ AND repo = simonsobs/pixell
+
+jobs:
+  include:
+
+    # Deploy source distribution
+    - stage: deploy
+      name: Deploy source distribution
+      install: skip
+      script: python3 setup.py sdist --formats=gztar
+      after_success: |
+        python3 -m pip install twine
+        python3 -m twine upload --skip-existing dist/*.tar.gz
+    # Deploy on linux
+    - stage: deploy
+      name: Build and deploy Linux wheels
+      services: docker
+      install: python3 -m pip install cibuildwheel==1.4.2
+      script: python3 -m cibuildwheel --output-dir wheelhouse
+      after_success: |
+        coveralls
+        python3 -m pip install twine
+        python3 -m twine upload --skip-existing wheelhouse/*.whl
+    # Deploy on mac
+    - stage: deploy
+      name: Build and deploy macOS wheels
+      os: osx
+      language: shell
+      install: python3 -m pip install cibuildwheel==1.4.2
+      script: python3 -m cibuildwheel --output-dir wheelhouse
+      after_success: |
+        coveralls
+        python3 -m pip install twine
+        python3 -m twine upload --skip-existing wheelhouse/*.whl
 
 env:
   global:
     - TWINE_USERNAME=__token__
-    # Note: TWINE_PASSWORD is set to an API token in Travis settings
+    # Note: TWINE_PASSWORD is set to a PyPI API token in Travis settings
     - CIBW_BEFORE_BUILD="pip install numpy scipy cython"      
     - CIBW_BUILD="cp3?-*"
-
-
