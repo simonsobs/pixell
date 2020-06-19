@@ -33,7 +33,11 @@ else
 	fi
 fi
 autoconf
-./configure --enable-pic
+if [[ $TRAVIS ]]; then
+	CFLAGS="-march=x86-64 -std=c99 -O3 -ffast-math -fopenmp" CC=gcc ./configure --enable-pic
+else	
+	./configure --enable-pic
+fi
 cat config.log
 make
 if [ $? -eq 0 ]; then
