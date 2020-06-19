@@ -35,6 +35,7 @@ install:
 
 script:
   - python3 -m pip install -r requirements.txt
+  - rm -rf _deps/
   - python3 setup.py build_ext -i
   - py.test --cov=pixell tests/ -s
   - python3 setup.py install
