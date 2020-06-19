@@ -77,3 +77,6 @@ before_install:
     python --version
     fi
     
+addons:
+  apt_packages:
+  - gfortran
