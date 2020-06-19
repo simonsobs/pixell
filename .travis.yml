@@ -3,8 +3,18 @@ language: python
 jobs:
   include:
     # perform a linux build
-    - services: docker
-    # and a mac build
+    # - services: docker
+    # # and a mac build
+    # - os: osx
+    #   language: shell
+
+    - language: python
+      dist: xenial
+      sudo: required
+      python: "3.7"
+      services:
+      - docker
+        
     - os: osx
       language: shell
 
@@ -13,8 +23,11 @@ env:
     - TWINE_USERNAME=__token__
     # Note: TWINE_PASSWORD is set to an API token in Travis settings
     - CIBW_BEFORE_BUILD="pip install numpy scipy cython"      
-    - CIBW_BUILD="cp3?-*"
-
+    - CIBW_SKIP="cp27-* cp33-* cp34-* cp35-*"
+    - CIBW_TEST_COMMAND="py.test --cov=pixell tests/ -s {project}/tests"
+    - PYTHON=python3
+    - PIP=pip3
+        
 install:
   - python3 -m pip install -U pip
   - python3 -m easy_install -U setuptools
@@ -26,15 +39,18 @@ script:
   - python3 setup.py build_ext -i
   - py.test --cov=pixell tests/ -s
   - python3 setup.py install
+  - find . -type f -iname '*.so' -print -delete
   # build the wheels, put them into './wheelhouse'
   - python3 -m cibuildwheel --output-dir wheelhouse
+  - ls wheelhouse
+  
 
 after_success:
   # if the release was tagged, upload them to PyPI
   - |
     if [[ $TRAVIS_TAG ]]; then
       python3 -m pip install twine
-      python3 -m twine upload wheelhouse/*.whl
+      python3 -m twine upload --verbose --skip-existing wheelhouse/*.whl
     fi
 
 before_install:
