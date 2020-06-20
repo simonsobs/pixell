@@ -36,6 +36,7 @@ elif sys.platform == 'darwin':
     gccpath = glob.glob('/usr/local/bin/gcc-*')
     if gccpath:
         # Use newest gcc found
+        print(gccpath)
         gversion = str(max([int(os.path.basename(x).split('-')[1]) for x in gccpath]))
         os.environ['CC'] = 'gcc-' + gversion
         os.environ['CXX'] = os.environ['CC'].replace("gcc","g++")
