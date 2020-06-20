@@ -5,6 +5,7 @@ DEPDIR=_deps
 cd $DEPDIR
 [ -e libsharp ] || git clone https://github.com/Libsharp/libsharp # do we want a frozen version?
 cd libsharp
+sed -i 's/march=native/march=x86-64/g' configure.ac
 aclocal
 if [ $? -eq 0 ]; then
     echo Found automake.
@@ -33,11 +34,7 @@ else
 	fi
 fi
 autoconf
-if [[ $TRAVIS ]]; then
-	LDCCFLAGS='-O3 -fno-tree-vectorize -ffast-math -fomit-frame-pointer -std=c99 -pedantic -Wextra -Wall -Wno-unknown-pragmas -Wshadow -Wmissing-prototypes -Wfatal-errors -march=x86-64  -fPIC' CCFLAGS_NO_C='-O3 -fno-tree-vectorize -ffast-math -fomit-frame-pointer -std=c99 -pedantic -Wextra -Wall -Wno-unknown-pragmas -Wshadow -Wmissing-prototypes -Wfatal-errors -march=x86-64 -fPIC' CFLAGS="-march=x86-64 -std=c99 -O3 -ffast-math -fopenmp" ./configure --enable-pic
-else	
-	./configure --enable-pic
-fi
+./configure --enable-pic
 cat config.log
 make
 if [ $? -eq 0 ]; then
