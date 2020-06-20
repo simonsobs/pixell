@@ -32,6 +32,7 @@ install:
 script:
   - python3 -m pip install -r requirements.txt
   - python3 setup.py build_ext -i
+  - ./scripts/amop pixell/sharp*.so
   - py.test --cov=pixell tests/ -s
   - python3 setup.py install
   - find . -type f -iname '*.so' -print -delete

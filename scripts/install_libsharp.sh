@@ -5,9 +5,11 @@ DEPDIR=_deps
 cd $DEPDIR
 [ -e libsharp ] || git clone https://github.com/Libsharp/libsharp # do we want a frozen version?
 cd libsharp
+echo $TRAVIS
 if [[ $TRAVIS ]]; then
 	sed -i 's/march=native/march=x86-64/g' configure.ac
 fi
+cat configure.ac
 aclocal
 if [ $? -eq 0 ]; then
     echo Found automake.
@@ -47,3 +49,6 @@ else
 	exit 127
 fi
 rm -rf python/
+cd auto/bin/
+chmod +x ../../../../scripts/amop
+../../../../scripts/amop sharp_testsuite
