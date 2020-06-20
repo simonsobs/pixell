@@ -16,13 +16,10 @@ build_src = build_src.build_src
 
 
 compile_opts = {
-    # 'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-Ofast'],
-    # 'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
-    'extra_compile_args': ['-std=c99', '-Wno-strict-aliasing', '-g', '-Ofast'],
-    'extra_f90_compile_args': [ '-Wno-conversion', '-Wno-tabs'],
+    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-Ofast'],
+    'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
-    # 'extra_link_args': ['-fopenmp', '-g']
-    'extra_link_args': ['-g']
+    'extra_link_args': ['-fopenmp', '-g']
     }
 
 # Set compiler options
@@ -47,12 +44,10 @@ elif sys.platform == 'darwin':
         os.system("which gcc")
         os.system("find / -name \'gcc\'")
         raise Exception('Cannot find gcc [4-9].x in /usr/local/bin. pixell requires gcc to be installed - easily done through the Homebrew package manager (http://brew.sh). Note: gcc with OpenMP support is required.')
-    # compile_opts['extra_link_args'] = ['-fopenmp', '-Wl,-rpath,' + rpath]
-    compile_opts['extra_link_args'] = ['-Wl,-rpath,' + rpath]
+    compile_opts['extra_link_args'] = ['-fopenmp', '-Wl,-rpath,' + rpath]
 # Linux
 elif sys.platform == 'linux':
-    # compile_opts['extra_link_args'] = ['-fopenmp']
-    compile_opts['extra_link_args'] = []#'-fopenmp']
+    compile_opts['extra_link_args'] = ['-fopenmp']
 
 
 def pip_install(package):
