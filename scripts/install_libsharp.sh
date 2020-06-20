@@ -6,13 +6,12 @@ cd $DEPDIR
 [ -e libsharp ] || git clone https://github.com/Libsharp/libsharp # do we want a frozen version?
 cd libsharp
 echo $TRAVIS
-echo $TRAVIS_OS_NAME
-sed -i 's/march=native/march=x86-64/g' configure.ac
-# if [[ $TRAVIS_OS_NAME ]]; then
-# 	sed -i 's/march=native/march=x86-64/g' configure.ac
-# else
-# 	echo "Not replacing native with x86-64."
-# fi
+echo $CIBW_PLATFORM
+if [[ $TRAVIS ]] || [[ $CIBW_PLATFORM ]]; then
+	sed -i 's/march=native/march=x86-64/g' configure.ac
+else
+	echo "Not replacing native with x86-64. Binary will not be portable."
+fi
 cat configure.ac
 aclocal
 if [ $? -eq 0 ]; then
