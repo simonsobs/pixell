@@ -7,6 +7,7 @@ cd $DEPDIR
 cd libsharp
 echo $TRAVIS
 echo $CIBW_PLATFORM
+# Only the last dockerenv check actually works for cibuildwheel
 if [[ $TRAVIS ]] || [[ $CIBW_PLATFORM ]] || [ -f /.dockerenv ] ; then
 	sed -i 's/march=native/march=x86-64/g' configure.ac
 else
@@ -52,6 +53,3 @@ else
 	exit 127
 fi
 rm -rf python/
-cd auto/bin/
-chmod +x ../../../../scripts/amop
-../../../../scripts/amop sharp_testsuite
