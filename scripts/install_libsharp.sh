@@ -8,6 +8,8 @@ cd libsharp
 echo $TRAVIS
 if [[ $TRAVIS ]]; then
 	sed -i 's/march=native/march=x86-64/g' configure.ac
+else
+	echo "Not replacing native with x86-64."
 fi
 cat configure.ac
 aclocal

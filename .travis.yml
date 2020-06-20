@@ -39,7 +39,12 @@ script:
   - rm -rf _deps/
   # build the wheels, put them into './wheelhouse'
   - python3 -m cibuildwheel --output-dir wheelhouse
-  - ls wheelhouse  
+  - ls wheelhouse
+  - cd wheelhouse
+  - unzip pixell-0.9.*cp38-manylinux2010_x86_64.whl
+  - cd pixell
+  - ../../scripts/amop sharp*.so
+  
 
 after_success:
   # if the release was tagged, upload them to PyPI
