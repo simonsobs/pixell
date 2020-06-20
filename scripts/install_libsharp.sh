@@ -7,7 +7,7 @@ cd $DEPDIR
 cd libsharp
 echo $TRAVIS
 echo $CIBW_PLATFORM
-if [[ $TRAVIS ]] || [[ $CIBW_PLATFORM ]]; then
+if [[ $TRAVIS ]] || [[ $CIBW_PLATFORM ]] || [ -f /.dockerenv ] ; then
 	sed -i 's/march=native/march=x86-64/g' configure.ac
 else
 	echo "Not replacing native with x86-64. Binary will not be portable."
