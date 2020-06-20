@@ -7,8 +7,9 @@ cd $DEPDIR
 cd libsharp
 echo $TRAVIS
 echo $CIBW_PLATFORM
+echo $CIBUILDWHEEL
 # Only the last dockerenv check actually works for cibuildwheel
-if [[ $TRAVIS ]] || [[ $CIBW_PLATFORM ]] || [ -f /.dockerenv ] ; then
+if [[ $CIBUILDWHEEL ]] ; then
 	sed -i 's/march=native/march=x86-64/g' configure.ac
 else
 	echo "Not replacing native with x86-64. Binary will not be portable."
