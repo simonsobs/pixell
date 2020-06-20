@@ -33,17 +33,18 @@ elif sys.platform == 'darwin':
         sp.check_call('scripts/osx.sh', shell=True)
     except sp.CalledProcessError:
         raise DistutilsError('Failed to prepare Mac OS X properly. See earlier errors.')
-    gccpath = glob.glob('/usr/local/bin/gcc-[4-9]*')
+    gccpath = glob.glob('/usr/local/bin/gcc-*')
     if gccpath:
         # Use newest gcc found
-        os.environ['CC'] = gccpath[-1].split(os.sep)[-1]
+        gversion = str(max([int(os.path.basename(x).split('-')[1]) for x in gccpath]))
+        os.environ['CC'] = 'gcc-' + gversion
         os.environ['CXX'] = os.environ['CC'].replace("gcc","g++")
         os.environ['FC'] = os.environ['CC'].replace("gcc","gfortran")
-        rpath = '/usr/local/opt/gcc/lib/gcc/' + gccpath[-1].split(os.sep)[-1][-1] + '/'
+        rpath = '/usr/local/opt/gcc/lib/gcc/' + gversion + '/'
     else:
         os.system("which gcc")
         os.system("find / -name \'gcc\'")
-        raise Exception('Cannot find gcc [4-9].x in /usr/local/bin. pixell requires gcc to be installed - easily done through the Homebrew package manager (http://brew.sh). Note: gcc with OpenMP support is required.')
+        raise Exception('Cannot find gcc in /usr/local/bin. pixell requires gcc to be installed - easily done through the Homebrew package manager (http://brew.sh). Note: gcc with OpenMP support is required.')
     compile_opts['extra_link_args'] = ['-fopenmp', '-Wl,-rpath,' + rpath]
 # Linux
 elif sys.platform == 'linux':

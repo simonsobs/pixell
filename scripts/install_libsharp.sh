@@ -5,7 +5,9 @@ DEPDIR=_deps
 cd $DEPDIR
 [ -e libsharp ] || git clone https://github.com/Libsharp/libsharp # do we want a frozen version?
 cd libsharp
-sed -i 's/march=native/march=x86-64/g' configure.ac
+if [[ $TRAVIS ]]; then
+	sed -i 's/march=native/march=x86-64/g' configure.ac
+fi
 aclocal
 if [ $? -eq 0 ]; then
     echo Found automake.
