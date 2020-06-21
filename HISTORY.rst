@@ -26,3 +26,12 @@ Changes relative to 0.5.2 include:
 * Helper arguments, e.g. physical normalization for enmap.fft
 * Bug fixes e.g. in rand_alm
 * Improved installation procedure and documentation
+
+0.9.0 (2020-06-18)
+------------------
+
+Changes relative to 0.6.0 include:
+
+* Ability to read compressed FITS images
+* Fixed a bug to make aberration and modulation accurate to all orders
+* Expanded alm2cl to handle full cross-spectra and broadcasting

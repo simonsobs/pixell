@@ -2,42 +2,17 @@
 # -*- coding: utf-8 -*-
 
 """The setup script."""
-
+from __future__ import print_function
 import setuptools
 from distutils.errors import DistutilsError
 from numpy.distutils.core import setup, Extension, build_ext, build_src
-from distutils.sysconfig import get_config_var, get_config_vars
 import versioneer
 import os, sys
 import subprocess as sp
 import numpy as np
+import glob
 build_ext = build_ext.build_ext
 build_src = build_src.build_src
-
-with open('README.rst') as readme_file:
-    readme = readme_file.read()
-
-with open('HISTORY.rst') as history_file:
-    history = history_file.read()
-
-requirements       = []
-setup_requirements = []
-test_requirements  = []
-
-# The following copied from healpy might be necessary for libsharp
-# Apple switched default C++ standard libraries (from gcc's libstdc++ to
-# clang's libc++), but some pre-packaged Python environments such as Anaconda
-# are built against the old C++ standard library. Luckily, we don't have to
-# actually detect which C++ standard library was used to build the Python
-# interpreter. We just have to propagate MACOSX_DEPLOYMENT_TARGET from the
-# configuration variables to the environment.
-#
-# This workaround fixes <https://github.com/healpy/healpy/issues/151>.
-if (
-    get_config_var("MACOSX_DEPLOYMENT_TARGET")
-    and not "MACOSX_DEPLOYMENT_TARGET" in os.environ
-):
-    os.environ["MACOSX_DEPLOYMENT_TARGET"] = get_config_var("MACOSX_DEPLOYMENT_TARGET")
 
 
 compile_opts = {
@@ -46,6 +21,57 @@ compile_opts = {
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
     'extra_link_args': ['-fopenmp', '-g']
     }
+
+# Set compiler options
+# Windows
+if sys.platform == 'win32':
+    raise DistUtilsError('Windows is not supported.')
+# Mac OS X - needs gcc (usually via HomeBrew) because the default compiler LLVM (clang) does not support OpenMP
+#          - with gcc -fopenmp option implies -pthread
+elif sys.platform == 'darwin':
+    try:
+        sp.check_call('scripts/osx.sh', shell=True)
+    except sp.CalledProcessError:
+        raise DistutilsError('Failed to prepare Mac OS X properly. See earlier errors.')
+    gccpath = glob.glob('/usr/local/bin/gcc-*')
+    if gccpath:
+        # Use newest gcc found
+        sint = lambda x: int(x) if x.isdigit() else 0
+        gversion = str(max([sint(os.path.basename(x).split('-')[1]) for x in gccpath]))
+        os.environ['CC'] = 'gcc-' + gversion
+        os.environ['CXX'] = os.environ['CC'].replace("gcc","g++")
+        os.environ['FC'] = os.environ['CC'].replace("gcc","gfortran")
+        rpath = '/usr/local/opt/gcc/lib/gcc/' + gversion + '/'
+    else:
+        os.system("which gcc")
+        os.system("find / -name \'gcc\'")
+        raise Exception('Cannot find gcc in /usr/local/bin. pixell requires gcc to be installed - easily done through the Homebrew package manager (http://brew.sh). Note: gcc with OpenMP support is required.')
+    compile_opts['extra_link_args'] = ['-fopenmp', '-Wl,-rpath,' + rpath]
+# Linux
+elif sys.platform == 'linux':
+    compile_opts['extra_link_args'] = ['-fopenmp']
+
+
+def pip_install(package):
+    import pip
+    if hasattr(pip, 'main'):
+        pip.main(['install', package])
+    else:
+        pip._internal.main(['install', package])
+
+with open('README.rst') as readme_file:
+    readme = readme_file.read()
+
+with open('HISTORY.rst') as history_file:
+    history = history_file.read()
+
+with open('requirements.txt') as f:
+    requirements = f.read().splitlines()
+
+with open('requirements_dev.txt') as f:
+    test_requirements = f.read().splitlines()
+    
+    
 
 fcflags = os.getenv('FCFLAGS')
 if fcflags is None or fcflags.strip() == '':
@@ -64,30 +90,47 @@ def presrc():
     
 def prebuild():
     # Handle the special external dependencies.
-    if not os.path.exists('_deps/libsharp/libsharp/sharp.h'):
+    if not os.path.exists('_deps/libsharp/success.txt'):
         try:
             sp.check_call('scripts/install_libsharp.sh', shell=True)
         except sp.CalledProcessError:
             raise DistutilsError('Failed to install libsharp.')
+        
     # Handle cythonization to create sharp.c, etc.
+    no_cython = sp.call('cython --version',shell=True)
+    if no_cython:
+        try:
+            print("Cython not found. Attempting a conda install first.")
+            import conda.cli
+            conda.cli.main('conda', 'install',  '-y', 'cython')
+        except:
+            try:
+                print("conda install of cython failed. Attempting a pip install.")
+                pip_install("cython")
+            except:
+                raise DistutilsError('Cython not found and all attempts at installing it failed. User intervention required.')
+        
     if sp.call('make -C cython',  shell=True) != 0:
         raise DistutilsError('Failure in the cython pre-build step.')
 
 
 class CustomBuild(build_ext):
     def run(self):
+        print("Running build...")
         prebuild()
         # Then let setuptools do its thing.
         return build_ext.run(self)
 
 class CustomSrc(build_src):
     def run(self):
+        print("Running src...")
         presrc()
         # Then let setuptools do its thing.
         return build_src.run(self)
 
 class CustomEggInfo(setuptools.command.egg_info.egg_info):
     def run(self):
+        print("Running EggInfo...")
         presrc()
         prebuild()
         return setuptools.command.egg_info.egg_info.run(self)   
@@ -119,9 +162,6 @@ setup(
     description="pixell",
     package_dir={"pixell": "pixell"},
     entry_points={
-#       'console_scripts': [
-#           'pixell=pixell.cli:main',
-#       ],
     },
     ext_modules=[
         Extension('pixell.sharp',
@@ -160,7 +200,6 @@ setup(
     keywords='pixell',
     name='pixell',
     packages=['pixell'],
-    setup_requires=setup_requirements,
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/simonsobs/pixell',
