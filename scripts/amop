@@ -1,4 +1,7 @@
 #!/bin/bash
+# Script from Sigurd Naess for inspecting instructions used by Linux
+# binaries. Used for debugging possible creeping in of natively optimized code
+# into wheels.
 ifile="${1:-/dev/stdin}"
 objdump -M intel -d "$ifile" | awk -F '\t' -f <(cat - <<-HERE
 BEGIN{
