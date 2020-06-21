@@ -65,11 +65,43 @@ with open('README.rst') as readme_file:
 with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
-with open('requirements.txt') as f:
-    requirements = f.read().splitlines()
+requirements =  ['numpy>=1.16',
+                 'astropy>=2.0',
+                 'setuptools>=39',
+                 'h5py>=2.7<=2.10',
+                 'scipy>=1.0',
+                 'python_dateutil>=2.7',
+                 'cython>=0.28',
+                 'matplotlib>=2.0',
+                 'pyyaml>=5.0',
+                 'healpy>=1.13',
+                 'Pillow>=5.3.0',
+                 'pytest-cov>=2.6',
+                 'coveralls>=1.5',
+                 'pytest>=4.6']
 
-with open('requirements_dev.txt') as f:
-    test_requirements = f.read().splitlines()
+
+test_requirements = ['pip>=9.0',
+                     'bumpversion>=0.5.',
+                     'wheel>=0.30',
+                     'watchdog>=0.8',
+                     'flake8>=3.5',
+                     'coverage>=4.5',
+                     'Sphinx>=1.7',
+                     'twine>=1.10',
+                     'numpy>=1.16',
+                     'astropy>=2.0',
+                     'setuptools>=39.2',
+                     'h5py>=2.7<=2.10',
+                     'scipy>=1.0',
+                     'python_dateutil>=2.7',
+                     'cython>=0.28',
+                     'matplotlib>=2.0',
+                     'pyyaml>=5.0',
+                     'pytest-cov>=2.6',
+                     'coveralls>=1.5',
+                     'pytest>=4.6']
+    
     
     
 
@@ -193,6 +225,7 @@ setup(
     include_dirs = ['_deps/libsharp/auto/include'],
     library_dirs = ['_deps/libsharp/auto/lib'],
     install_requires=requirements,
+    extras_require = ['pyFFTW>=0.10','mpi4py>=2.0'],
     license="BSD license",
     long_description=readme + '\n\n' + history,
     include_package_data=True,
