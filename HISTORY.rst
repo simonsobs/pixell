@@ -27,7 +27,7 @@ Changes relative to 0.5.2 include:
 * Bug fixes e.g. in rand_alm
 * Improved installation procedure and documentation
 
-0.9.0 (2020-06-18)
+0.9.5 (2020-06-20)
 ------------------
 
 Changes relative to 0.6.0 include:
