@@ -17,7 +17,7 @@ env:
   global:
     - TWINE_USERNAME=__token__
     # Note: TWINE_PASSWORD is set to an API token in Travis settings
-    - CIBW_BEFORE_BUILD="python3 -m pip install numpy scipy cython && python3 -c 'import numpy as np ; print(np.__version__) ; print(np.__file__) ' "
+    - CIBW_BEFORE_BUILD="python3 -m pip install numpy scipy cython"
     - CIBW_BUILD="cp3?-*x86_64"
     - CIBW_SKIP="cp33-* cp34-* cp35-*"
     - PYTHON=python3
@@ -30,10 +30,8 @@ install:
   - python3 -m pip install cibuildwheel==1.4.2
 
 script:
-  - python3 -c 'import numpy as np ; print(np.__version__) ; print(np.__file__)'
   - python3 setup.py build_ext -i
   - pip install .
-  - python3 -c 'import numpy as np ; print(np.__version__) ; print(np.__file__)'
   - py.test --cov=pixell tests/ -s
   - find . -type f -iname '*.so' -print -delete
   - rm -rf _deps/
