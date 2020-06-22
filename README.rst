@@ -26,99 +26,90 @@ Dependencies
 ------------
 
 * Python>=3.6
-* gcc/gfortran or Intel compilers (clang might not work out of the box)
-* libsharp (downloaded and installed)
-* automake (for libsharp compilation)
+* gcc/gfortran or Intel compilers (clang might not work out of the box), if compiling from source
+* libsharp (downloaded and installed, if compiling from source)
+* automake (for libsharp compilation, if compiling from source)
 * healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py, Pillow (Python Image Library)
 
 Installing
 ----------
 
+To install ``pixell``, run:
+
+.. code-block:: console
+		
+   $ pip install pixell --user
+
+This will install a pre-compiled binary suitable for your system (only Linux and Mac OS X with Python>=3.6 are supported). If you require more control over your installation, e.g. using your own installation of ``libsharp``, using Intel compilers or enabling tuning of the ``libsharp`` installation to your CPU, please see the section below on compiling from source.  
+
+Compiling from source (advanced / development workflow)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 For installation instructions specific to NERSC/cori, see NERSC_.
 
-For installation instructions specific to MacOS X, see MACOSX_ (h/t Thibaut Louis).
+For installation instructions specific to Mac OS X, see MACOSX_ (h/t Thibaut Louis).
 
 For all other, below are general instructions.
 
-To install, clone this repository and run:
-
-.. code-block:: console
-		
-   $ python setup.py install --user
-
-To test the installation, you can run:
-
-.. code-block:: console
-		
-   $ python setup.py test
-   
-You may need to install pytest for the above to work (with `pip install pytest --user`).
+First, download the source distribution or ``git clone`` this repository. You can work from ``master`` or checkout one of the released version tags (see the Releases section on Github). Then change into the cloned/source directory.
 
 Existing ``libsharp`` installation (optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Libsharp is installed automatically by setup.py. The installation script will
-attempt to automatically git clone the latest version and compile it.  If
+``libsharp`` is installed automatically by the setup.py you will execute below. The installation script will
+attempt to automatically git clone the latest version of ``libsharp`` and compile it.  If
 instead you want to use an existing ``libsharp`` installation, you can do so by
 symlinking the ``libsharp`` directory into a directory called ``_deps`` in the
 root directory, such that ``pixell/_deps/libsharp/libsharp/sharp.h`` exists. If
-you're convinced that the libsharp library is successfully
+you are convinced that the libsharp library is successfully
 compiled,  add an empty file named
 ``pixell/_deps/libsharp/libsharp/success.txt`` to ensure pixell's setup.py
 knows of your existing installation.
 
+Run ``setup.py``
+~~~~~~~~~~~~~~~~
+
+If not using Intel compilers (see below), build the package using 
+
+.. code-block:: console
+		
+   $ python setup.py build_ext -i
+
+You may now test the installation:
+
+.. code-block:: console
+		
+   $ py.test tests/
+   
+If the tests pass, either add the cloned directory to your ``$PYTHONPATH``, if you want the ability for changes made to Python source files to immediately reflect in your installation, e.g., in your ``.bashrc`` file,
+
+.. code-block:: bash
+		
+   export PYTHONPATH=$PYTHONPATH:/path/to/cloned/pixell/directory
+
+
+or alternatively, install the package  
+   
+.. code-block:: console
+
+   $ python setup.py install --user
+
+which requires you to reinstall every time changes are made to any files in your repository directory.
    
 Intel compilers
 ~~~~~~~~~~~~~~~
 
-Intel compilers might require a two step installation as follows
+Intel compilers require you to modify the build step above as follows
 
 .. code-block:: console
 		
    $ python setup.py build_ext -i --fcompiler=intelem --compiler=intelem
-   $ python setup.py install --user
 
 On some systems, further specification might be required (make sure to get a fresh copy of the repository before trying out a new install method), e.g.:
 
 .. code-block:: console
 
    $ LDSHARED="icc -shared" LD=icc LINKCC=icc CC=icc python setup.py build_ext -i --fcompiler=intelem --compiler=intelem
-   $ python setup.py install --user
-
-
-Development workflow (recommended)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you are a developer, run:
-
-.. code-block:: console
-		
-   $ python setup.py build_ext -i
-   $ py.test
-
-and add the cloned directory to your Python path so that changes you make in any python file are immediately reflected. e.g., in your ``.bashrc`` file,
-
-.. code-block:: bash
-		
-   export PYTHONPATH=$PYTHONPATH:/path/to/cloned/pixell/directory
-
-If you also need non-Python code to be recompiled, run:
-
-.. code-block:: console
-		
-   $ python setup.py clean
-
-
-before the above steps.
-
-To test the installation under development mode, you can run:
-
-.. code-block:: console
-		
-   $ py.test
-   
-   
-This requires the pytest Python package to be installed.
 
 
 
