@@ -30,7 +30,6 @@ install:
   - python3 -m pip install cibuildwheel==1.4.2
 
 script:
-  - python3 -m pip install -r requirements.txt
   - python3 setup.py build_ext -i
   - py.test --cov=pixell tests/ -s
   - python3 setup.py install
