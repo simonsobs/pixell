@@ -1,4 +1,4 @@
-language: python
+Language: python
 
 jobs:
   include:
@@ -17,23 +17,22 @@ env:
   global:
     - TWINE_USERNAME=__token__
     # Note: TWINE_PASSWORD is set to an API token in Travis settings
-    - CIBW_BEFORE_BUILD="pip install numpy scipy cython"
+    - CIBW_BEFORE_BUILD="python3 -m pip install numpy scipy cython"
     - CIBW_BUILD="cp3?-*x86_64"
     - CIBW_SKIP="cp33-* cp34-* cp35-*"
     - PYTHON=python3
-    - PIP=pip3
+    - PIP=pip
         
 install:
   - python3 -m pip install -U pip
   - python3 -m easy_install -U setuptools
-  - python3 -m pip install pytest
+  - python3 -m pip install pytest-cov
   - python3 -m pip install cibuildwheel==1.4.2
 
 script:
-  - python3 -m pip install -r requirements.txt
   - python3 setup.py build_ext -i
+  - pip install .
   - py.test --cov=pixell tests/ -s
-  - python3 setup.py install
   - find . -type f -iname '*.so' -print -delete
   - rm -rf _deps/
   # build the wheels, put them into './wheelhouse'
