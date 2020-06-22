@@ -2,10 +2,12 @@
 Credits
 =======
 
-Development Lead
-----------------
+Development Leads
+-----------------
 
-* Simons Observatory Collaboration Analysis Library Task Force
+* Sigurd Naess (@amaurea)
+* Mathew Madhavacheril (@msyriac)
+* Matthew Hasselfield (@mhasself)
 
 Contributors
 ------------
@@ -13,3 +15,5 @@ Contributors
 * Sigurd Naess (@amaurea)
 * Mathew Madhavacheril (@msyriac)
 * Matthew Hasselfield (@mhasself)
+* Alex van Engelen
+* Matt Hilton
