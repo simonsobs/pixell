@@ -31,8 +31,8 @@ install:
 
 script:
   - python3 setup.py build_ext -i
-  - py.test --cov=pixell tests/ -s
   - python3 setup.py install
+  - py.test --cov=pixell tests/ -s
   - find . -type f -iname '*.so' -print -delete
   - rm -rf _deps/
   # build the wheels, put them into './wheelhouse'
