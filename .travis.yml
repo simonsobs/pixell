@@ -17,23 +17,23 @@ env:
   global:
     - TWINE_USERNAME=__token__
     # Note: TWINE_PASSWORD is set to an API token in Travis settings
-    - CIBW_BEFORE_BUILD="pip3 install numpy scipy cython && python3 -c 'import numpy as np ; print(np.__version__) ' "
+    - CIBW_BEFORE_BUILD="python3 -m pip3 install numpy scipy cython && python3 -c 'import numpy as np ; print(np.__version__) ; print(np.__file__) ' "
     - CIBW_BUILD="cp3?-*x86_64"
     - CIBW_SKIP="cp33-* cp34-* cp35-*"
     - PYTHON=python3
     - PIP=pip3
         
 install:
-  - python3 -m pip install -U pip
+  - python3 -m pip3 install -U pip3
   - python3 -m easy_install -U setuptools
-  - python3 -m pip install pytest-cov
-  - python3 -m pip install cibuildwheel==1.4.2
+  - python3 -m pip3 install pytest-cov
+  - python3 -m pip3 install cibuildwheel==1.4.2
 
 script:
-  - python3 -c 'import numpy as np ; print(np.__version__)'
+  - python3 -c 'import numpy as np ; print(np.__version__) ; print(np.__file__)'
   - python3 setup.py build_ext -i
   - python3 setup.py install
-  - python3 -c 'import numpy as np ; print(np.__version__)'
+  - python3 -c 'import numpy as np ; print(np.__version__) ; print(np.__file__)'
   - py.test --cov=pixell tests/ -s
   - find . -type f -iname '*.so' -print -delete
   - rm -rf _deps/
@@ -46,7 +46,7 @@ after_success:
   - |
     echo $TRAVIS_TAG
     if [[ $TRAVIS_TAG ]]; then
-      python3 -m pip install twine
+      python3 -m pip3 install twine
       python3 -m twine upload --verbose --skip-existing wheelhouse/*.whl
     fi
 
