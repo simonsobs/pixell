@@ -24,7 +24,7 @@ env:
     - PIP=pip3
         
 install:
-  - python3 -m pip3 install -U pip3
+  - python3 -m pip3 install -U pip
   - python3 -m easy_install -U setuptools
   - python3 -m pip3 install pytest-cov
   - python3 -m pip3 install cibuildwheel==1.4.2
