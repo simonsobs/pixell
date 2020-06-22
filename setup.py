@@ -225,7 +225,7 @@ setup(
     include_dirs = ['_deps/libsharp/auto/include'],
     library_dirs = ['_deps/libsharp/auto/lib'],
     install_requires=requirements,
-    extras_require = ['pyFFTW>=0.10','mpi4py>=2.0'],
+    extras_require = {'fftw':['pyFFTW>=0.10'],'mpi':['mpi4py>=2.0']},
     license="BSD license",
     long_description=readme + '\n\n' + history,
     include_package_data=True,

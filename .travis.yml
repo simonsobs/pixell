@@ -26,7 +26,7 @@ env:
 install:
   - python3 -m pip install -U pip
   - python3 -m easy_install -U setuptools
-  - python3 -m pip install pytest
+  - python3 -m pip install pytest-cov
   - python3 -m pip install cibuildwheel==1.4.2
 
 script:
