@@ -45,9 +45,9 @@ This will install a pre-compiled binary suitable for your system (only Linux and
 Compiling from source (advanced / development workflow)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For installation instructions specific to NERSC/cori, see NERSC_.
+For compilation instructions specific to NERSC/cori, see NERSC_.
 
-For installation instructions specific to Mac OS X, see MACOSX_ (h/t Thibaut Louis).
+For compilation instructions specific to Mac OS X, see MACOSX_ (h/t Thibaut Louis).
 
 For all other, below are general instructions.
 
