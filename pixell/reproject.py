@@ -588,7 +588,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 	# If the output geometry was not given explicitly, then build one
 	if oshape is None:
 		if res is None: res = min(np.abs(imap.wcs.wcs.cdelt))*utils.degree/2
-		oshape, owcs = enmap.geometry(pos=[[-r,r],[r,-r]], res=res, ref=(0,0), proj=proj)
+		oshape, owcs = enmap.thumbnail_geometry(r=r, res=res, proj=proj)
 	# Check if we should be doing polarization rotation
 	pol_compat = imap.ndim >= 3 and imap.shape[-3] == 3
 	if pol is None: pol = pol_compat

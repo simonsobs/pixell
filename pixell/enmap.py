@@ -1197,6 +1197,53 @@ def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
 	assert stop>=0 and stop<Ny
 	return slice_geometry(ishape,iwcs,np.s_[start:stop,:])
 
+def thumbnail_geometry(r=None, res=None, shape=None, dims=(), proj="tan"):
+	"""Build a geometry in the given projection centered on (0,0), which will
+	be exactly at a pixel center.
+
+	 r:     The radius from the center to the edges of the patch, in radians.
+	 res:   The resolution of the patch, in radians.
+	 shape: The target shape of the patch. Will be forced to odd numbers if necessary.
+
+	Any two out of these three arguments must be specified. The most common usage
+	will probably be to specify r and res, e.g.
+	 shape, wcs = enmap.thumbnail_geometry(r=1*utils.degree, res=0.5*utils.arcmin)
+
+	The purpose of this function is to provide a geometry appropriate for object
+	stacking, etc. Ideally enmap.geometry would do this, but this specialized function
+	makes it easier to ensure that the center of the coordinate system will be at
+	excactly the pixel index (y,x) = shape//2+1, which was a commonly requested feature
+	(even though which pixel is at the center shouldn't really matter as long as one
+	takes into account the actual coordinates of each pixel).
+	"""
+	ctype = ["RA---%s" % proj.upper(), "DEC--%s" % proj.upper()]
+	if r is None: # res and shape given
+		assert res is not None and shape is not None, "Two of r, res and shape must be given"
+		res   = np.zeros(2)+res
+		shape = utils.nint(np.zeros(2)+shape[-2:]) # Broadcast and make sure it's an integer
+		shape = shape//2*2+1                       # Force odd shape
+		wcs   = wcsutils.explicit(ctype=ctype, crval=[0,0], cdelt=res[::-1]/utils.degree, crpix=shape[::-1]//2+1)
+	elif shape is None: # res and r given
+		assert res is not None and r is not None, "Two of r, res and shape must be given"
+		res   = np.zeros(2)+res
+		r     = np.zeros(2)+r
+		wcs   = wcsutils.explicit(ctype=ctype, crval=[0,0], cdelt=res[::-1]/utils.degree, crpix=[1,1])
+		rpix  = utils.nint(np.abs(wcsutils.nobcheck(wcs).wcs_world2pix(r[None,::-1]/utils.degree,0)[0,::-1]))
+		shape = 2*rpix+1
+		wcs.wcs.crpix = shape[::-1]//2+1
+	else: # r and shape given
+		assert r is not None and shape is not None, "Two of r, res and shape must be given"
+		shape = utils.nint(np.zeros(2)+shape[-2:]) # Broadcast and make sure it's an integer
+		shape = shape//2*2+1                       # Force odd shape
+		r     = np.zeros(2)+r
+		wcs   = wcsutils.explicit(ctype=ctype, crval=[0,0], crpix=[1,1])
+		rpix  = np.abs(wcsutils.nobcheck(wcs).wcs_world2pix(r[None,::-1]/utils.degree,0)[0,::-1])
+		res_ratio = (shape-1)/(2*rpix)
+		wcs.wcs.cdelt /= res_ratio[::-1]
+		wcs.wcs.crpix  = shape[::-1]//2+1
+	shape = tuple(shape)
+	return shape, wcs
+
 def create_wcs(shape, box=None, proj="cea"):
 	if box is None:
 		box = np.array([[-1,-1],[1,1]])*0.5*10
