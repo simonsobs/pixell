@@ -878,8 +878,8 @@ def pixshapemap(shape, wcs, bsize=1000, separable="auto", signed=False):
 	if wcsutils.is_plain(wcs):
 		cdelt = wcs.wcs.cdelt
 		pshape  = np.zeros([2])
-		res[0] = wcs.wcs.cdelt[1]*get_unit(wcs)
-		res[1] = wcs.wcs.cdelt[0]*get_unit(wcs)
+		pshape[0] = wcs.wcs.cdelt[1]*get_unit(wcs)
+		pshape[1] = wcs.wcs.cdelt[0]*get_unit(wcs)
 		if not signed: pshape = np.abs(pshape)
 		pshape  = np.broadcast_to(pshape[:,None,None], (2,)+shape[-2:])
 		return ndmap(pshape, wcs)
@@ -888,7 +888,7 @@ def pixshapemap(shape, wcs, bsize=1000, separable="auto", signed=False):
 		pshape = np.broadcast_to(pshape[:,:,None], (2,)+shape[-2:])
 		return ndmap(pshape, wcs)
 	else:
-		res = zeros((2,)+shape[-2:], wcs)
+		pshape = zeros((2,)+shape[-2:], wcs)
 		# Loop over blocks in y to reduce memory usage
 		for i1 in range(0, shape[-2], bsize):
 			i2 = min(i1+bsize, shape[-2])
@@ -912,10 +912,10 @@ def pixshapemap(shape, wcs, bsize=1000, separable="auto", signed=False):
 			bad = ~np.isfinite(dx)
 			dx[bad] = np.mean(dx[~bad])
 			# Copy over to our output array
-			res[0,i1:i2,:] = dy
-			res[1,i1:i2,:] = dx
+			pshape[0,i1:i2,:] = dy
+			pshape[1,i1:i2,:] = dx
 			del dx, dy
-		return res
+		return pshape
 
 def pixshapes_cyl(shape, wcs, signed=False):
 	"""Returns the physical width and height of pixels for each row of a cylindrical
