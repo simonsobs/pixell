@@ -1898,7 +1898,7 @@ def write_map(fname, emap, fmt=None, extra={}):
 	else:
 		raise ValueError
 
-def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False):
+def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False, verbose=False):
 	"""Read an enmap from file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'."""
@@ -1910,7 +1910,7 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wr
 		elif fname.endswith(".fits.gz"): fmt = "fits"
 		else: fmt = "fits"
 	if fmt == "fits":
-		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu, delayed=delayed)
+		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu, delayed=delayed, verbose=verbose)
 	elif fmt == "hdf":
 		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed)
 	else:
@@ -1986,7 +1986,7 @@ def write_fits_geometry(fname, shape, wcs):
 	header["BITPIX"] = -32
 	header.tofile(fname, overwrite=True)
 
-def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False):
+def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, verbose=False):
 	"""Read an enmap from the specified fits file. By default,
 	the map and coordinate system will be read from HDU 0. Use
 	the hdu argument to change this. The map must be stored as
@@ -2002,7 +2002,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, w
 	if wcs is None:
 		with warnings.catch_warnings():
 			wcs = wcsutils.WCS(hdu.header).sub(2)
-	proxy = ndmap_proxy_fits(hdu, wcs, fname=fname, threshold=sel_threshold)
+	proxy = ndmap_proxy_fits(hdu, wcs, fname=fname, threshold=sel_threshold, verbose=verbose)
 	return read_helper(proxy, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, delayed=delayed)
 
 def read_fits_geometry(fname, hdu=None):
@@ -2109,14 +2109,23 @@ for name in ["sky2pix", "pix2sky", "box", "pixbox_of", "posmap", "pixmap", "lmap
 	setattr(ndmap_proxy, name, getattr(ndmap, name))
 
 class ndmap_proxy_fits(ndmap_proxy):
-	def __init__(self, hdu, wcs, fname="<none>", threshold=1e7):
-		self.hdu = hdu
+	def __init__(self, hdu, wcs, fname="<none>", threshold=1e7, verbose=False):
+		self.hdu     = hdu
+		self.verbose = verbose
 		# Note that 'section' is not part of some HDU types, such as CompImageHDU.
 		self.use_section = hasattr(hdu, 'section')
 		if self.use_section:
 			dtype    = fix_endian(hdu.section[(slice(0,1),)*hdu.header["NAXIS"]]).dtype
 		else:
 			dtype    = fix_endian(hdu.data[(slice(0,1),)*hdu.header["NAXIS"]]).dtype
+		self.stokes_flips = get_stokes_flips(hdu)
+		def slist(vals):
+			return ",".join([str(v) for v in vals])
+		if verbose and np.any(self.stokes_flips) >= 0:
+			print("Converting index %s or Stokes axis %s from IAU to COSMO in %s" % (
+				slist(self.stokes_flips[self.stokes_flips >= 0]),
+				slist(np.where(self.stokes_flips >= 0)[0]),
+				fname))
 		ndmap_proxy.__init__(self, hdu.shape, wcs, dtype, fname=fname, threshold=threshold)
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [len(self.shape)-2,2])
@@ -2126,6 +2135,17 @@ class ndmap_proxy_fits(ndmap_proxy):
 			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-1,1])
 			res = self.hdu.section[sel1][(Ellipsis,)+sel2]
 		else: res = self.hdu.data[sel]
+		# Apply stokes flips if necessary. This is a bit complicated because we have to
+		# take into account that slicing might have already been done. The simplest way
+		# to do this is to make a sign array with the same shape as all the pre-dimensions
+		# of the raw map, and then slice that the same way.
+		if np.any(self.stokes_flips >= 0):
+			signs = np.full(self.shape[:-2], 1, int)
+			for i, ind in enumerate(self.stokes_flips):
+				if ind >= 0:
+					signs[(slice(None),)*i + (ind,)] *= -1
+			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-2,2])
+			res *= signs[sel1][...,None,None]
 		return ndmap(fix_endian(res), wcs)
 	def __repr__(self): return "ndmap_proxy_fits(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
 
@@ -2151,6 +2171,39 @@ def fix_endian(map):
 	if map.dtype.byteorder not in ['=','<' if sys.byteorder == 'little' else '>']:
 		map = map.byteswap(True).newbyteorder()
 	return map
+
+def get_stokes_flips(hdu):
+	"""Given a FITS HDU, parse its header to determine which, if any, axes
+	need to have their sign flip to get them in the COSMO polarization convention.
+	Returns an array of length ndim, with each entry being the index of the axis
+	that should be flipped, or -1 if none should be flipped."""
+	ndim   = hdu.header["NAXIS"]
+	# First find which index of each axis is U
+	inds   = np.full(ndim, -1, int)
+	noflip = np.full(ndim, -1, int)
+	def get(name, ndim, i, default=None):
+		nfull = name + "%d" % (ndim-i)
+		return hdu.header[nfull] if nfull in hdu.header else default
+	for i in range(ndim):
+		ctype = get("CTYPE", ndim, i, "")
+		if ctype.strip() == "STOKES":
+			crpix = get("CRPIX", ndim, i, 1.0)
+			crval = get("CRVAL", ndim, i, 1.0)
+			cdelt = get("CDELT", ndim, i, 1.0)
+			U_ind = utils.nint((3-crval)/cdelt+crpix)
+			inds[i] = U_ind - 1
+	# If there are no U indices, then there is nothing to flip
+	if np.all(inds == -1): return noflip
+	# Otherwise, check the polarization convention
+	if "POLCONV" not in hdu.header:
+		warnings.warn("FITS file has stokes axis, but no POLCONV is specified. Assuming COSMO")
+		return noflip
+	polconv = hdu.header["POLCONV"].strip()
+	if   polconv == "COSMO": return noflip
+	elif polconv == "IAU":   return inds
+	else:
+		warnings.warn("Unrecognized POLCONV '%s', assuming COSMO" % polconv)
+		return noflip
 
 def shift(map, off, inplace=False, keepwcs=False):
 	"""Cyclicly shift the pixels in map such that a pixel at
