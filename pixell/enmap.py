@@ -929,6 +929,7 @@ def pixshapes_cyl(shape, wcs, signed=False):
 	dec, ra = pix2sky(shape, wcs, [y,x], safe=False)
 	if not np.isfinite(dec[0]):  dec[0]  = -np.pi/2 if wcs.wcs.cdelt[1] >= 0 else  np.pi/2
 	if not np.isfinite(dec[-1]): dec[-1] =  np.pi/2 if wcs.wcs.cdelt[1] >= 0 else -np.pi/2
+	dec = np.clip(dec, -np.pi/2, np.pi/2)
 	heights = dec[1:]-dec[:-1]
 	# A pixel that goes from dec1 to dec2 with a RA interval of dRA has an area of
 	# (sin(dec2)-sin(dec1))*dRA. We will assign a width of area/height to each pixel,
