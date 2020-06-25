@@ -53,7 +53,7 @@ class ndmap(np.ndarray):
 	def pix2sky(self, pix,    safe=True, corner=False): return pix2sky(self.shape, self.wcs, pix,    safe, corner)
 	def box(self, corner=True): return box(self.shape, self.wcs, corner=corner)
 	def pixbox_of(self,oshape,owcs): return pixbox_of(self.wcs, oshape,owcs)
-	def posmap(self, safe=True, corner=False, separable=False, dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
+	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
 	def lform(self, shift=True): return lform(self, shift=shift)
