@@ -228,17 +228,19 @@ setup(
     extras_require = {'fftw':['pyFFTW>=0.10'],'mpi':['mpi4py>=2.0']},
     license="BSD license",
     long_description=readme + '\n\n' + history,
+    package_data={'pixell': ['pixell/tests/data/*.fits','pixell/tests/data/*.dat','pixell/tests/data/*.pkl']},
     include_package_data=True,
     data_files=[('pixell', ['pixell/arial.ttf'])],
     keywords='pixell',
     name='pixell',
-    packages=['pixell'],
-    test_suite='tests',
+    packages=['pixell','pixell/tests'],
+    test_suite='pixell.tests',
     tests_require=test_requirements,
     url='https://github.com/simonsobs/pixell',
     version=versioneer.get_version(),
     zip_safe=False,
-    cmdclass=cmdclass
+    cmdclass=cmdclass,
+    scripts=['scripts/test-pixell']
 )
 
 print('\n[setup.py request was successful.]')

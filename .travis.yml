@@ -35,6 +35,7 @@ script:
   - py.test --cov=pixell tests/ -s
   - find . -type f -iname '*.so' -print -delete
   - rm -rf _deps/
+  - test-pixell
   # build the wheels, put them into './wheelhouse'
   - python3 -m cibuildwheel --output-dir wheelhouse
   - ls wheelhouse

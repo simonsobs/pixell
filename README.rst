@@ -79,7 +79,7 @@ You may now test the installation:
 
 .. code-block:: console
 		
-   $ py.test tests/
+   $ py.test pixell/tests/
    
 If the tests pass, either add the cloned directory to your ``$PYTHONPATH``, if you want the ability for changes made to Python source files to immediately reflect in your installation, e.g., in your ``.bashrc`` file,
 
