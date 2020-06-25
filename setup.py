@@ -4,6 +4,7 @@
 """The setup script."""
 from __future__ import print_function
 import setuptools
+from setuptools import find_packages
 from distutils.errors import DistutilsError
 from numpy.distutils.core import setup, Extension, build_ext, build_src
 import versioneer
@@ -233,7 +234,7 @@ setup(
     data_files=[('pixell', ['pixell/arial.ttf'])],
     keywords='pixell',
     name='pixell',
-    packages=['pixell','pixell/tests'],
+    packages=find_packages(),
     test_suite='pixell.tests',
     tests_require=test_requirements,
     url='https://github.com/simonsobs/pixell',
