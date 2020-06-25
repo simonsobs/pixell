@@ -64,8 +64,8 @@ class ndmap(np.ndarray):
 	def area(self): return area(self.shape, self.wcs)
 	def pixsize(self): return pixsize(self.shape, self.wcs)
 	def pixshape(self, signed=False): return pixshape(self.shape, self.wcs, signed=signed)
-	def pixsizemap(self): return pixsizemap(self.shape, self.wcs)
-	def pixshapemap(self): return pixshapemap(self.shape, self.wcs)
+	def pixsizemap(self, separable="auto", broadcastable=False): return pixsizemap(self.shape, self.wcs, separable=separable, broadcastable=broadcastable)
+	def pixshapemap(self, separable="auto", signed=False): return pixshapemap(self.shape, self.wcs, separable=separable, signed=signed)
 	def extent(self, method="auto", signed=False): return extent(self.shape, self.wcs, method=method, signed=signed)
 	@property
 	def preflat(self):
@@ -872,46 +872,103 @@ def pixshape(shape, wcs, signed=False):
 	"""Returns the height and width of a single pixel, in radians."""
 	return extent(shape, wcs, signed=signed)/shape[-2:]
 
-def pixshapemap(shape, wcs, bsize=1000):
+def pixshapemap(shape, wcs, bsize=1000, separable="auto", signed=False):
 	"""Returns the physical width and heigh of each pixel in the map in radians.
 	Heavy for big maps. Much faster approaches are possible for known pixelizations."""
-	res    = zeros((2,)+shape[-2:], wcs)
 	if wcsutils.is_plain(wcs):
 		cdelt = wcs.wcs.cdelt
+		pshape  = np.zeros([2])
 		res[0] = wcs.wcs.cdelt[1]*get_unit(wcs)
 		res[1] = wcs.wcs.cdelt[0]*get_unit(wcs)
-		return np.abs(res)
-	# Loop over blocks in y to reduce memory usage
-	for i1 in range(0, shape[-2], bsize):
-		i2 = min(i1+bsize, shape[-2])
-		pix  = np.mgrid[i1:i2+1,:shape[-1]+1]
-		with utils.nowarn():
-			y, x = pix2sky(shape, wcs, pix, safe=True, corner=True)
-		del pix
-		dy = np.abs(y[1:,1:]-y[:-1,:-1])
-		dx = np.abs(x[1:,1:]-x[:-1,:-1])
-		cy = np.cos(y)
-		bad= cy<= 0
-		cy[bad] = np.mean(cy[~bad])
-		dx *= 0.5*(cy[1:,1:]+cy[:-1,:-1])
-		del y, x, cy
-		# Due to wcs fragility, we may have some nans at wraparound points.
-		# Fill these with the mean non-nan value. Since most maps will be cylindrical,
-		# it makes sense to do this by row
-		bad = ~np.isfinite(dy)
-		dy[bad] = np.mean(dy[~bad])
-		bad = ~np.isfinite(dx)
-		dx[bad] = np.mean(dx[~bad])
-		# Copy over to our output array
-		res[0,i1:i2,:] = dy
-		res[1,i1:i2,:] = dx
-		del dx, dy
+		if not signed: pshape = np.abs(pshape)
+		pshape  = np.broadcast_to(pshape[:,None,None], (2,)+shape[-2:])
+		return ndmap(pshape, wcs)
+	elif separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
+		pshape = pixshapes_cyl(shape, wcs, signed=signed)
+		pshape = np.broadcast_to(pshape[:,:,None], (2,)+shape[-2:])
+		return ndmap(pshape, wcs)
+	else:
+		res = zeros((2,)+shape[-2:], wcs)
+		# Loop over blocks in y to reduce memory usage
+		for i1 in range(0, shape[-2], bsize):
+			i2 = min(i1+bsize, shape[-2])
+			pix  = np.mgrid[i1:i2+1,:shape[-1]+1]
+			with utils.nowarn():
+				y, x = pix2sky(shape, wcs, pix, safe=True, corner=True)
+			del pix
+			dy = y[1:,1:]-y[:-1,:-1]
+			dx = x[1:,1:]-x[:-1,:-1]
+			if not signed: dy, dx = np.abs(dy), np.abs(dx)
+			cy = np.cos(y)
+			bad= cy<= 0
+			cy[bad] = np.mean(cy[~bad])
+			dx *= 0.5*(cy[1:,1:]+cy[:-1,:-1])
+			del y, x, cy
+			# Due to wcs fragility, we may have some nans at wraparound points.
+			# Fill these with the mean non-nan value. Since most maps will be cylindrical,
+			# it makes sense to do this by row
+			bad = ~np.isfinite(dy)
+			dy[bad] = np.mean(dy[~bad])
+			bad = ~np.isfinite(dx)
+			dx[bad] = np.mean(dx[~bad])
+			# Copy over to our output array
+			res[0,i1:i2,:] = dy
+			res[1,i1:i2,:] = dx
+			del dx, dy
+		return res
+
+def pixshapes_cyl(shape, wcs, signed=False):
+	"""Returns the physical width and height of pixels for each row of a cylindrical
+	map with the given shape, wcs, in radians, as an array [{height,width},ny]. All
+	pixels in a row have the same shape in a cylindrical projection."""
+	res = np.zeros([2,shape[-2]])
+	ny  = shape[-2]
+	# Get the dec of all the pixel edges, and use that to get the heights.
+	y   = np.arange(ny+1)-0.5
+	x   = y*0
+	dec, ra = pix2sky(shape, wcs, [y,x], safe=False)
+	if not np.isfinite(dec[0]):  dec[0]  = -np.pi/2 if wcs.wcs.cdelt[1] >= 0 else  np.pi/2
+	if not np.isfinite(dec[-1]): dec[-1] =  np.pi/2 if wcs.wcs.cdelt[1] >= 0 else -np.pi/2
+	heights = dec[1:]-dec[:-1]
+	# A pixel that goes from dec1 to dec2 with a RA interval of dRA has an area of
+	# (sin(dec2)-sin(dec1))*dRA. We will assign a width of area/height to each pixel,
+	# such that we can simply define pixsize in terms of pixshape. That is,
+	# width = dRA * (sin(dec2)-sin(dec1))/(dec2-dec1)
+	dRA   = wcs.wcs.cdelt[0]*utils.degree
+	sdec  = np.sin(dec)
+	widths= dRA * (sdec[1:]-sdec[:-1])/heights
+	res[0] = heights
+	res[1] = widths
+	if not signed:
+		res = np.abs(res)
 	return res
 
-def pixsizemap(shape, wcs, bsize=1000):
+def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000):
 	"""Returns the physical area of each pixel in the map in steradians.
-	Heavy for big maps."""
-	return np.product(pixshapemap(shape, wcs, bsize=bsize),0)
+
+	If separable is True, then the map will be assumed to be in a cylindircal
+	projection, where the pixel size is only a function of declination.
+	This makes the calculation dramatically faster, and the resulting array
+	will also use much less memory due to numpy striding tricks. The default,
+	separable=auto", determines whether to use this shortcut based on the
+	properties of the wcs.
+
+	Normally the function returns a ndmap of shape [ny,nx]. If broadcastable
+	is True, then it is allowed to return a smaller array that would still
+	broadcast correctly to the right shape. This can be useful to save work
+	if one is going to be doing additional manipulation of the pixel size
+	before using it. For a cylindrical map, the result would have shape [ny,1]
+	if broadcastable is True.
+	"""
+	if separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
+		psize = np.product(pixshapes_cyl(shape, wcs),0)[:,None]
+		# Expand to full shape unless we are willing to accept an array
+		# with smaller size that is still broadcastable to the right result
+		if not broadcastable:
+			psize = np.broadcast_to(psize, shape[-2:])
+		return ndmap(psize, wcs)
+	else:
+		return np.product(pixshapemap(shape, wcs, bsize=bsize, separable=separable),0)
 
 def lmap(shape, wcs, oversample=1):
 	"""Return a map of all the wavenumbers in the fourier transform
