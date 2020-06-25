@@ -229,7 +229,7 @@ setup(
     license="BSD license",
     long_description=readme + '\n\n' + history,
     package_data={'pixell': ['pixell/tests/data/*.fits','pixell/tests/data/*.dat','pixell/tests/data/*.pkl']},
-    include_package_data=True,
+    include_package_data=True,    
     data_files=[('pixell', ['pixell/arial.ttf'])],
     keywords='pixell',
     name='pixell',

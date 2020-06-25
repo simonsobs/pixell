@@ -32,7 +32,7 @@ install:
 script:
   - python3 setup.py build_ext -i
   - pip install .
-  - py.test --cov=pixell tests/ -s
+  - py.test --cov=pixell pixell/tests/ -s
   - find . -type f -iname '*.so' -print -delete
   - rm -rf _deps/
   - test-pixell
