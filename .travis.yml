@@ -8,7 +8,14 @@ jobs:
       sudo: required
       python: "3.7"
       services:
-      - docker
+        - docker
+      script: python3 setup.py sdist --formats=gztar
+      after_success: |
+        echo $TRAVIS_TAG
+        if [[ $TRAVIS_TAG ]]; then
+          python3 -m pip install twine
+          python3 -m twine upload --skip-existing dist/*.tar.gz
+        fi
         
     - os: osx
       language: shell
@@ -18,6 +25,7 @@ env:
     - TWINE_USERNAME=__token__
     # Note: TWINE_PASSWORD is set to an API token in Travis settings
     - CIBW_BEFORE_BUILD="python3 -m pip install numpy scipy cython"
+    - CIBW_BUILD_VERBOSITY: 3
     - CIBW_BUILD="cp3?-*x86_64"
     - CIBW_SKIP="cp33-* cp34-* cp35-*"
     - PYTHON=python3
@@ -32,7 +40,7 @@ install:
 script:
   - python3 setup.py build_ext -i
   - pip install .
-  - py.test --cov=pixell tests/ -s
+  - py.test --cov=pixell pixell/tests/ -s
   - find . -type f -iname '*.so' -print -delete
   - rm -rf _deps/
   # build the wheels, put them into './wheelhouse'
@@ -47,6 +55,7 @@ after_success:
       python3 -m pip install twine
       python3 -m twine upload --verbose --skip-existing wheelhouse/*.whl
     fi
+    
 
 before_install:
   - |
