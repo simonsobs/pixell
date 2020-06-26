@@ -36,7 +36,7 @@ Changes relative to 0.6.0 include:
 * Fixed a bug to make aberration and modulation accurate to all orders
 * Expanded alm2cl to handle full cross-spectra and broadcasting
 
-0.10.0 (2020-06-25)
+0.10.1 (2020-06-26)
 ------------------
 
 Changes relative to 0.9.6 include:
@@ -47,3 +47,4 @@ Changes relative to 0.9.6 include:
 * Optimizes posmap for separable projections and pixsizemap for cylindrical
   projections making these functions orders of magnitude faster for CAR (and
   other projections)
+* A test script test-pixell is distributed with the package
