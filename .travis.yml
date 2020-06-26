@@ -9,13 +9,6 @@ jobs:
       python: "3.7"
       services:
         - docker
-      script: python3 setup.py sdist --formats=gztar
-      after_success: |
-        echo $TRAVIS_TAG
-        if [[ $TRAVIS_TAG ]]; then
-          python3 -m pip install twine
-          python3 -m twine upload --skip-existing dist/*.tar.gz
-        fi
         
     - os: osx
       language: shell
@@ -25,7 +18,7 @@ env:
     - TWINE_USERNAME=__token__
     # Note: TWINE_PASSWORD is set to an API token in Travis settings
     - CIBW_BEFORE_BUILD="python3 -m pip install numpy scipy cython"
-    - CIBW_BUILD_VERBOSITY: 3
+    - CIBW_BUILD_VERBOSITY=3
     - CIBW_BUILD="cp3?-*x86_64"
     - CIBW_SKIP="cp33-* cp34-* cp35-*"
     - PYTHON=python3
