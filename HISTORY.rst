@@ -26,3 +26,25 @@ Changes relative to 0.5.2 include:
 * Helper arguments, e.g. physical normalization for enmap.fft
 * Bug fixes e.g. in rand_alm
 * Improved installation procedure and documentation
+
+0.9.6 (2020-06-22)
+------------------
+
+Changes relative to 0.6.0 include:
+
+* Ability to read compressed FITS images
+* Fixed a bug to make aberration and modulation accurate to all orders
+* Expanded alm2cl to handle full cross-spectra and broadcasting
+
+0.10.2 (2020-06-26)
+-------------------
+
+Changes relative to 0.9.6 include:
+
+* Automatically converts maps recognized to be in IAU polarization convention
+  (through the FITS header) to COSMO convention by flipping the sign of U
+* Fixes a centering issue in reproject.thumbnails
+* Optimizes posmap for separable projections and pixsizemap for cylindrical
+  projections making these functions orders of magnitude faster for CAR (and
+  other projections)
+* A test script test-pixell is distributed with the package

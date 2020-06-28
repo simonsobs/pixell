@@ -53,7 +53,7 @@ class ndmap(np.ndarray):
 	def pix2sky(self, pix,    safe=True, corner=False): return pix2sky(self.shape, self.wcs, pix,    safe, corner)
 	def box(self, corner=True): return box(self.shape, self.wcs, corner=corner)
 	def pixbox_of(self,oshape,owcs): return pixbox_of(self.wcs, oshape,owcs)
-	def posmap(self, safe=True, corner=False, separable=False, dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
+	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
 	def lform(self, shift=True): return lform(self, shift=shift)
@@ -64,8 +64,8 @@ class ndmap(np.ndarray):
 	def area(self): return area(self.shape, self.wcs)
 	def pixsize(self): return pixsize(self.shape, self.wcs)
 	def pixshape(self, signed=False): return pixshape(self.shape, self.wcs, signed=signed)
-	def pixsizemap(self): return pixsizemap(self.shape, self.wcs)
-	def pixshapemap(self): return pixshapemap(self.shape, self.wcs)
+	def pixsizemap(self, separable="auto", broadcastable=False): return pixsizemap(self.shape, self.wcs, separable=separable, broadcastable=broadcastable)
+	def pixshapemap(self, separable="auto", signed=False): return pixshapemap(self.shape, self.wcs, separable=separable, signed=signed)
 	def extent(self, method="auto", signed=False): return extent(self.shape, self.wcs, method=method, signed=signed)
 	@property
 	def preflat(self):
@@ -346,14 +346,27 @@ def full(shape, wcs, val, dtype=None):
 	"""
 	return enmap(np.full(shape, val, dtype=dtype), wcs, copy=False)
 
-def posmap(shape, wcs, safe=True, corner=False, separable=False, dtype=np.float64, bsize=1e6):
+def posmap(shape, wcs, safe=True, corner=False, separable="auto", dtype=np.float64, bsize=1e6):
 	"""Return an enmap where each entry is the coordinate of that entry,
 	such that posmap(shape,wcs)[{0,1},j,k] is the {y,x}-coordinate of
 	pixel (j,k) in the map. Results are returned in radians, and
 	if safe is true (default), then sharp coordinate edges will be
-	avoided."""
-	res     = zeros((2,)+tuple(shape[-2:]), wcs, dtype)
+	avoided. separable controls whether a fast calculation that assumes that
+	ra is only a function of x and dec is only a function of y is used.
+	The default is "auto", which determines this based on the wcs, but
+	True or False can also be passed to control this manually.
+
+	For even greater speed, and to save memory, consider using posaxes directly
+	for cases where you know that the wcs will be separable. For separable cases,
+	separable=True is typically 15-20x faster than separable=False, while posaxes
+	is 1000x faster.
+	"""
+	res = zeros((2,)+tuple(shape[-2:]), wcs, dtype)
+	if separable == "auto": separable = wcsutils.is_cyl(wcs)
 	if separable:
+		# If posmap could return a (dec,ra) tuple instead of an ndmap,
+		# we could have returned np.broadcast_arrays(dec, ra) instead.
+		# That would have been as fast and memory-saving as broadcast-arrays.
 		dec, ra = posaxes(shape, wcs, safe=safe, corner=corner)
 		res[0] = dec[:,None]
 		res[1] = ra[None,:]
@@ -859,46 +872,104 @@ def pixshape(shape, wcs, signed=False):
 	"""Returns the height and width of a single pixel, in radians."""
 	return extent(shape, wcs, signed=signed)/shape[-2:]
 
-def pixshapemap(shape, wcs, bsize=1000):
+def pixshapemap(shape, wcs, bsize=1000, separable="auto", signed=False):
 	"""Returns the physical width and heigh of each pixel in the map in radians.
 	Heavy for big maps. Much faster approaches are possible for known pixelizations."""
-	res    = zeros((2,)+shape[-2:], wcs)
 	if wcsutils.is_plain(wcs):
 		cdelt = wcs.wcs.cdelt
-		res[0] = wcs.wcs.cdelt[1]*get_unit(wcs)
-		res[1] = wcs.wcs.cdelt[0]*get_unit(wcs)
-		return np.abs(res)
-	# Loop over blocks in y to reduce memory usage
-	for i1 in range(0, shape[-2], bsize):
-		i2 = min(i1+bsize, shape[-2])
-		pix  = np.mgrid[i1:i2+1,:shape[-1]+1]
-		with utils.nowarn():
-			y, x = pix2sky(shape, wcs, pix, safe=True, corner=True)
-		del pix
-		dy = np.abs(y[1:,1:]-y[:-1,:-1])
-		dx = np.abs(x[1:,1:]-x[:-1,:-1])
-		cy = np.cos(y)
-		bad= cy<= 0
-		cy[bad] = np.mean(cy[~bad])
-		dx *= 0.5*(cy[1:,1:]+cy[:-1,:-1])
-		del y, x, cy
-		# Due to wcs fragility, we may have some nans at wraparound points.
-		# Fill these with the mean non-nan value. Since most maps will be cylindrical,
-		# it makes sense to do this by row
-		bad = ~np.isfinite(dy)
-		dy[bad] = np.mean(dy[~bad])
-		bad = ~np.isfinite(dx)
-		dx[bad] = np.mean(dx[~bad])
-		# Copy over to our output array
-		res[0,i1:i2,:] = dy
-		res[1,i1:i2,:] = dx
-		del dx, dy
+		pshape  = np.zeros([2])
+		pshape[0] = wcs.wcs.cdelt[1]*get_unit(wcs)
+		pshape[1] = wcs.wcs.cdelt[0]*get_unit(wcs)
+		if not signed: pshape = np.abs(pshape)
+		pshape  = np.broadcast_to(pshape[:,None,None], (2,)+shape[-2:])
+		return ndmap(pshape, wcs)
+	elif separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
+		pshape = pixshapes_cyl(shape, wcs, signed=signed)
+		pshape = np.broadcast_to(pshape[:,:,None], (2,)+shape[-2:])
+		return ndmap(pshape, wcs)
+	else:
+		pshape = zeros((2,)+shape[-2:], wcs)
+		# Loop over blocks in y to reduce memory usage
+		for i1 in range(0, shape[-2], bsize):
+			i2 = min(i1+bsize, shape[-2])
+			pix  = np.mgrid[i1:i2+1,:shape[-1]+1]
+			with utils.nowarn():
+				y, x = pix2sky(shape, wcs, pix, safe=True, corner=True)
+			del pix
+			dy = y[1:,1:]-y[:-1,:-1]
+			dx = x[1:,1:]-x[:-1,:-1]
+			if not signed: dy, dx = np.abs(dy), np.abs(dx)
+			cy = np.cos(y)
+			bad= cy<= 0
+			cy[bad] = np.mean(cy[~bad])
+			dx *= 0.5*(cy[1:,1:]+cy[:-1,:-1])
+			del y, x, cy
+			# Due to wcs fragility, we may have some nans at wraparound points.
+			# Fill these with the mean non-nan value. Since most maps will be cylindrical,
+			# it makes sense to do this by row
+			bad = ~np.isfinite(dy)
+			dy[bad] = np.mean(dy[~bad])
+			bad = ~np.isfinite(dx)
+			dx[bad] = np.mean(dx[~bad])
+			# Copy over to our output array
+			pshape[0,i1:i2,:] = dy
+			pshape[1,i1:i2,:] = dx
+			del dx, dy
+		return pshape
+
+def pixshapes_cyl(shape, wcs, signed=False):
+	"""Returns the physical width and height of pixels for each row of a cylindrical
+	map with the given shape, wcs, in radians, as an array [{height,width},ny]. All
+	pixels in a row have the same shape in a cylindrical projection."""
+	res = np.zeros([2,shape[-2]])
+	ny  = shape[-2]
+	# Get the dec of all the pixel edges, and use that to get the heights.
+	y   = np.arange(ny+1)-0.5
+	x   = y*0
+	dec, ra = pix2sky(shape, wcs, [y,x], safe=False)
+	if not np.isfinite(dec[0]):  dec[0]  = -np.pi/2 if wcs.wcs.cdelt[1] >= 0 else  np.pi/2
+	if not np.isfinite(dec[-1]): dec[-1] =  np.pi/2 if wcs.wcs.cdelt[1] >= 0 else -np.pi/2
+	dec = np.clip(dec, -np.pi/2, np.pi/2)
+	heights = dec[1:]-dec[:-1]
+	# A pixel that goes from dec1 to dec2 with a RA interval of dRA has an area of
+	# (sin(dec2)-sin(dec1))*dRA. We will assign a width of area/height to each pixel,
+	# such that we can simply define pixsize in terms of pixshape. That is,
+	# width = dRA * (sin(dec2)-sin(dec1))/(dec2-dec1)
+	dRA   = wcs.wcs.cdelt[0]*utils.degree
+	sdec  = np.sin(dec)
+	widths= dRA * (sdec[1:]-sdec[:-1])/heights
+	res[0] = heights
+	res[1] = widths
+	if not signed:
+		res = np.abs(res)
 	return res
 
-def pixsizemap(shape, wcs, bsize=1000):
+def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000):
 	"""Returns the physical area of each pixel in the map in steradians.
-	Heavy for big maps."""
-	return np.product(pixshapemap(shape, wcs, bsize=bsize),0)
+
+	If separable is True, then the map will be assumed to be in a cylindircal
+	projection, where the pixel size is only a function of declination.
+	This makes the calculation dramatically faster, and the resulting array
+	will also use much less memory due to numpy striding tricks. The default,
+	separable=auto", determines whether to use this shortcut based on the
+	properties of the wcs.
+
+	Normally the function returns a ndmap of shape [ny,nx]. If broadcastable
+	is True, then it is allowed to return a smaller array that would still
+	broadcast correctly to the right shape. This can be useful to save work
+	if one is going to be doing additional manipulation of the pixel size
+	before using it. For a cylindrical map, the result would have shape [ny,1]
+	if broadcastable is True.
+	"""
+	if separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
+		psize = np.product(pixshapes_cyl(shape, wcs),0)[:,None]
+		# Expand to full shape unless we are willing to accept an array
+		# with smaller size that is still broadcastable to the right result
+		if not broadcastable:
+			psize = np.broadcast_to(psize, shape[-2:])
+		return ndmap(psize, wcs)
+	else:
+		return np.product(pixshapemap(shape, wcs, bsize=bsize, separable=separable),0)
 
 def lmap(shape, wcs, oversample=1):
 	"""Return a map of all the wavenumbers in the fourier transform
@@ -1196,6 +1267,53 @@ def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
 	assert start>=0 and start<Ny
 	assert stop>=0 and stop<Ny
 	return slice_geometry(ishape,iwcs,np.s_[start:stop,:])
+
+def thumbnail_geometry(r=None, res=None, shape=None, dims=(), proj="tan"):
+	"""Build a geometry in the given projection centered on (0,0), which will
+	be exactly at a pixel center.
+
+	 r:     The radius from the center to the edges of the patch, in radians.
+	 res:   The resolution of the patch, in radians.
+	 shape: The target shape of the patch. Will be forced to odd numbers if necessary.
+
+	Any two out of these three arguments must be specified. The most common usage
+	will probably be to specify r and res, e.g.
+	 shape, wcs = enmap.thumbnail_geometry(r=1*utils.degree, res=0.5*utils.arcmin)
+
+	The purpose of this function is to provide a geometry appropriate for object
+	stacking, etc. Ideally enmap.geometry would do this, but this specialized function
+	makes it easier to ensure that the center of the coordinate system will be at
+	excactly the pixel index (y,x) = shape//2+1, which was a commonly requested feature
+	(even though which pixel is at the center shouldn't really matter as long as one
+	takes into account the actual coordinates of each pixel).
+	"""
+	ctype = ["RA---%s" % proj.upper(), "DEC--%s" % proj.upper()]
+	if r is None: # res and shape given
+		assert res is not None and shape is not None, "Two of r, res and shape must be given"
+		res   = np.zeros(2)+res
+		shape = utils.nint(np.zeros(2)+shape[-2:]) # Broadcast and make sure it's an integer
+		shape = shape//2*2+1                       # Force odd shape
+		wcs   = wcsutils.explicit(ctype=ctype, crval=[0,0], cdelt=res[::-1]/utils.degree, crpix=shape[::-1]//2+1)
+	elif shape is None: # res and r given
+		assert res is not None and r is not None, "Two of r, res and shape must be given"
+		res   = np.zeros(2)+res
+		r     = np.zeros(2)+r
+		wcs   = wcsutils.explicit(ctype=ctype, crval=[0,0], cdelt=res[::-1]/utils.degree, crpix=[1,1])
+		rpix  = utils.nint(np.abs(wcsutils.nobcheck(wcs).wcs_world2pix(r[None,::-1]/utils.degree,0)[0,::-1]))
+		shape = 2*rpix+1
+		wcs.wcs.crpix = shape[::-1]//2+1
+	else: # r and shape given
+		assert r is not None and shape is not None, "Two of r, res and shape must be given"
+		shape = utils.nint(np.zeros(2)+shape[-2:]) # Broadcast and make sure it's an integer
+		shape = shape//2*2+1                       # Force odd shape
+		r     = np.zeros(2)+r
+		wcs   = wcsutils.explicit(ctype=ctype, crval=[0,0], crpix=[1,1])
+		rpix  = np.abs(wcsutils.nobcheck(wcs).wcs_world2pix(r[None,::-1]/utils.degree,0)[0,::-1])
+		res_ratio = (shape-1)/(2*rpix)
+		wcs.wcs.cdelt /= res_ratio[::-1]
+		wcs.wcs.crpix  = shape[::-1]//2+1
+	shape = tuple(shape)
+	return shape, wcs
 
 def create_wcs(shape, box=None, proj="cea"):
 	if box is None:
@@ -1851,7 +1969,7 @@ def write_map(fname, emap, fmt=None, extra={}):
 	else:
 		raise ValueError
 
-def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False):
+def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False, verbose=False):
 	"""Read an enmap from file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'."""
@@ -1863,7 +1981,7 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wr
 		elif fname.endswith(".fits.gz"): fmt = "fits"
 		else: fmt = "fits"
 	if fmt == "fits":
-		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu, delayed=delayed)
+		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu, delayed=delayed, verbose=verbose)
 	elif fmt == "hdf":
 		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed)
 	else:
@@ -1939,7 +2057,7 @@ def write_fits_geometry(fname, shape, wcs):
 	header["BITPIX"] = -32
 	header.tofile(fname, overwrite=True)
 
-def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False):
+def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, verbose=False):
 	"""Read an enmap from the specified fits file. By default,
 	the map and coordinate system will be read from HDU 0. Use
 	the hdu argument to change this. The map must be stored as
@@ -1955,7 +2073,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, w
 	if wcs is None:
 		with warnings.catch_warnings():
 			wcs = wcsutils.WCS(hdu.header).sub(2)
-	proxy = ndmap_proxy_fits(hdu, wcs, fname=fname, threshold=sel_threshold)
+	proxy = ndmap_proxy_fits(hdu, wcs, fname=fname, threshold=sel_threshold, verbose=verbose)
 	return read_helper(proxy, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, delayed=delayed)
 
 def read_fits_geometry(fname, hdu=None):
@@ -2062,14 +2180,23 @@ for name in ["sky2pix", "pix2sky", "box", "pixbox_of", "posmap", "pixmap", "lmap
 	setattr(ndmap_proxy, name, getattr(ndmap, name))
 
 class ndmap_proxy_fits(ndmap_proxy):
-	def __init__(self, hdu, wcs, fname="<none>", threshold=1e7):
-		self.hdu = hdu
+	def __init__(self, hdu, wcs, fname="<none>", threshold=1e7, verbose=False):
+		self.hdu     = hdu
+		self.verbose = verbose
 		# Note that 'section' is not part of some HDU types, such as CompImageHDU.
 		self.use_section = hasattr(hdu, 'section')
 		if self.use_section:
 			dtype    = fix_endian(hdu.section[(slice(0,1),)*hdu.header["NAXIS"]]).dtype
 		else:
 			dtype    = fix_endian(hdu.data[(slice(0,1),)*hdu.header["NAXIS"]]).dtype
+		self.stokes_flips = get_stokes_flips(hdu)
+		def slist(vals):
+			return ",".join([str(v) for v in vals])
+		if verbose and np.any(self.stokes_flips) >= 0:
+			print("Converting index %s or Stokes axis %s from IAU to COSMO in %s" % (
+				slist(self.stokes_flips[self.stokes_flips >= 0]),
+				slist(np.where(self.stokes_flips >= 0)[0]),
+				fname))
 		ndmap_proxy.__init__(self, hdu.shape, wcs, dtype, fname=fname, threshold=threshold)
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [len(self.shape)-2,2])
@@ -2079,6 +2206,17 @@ class ndmap_proxy_fits(ndmap_proxy):
 			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-1,1])
 			res = self.hdu.section[sel1][(Ellipsis,)+sel2]
 		else: res = self.hdu.data[sel]
+		# Apply stokes flips if necessary. This is a bit complicated because we have to
+		# take into account that slicing might have already been done. The simplest way
+		# to do this is to make a sign array with the same shape as all the pre-dimensions
+		# of the raw map, and then slice that the same way.
+		if np.any(self.stokes_flips >= 0):
+			signs = np.full(self.shape[:-2], 1, int)
+			for i, ind in enumerate(self.stokes_flips):
+				if ind >= 0:
+					signs[(slice(None),)*i + (ind,)] *= -1
+			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-2,2])
+			res *= signs[sel1][...,None,None]
 		return ndmap(fix_endian(res), wcs)
 	def __repr__(self): return "ndmap_proxy_fits(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
 
@@ -2104,6 +2242,39 @@ def fix_endian(map):
 	if map.dtype.byteorder not in ['=','<' if sys.byteorder == 'little' else '>']:
 		map = map.byteswap(True).newbyteorder()
 	return map
+
+def get_stokes_flips(hdu):
+	"""Given a FITS HDU, parse its header to determine which, if any, axes
+	need to have their sign flip to get them in the COSMO polarization convention.
+	Returns an array of length ndim, with each entry being the index of the axis
+	that should be flipped, or -1 if none should be flipped."""
+	ndim   = hdu.header["NAXIS"]
+	# First find which index of each axis is U
+	inds   = np.full(ndim, -1, int)
+	noflip = np.full(ndim, -1, int)
+	def get(name, ndim, i, default=None):
+		nfull = name + "%d" % (ndim-i)
+		return hdu.header[nfull] if nfull in hdu.header else default
+	for i in range(ndim):
+		ctype = get("CTYPE", ndim, i, "")
+		if ctype.strip() == "STOKES":
+			crpix = get("CRPIX", ndim, i, 1.0)
+			crval = get("CRVAL", ndim, i, 1.0)
+			cdelt = get("CDELT", ndim, i, 1.0)
+			U_ind = utils.nint((3-crval)/cdelt+crpix)
+			inds[i] = U_ind - 1
+	# If there are no U indices, then there is nothing to flip
+	if np.all(inds == -1): return noflip
+	# Otherwise, check the polarization convention
+	if "POLCONV" not in hdu.header:
+		warnings.warn("FITS file has stokes axis, but no POLCONV is specified. Assuming COSMO")
+		return noflip
+	polconv = hdu.header["POLCONV"].strip()
+	if   polconv == "COSMO": return noflip
+	elif polconv == "IAU":   return inds
+	else:
+		warnings.warn("Unrecognized POLCONV '%s', assuming COSMO" % polconv)
+		return noflip
 
 def shift(map, off, inplace=False, keepwcs=False):
 	"""Cyclicly shift the pixels in map such that a pixel at

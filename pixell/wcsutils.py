@@ -100,6 +100,10 @@ def is_cyl(wcs):
 	"""Returns True if the wcs represents a cylindrical coordinate system"""
 	return wcs.wcs.ctype[0].split("-")[-1] in ["CYP","CEA","CAR","MER"]
 
+def get_proj(wcs):
+	toks = wcs.wcs.ctype[0].split("-")
+	return toks[1].lower() if len(toks) == 2 else ""
+
 def scale(wcs, scale=1, rowmajor=False, corner=False):
 	"""Scales the linear pixel density of a wcs by the given factor, which can be specified
 	per axis. This is the same as dividing the pixel size by the same number."""
