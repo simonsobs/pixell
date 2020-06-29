@@ -9,7 +9,8 @@ include requirements_dev.txt
 
 recursive-include cython *
 recursive-include fortran *
-recursive-include tests *
+recursive-include pixell/tests *
+recursive-include pixell/tests/data *
 recursive-include scripts *
 recursive-include * *.ttf
 recursive-exclude cython sharp.c
