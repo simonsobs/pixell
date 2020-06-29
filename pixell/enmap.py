@@ -2270,8 +2270,8 @@ def get_stokes_flips(hdu):
 	if   "POLCCONV" in hdu.header: polconv = hdu.header["POLCCONV"].strip()
 	elif "POLCONV"  in hdu.header: polconv = hdu.header["POLCONV" ].strip()
 	else:
-		warnings.warn("FITS file has stokes axis, but no POLCCONV is specified. Assuming COSMO")
-		return noflip
+		warnings.warn("FITS file has stokes axis, but no POLCCONV is specified. Assuming IAU")
+		return inds
 	if   polconv == "COSMO": return noflip
 	elif polconv == "IAU":   return inds
 	else:
