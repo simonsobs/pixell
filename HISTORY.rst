@@ -48,3 +48,10 @@ Changes relative to 0.9.6 include:
   projections making these functions orders of magnitude faster for CAR (and
   other projections)
 * A test script test-pixell is distributed with the package
+
+0.10.3 (2020-06-26)
+-------------------
+
+Changes relative to 0.10.2 include:
+
+* Bug fix for automatic IAU -> COSMO, recognizes POLCCONV instead of POLCONV.
