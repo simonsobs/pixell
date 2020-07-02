@@ -39,8 +39,9 @@ To install ``pixell``, run:
 .. code-block:: console
 		
    $ pip install pixell --user
+   $ test-pixell
 
-This will install a pre-compiled binary suitable for your system (only Linux and Mac OS X with Python>=3.6 are supported). If you require more control over your installation, e.g. using your own installation of ``libsharp``, using Intel compilers or enabling tuning of the ``libsharp`` installation to your CPU, please see the section below on compiling from source.  
+This will install a pre-compiled binary suitable for your system (only Linux and Mac OS X with Python>=3.6 are supported). If you require more control over your installation, e.g. using your own installation of ``libsharp``, using Intel compilers or enabling tuning of the ``libsharp`` installation to your CPU, please see the section below on compiling from source.  The ``test-pixell`` command will run a suite of unit tests.
 
 Compiling from source (advanced / development workflow)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

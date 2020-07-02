@@ -2193,7 +2193,7 @@ class ndmap_proxy_fits(ndmap_proxy):
 		def slist(vals):
 			return ",".join([str(v) for v in vals])
 		if verbose and np.any(self.stokes_flips) >= 0:
-			print("Converting index %s or Stokes axis %s from IAU to COSMO in %s" % (
+			print("Converting index %s for Stokes axis %s from IAU to COSMO in %s" % (
 				slist(self.stokes_flips[self.stokes_flips >= 0]),
 				slist(np.where(self.stokes_flips >= 0)[0]),
 				fname))
@@ -2263,17 +2263,19 @@ def get_stokes_flips(hdu):
 			cdelt = get("CDELT", ndim, i, 1.0)
 			U_ind = utils.nint((3-crval)/cdelt+crpix)
 			inds[i] = U_ind - 1
-	# If there are no U indices, then there is nothing to flip
+	# If there are no U indices (for example because there was no Stokes axis),
+	# then there is nothing to flip
 	if np.all(inds == -1): return noflip
 	# Otherwise, check the polarization convention
-	if "POLCONV" not in hdu.header:
-		warnings.warn("FITS file has stokes axis, but no POLCONV is specified. Assuming COSMO")
-		return noflip
-	polconv = hdu.header["POLCONV"].strip()
+	if   "POLCCONV" in hdu.header: polconv = hdu.header["POLCCONV"].strip()
+	elif "POLCONV"  in hdu.header: polconv = hdu.header["POLCONV" ].strip()
+	else:
+		warnings.warn("FITS file has stokes axis, but no POLCCONV is specified. Assuming IAU")
+		return inds
 	if   polconv == "COSMO": return noflip
 	elif polconv == "IAU":   return inds
 	else:
-		warnings.warn("Unrecognized POLCONV '%s', assuming COSMO" % polconv)
+		warnings.warn("Unrecognized POLCCONV '%s', assuming COSMO" % polconv)
 		return noflip
 
 def shift(map, off, inplace=False, keepwcs=False):
