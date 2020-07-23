@@ -2,13 +2,13 @@
 import numpy as np
 from . import utils, fft
 
-def resample(d, factors=[0.5], axes=None, method="fft"):
+def resample(d, factors=[0.5], axes=None, method="fft",transfer=1):
 	factors = np.atleast_1d(factors)
 	if np.allclose(factors,1): return d
 	if method == "fft":
 		if axes is None: axes = range(-len(factors),0)
 		lens = [int(d.shape[ax]*fact+0.5) for ax, fact in zip(axes, factors)]
-		return resample_fft(d, lens, axes)
+		return resample_fft(d, lens, axes,transfer=transfer)
 	elif method == "bin":
 		return resample_bin(d, factors, axes)
 	else:
@@ -53,7 +53,7 @@ def upsample_bin(d, steps=[2], axes=None):
 	# Finally reshape back to proper dimensionality
 	return np.reshape(d, np.array(shape)*np.array(fullsteps))
 
-def resample_fft(d, n, axes=None):
+def resample_fft(d, n, axes=None, transfer=1):
 	"""Resample numpy array d via fourier-reshaping. Requires periodic data.
 	n indicates the desired output lengths of the axes that are to be
 	resampled. By default the last len(n) axes are resampled, but this
@@ -72,7 +72,7 @@ def resample_fft(d, n, axes=None):
 	if d.ndim == 2 and len(n) == 1 and (axes[0] == 1 or axes[0] == -1):
 		return resample_fft_simple(d, n[0])
 	# Perform the fourier transform
-	fd = fft.fft(d, axes=axes)
+	fd = fft.fft(d, axes=axes) * transfer
 	# Frequencies are 0 1 2 ... N/2 (-N)/2 (-N)/2+1 .. -1
 	# Ex 0* 1 2* -1 for n=4 and 0* 1 2 -2 -1 for n=5
 	# To upgrade,   insert (n_new-n_old) zeros after n_old/2

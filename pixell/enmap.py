@@ -75,7 +75,7 @@ class ndmap(np.ndarray):
 	def npix(self): return np.product(self.shape[-2:])
 	@property
 	def geometry(self): return self.shape, self.wcs
-	def resample(self, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3): return resample(self, oshape, off=off, method=method, mode=mode, corner=corner, order=order)
+	def resample(self, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3, transfer=1): return resample(self, oshape, off=off, method=method, mode=mode, corner=corner, order=order, transfer=transfer)
 	def project(self, shape, wcs, order=3, mode="constant", cval=0, prefilter=True, mask_nan=False, safe=True): return project(self, shape, wcs, order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan, safe=safe)
 	def extract(self, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract(self, shape, wcs, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def extract_pixbox(self, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract_pixbox(self, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
@@ -2203,7 +2203,7 @@ def fillbad(map, val=0, inplace=False):
 	map[~np.isfinite(map)] = val
 	return map
 
-def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3):
+def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3, transfer=1):
 	"""Resample the input map such that it covers the same area of the sky
 	with a different number of pixels given by oshape."""
 	# Construct the output shape and wcs
@@ -2217,7 +2217,7 @@ def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, or
 		off -= 0.5 - 0.5*np.array(oshape[-2:],float)/map.shape[-2:] # in output units
 	if method == "fft":
 		omap  = zeros(oshape, owcs, map.dtype)
-		fimap = enfft.fft(map, axes=(-2,-1))
+		fimap = enfft.fft(map, axes=(-2,-1)) * transfer
 		fomap = np.zeros(oshape, fimap.dtype)
 		# copy over all 4 quadrants. This would have been a single operation if the
 		# fourier center had been in the middle. This could be acieved using fftshift,

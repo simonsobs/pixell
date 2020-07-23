@@ -12,7 +12,8 @@ except NameError: basestring = str
 # ----------------------------
 
 def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*utils.arcmin,
-		order=3, oversample=4, pol=None, oshape=None, owcs=None, extensive=False, verbose=False):
+		       order=3, oversample=4, pol=None, oshape=None, owcs=None, extensive=False, verbose=False,
+               depix=False):
 	"""Given an enmap [...,ny,nx] and a set of coords [n,{dec,ra}], extract a set
 	of thumbnail images [n,...,thumby,thumbx] centered on each set of
 	coordinates. Each of these thumbnail images is projected onto a local tangent
@@ -82,7 +83,15 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 		# interpolation is better than spline interpolation overall
 		if oversample > 1:
 			fshape = utils.nint(np.array(oshape[-2:])*oversample)
-			ithumb = ithumb.resample(fshape, method="fft")
+			if depix:
+				wy, wx = enmap.calc_window(ithumb.shape[-2:])
+				ppow = -1
+				ptransfer = wy[:,None]**ppow * wx[None,:]**ppow
+			else:
+				ptransfer = 1
+			ithumb = ithumb.resample(fshape, method="fft",transfer=ptransfer)
+		else:
+			assert not(depix), "Deconvolving pixel window allowed only when oversample>1."
 		# I apologize for the syntax. There should be a better way of doing this
 		ipos = coordinates.transform("cel", ["cel",[[0,0,coords[si,1],coords[si,0]],False]], opos[::-1], pol=pol)
 		ipos, rest = ipos[1::-1], ipos[2:]

@@ -83,6 +83,7 @@ def is_compatible(wcs1, wcs2, tol=1e-3):
 	h2 = wcs2.to_header()
 	for key in h1:
 		if key.startswith("CRVAL") or key.startswith("CRPIX") or key.startswith("CDELT"): continue
+		if key=='DATEREF': continue
 		if key not in h2 or h2[key] != h1[key]: return False
 	if np.max(np.abs(wcs1.wcs.cdelt-wcs2.wcs.cdelt))/np.min(np.abs(wcs1.wcs.cdelt)) > tol: return False
 	crdelt = wcs1.wcs.crval - wcs2.wcs.crval
