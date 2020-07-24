@@ -754,7 +754,7 @@ def draw_annotations(map, annots, args):
 		return pix[::-1].astype(int)
 	def skippable(x,y):
 		rmax = args.annotate_maxrad
-		if rmax is 0: return False
+		if rmax == 0: return False
 		return x <= -rmax or y <= -rmax or x >= map.shape[-1]-1+rmax or y >= map.shape[-2]-1+rmax
 	for annot in annots:
 		atype = annot[0].lower()

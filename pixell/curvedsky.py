@@ -534,8 +534,34 @@ def almxfl(alm,lfunc,ainfo=None):
 	Returns:
 	    falm: The filtered alms alm * lfunc(ell)
 	"""
+	alm   = np.asarray(alm)
 	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
 	l = np.arange(ainfo.lmax+1.0)
 	return ainfo.lmul(alm, lfunc(l))
 
-	
+def alm2cl(alm, alm2=None, ainfo=None):
+	"""Compute the power spectrum for alm, or if alm2 is given, the cross-spectrum
+	between alm and alm2, which must broadcast. 
+
+	Some example usage, where the notation a[{x,y,z},n,m] specifies that the array
+	a has shape [3,n,m], and the 3 entries in the first axis should be interpreted
+	as x, y and z respectively.
+
+	1. cl[nl] = alm2cl(alm[nalm])
+	   This just computes the standard power spectrum of the given alm, resulting in
+	   a single 1d array.
+	2. cl[nl] = alm2cl(alm1[nalm], alm2[nalm])
+	   This compues the 1d cross-spectrum between the 1d alms alm1 and alm2.
+	3. cl[{T,E,B},{T,E,B},nl] = alm2cl(alm[{T,E,B},None,nalm], alm[None,{T,E,B},nalm])
+	   This computes the 3x3 polarization auto-spectrum for a 2d polarized alm.
+	4. cl[{T,E,B},{T,E,B},nl] = alm2cl(alm1[{T,E,B},None,nalm], alm2[None,{T,E,B},nalm])
+	   As above, but gives the 3x3 polarization cross-spectrum between two 2d alms.
+
+	The output is in the shape one would expect from numpy broadcasting. For example,
+	in the last example, the TE power spectrum would be found in cl[0,1], and the
+	ET power spectrum (which is different for the cross-spectrum case) is in cl[1,0].
+	If a Healpix-style compressed spectrum is desired, use pixell.powspec.sym_compress.
+	"""
+	alm = np.asarray(alm)
+	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
+	return ainfo.alm2cl(alm, alm2=alm2)

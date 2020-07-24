@@ -1,33 +1,81 @@
-language: python
-python:
-- 3.6
-- 3.5
-- 2.7
-- 2.6
-os: linux
+Language: python
+
+jobs:
+  include:
+
+    - language: python
+      dist: xenial
+      sudo: required
+      python: "3.7"
+      services:
+        - docker
+        
+    - os: osx
+      language: shell
+
+env:
+  global:
+    - TWINE_USERNAME=__token__
+    # Note: TWINE_PASSWORD is set to an API token in Travis settings
+    - CIBW_BEFORE_BUILD="python3 -m pip install numpy scipy cython"
+    - CIBW_BUILD_VERBOSITY=3
+    - CIBW_BUILD="cp3?-*x86_64"
+    - CIBW_SKIP="cp33-* cp34-* cp35-*"
+    - PYTHON=python3
+    - PIP=pip
+        
 install:
-- pip install -r requirements.txt
-- python setup.py develop
+  - python3 -m pip install -U pip
+  - python3 -m easy_install -U setuptools
+  - python3 -m pip install pytest-cov
+  - python3 -m pip install cibuildwheel==1.4.2
+
 script:
-- py.test --cov=pixell tests/ -s
+  - python3 setup.py build_ext -i
+  - pip install .
+  - py.test --cov=pixell pixell/tests/ -s
+  - find . -type f -iname '*.so' -print -delete
+  - rm -rf _deps/
+  # build the wheels, put them into './wheelhouse'
+  - python3 -m cibuildwheel --output-dir wheelhouse
+  - ls wheelhouse
+
 after_success:
-  - coveralls
-matrix:
-  allow_failures:
-  - python: 3.5-dev
-  - python: 3.6-dev
-  - python: 3.7-dev
-  - python: 2.6
-deploy:
-  provider: pypi
-  distributions: sdist --formats=gztar
-  user: msyriac
-  password:
-    secure: BqdgcsgF/yW8qUO+MUax9D8yRIsM7QE67d9vjhHho8nhdAbI76HvmkvWdUe3AjKULDmGQXXWFVllJUF6obO4mj9DMYnKcvsQ5SD3qKMfyiBVNZ1rdzpZvECfJrRDKMBQCRb3RzZzPBvJ6DlCCcfyslseDZ9ezFbNd+airew9ThZ+uTdn+bRJ/lLzFkM8L0fpsZEOW4RCfGEuDD0i54+TVVbhvqYUcuca9rHpWHCjZY2sNwYBB83U6/qLhF6OmvhO5RdVyZusFRNGmXCz/MmwCyBWkAJynWCs/Z4TnME4Pay2dF2/Fu6xN1A+sk34EOEI40KkcI61WW3WCpQUi/8zkgynHsLaaeHpzZAiPxTLVnsbSF1aEvfqpJeVP64sllDA+HpBhbkvbmR9r7GoEolpa3oOzfrgIZRjKI2qps9NiX+RMhMXtUB/o+cXt/nbRG5Uq5FbnWOUOIOgoHeC7nK+7YiV1mHfFkmIGD0C0aPwfp9FQL4v25CzD57ezoEbFUSl8hvQ0IdFvK9rpT8wbqBzjupjjkXd57Jlh3VegaJl/Trf0grlpjhZzbXDIgKV8mgZqiqMJfVZM7MapFfjk576EK3tL+8a4ZGrh5bW35qfEo+cj3qjmIfpTn8N/+rEQziDOKEwY7gFDBgXjf5TVZFoL/8NjIk1gCQdU0MrUzc4B5c=
-  on:
-    tags: true
-    repo: simonsobs/pixell
-    python: 3.6
+  # if the release was tagged, upload them to PyPI
+  - |
+    echo $TRAVIS_TAG
+    python3 -m pip install twine
+    python3 -m pip install -U twine
+    python3 -m twine check wheelhouse/*
+    if [[ $TRAVIS_TAG ]]; then
+      python3 -m twine upload --verbose --skip-existing wheelhouse/*.whl
+    fi
+    
+
+before_install:
+  - |
+    if [ "$TRAVIS_OS_NAME" == "osx" ]; then
+    brew update
+    # Per the `pyenv homebrew recommendations <https://github.com/yyuu/pyenv/wiki#suggested-build-environment>`_.
+    brew install openssl readline
+    # See https://docs.travis-ci.com/user/osx-ci-environment/#A-note-on-upgrading-packages.
+    # I didn't do this above because it works and I'm lazy.
+    brew outdated pyenv || brew upgrade pyenv
+    # virtualenv doesn't work without pyenv knowledge. venv in Python 3.3
+    # doesn't provide Pip by default. So, use `pyenv-virtualenv <https://github.com/yyuu/pyenv-virtualenv/blob/master/README.md>`_.
+    brew install pyenv-virtualenv
+    pyenv install $PYTHON
+    # I would expect something like ``pyenv init; pyenv local $PYTHON`` or
+    # ``pyenv shell $PYTHON`` would work, but ``pyenv init`` doesn't seem to
+    # modify the Bash environment. ??? So, I hand-set the variables instead.
+    export PYENV_VERSION=$PYTHON
+    export PATH="/Users/travis/.pyenv/shims:${PATH}"
+    pyenv-virtualenv venv
+    source venv/bin/activate
+    # A manual check that the correct version of Python is running.
+    python --version
+    fi
+    
 addons:
   apt_packages:
   - gfortran
