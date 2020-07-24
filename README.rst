@@ -34,7 +34,7 @@ Dependencies
 Installing
 ----------
 
-To install ``pixell``, run:
+Make sure your ``pip`` tool is up-to-date. To install ``pixell``, run:
 
 .. code-block:: console
 		
