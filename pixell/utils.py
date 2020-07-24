@@ -902,7 +902,7 @@ def pole_wrap(pos):
 def parse_box(desc):
 	"""Given a string of the form from:to,from:to,from:to,... returns
 	an array [{from,to},:]"""
-	return np.array([[float(word) for word in pair] for pair in desc.split(",")]).T
+	return np.array([[float(word) for word in pair.split(":")] for pair in desc.split(",")]).T
 
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result
