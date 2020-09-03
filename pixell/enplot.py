@@ -902,7 +902,7 @@ def hwstack(mexp):
 	nr,nc,ny,nx = mexp.shape
 	return np.transpose(mexp,(0,2,1,3)).reshape(nr*ny,nc*nx)
 
-class BackendError: pass
+class BackendError(BaseException): pass
 
 def show(img, title=None, method="auto"):
 	if   method == "tk":      show_tk(img, title=title)
