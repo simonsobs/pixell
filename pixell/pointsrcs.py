@@ -99,7 +99,7 @@ def eval_srcs_loop(posmap, poss, amps, beam, cres, nhit, cell_srcs, dtype=np.flo
 	for cy in range(ncy):
 		for cx in range(ncx):
 			nsrc = nhit[cy,cx]
-			if verbose: print("map cell %5d/%d with %5d srcs" % (cy*ncx+cx+1, ncy*ncx, nsrc))
+			if verbose and nsrc > 0: print("map cell %5d/%d with %5d srcs" % (cy*ncx+cx+1, ncy*ncx, nsrc))
 			if nsrc == 0: continue
 			srcs  = cell_srcs[cy,cx,:nsrc]
 			y1,y2 = (cy+0)*cres[0], (cy+1)*cres[0]
@@ -284,7 +284,7 @@ def read_dory_fits(fname, hdu=1):
 
 def read_dory_txt(fname):
 	try:
-		d = np.loadtxt(fname, usecols=[0,1,3,5,7], dtype=[("ra","d"),("dec","d"),("I","d"),("Q","d"),("U","d")]).view(np.recarray)
+		d = np.loadtxt(fname, usecols=[0,1,3,5,7], dtype=[("ra","d"),("dec","d"),("I","d"),("Q","d"),("U","d")]).view(np.recarray).reshape(-1)
 		d.I *= 1e3; d.Q *= 1e3; d.U *= 1e3
 		return d
 	except (ValueError, IndexError) as e:
