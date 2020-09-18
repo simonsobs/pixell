@@ -478,7 +478,7 @@ def prepare_alm(alm=None, ainfo=None, lmax=None, pre=(), dtype=np.float64):
 				raise ValueError("prepare_alm needs either alm, ainfo or lmax to be specified")
 			ainfo = sharp.alm_info(lmax)
 		alm = np.zeros(pre+(ainfo.nelem,), dtype=np.result_type(dtype,0j))
-	else:
+	if ainfo is None:
 		ainfo = sharp.alm_info(nalm=alm.shape[-1])
 	return alm, ainfo
 
