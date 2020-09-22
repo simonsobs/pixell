@@ -67,7 +67,18 @@ class PixelTests(unittest.TestCase):
             alms0 = curvedsky.almxfl(alms.copy(),lambda x: np.ones(x.shape))
             assert np.all(np.isclose(alms0,alms))
             
-        
+
+    def test_apod(self):
+        m = enmap.enmap(np.ones((5,5)))
+        res = np.array([[0.,         0.,         0.,         0.,         0.,        ],
+                        [0.,         0.0625,     0.140625,   0.0625,     0.,        ],
+                        [0.,         0.140625,   0.31640625, 0.140625,   0.,        ],
+                        [0.,         0.0625,     0.140625,   0.0625,     0.,        ],
+                        [0.,         0.,         0.,         0.,         0.,        ]])
+        width = 4
+        apm = enmap.apod(m, width, profile="cos", fill="zero")
+        assert np.all(np.isclose(apm,res))
+            
 
     def test_rand_alm(self):
         def nalm(lmax):

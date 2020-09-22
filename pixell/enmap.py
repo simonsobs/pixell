@@ -1378,6 +1378,23 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 			if domains: return omap, odomains
 			else:       return omap
 
+
+def cosine_apod(x): return 0.5 * (1-np.cos(x))
+
+def apodize_mask(mask,r,profile=cosine_apod,rmax=None):
+	"""Apodize a mask by growing it by a distance r such that it smoothly goes from 
+	0 at the edge of the original mask to 1 a distance r away, with a specified profile
+	which defaults to a cosine apodization profile.
+
+	Args:
+	    mask: (Ny,Nx) enmap containing a mask
+	    r: distance in radians from edge of mask to grow the original mask out to
+	    profile: function that determines the mask roll-off that takes values from [0,1]
+	    to [0,1]. This defaults to cosine_apod(x) = 0.5 * (1-np.cos(x))
+	    
+	"""
+	return profile(mask.distance_transform(rmax=rmax)*(np.pi/r))
+
 def distance_transform_healpix(mask, omap=None, rmax=None, method="heap"):
 	"""Given a boolean healpix mask, produce an output map where the value in each pixel is the distance
 	to the closest false pixel in the mask. See distance_from for the meaning of rmax."""
@@ -1568,7 +1585,7 @@ def apod(m, width, profile="cos", fill="zero"):
 	"""
 	width = np.minimum(np.zeros(2)+width,m.shape[-2:]).astype(np.int32)
 	if profile == "cos":
-		a = [0.5*(1-np.cos(np.linspace(0,np.pi,w))) for w in width]
+		a = [cosine_apod(np.linspace(0,np.pi,w)) for w in width]
 	else:
 		raise ValueError("Unknown apodization profile %s" % profile)
 	res = m.copy()
