@@ -44,6 +44,11 @@ class Colorscheme:
 		order = np.argsort(vals)
 		self.vals, self.cols = vals[order], cols[order]
 		self.desc = desc
+	def reverse(self):
+		res = Colorscheme(self)
+		res.vals = 1-self.vals[::-1]
+		res.cols = self.cols[::-1]
+		return res
 
 def colorize(arr, desc="planck", mode="scalar", driver="auto"):
 	"""Transform a set of values into RGB tuples. Two modes are supported.

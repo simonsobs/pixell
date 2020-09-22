@@ -3,6 +3,7 @@ import numpy as np
 cimport numpy as np
 cimport csharp
 from libc.math cimport atan2
+from libc.stdint cimport uintptr_t
 #from cython.parallel import prange, parallel
 
 cdef class map_info:
@@ -69,7 +70,7 @@ def map_info_healpix(int nside, int stride=1, weights=None):
 	cdef np.ndarray[np.float64_t,ndim=1] w = weights
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_weighted_healpix_geom_info (nside, stride, &w[0], &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_gauss_legendre(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Gauss-Legendre pixelization. Optimal
@@ -81,7 +82,7 @@ def map_info_gauss_legendre(int nrings, nphi=None, double phi0=0, stride_lon=Non
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_gauss_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_clenshaw_curtis(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Cylindrical Equi-rectangular pixelization
@@ -93,7 +94,7 @@ def map_info_clenshaw_curtis(int nrings, nphi=None, double phi0=0, stride_lon=No
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_cc_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_fejer1(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Cylindrical Equi-rectangular pixelization
@@ -105,7 +106,7 @@ def map_info_fejer1(int nrings, nphi=None, double phi0=0, stride_lon=None, strid
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_fejer1_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_fejer2(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Cylindrical Equi-rectangular pixelization
@@ -117,7 +118,7 @@ def map_info_fejer2(int nrings, nphi=None, double phi0=0, stride_lon=None, strid
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_fejer2_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 def map_info_mw(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_lat=None):
 	"""Construct a new sharp map geometry with Cylindrical Equi-rectangular pixelization
@@ -129,7 +130,7 @@ def map_info_mw(int nrings, nphi=None, double phi0=0, stride_lon=None, stride_la
 	cdef int slat  = inphi*slon if stride_lat is None else stride_lat
 	cdef csharp.sharp_geom_info * geom
 	csharp.sharp_make_mw_geom_info(nrings, inphi, phi0, slon, slat, &geom)
-	return map_info_from_geom(geom)
+	return map_info_from_geom_and_free(geom)
 
 cdef map_info_from_geom(csharp.sharp_geom_info * geom):
 	"""Constructs a map_info from a gemoetry pointer."""
@@ -161,6 +162,11 @@ cdef map_info_from_geom(csharp.sharp_geom_info * geom):
 				ring += 1
 	cdef np.ndarray[np.int_t,ndim=1] order = np.argsort(offsets[:ring])
 	return map_info(theta[order],nphi[order],phi0[order],offsets[order],stride[order],weight[order])
+
+cdef map_info_from_geom_and_free(csharp.sharp_geom_info * geom):
+	res = map_info_from_geom(geom)
+	csharp.sharp_destroy_geom_info(geom)
+	return res
 
 cdef class alm_info:
 	cdef csharp.sharp_alm_info * info
@@ -271,6 +277,73 @@ cdef class alm_info:
 					m = 0
 			for i in range(alm.shape[1]):
 				alm[comp,i] = work[i]
+	def alm2cl(self, alm, alm2=None):
+		"""Computes the cross power spectrum for the given alm and alm2, which
+		must have the same dtype and broadcast. For example, to get the TEB,TEB
+		cross spectra for a single map you would do
+		 cl = ainfo.alm2cl(alm[:,None,:], alm[None,:,:])
+		To get the same TEB,TEB spectra crossed with a different map it would
+		be
+		 cl = ainfo.alm2cl(alm1[:,None,:], alm2[None,:,:])
+		In both these cases the output will be [{T,E,B},{T,E,B},nl]"""
+		alm   = np.asarray(alm)
+		alm2  = np.asarray(alm2) if alm2 is not None else alm
+		# Unify dtypes
+		dtype= np.result_type(alm, alm2)
+		alm  = alm.astype (dtype, copy=False)
+		alm2 = alm2.astype(dtype, copy=False)
+		def getaddr(a): return a.__array_interface__["data"][0]
+		# Broadcast alms. This looks scary, but just results in views of the original
+		# arrays according to the documentation. Hence, it shouldn't use more memory.
+		# The resulting arrays are non-contiguous, but each individual alm is still
+		# contiguous. We set the writable flags not because we intend to write, but
+		# to silience a false positive warning from numpy
+		alm, alm2 = np.broadcast_arrays(alm, alm2)
+		alm.flags["WRITEABLE"] = alm2.flags["WRITEABLE"] = True
+		# I used to flatten here to make looping simple, but that caused a copy to be made
+		# when combined with np.broadcast. So instead I will use manual raveling
+		pshape = alm.shape[:-1]
+		npre   = int(np.product(pshape))
+		cdef float[::1]  cl_single_sp, alm_single_sp1, alm_single_sp2
+		cdef double[::1] cl_single_dp, alm_single_dp1, alm_single_dp2
+		# A common use case is to compute TEBxTEB auto-cross spectra, where
+		# e.g. TE === ET since alm1 is the same array as alm2. To avoid duplicate
+		# calculations in this case we use a cache, which skips computing the
+		# cross-spectrum of any given pair of arrays more than once.
+		cache = {}
+		if alm.dtype == np.complex64:
+			cl = np.empty(alm.shape[:-1]+(self.lmax+1,), np.float32)
+			# We will loop over individual spectra
+			for i in range(npre):
+				I = np.unravel_index(i, pshape)
+				# Avoid duplicate calculation
+				key   = tuple(sorted([getaddr(alm[I]), getaddr(alm2[I])]))
+				if key in cache:
+					cl[I] = cache[key]
+				else:
+					alm_single_sp1 = np.ascontiguousarray(alm [I]).view(np.float32)
+					alm_single_sp2 = np.ascontiguousarray(alm2[I]).view(np.float32)
+					cl_single_sp = cl[I]
+					csharp.alm2cl_sp(self.info, &alm_single_sp1[0], &alm_single_sp2[0], &cl_single_sp[0])
+					cache[key] = cl[I]
+			return cl
+		elif alm.dtype == np.complex128:
+			cl = np.empty(alm.shape[:-1]+(self.lmax+1,), np.float64)
+			# We will loop over individual spectra
+			for i in range(npre):
+				I = np.unravel_index(i, pshape)
+				key   = tuple(sorted([getaddr(alm[I]), getaddr(alm2[I])]))
+				if key in cache:
+					cl[I] = cache[key]
+				else:
+					alm_single_dp1 = np.ascontiguousarray(alm [I]).view(np.float64)
+					alm_single_dp2 = np.ascontiguousarray(alm2[I]).view(np.float64)
+					cl_single_dp = cl[I]
+					csharp.alm2cl_dp(self.info, &alm_single_dp1[0], &alm_single_dp2[0], &cl_single_dp[0])
+					cache[key] = cl[I]
+			return cl
+		else:
+			raise ValueError("Only complex64 and complex128 supported, but got %s" % str(alm.dtype))
 	def lmul(self, alm, lmat, out=None):
 		"""Computes res[a,lm] = lmat[a,b,l]*alm[b,lm], where lm is the position of the
 		element with (l,m) in the alm array, as defined by this class."""

@@ -12,6 +12,8 @@ pixell
 .. image:: https://coveralls.io/repos/github/simonsobs/pixell/badge.svg?branch=master
 		   :target: https://coveralls.io/github/simonsobs/pixell?branch=master
 
+.. image:: https://badge.fury.io/py/pixell.svg
+		       :target: https://badge.fury.io/py/pixell
 
 ``pixell`` is a library for loading, manipulating and analyzing maps stored in rectangular pixelization. It is mainly targeted for use with maps of the sky (e.g. CMB intensity and polarization maps, stacks of 21 cm intensity maps, binned galaxy positions or shear) in cylindrical projection, but its core functionality is more general. It extends numpy's ``ndarray`` to an ``ndmap`` class that associates a World Coordinate System (WCS) with a numpy array.  It includes tools for Fourier transforms  (through numpy or pyfft) and spherical harmonic transforms (through libsharp) of such maps and tools for visualization (through the Python Image Library). 
 
@@ -23,84 +25,92 @@ pixell
 Dependencies
 ------------
 
-* Python>=2.7 or Python>=3.4
-* gcc/gfortran or Intel compilers (clang might not work out of the box)
-* libsharp (downloaded and installed)
-* automake (for libsharp compilation)
+* Python>=3.6
+* gcc/gfortran or Intel compilers (clang might not work out of the box), if compiling from source
+* libsharp (downloaded and installed, if compiling from source)
+* automake (for libsharp compilation, if compiling from source)
 * healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py, Pillow (Python Image Library)
 
 Installing
 ----------
 
-For installation instructions specific to NERSC/cori, see NERSC_.
+Make sure your ``pip`` tool is up-to-date. To install ``pixell``, run:
 
-For installation instructions specific to MacOS X, see MACOSX_ (h/t Thibaut Louis).
+.. code-block:: console
+		
+   $ pip install pixell --user
+   $ test-pixell
+
+This will install a pre-compiled binary suitable for your system (only Linux and Mac OS X with Python>=3.6 are supported). If you require more control over your installation, e.g. using your own installation of ``libsharp``, using Intel compilers or enabling tuning of the ``libsharp`` installation to your CPU, please see the section below on compiling from source.  The ``test-pixell`` command will run a suite of unit tests.
+
+Compiling from source (advanced / development workflow)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For compilation instructions specific to NERSC/cori, see NERSC_.
+
+For compilation instructions specific to Mac OS X, see MACOSX_ (h/t Thibaut Louis).
 
 For all other, below are general instructions.
 
-To install, clone this repository and run:
-
-.. code-block:: console
-		
-   $ python setup.py install --user
-
-To test the installation, you can run:
-
-.. code-block:: console
-		
-   $ py.test
-   
-You may need to install pytest for the above to work (with `pip install pytest --user`).
+First, download the source distribution or ``git clone`` this repository. You can work from ``master`` or checkout one of the released version tags (see the Releases section on Github). Then change into the cloned/source directory.
 
 Existing ``libsharp`` installation (optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Libsharp is installed automatically by setup.py. If instead you want to use an existing ``libsharp`` installation, you can do so by symlinking the ``libsharp`` directory into a directory called ``_deps`` in the root directory, such that the file ``pixell/_deps/libsharp/libsharp/sharp.c`` exists.
+``libsharp`` is installed automatically by the setup.py you will execute below. The installation script will
+attempt to automatically git clone the latest version of ``libsharp`` and compile it.  If
+instead you want to use an existing ``libsharp`` installation, you can do so by
+symlinking the ``libsharp`` directory into a directory called ``_deps`` in the
+root directory, such that ``pixell/_deps/libsharp/libsharp/sharp.h`` exists. If
+you are convinced that the libsharp library is successfully
+compiled,  add an empty file named
+``pixell/_deps/libsharp/libsharp/success.txt`` to ensure pixell's setup.py
+knows of your existing installation.
 
-   
-Intel compilers
-~~~~~~~~~~~~~~~
+Run ``setup.py``
+~~~~~~~~~~~~~~~~
 
-Intel compilers might require a two step installation as follows
-
-.. code-block:: console
-		
-   $ python setup.py build_ext -i --fcompiler=intelem --compiler=intelem
-   $ python setup.py install --user
-
-
-Development workflow (recommended)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you are a developer, run:
+If not using Intel compilers (see below), build the package using 
 
 .. code-block:: console
 		
    $ python setup.py build_ext -i
 
-and add the cloned directory to your Python path so that changes you make in any python file are immediately reflected. e.g., in your ``.bashrc`` file,
+You may now test the installation:
+
+.. code-block:: console
+		
+   $ py.test pixell/tests/
+   
+If the tests pass, either add the cloned directory to your ``$PYTHONPATH``, if you want the ability for changes made to Python source files to immediately reflect in your installation, e.g., in your ``.bashrc`` file,
 
 .. code-block:: bash
 		
    export PYTHONPATH=$PYTHONPATH:/path/to/cloned/pixell/directory
 
-If you also need non-Python code to be recompiled, run:
+
+or alternatively, install the package  
+   
+.. code-block:: console
+
+   $ python setup.py install --user
+
+which requires you to reinstall every time changes are made to any files in your repository directory.
+   
+Intel compilers
+~~~~~~~~~~~~~~~
+
+Intel compilers require you to modify the build step above as follows
 
 .. code-block:: console
 		
-   $ python setup.py clean
+   $ python setup.py build_ext -i --fcompiler=intelem --compiler=intelem
 
-
-before the above steps.
-
-To test the installation under development mode, you can run:
+On some systems, further specification might be required (make sure to get a fresh copy of the repository before trying out a new install method), e.g.:
 
 .. code-block:: console
-		
-   $ py.test
-   
-   
-This requires the pytest Python package to be installed.
+
+   $ LDSHARED="icc -shared" LD=icc LINKCC=icc CC=icc python setup.py build_ext -i --fcompiler=intelem --compiler=intelem
 
 
 

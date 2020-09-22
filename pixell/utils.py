@@ -42,8 +42,15 @@ def listsplit(seq, elem):
 	ranges = zip([0]+[i+1 for i in inds],inds+[len(seq)])
 	return [seq[a:b] for a,b in ranges]
 
+def streq(x, s):
+	"""Check if x is the string s. This used to be simply "x is s",
+	but that now causes a warning. One can't just do "x == s", as
+	that causes a numpy warning and will fail in the future."""
+	return isinstance(x, basestring) and x == s
+
 def find(array, vals, default=None):
 	"""Return the indices of each value of vals in the given array."""
+	if len(vals) == 0: return []
 	array   = np.asarray(array)
 	order   = np.argsort(array)
 	cands   = np.minimum(np.searchsorted(array, vals, sorter=order),len(array)-1)
@@ -126,7 +133,7 @@ def rewind(a, ref=0, period=2*np.pi):
 	specifies the angle furthest away from the cut, i.e. the
 	period cut will be at ref+period/2."""
 	a = np.asanyarray(a)
-	if ref is "auto": ref = np.sort(a.reshape(-1))[a.size//2]
+	if streq(ref, "auto"): ref = np.sort(a.reshape(-1))[a.size//2]
 	return ref + (a-ref+period/2.)%period - period/2.
 
 def cumsplit(sizes, capacities):
@@ -397,6 +404,10 @@ def nearest_product(n, factors, direction="below"):
 	return best
 
 def mkdir(path):
+	# It's useful to be able to do mkdir(os.path.dirname(fname)) to create the directory
+	# a file should be in if it's missing. If fname has no directory component dirname
+	# returns "". This check prevents this from causing an error.
+	if path == "": return
 	try:
 		os.makedirs(path)
 	except OSError as exception:
@@ -620,6 +631,32 @@ def combine_beams(irads_array):
 		B = (V*E[None]**0.5).dot(V.T)
 		Ctot = B.dot(Ctot).dot(B.T)
 	return np.array([Ctot[0,0],Ctot[1,1],Ctot[0,1]])
+
+def regularize_beam(beam, cutoff=1e-2, nl=None):
+	"""Given a beam transfer function beam[...,nl], replace
+	small values with an extrapolation that has the property
+	that the ratio of any pair of such regularized beams is
+	constant in the extrapolated region."""
+	beam  = np.asarray(beam)
+	# Get the length of the output beam, and the l to which both exist
+	if nl is None: nl = beam.shape[-1]
+	nl_both = min(nl, beam.shape[-1])
+	# Build the extrapolation for the full range. We will overwrite the part
+	# we want to keep unextrapolated later.
+	l     = np.maximum(1,np.arange(nl))
+	vcut  = np.max(beam,-1)*cutoff
+	above = beam > vcut
+	lcut  = np.argmin(above, -1)
+	if lcut > nl or lcut == 0: return beam[:nl]
+	obeam = vcut * (l/lcut)**(2*np.log(cutoff))
+	# Get the mask for what we want to keep. This looks complicated, but that's
+	# just to support arbitrary-dimensionality (maybe that wasn't really necessary).
+	mask  = np.zeros(obeam.shape, int)
+	iflat = lcut.reshape(-1) + np.arange(lcut.size)*nl
+	mask.reshape(-1)[iflat] = 1
+	mask  = np.cumsum(mask,-1) < 0.5
+	obeam[:nl_both] = np.where(mask[:nl_both], beam[:nl_both], obeam[:nl_both])
+	return obeam
 
 def read_lines(fname, col=0):
 	"""Read lines from file fname, returning them as a list of strings.
@@ -861,6 +898,11 @@ def pole_wrap(pos):
 	lat[back] = -lat[back]
 	lon[back]+= np.pi
 	return pos
+
+def parse_box(desc):
+	"""Given a string of the form from:to,from:to,from:to,... returns
+	an array [{from,to},:]"""
+	return np.array([[float(word) for word in pair] for pair in desc.split(",")]).T
 
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result
@@ -1598,7 +1640,7 @@ def flux_factor(beam_area, freq, T0=T_cmb):
 def noise_flux_factor(beam_area, freq, T0=T_cmb):
 	"""Compute the factor A that converts from white noise level in K sqrt(steradian)
 	to uncertainty in Jy for the given beam area in steradians and frequency in Hz.
-	This assumes a gaussian beam, so that the area of the real-space squared beam is
+	This assumes white noise and a gaussian beam, so that the area of the real-space squared beam is
 	just half that of the normal beam area.
 
 	For uK arcmin to mJy, use noise_flux_factor(beam_area, freq)*arcmin/1e3
@@ -1609,6 +1651,19 @@ def noise_flux_factor(beam_area, freq, T0=T_cmb):
 def planck(f, T):
 	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
 	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
+blackbody = planck
+
+def graybody(f, T, beta=1):
+	"""Return a graybody spectrum at the frequency f and temperature T in Jy/sr"""
+	return  2*h*f**(3+beta)/c**2/(np.exp(h*f/(k*T))-1) * 1e26
+
+def tsz_spectrum(f, T=T_cmb):
+	"""The increase in flux due to tsz in Jy/sr per unit of y. This is
+	just the first order approximation, but it's good enough for realistic
+	values of y, i.e. y << 1"""
+	x  = h*f/(k*T)
+	ex = np.exp(x)
+	return 2*h*f**3/c**2 * (x*ex)/(ex-1)**2 * (x*(ex+1)/(ex-1)-4) * 1e26
 
 ### Binning ####
 

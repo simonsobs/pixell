@@ -46,8 +46,10 @@ def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None,
 	ishape = omap.shape
 	omap   = omap.preflat
 	ncomp  = omap.shape[0]
+	srcs   = np.asarray(srcs)
 	# Set up wrapping
-	if wrap is "auto": wrap = [0, utils.nint(360./wcs.wcs.cdelt[0])]
+	if utils.streq(wrap, "auto"):
+		wrap = [0, utils.nint(360./wcs.wcs.cdelt[0])]
 	# In keeping with the rest of the functions here, srcs is [nsrc,{dec,ra,T,Q,U}].
 	# The beam parameters are ignored - the beam argument is used instead
 	amps = srcs[:,2:2+ncomp]
@@ -211,16 +213,17 @@ def crossmatch(srcs1, srcs2, tol=1*utils.arcmin, safety=4):
 	less than the tolerance. The catalogs must be [:,{ra,dec,...}]
 	in radians. Returns [nmatch,2], with the last index giving
 	the index in the first and second catalog for each match."""
-	pos1, pos2 = srcs1[:,:2], srcs2[:,:2]
-	tree1 = spatial.KDTree(pos1)
-	tree2 = spatial.KDTree(pos2)
+	vec1 = utils.ang2rect(srcs1[:,:2], axis=1)
+	vec2 = utils.ang2rect(srcs2[:,:2], axis=1)
+	tree1 = spatial.cKDTree(vec1)
+	tree2 = spatial.cKDTree(vec2)
 	groups = tree1.query_ball_tree(tree2, tol*safety)
 	matches = []
 	for gi, group in enumerate(groups):
 		if len(group) == 0: continue
 		# Get the true distance to each member in the group
 		group = np.array(group)
-		dists = utils.angdist(pos1[gi,:,None], pos2[group,:].T)
+		dists = utils.vec_angdist(vec1[gi,None,:], vec2[group,:], axis=1)
 		best  = np.argmin(dists)
 		if dists[best] > tol: continue
 		matches.append([gi, group[best]])

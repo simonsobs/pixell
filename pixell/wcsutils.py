@@ -4,8 +4,15 @@ the same ordering as WCS, i.e. column major (so {ra,dec} rather than
 {dec,ra}). Coordinates are assigned to pixel centers, as WCS does natively,
 but bounding boxes include the whole pixels, not just their centers, which
 is where the 0.5 stuff comes from."""
-import numpy as np
-from astropy.wcs import WCS
+import numpy as np, warnings
+from astropy.wcs import WCS, FITSFixedWarning
+
+# Turn off annoying warning every time a WCS object is constructed
+warnings.filterwarnings("ignore", category=FITSFixedWarning) 
+# Handle annoying python3 stuff
+try: basestring
+except: basestring = str
+def streq(x, s): return isinstance(x, basestring) and x == s
 
 # The origin argument used in the wcs pix<->world routines seems to
 # have to be 1 rather than the 0 one would expect. For example,
@@ -58,8 +65,8 @@ def describe(wcs):
 WCS.__repr__ = describe
 WCS.__str__ = describe
 
-def equal(wcs1, wcs2):
-	return repr(wcs1.to_header()) == repr(wcs2.to_header())
+def equal(wcs1, wcs2,flags=1,tol=1e-14):
+	return wcs1.wcs.compare(wcs2.wcs, flags, tol)
 
 def nobcheck(wcs):
 	res = wcs.deepcopy()
@@ -93,6 +100,10 @@ def is_cyl(wcs):
 	"""Returns True if the wcs represents a cylindrical coordinate system"""
 	return wcs.wcs.ctype[0].split("-")[-1] in ["CYP","CEA","CAR","MER"]
 
+def get_proj(wcs):
+	toks = wcs.wcs.ctype[0].split("-")
+	return toks[1].lower() if len(toks) == 2 else ""
+
 def scale(wcs, scale=1, rowmajor=False, corner=False):
 	"""Scales the linear pixel density of a wcs by the given factor, which can be specified
 	per axis. This is the same as dividing the pixel size by the same number."""
@@ -116,7 +127,7 @@ def plain(pos, res=None, shape=None, rowmajor=False, ref=None):
 	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
 	w = WCS(naxis=2)
 	w.wcs.crval = mid
-	if ref is "standard": ref = None
+	if streq(ref, "standard"): ref = None
 	return finalize(w, pos, res, shape, ref=ref)
 
 def car(pos, res=None, shape=None, rowmajor=False, ref=None):
@@ -125,7 +136,7 @@ def car(pos, res=None, shape=None, rowmajor=False, ref=None):
 	w = WCS(naxis=2)
 	w.wcs.ctype = ["RA---CAR", "DEC--CAR"]
 	w.wcs.crval = np.array([mid[0],0])
-	if ref is "standard": ref = (0,0)
+	if streq(ref, "standard"): ref = (0,0)
 	return finalize(w, pos, res, shape, ref=ref)
 
 def cea(pos, res=None, shape=None, rowmajor=False, lam=None, ref=None):
@@ -137,7 +148,16 @@ def cea(pos, res=None, shape=None, rowmajor=False, lam=None, ref=None):
 	w.wcs.ctype = ["RA---CEA", "DEC--CEA"]
 	w.wcs.set_pv([(2,1,lam)])
 	w.wcs.crval = np.array([mid[0],0])
-	if ref is "standard": ref = (0,0)
+	if streq(ref, "standard"): ref = (0,0)
+	return finalize(w, pos, res, shape, ref=ref)
+
+def mer(pos, res=None, shape=None, rowmajor=False, ref=None):
+	"""Set up a mercator system. See the build function for details."""
+	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
+	w = WCS(naxis=2)
+	w.wcs.ctype = ["RA---MER", "DEC--MER"]
+	w.wcs.crval = np.array([mid[0],0])
+	if streq(ref, "standard"): ref = (0,0)
 	return finalize(w, pos, res, shape, ref=ref)
 
 def zea(pos, res=None, shape=None, rowmajor=False, ref=None):
@@ -177,7 +197,7 @@ def tan(pos, res=None, shape=None, rowmajor=False, ref=None):
 	w, ref = _apply_zenithal_ref(w, ref)
 	return finalize(w, pos, res, shape, ref=ref)
 
-systems = {"car": car, "cea": cea, "air": air, "zea": zea, "tan": tan, "gnom": tan, "plain": plain }
+systems = {"car": car, "cea": cea, "mer": mer, "air": air, "zea": zea, "tan": tan, "gnom": tan, "plain": plain }
 
 def build(pos, res=None, shape=None, rowmajor=False, system="cea", ref=None, **kwargs):
 	"""Set up the WCS system named by the "system" argument.

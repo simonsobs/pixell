@@ -33,7 +33,7 @@ class Bunch:
 	def __contains__(self, name):
 		return name in self._dict
 	def __dir__(self):
-		return sorted(self.__dict__.keys() + self._dict.keys())
+		return sorted(list(self.__dict__.keys()) + list(self._dict.keys()))
 	def __iter__(self):
 		for key in self._dict:
 			yield key
