@@ -581,7 +581,7 @@ def overlap(shape, wcs, shape2_or_pixbox, wcs2=None, wrap="auto"):
 	return oshape, owcs
 
 def neighborhood_pixboxes(shape, wcs, poss, r):
-	"""Given a set of positions poss[npos,2] in radians and a distance r in radians,
+	"""Given a set of positions poss[npos,{dec,ra}] in radians and a distance r in radians,
 	return pixboxes[npos][{from,to},{y,x}] corresponding to the regions within a
 	distance of r from each entry in poss."""
 	if wcsutils.is_plain(wcs):
@@ -1467,7 +1467,7 @@ def downgrade_geometry(shape, wcs, factor):
 	to scale_geometry, but truncates the same way as downgrade, and only
 	supports integer factors."""
 	factor = np.full(2, 1, dtype=int)*factor
-	oshape = shape[-2:]//factor
+	oshape = tuple(shape[-2:]//factor)
 	owcs   = wcsutils.scale(wcs, 1.0/factor)
 	return oshape, owcs
 

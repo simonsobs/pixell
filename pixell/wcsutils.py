@@ -81,7 +81,8 @@ def is_compatible(wcs1, wcs2, tol=1e-3):
 	in the same direction."""
 	h1 = wcs1.to_header()
 	h2 = wcs2.to_header()
-	for key in h1:
+	keys = sorted(list(set(h1.keys())&set(h2.keys())))
+	for key in keys:
 		if key.startswith("CRVAL") or key.startswith("CRPIX") or key.startswith("CDELT"): continue
 		if key not in h2 or h2[key] != h1[key]: return False
 	if np.max(np.abs(wcs1.wcs.cdelt-wcs2.wcs.cdelt))/np.min(np.abs(wcs1.wcs.cdelt)) > tol: return False

@@ -1460,7 +1460,7 @@ def split_outside(a, sep, start="([{", end=")]}"):
 def find_equal_groups(a, tol=0):
 	"""Given a[nsamp,ndim], return groups[ngroup][{ind,ind,ind,...}]
 	of indices into a for which all the values in the second index
-	of a is the same. group_equal([[0,1],[1,2],[0,1]]) -> [[0,2],[1]]."""
+	of a is the same. find_equal_groups([[0,1],[1,2],[0,1]]) -> [[0,2],[1]]."""
 	def calc_diff(a1,a2):
 		if a1.dtype.char in 'SU': return a1 != a2
 		else: return a1-a2
