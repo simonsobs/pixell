@@ -42,7 +42,7 @@ def calc_gridinfo(shape, wcs, steps=[2,2], nstep=[200,200], zenith=False, unit=1
 
 	gridinfo = Gridinfo()
 	if wcsutils.is_plain(wcs):
-		box = np.sort(enmap.box(shape, wcs),0)
+		box = np.sort(enmap.box(shape, wcs),0)/utils.degree
 		start = np.floor(box[0]/steps)*steps
 		nline = np.floor(box[1]/steps)-np.floor(box[0]/steps)+1
 	else:
