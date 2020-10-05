@@ -466,6 +466,7 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 		pix    = map.sky2pix(somap.posmap(), safe=safe)
 		y1     = max(np.min(pix[0]).astype(int)-3,0)
 		y2     = min(np.max(pix[0]).astype(int)+3,map.shape[-2])
+		if y2-y1 <= 0: continue
 		pix[0] -= y1
 		somap[:] = utils.interpol(map[...,y1:y2,:], pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
 	return omap
