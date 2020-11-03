@@ -1033,15 +1033,19 @@ def fft(emap, omap=None, nthread=0, normalize=True):
 	be directly compared to theory (apart from mask corrections)
 	, i.e., pixel area factors are corrected for.
 	"""
-	res = samewcs(enfft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
-	if normalize: res /= np.prod(emap.shape[-2:])**0.5
-	if normalize in ["phy","phys","physical"]: res *= emap.pixsize()**0.5
+	res  = samewcs(enfft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
+	norm = 1
+	if normalize: norm /= np.prod(emap.shape[-2:])**0.5
+	if normalize in ["phy","phys","physical"]: norm *= emap.pixsize()**0.5
+	if norm != 1: res *= norm
 	return res
 def ifft(emap, omap=None, nthread=0, normalize=True):
 	"""Performs the 2d iFFT of the complex enmap given, and returns a pixel-space enmap."""
-	res = samewcs(enfft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
-	if normalize: res /= np.prod(emap.shape[-2:])**0.5
-	if normalize in ["phy","phys","physical"]: res /= emap.pixsize()**0.5
+	res  = samewcs(enfft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
+	norm = 1
+	if normalize: norm /= np.prod(emap.shape[-2:])**0.5
+	if normalize in ["phy","phys","physical"]: norm /= emap.pixsize()**0.5
+	if norm != 1: res *= norm
 	return res
 
 # These are shortcuts for transforming from T,Q,U real-space maps to
