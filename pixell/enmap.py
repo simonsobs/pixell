@@ -466,6 +466,7 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 		pix    = map.sky2pix(somap.posmap(), safe=safe)
 		y1     = max(np.min(pix[0]).astype(int)-3,0)
 		y2     = min(np.max(pix[0]).astype(int)+3,map.shape[-2])
+		if y2-y1 <= 0: continue
 		pix[0] -= y1
 		somap[:] = utils.interpol(map[...,y1:y2,:], pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
 	return omap
@@ -581,7 +582,7 @@ def overlap(shape, wcs, shape2_or_pixbox, wcs2=None, wrap="auto"):
 	return oshape, owcs
 
 def neighborhood_pixboxes(shape, wcs, poss, r):
-	"""Given a set of positions poss[npos,2] in radians and a distance r in radians,
+	"""Given a set of positions poss[npos,{dec,ra}] in radians and a distance r in radians,
 	return pixboxes[npos][{from,to},{y,x}] corresponding to the regions within a
 	distance of r from each entry in poss."""
 	if wcsutils.is_plain(wcs):
@@ -1471,7 +1472,7 @@ def downgrade_geometry(shape, wcs, factor):
 	to scale_geometry, but truncates the same way as downgrade, and only
 	supports integer factors."""
 	factor = np.full(2, 1, dtype=int)*factor
-	oshape = shape[-2:]//factor
+	oshape = tuple(shape[-2:]//factor)
 	owcs   = wcsutils.scale(wcs, 1.0/factor)
 	return oshape, owcs
 
