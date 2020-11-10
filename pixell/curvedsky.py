@@ -539,7 +539,7 @@ def almxfl(alm,lfunc,ainfo=None):
 	l = np.arange(ainfo.lmax+1.0)
 	return ainfo.lmul(alm, lfunc(l))
 
-def filter(imap,lmax,lfunc,ainfo=None):
+def filter(imap,lfunc,ainfo=None,lmax=None):
 	"""Filter a map isotropically by a function.
 	Returns alm2map(map2alm(alm * lfunc(ell),lmax))
 
@@ -553,7 +553,7 @@ def filter(imap,lmax,lfunc,ainfo=None):
 	Returns:
 	    omap: (...,Ny,Nx) ndmap stack of filtered enmaps
 	"""
-	return alm2map(almxfl(map2alm(imap,lmax=lmax,spin=0),lfunc,ainfo),enmap.empty(imap.shape,imap.wcs,dtype=imap.dtype),spin=0)
+	return alm2map(almxfl(map2alm(imap,ainfo=ainfo,lmax=lmax,spin=0),lfunc=lfunc,ainfo=ainfo),enmap.empty(imap.shape,imap.wcs,dtype=imap.dtype),spin=0,ainfo=ainfo)
 	
 
 
