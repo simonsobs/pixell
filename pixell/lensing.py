@@ -153,14 +153,10 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 		elif c == "a": res.append(grad_map)
 	return tuple(res)
 
-def rand_alm(shape, wcs, ps_lensinput, lmax=None, dtype=np.float64, seed=None, phi_seed=None, verbose=False):
+def rand_alm(ps_lensinput, lmax=None, dtype=np.float64, seed=None, phi_seed=None, verbose=False, ncomp=None):
 	from . import curvedsky, sharp
 	ctype   = np.result_type(dtype,0j)
-	# Restrict to target number of components
-	oshape  = shape[-3:]
-	if len(oshape) == 2: shape = (1,)+tuple(shape)
-	ncomp   = shape[-3]
-	ps_lensinput = ps_lensinput[:1+ncomp,:1+ncomp]
+	if ncomp is not None: ps_lensinput = ps_lensinput[:1+ncomp,:1+ncomp]
 	# First draw a random lensing field, and use it to compute the undeflected positions
 	if verbose: print("Generating alms")
 	if phi_seed is None:
@@ -182,9 +178,14 @@ def rand_alm(shape, wcs, ps_lensinput, lmax=None, dtype=np.float64, seed=None, p
 
 
 def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64, seed=None, phi_seed=None, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
-	phi_alm, cmb_alm, ainfo = rand_alm(shape=shape, wcs=wcs, ps_lensinput=ps_lensinput, 
-								lmax=lmax, dtype=dtype, seed=seed, 
-								phi_seed=phi_seed, verbose=verbose)
+	# Restrict to target number of components
+	oshape  = shape[-3:]
+	if len(oshape) == 2: shape = (1,)+tuple(shape)
+	ncomp   = shape[-3]
+	phi_alm, cmb_alm, ainfo = rand_alm(ps_lensinput=ps_lensinput, 
+									   lmax=lmax, dtype=dtype, seed=seed, 
+									   phi_seed=phi_seed, verbose=verbose,
+									   ncomp=ncomp)
 
 	# Truncate alm if we want a smoother map. In taylens, it was necessary to truncate
 	# to a lower lmax for the map than for phi, to avoid aliasing. The appropriate lmax
