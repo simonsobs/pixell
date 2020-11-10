@@ -4,7 +4,7 @@
 """Tests for `pixell` package."""
 
 import unittest
-
+import logging
 from pixell import sharp
 from pixell import enmap
 from pixell import curvedsky
@@ -82,7 +82,7 @@ class PixelTests(unittest.TestCase):
             palm = curvedsky.rand_alm(mypower, lmax = lmax)
             halm = curvedsky.rand_alm_healpy(  mypower, lmax = lmax)
             
-            print("nalm(%i) = %i, curvedsky.rand_alm gives %s, curvedsky.rand_alm_healpy gives %s "\
+            logging.info("nalm(%i) = %i, curvedsky.rand_alm gives %s, curvedsky.rand_alm_healpy gives %s "\
 	              % (lmax, \
                      nalm(lmax),\
                      palm.shape, \
@@ -114,7 +114,7 @@ class PixelTests(unittest.TestCase):
         assert wcsutils.equal(unlensed.wcs,lensed.wcs)
     
     def test_enplot(self):
-        print("Testing enplot...")
+        logging.info("Testing enplot...")
         shape,wcs = enmap.geometry(pos=(0,0),shape=(3,100,100),res=0.01)
         a = enmap.ones(shape,wcs)
         p = enplot.get_plots(a)
@@ -146,7 +146,7 @@ class PixelTests(unittest.TestCase):
 
     def test_fullsky_geometry(self):
         # Tests whether number of pixels and area of a full-sky 0.5 arcminute resolution map are correct
-        print("Testing full sky geometry...")
+        logging.info("Testing full sky geometry...")
         test_res_arcmin = 0.5
         shape,wcs = enmap.fullsky_geometry(res=np.deg2rad(test_res_arcmin/60.),proj='car')
         assert shape[0]==21601 and shape[1]==43200
@@ -155,7 +155,7 @@ class PixelTests(unittest.TestCase):
     def test_pixels(self):
         """Runs reference pixel and mean-square comparisons on extracts from randomly generated
         maps"""
-        print("Testing reference pixels...")
+        logging.info("Testing reference pixels...")
         results,rname = ptests.get_extraction_test_results(TEST_DIR+"/tests.yml")
         cresults = pickle.load(open(DATA_PREFIX+"%s.pkl" % rname,'rb'))
         assert sorted(results.keys())==sorted(cresults.keys())

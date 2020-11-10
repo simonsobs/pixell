@@ -1,6 +1,7 @@
 from __future__ import print_function
 import numpy as np, scipy.ndimage, warnings, astropy.io.fits, sys, time
 from . import utils, wcsutils, powspec, fft as enfft
+import logging
 
 # Things that could be improved:
 #  1. We assume exactly 2 WCS axes in spherical projection in {dec,ra} order.
@@ -2198,7 +2199,7 @@ class ndmap_proxy_fits(ndmap_proxy):
 		def slist(vals):
 			return ",".join([str(v) for v in vals])
 		if verbose and np.any(self.stokes_flips) >= 0:
-			print("Converting index %s for Stokes axis %s from IAU to COSMO in %s" % (
+			logging.info("Converting index %s for Stokes axis %s from IAU to COSMO in %s" % (
 				slist(self.stokes_flips[self.stokes_flips >= 0]),
 				slist(np.where(self.stokes_flips >= 0)[0]),
 				fname))

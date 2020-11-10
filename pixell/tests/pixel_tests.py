@@ -6,6 +6,7 @@ from pixell import enmap,curvedsky,wcsutils,reproject
 import numpy as np
 import itertools,yaml,pickle,os,sys
 import matplotlib.pyplot as plt
+import logging
 
 TEST_DIR = os.path.dirname(__file__)
 DATA_PREFIX = os.path.join(TEST_DIR, 'data/')
@@ -148,7 +149,7 @@ def check_equality(imap1,imap2):
 
     
 def get_extraction_test_results(yaml_file):
-    print("Starting tests from ",yaml_file)
+    logging.info("Starting tests from %s " % yaml_file)
     with open(yaml_file) as f:
         config = yaml.safe_load(f)
     geos = get_geometries(config['geometries'])
@@ -169,7 +170,7 @@ def get_extraction_test_results(yaml_file):
             imap_in = enmap.read_map(filename)
             check_equality(imap,imap_in)
             for e in config['extracts']:
-                print("Doing test for extract ",e['name']," with geometry ",g," and spectrum ",s,"...")
+                logging.info("Doing test for extract %s with geometry %s and spectrum %s..." % (e['name'],g,s))
                 if e['type']=='slice':
                     box = np.deg2rad(np.array(e['box_deg']))
                     cutout = enmap.read_map(filename,box=box)

@@ -2,6 +2,7 @@ import numpy as np
 from . import enmap, utils, powspec
 try: from . import interpol
 except ImportError: pass
+import logging
 
 ####### Flat sky lensing #######
 
@@ -120,25 +121,25 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 		i2 = min(i1+bsize, shape[-2])
 		lshape, lwcs = enmap.slice_geometry(shape, wcs, (slice(i1,i2),slice(None)))
 		if "p" in output:
-			if verbose: print("Computing phi map")
+			if verbose: logging.info("Computing phi map")
 			curvedsky.alm2map(phi_alm, phi_map[...,i1:i2,:])
-		if verbose: print("Computing grad map")
+		if verbose: logging.info("Computing grad map")
 		if "a" in output: grad = grad_map[...,i1:i2,:]
 		else: grad = enmap.zeros((2,)+lshape[-2:], lwcs, dtype=dtype)
 		curvedsky.alm2map(phi_alm, grad, deriv=True)
 		if "l" not in output: continue
-		if verbose: print("Computing observed coordinates")
+		if verbose: logging.info("Computing observed coordinates")
 		obs_pos = enmap.posmap(lshape, lwcs)
-		if verbose: print("Computing alpha map")
+		if verbose: logging.info("Computing alpha map")
 		raw_pos = enmap.samewcs(offset_by_grad(obs_pos, grad, pol=shape[-3]>1, geodesic=geodesic), obs_pos)
 		del obs_pos, grad
 		if "u" in output:
-			if verbose: print("Computing unlensed map")
+			if verbose: logging.info("Computing unlensed map")
 			curvedsky.alm2map(cmb_alm, cmb_raw[...,i1:i2,:], spin=spin)
-		if verbose: print("Computing lensed map")
+		if verbose: logging.info("Computing lensed map")
 		cmb_obs[...,i1:i2,:] = curvedsky.alm2map_pos(cmb_alm, raw_pos[:2], oversample=oversample, spin=spin)
 		if raw_pos.shape[0] > 2 and np.any(raw_pos[2]):
-			if verbose: print("Rotating polarization")
+			if verbose: logging.info("Rotating polarization")
 			cmb_obs[...,i1:i2,:] = enmap.rotate_pol(cmb_obs[...,i1:i2,:], raw_pos[2])
 		del raw_pos
 
@@ -162,7 +163,7 @@ def rand_alm(shape, wcs, ps_lensinput, lmax=None, dtype=np.float64, seed=None, p
 	ncomp   = shape[-3]
 	ps_lensinput = ps_lensinput[:1+ncomp,:1+ncomp]
 	# First draw a random lensing field, and use it to compute the undeflected positions
-	if verbose: print("Generating alms")
+	if verbose: logging.info("Generating alms")
 	if phi_seed is None:
 		alm, ainfo = curvedsky.rand_alm(ps_lensinput, lmax=lmax, seed=seed, dtype=ctype, return_ainfo=True)
 	else:

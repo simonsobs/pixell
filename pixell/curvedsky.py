@@ -4,6 +4,7 @@ from __future__ import print_function
 from . import sharp
 import numpy as np
 from . import enmap, powspec, wcsutils, utils
+import logging
 
 class ShapeError(Exception): pass
 
@@ -20,9 +21,9 @@ def rand_map(shape, wcs, ps, lmax=None, dtype=np.float64, seed=None, oversample=
 	ps = ps[:ncomp,:ncomp]
 
 	ctype = np.result_type(dtype,0j)
-	if verbose: print("Generating alms with seed %s up to lmax=%d dtype %s" % (str(seed), lmax, np.dtype(ctype).char))
+	if verbose: logging.info("Generating alms with seed %s up to lmax=%d dtype %s" % (str(seed), lmax, np.dtype(ctype).char))
 	alm   = rand_alm_healpy(ps, lmax=lmax, seed=seed, dtype=ctype)
-	if verbose: print("Allocating output map shape %s dtype %s" % (str((ncomp,)+shape[-2:]), np.dtype(dtype).char))
+	if verbose: logging.info("Allocating output map shape %s dtype %s" % (str((ncomp,)+shape[-2:]), np.dtype(dtype).char))
 	map   = enmap.empty((ncomp,)+shape[-2:], wcs, dtype=dtype)
 	alm2map(alm, map, spin=spin, oversample=oversample, method=method, direct=direct, verbose=verbose)
 	if len(shape) == 2: map = map[0]
@@ -98,7 +99,7 @@ def alm2map(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=Fa
 	if method == "cyl":
 		alm2map_cyl(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, direct=direct, copy=copy, verbose=verbose)
 	elif method == "pos":
-		if verbose: print("Computing pixel positions %s dtype d" % str((2,)+map.shape[-2:]))
+		if verbose: logging.info("Computing pixel positions %s dtype d" % str((2,)+map.shape[-2:]))
 		pos = map.posmap()
 		res = alm2map_pos(alm, pos, ainfo=ainfo, oversample=oversample, spin=spin, deriv=deriv, verbose=verbose)
 		map[:] = res
@@ -108,7 +109,7 @@ def alm2map(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=Fa
 			alm2map_cyl(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, direct=direct, copy=copy, verbose=verbose)
 		except ShapeError as e:
 			# Wrong pixelization. Fall back on slow, general method
-			if verbose: print("Computing pixel positions %s dtype d" % str((2,)+map.shape[-2:]))
+			if verbose: logging.info("Computing pixel positions %s dtype d" % str((2,)+map.shape[-2:]))
 			pos = map.posmap()
 			res = alm2map_pos(alm, pos, ainfo=ainfo, oversample=oversample, spin=spin, deriv=deriv, verbose=verbose)
 			map[:] = res
@@ -196,7 +197,7 @@ def alm2map_cyl(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, cop
 	if copy: map = map.copy()
 	if direct: tmap, mslices, tslices = map, [(Ellipsis,)], [(Ellipsis,)]
 	else:      tmap, mslices, tslices = make_projectable_map_cyl(map, verbose=verbose)
-	if verbose: print("Performing alm2map")
+	if verbose: logging.info("Performing alm2map")
 	alm2map_raw(alm, tmap, ainfo, map2minfo(tmap), spin=spin, deriv=deriv)
 	for mslice, tslice in zip(mslices, tslices):
 		map[mslice] = tmap[tslice]
@@ -353,7 +354,7 @@ def make_projectable_map_cyl(map, verbose=False):
 		yslice = slice(-1,None,-1)  if flipy else slice(None)
 		xslice = slice(nx-1,negnone(nx-1-(i2-i1)),-1) if flipx else slice(0,i2-i1)
 		oslice.append((Ellipsis,yslice,xslice))
-	if verbose: print("Allocating shape %s dtype %s intermediate map" % (str(oshape),np.dtype(map.dtype).char))
+	if verbose: logging.info("Allocating shape %s dtype %s intermediate map" % (str(oshape),np.dtype(map.dtype).char))
 	return enmap.empty(oshape, owcs, dtype=map.dtype), islice, oslice
 
 def make_projectable_map_by_pos(pos, lmax, dims=(), oversample=2.0, dtype=float, verbose=False):
@@ -390,7 +391,7 @@ def make_projectable_map_by_pos(pos, lmax, dims=(), oversample=2.0, dtype=float,
 	ny = y2-y1
 	wcs.wcs.crpix[1] -= y1
 	# Construct the map. +1 to put extra pixel at pole when we are fullsky
-	if verbose: print("Allocating shape %s dtype %s intermediate map" % (dims+(ny+1,nx),np.dtype(dtype).char))
+	if verbose: logging.info("Allocating shape %s dtype %s intermediate map" % (dims+(ny+1,nx),np.dtype(dtype).char))
 	tmap = enmap.zeros(dims+(ny+1,nx),wcs,dtype=dtype)
 	return tmap
 

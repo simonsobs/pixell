@@ -1,8 +1,8 @@
 import unittest
-
 from pixell import enmap, wcsutils, utils
 DEG = utils.degree
 import numpy as np
+import logging
 
 def is_centered(pixel_index, rtol=1e-6):
     """Returns element-by-element True if pixel_index is sufficiently
@@ -57,7 +57,7 @@ class GeometryTests(unittest.TestCase):
         patch1 = Patch.centered_at(309., -39., 1.+DELT, 1.+DELT)
         ref = patch0.center()   # (dec,ra) in degrees.
         for proj in ['tan', 'zea', 'air']:
-            print('Checking reference tracking of "%s"...' % proj)
+            logging.info('Checking reference tracking of "%s"...' % proj)
             shape0, wcs0 = enmap.geometry(pos=patch0.pos(),
                                           res=DELT*utils.degree,
                                           proj=proj,
@@ -69,7 +69,6 @@ class GeometryTests(unittest.TestCase):
             # Note world2pix wants [(ra,dec)], in degrees...
             pix0 = wcs0.wcs_world2pix(ref[::-1][None],0)
             pix1 = wcs1.wcs_world2pix(ref[::-1][None],0)
-            print(shape0,wcs0,pix0)
             assert(np.all(is_centered(pix0)))
             assert(np.all(is_centered(pix1)))
 
@@ -86,7 +85,6 @@ class GeometryTests(unittest.TestCase):
             for ix in [-0.5-delta,nx-0.5+delta]:
                 for iy in [0-delta, ny-1+delta]:
                     c = w.wcs_pix2world([(ix,iy)], 0)
-                    #print(ix,iy,c)
                     assert np.any(np.isnan(c)) == expect_nans
 
 
@@ -115,7 +113,7 @@ class GeometryTests(unittest.TestCase):
 
         for shape, w, exact_area in test_patches:
             ratio = enmap.area(shape, w)/exact_area
-            print(ratio)
+            logging.info(ratio)
             assert(abs(ratio-1) < 1e-6)
 
 

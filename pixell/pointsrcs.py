@@ -27,6 +27,7 @@ import numpy as np
 from astropy.io import fits
 from scipy import spatial
 from . import utils, enmap
+import logging
 
 #### Map-space source simulation ###
 
@@ -100,7 +101,7 @@ def eval_srcs_loop(posmap, poss, amps, beam, cres, nhit, cell_srcs, dtype=np.flo
 	for cy in range(ncy):
 		for cx in range(ncx):
 			nsrc = nhit[cy,cx]
-			if verbose: print("map cell %5d/%d with %5d srcs" % (cy*ncx+cx+1, ncy*ncx, nsrc))
+			if verbose: logging.info("map cell %5d/%d with %5d srcs" % (cy*ncx+cx+1, ncy*ncx, nsrc))
 			if nsrc == 0: continue
 			srcs  = cell_srcs[cy,cx,:nsrc]
 			y1,y2 = (cy+0)*cres[0], (cy+1)*cres[0]

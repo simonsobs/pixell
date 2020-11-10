@@ -3,6 +3,7 @@ import numpy as np, time
 from . import utils
 try: from . import _interpol_32, _interpol_64
 except ImportError: pass
+import logging
 
 def map_coordinates(idata, points, odata=None, mode="spline", order=3, border="cyclic", trans=False, deriv=False,
 		prefilter=True):
@@ -174,7 +175,7 @@ def build(func, interpolator, box, errlim, maxsize=None, maxtime=None, return_ob
 				ytrue_flat = ytrue.reshape(4,-1)
 				yinter_flat= yinter.reshape(4,-1)
 				badi = np.argmax(np.abs((ytrue_flat[2]-yinter_flat[2])))
-				if verbose: print(x.shape, x.size, err/errlim)
+				if verbose: logging.info(f"{x.shape}, {x.size}, {err/errlim}")
 				if any(err > errlim):
 					# Not good enough, so accept improvement
 					ip = interpolator(box, ytrue, *args, **kwargs)

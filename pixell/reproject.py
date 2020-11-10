@@ -3,6 +3,7 @@ import numpy as np
 from . import wcsutils, utils, enmap, coordinates, curvedsky, fft
 try: from . import sharp
 except ImportError: pass
+import logging
 
 # Python 2/3 compatibility
 try: basestring
@@ -216,7 +217,7 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
         if unit != 1:
             m /= unit
         # Prepare the transformation
-        print("Preparing SHT")
+        logging.info("Preparing SHT")
         nside = hp.npix2nside(m.shape[1])
         lmax = lmax or 3 * nside
         minfo = sharp.map_info_healpix(nside)
@@ -224,11 +225,11 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
         sht = sharp.sht(minfo, ainfo)
         alm = np.zeros((ncomp, ainfo.nelem), dtype=ctype)
         # Perform the actual transform
-        print("T -> alm")
-        print(m.dtype, alm.dtype)
+        logging.info("T -> alm")
+        logging.info(m.dtype, alm.dtype)
         sht.map2alm(m[0], alm[0])
         if ncomp == 3:
-            print("P -> alm")
+            logging.info("P -> alm")
             sht.map2alm(m[1:3], alm[1:3], spin=2)
         del m
     else:
@@ -238,23 +239,23 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
 
     if rot is not None:
         # Rotate by displacing coordinates and then fixing the polarization
-        print("Computing pixel positions")
+        logging.info("Computing pixel positions")
         pmap = enmap.posmap(shape, wcs)
         if rot:
-            print("Computing rotated positions")
+            logging.info("Computing rotated positions")
             s1, s2 = rot.split(",")
             opos = coordinates.transform(s2, s1, pmap[::-1], pol=ncomp == 3)
             pmap[...] = opos[1::-1]
             if len(opos) == 3:
                 psi = -opos[2].copy()
             del opos
-        print("Projecting")
+        logging.info("Projecting")
         res = curvedsky.alm2map_pos(alm, pmap)
         if rot and ncomp == 3:
-            print("Rotating polarization vectors")
+            logging.info("Rotating polarization vectors")
             res[1:3] = enmap.rotate_pol(res[1:3], psi)
     else:
-        print("Projecting")
+        logging.info("Projecting")
         res = enmap.zeros((len(alm),) + shape[-2:], wcs, dtype)
         res = curvedsky.alm2map(alm, res)
     if return_alm: return res,alm
@@ -510,7 +511,7 @@ def distribute(N,nmax):
     assert sum(each_cell)==N
     return each_cell
 
-def populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400):
+def populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400,verbose=True):
     """
     Loop through tiles in a new map of geometry (shape,wcs)
     with tiles that have maximum allowed shape (maxpixy,maxpixx)
@@ -526,7 +527,7 @@ def populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400):
     numx = len(tNxs)
     sny = 0
     ntiles = numy*numx
-    print("Number of tiles = ",ntiles)
+    if verbose: logging.info("Number of tiles = %d" % ntiles)
     done = 0
     for i in range(numy):
         eny = sny+tNys[i]
@@ -539,7 +540,7 @@ def populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400):
             snx += tNxs[j]
             done += 1
         sny += tNys[i]
-        print(done , " / ", ntiles, " tiles done...")
+        if verbose: logging.info("%d / %d tiles done..." % (done,ntiles))
     return omap
 
 # --------- Candidate replacement functions below. Please comment. ----------------
@@ -594,7 +595,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 	if pol is None: pol = pol_compat
 	if pol and not pol_compat: raise ValueError("Polarization rotation requested, but can't interpret map shape %s as IQU map" % (str(imap.shape)))
 	nsrc = len(coords)
-	if verbose: print("Extracting %d %dx%d thumbnails from %s map" % (nsrc, oshape[-2], oshape[-1], str(imap.shape)))
+	if verbose: logging.info("Extracting %d %dx%d thumbnails from %s map" % (nsrc, oshape[-2], oshape[-1], str(imap.shape)))
 	opos = enmap.posmap(oshape, owcs)
 	# Get the pixel area around each of the coordinates
 	rtot     = r + apod
@@ -612,7 +613,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 		ithumb = ithumb.apod(apod_pix, fill="median")
 		if filter is not None: ithumb = filter(ithumb)
 		if verbose:
-			print("%4d/%d %6.2f %6.2f %8.2f %dx%d" % (si+1, nsrc, coords[si,0]/utils.degree, coords[si,1]/utils.degree, np.max(ithumb), ithumb.shape[-2], ithumb.shape[-1]))
+			logging.info("%4d/%d %6.2f %6.2f %8.2f %dx%d" % (si+1, nsrc, coords[si,0]/utils.degree, coords[si,1]/utils.degree, np.max(ithumb), ithumb.shape[-2], ithumb.shape[-1]))
 		# Oversample using fourier if requested. We do this because fourier
 		# interpolation is better than spline interpolation overall
 		if oversample > 1:
