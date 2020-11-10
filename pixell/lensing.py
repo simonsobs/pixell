@@ -153,8 +153,7 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 		elif c == "a": res.append(grad_map)
 	return tuple(res)
 
-
-def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64, seed=None, phi_seed=None, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
+def rand_alm(shape, wcs, ps_lensinput, lmax=None, dtype=np.float64, seed=None, phi_seed=None, verbose=False):
 	from . import curvedsky, sharp
 	ctype   = np.result_type(dtype,0j)
 	# Restrict to target number of components
@@ -178,8 +177,15 @@ def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64
 		alm[:,:ainfo.lmax].real *= 2**0.5
 		del wps, ps12
 		
-	phi_alm, cmb_alm = alm[0], alm[1:]
-	del alm
+	# Return phi_alm and cmb_alm
+	return alm[0], alm[1:], ainfo
+
+
+def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64, seed=None, phi_seed=None, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
+	phi_alm, cmb_alm, ainfo = rand_alm(shape=shape, wcs=wcs, ps_lensinput=ps_lensinput, 
+								lmax=lmax, dtype=dtype, seed=seed, 
+								phi_seed=phi_seed, verbose=verbose)
+
 	# Truncate alm if we want a smoother map. In taylens, it was necessary to truncate
 	# to a lower lmax for the map than for phi, to avoid aliasing. The appropriate lmax
 	# for the cmb was the one that fits the resolution. FIXME: Can't slice alm this way.
