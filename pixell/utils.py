@@ -8,7 +8,7 @@ degree = np.pi/180
 arcmin = degree/60
 arcsec = arcmin/60
 fwhm   = 1.0/(8*np.log(2))**0.5
-T_cmb = 2.725
+T_cmb = 2.72548 # +/- 0.00057
 c  = 299792458.0
 h  = 6.62606957e-34
 k  = 1.3806488e-23
@@ -1460,9 +1460,9 @@ def split_outside(a, sep, start="([{", end=")]}"):
 def find_equal_groups(a, tol=0):
 	"""Given a[nsamp,ndim], return groups[ngroup][{ind,ind,ind,...}]
 	of indices into a for which all the values in the second index
-	of a is the same. group_equal([[0,1],[1,2],[0,1]]) -> [[0,2],[1]]."""
+	of a is the same. find_equal_groups([[0,1],[1,2],[0,1]]) -> [[0,2],[1]]."""
 	def calc_diff(a1,a2):
-		if a1.dtype.char == 'S': return a1 != a2
+		if a1.dtype.char in 'SU': return a1 != a2
 		else: return a1-a2
 	a = np.asarray(a)
 	if a.ndim == 1: a = a[:,None]
@@ -1961,7 +1961,7 @@ def load_ascii_table(fname, desc, sep=None, dsep=None):
 	for i, tok in enumerate(desc.split(dsep)):
 		if ":" not in tok:
 			j += 1
-			dtype.append(("sep%d"%j,"S%d"%len(tok)))
+			dtype.append(("sep%d"%j,"U%d"%len(tok)))
 		else:
 			name, typ = tok.split(":")
 			dtype.append((name,typ))
@@ -2090,10 +2090,27 @@ def decode_array_if_necessary(arr):
 	"""Given an arbitrary numpy array arr, decode it if it is of type S and we're in a
 	version of python that doesn't like that"""
 	try:
+		# Check if we're in python 3
 		np.array(["a"],"S")[0] in "a"
 		return arr
 	except TypeError:
+		# Yes, we need to decode
 		if arr.dtype.type is np.bytes_:
 			return np.char.decode(arr)
+		else:
+			return arr
+
+def encode_array_if_necessary(arr):
+	"""Given an arbitrary numpy array arr, encode it if it is of type S and we're in a
+	version of python that doesn't like that"""
+	arr = np.asarray(arr)
+	try:
+		# Check if we're in python 3
+		np.array(["a"],"S")[0] in "a"
+		return arr
+	except TypeError:
+		# Yes, we need to encode
+		if arr.dtype.type is np.str_:
+			return np.char.encode(arr)
 		else:
 			return arr

@@ -17,10 +17,10 @@ build_src = build_src.build_src
 
 
 compile_opts = {
-    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-Ofast'],
-    'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs'],
+    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-Ofast', '-fPIC'],
+    'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs', '-fPIC'],
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
-    'extra_link_args': ['-fopenmp', '-g']
+    'extra_link_args': ['-fopenmp', '-g', '-fPIC']
     }
 
 # Set compiler options
@@ -108,13 +108,14 @@ test_requirements = ['pip>=9.0',
 
 fcflags = os.getenv('FCFLAGS')
 if fcflags is None or fcflags.strip() == '':
-    fcflags = ['-O3']
+    fcflags = ['-O3','-fPIC']
 else:
     print('User supplied fortran flags: ', fcflags)
     print('These will supersede other optimization flags.')
     fcflags = fcflags.split()
     
 compile_opts['extra_f90_compile_args'].extend(fcflags)
+compile_opts['extra_f77_compile_args'] = compile_opts['extra_f90_compile_args']
 
 def presrc():
     # Create f90 files for f2py.

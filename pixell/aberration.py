@@ -1,10 +1,10 @@
 import numpy as np
 from . import coordinates, enmap, utils
 
-beta    = 0.0012301
-dir_equ = np.array([167.929, -6.927])*np.pi/180
-dir_gal = np.array([263.990, 48.260])*np.pi/180
-dir_ecl = np.array([171.646,-11.141])*np.pi/180
+beta    = 0.001235
+dir_equ = np.array([167.919, -6.936])*np.pi/180
+dir_gal = np.array([263.986, 48.247])*np.pi/180
+dir_ecl = np.array([171.640,-11.154])*np.pi/180
 from .utils import T_cmb, h, c, k
 
 def boost_map(imap, dir=dir_equ, beta=beta, pol=True, modulation="thermo", T0=T_cmb, freq=150e9,
