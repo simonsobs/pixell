@@ -539,6 +539,24 @@ def almxfl(alm,lfunc,ainfo=None):
 	l = np.arange(ainfo.lmax+1.0)
 	return ainfo.lmul(alm, lfunc(l))
 
+def filter(imap,lfunc,ainfo=None,lmax=None):
+	"""Filter a map isotropically by a function.
+	Returns alm2map(map2alm(alm * lfunc(ell),lmax))
+
+	Args:
+	    imap: (...,Ny,Nx) ndmap stack of enmaps.
+	    lmax: integer specifying maximum multipole beyond which the alms are zeroed
+	    lfunc: a function mapping multipole ell to the filtering expression
+	    ainfo: 	If ainfo is provided, it is an alm_info describing the layout 
+	of the input alm. Otherwise it will be inferred from the alm itself.
+
+	Returns:
+	    omap: (...,Ny,Nx) ndmap stack of filtered enmaps
+	"""
+	return alm2map(almxfl(map2alm(imap,ainfo=ainfo,lmax=lmax,spin=0),lfunc=lfunc,ainfo=ainfo),enmap.empty(imap.shape,imap.wcs,dtype=imap.dtype),spin=0,ainfo=ainfo)
+	
+
+
 def alm2cl(alm, alm2=None, ainfo=None):
 	"""Compute the power spectrum for alm, or if alm2 is given, the cross-spectrum
 	between alm and alm2, which must broadcast. 
