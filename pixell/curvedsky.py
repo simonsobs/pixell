@@ -528,7 +528,7 @@ def almxfl(alm,lfunc,ainfo=None):
 	Args:
 	    alm: (...,N) ndarray of spherical harmonic alms
 	    lfunc: a function mapping multipole ell to the filtering expression
-	    ainfo: 	If ainfo is provided, it is an alm_info describing the layout 
+	    ainfo: If ainfo is provided, it is an alm_info describing the layout
 	of the input alm. Otherwise it will be inferred from the alm itself.
 
 	Returns:
