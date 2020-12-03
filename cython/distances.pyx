@@ -88,21 +88,22 @@ def fix_point_pix(posmap, point_pos, point_pix):
 	on the boundary are much lower than the pixels in the main part of the image, which partially
 	makes up for the slowness of the simple method, but you can still expect slowness if too many points
 	are outside the image."""
+	ypos, xpos = posmap
 	# Get the bad points
-	bad = np.where(np.any(point_pix < 0,0) | np.any(point_pix >= np.array(posmap.shape[-2:])[:,None],0))[0]
+	bad = np.where(np.any(point_pix < 0,0) | np.any(point_pix >= np.array(ypos.shape[-2:])[:,None],0))[0]
 	# If there aren't any, we can just return right away
 	nbad = len(bad)
 	if nbad == 0: return point_pix
 	# Otherwise, run the simple method on each boundary. The simple method is slow, but the boundary is
 	# has much fewer pixels.
 	point_bad = point_pos[:,bad]
-	pos_edges = np.concatenate([posmap[:,:,0],posmap[:,:,-1],posmap[:,0,:],posmap[:,-1,:]],-1)
+	pos_edges = np.array([np.concatenate([p[:,0],p[:,-1],p[0,:],p[-1,:]],-1) for p in [ypos,xpos]])
 	dist, dom = distance_from_points_simple(pos_edges[:,None,:], point_bad, domains=True)
 	dist, dom = dist[0], dom[0]
 	# Find the minimum position for each point
 	minpos1d = np.array(ndimage.minimum_position(dist, dom+1, np.arange(nbad)+1)).reshape(-1)
 	# Turn the 1d minpos into a 2d pixel position
-	minpos   = _unwrap_minpos(minpos1d, posmap.shape[1], posmap.shape[2])
+	minpos   = _unwrap_minpos(minpos1d, ypos.shape[0], ypos.shape[1])
 	# Copy these into the output point_pix
 	opoint_pix = point_pix.copy()
 	opoint_pix[:,bad] = minpos
@@ -219,6 +220,57 @@ def distance_from_points_bubble_separable(ypos, xpos, point_pos, point_pix, rmax
 	c.distance_from_points_bubble_separable(ny, nx, &ypos_[0], &xpos_[0], npoint, &point_pos_[0], &point_pix_[0], rmax_, &omap_[0], &odomains_[0])
 	if domains: return omap, odomains
 	else:       return omap
+
+def distance_from_points_cellgrid(ypos, xpos, point_pos, point_pix, dr=np.inf, rmax=None, omap=None, odomains=None, domains=False, bsize=32):
+	"""distance_from_points_cellgrid(ypos, xpos, point_pos, point_pix, rmax=None, omap=None, odomains=None, domains=False)
+
+	dr = np.inf and bsize=32 are based on benchmarking on my laptop. Reducing dr was never
+	beneficial and could damage performance significantly if set too low. bsize in the range
+	10-50 are OK, but worst-case performance rapidly gets worse after that. The best bsize was
+	slightly dependent on the size of the map
+	"""
+	ypos   = np.asanyarray(ypos).astype(float, order="C", copy=False)
+	xpos   = np.asanyarray(xpos).astype(float, order="C", copy=False)
+	point_pos = np.asanyarray(point_pos).astype(float,    order="C", copy=False)
+	point_pix = np.asanyarray(point_pix).astype(np.int32, order="C", copy=False)
+	cdef int ny
+	cdef int nx
+	cdef int separable
+	posmsg = "ypos must be [ny] or [ny,nx] and xpos must be [nx] or [ny,nx]"
+	if ypos.ndim == 1:
+		assert xpos.ndim == 1, posmsg
+		ny, nx= len(ypos), len(xpos)
+		separable = 1
+	else:
+		assert ypos.ndim == 2, posmsg
+		assert xpos.shape == ypos.shape, posmsg
+		ny, nx = ypos.shape
+		separable = 0
+	assert point_pos.ndim == 2 and len(point_pos) == 2, "point_pos must be [{dec,ra},npoint]"
+	assert point_pix.ndim == 2 and len(point_pix) == 2 and point_pix.shape[1] == point_pos.shape[1], "point_pos must be [{y,x},npoint]"
+	if omap is None: omap = np.empty_like(ypos, dtype=np.float64, shape=(ny,nx))
+	assert omap.ndim == 2 and omap.shape[-2:] == (ny,nx) and omap.dtype==np.float64, "omap must be [ny,nx] float64"
+	if odomains is None: odomains = np.empty_like(ypos, dtype=np.int32, shape=(ny,nx))
+	assert odomains.ndim == 2 and odomains.shape[-2:] == (ny,nx) and odomains.dtype==np.int32, "odomains must be [ny,nx] int32"
+	bsize = np.zeros(2,np.int32)+bsize
+	# Make point_pix safe
+	if separable:
+		point_pix = fix_point_pix_separable(ypos, xpos, point_pos, point_pix)
+	else:
+		point_pix = fix_point_pix([ypos, xpos], point_pos, point_pix)
+	# Prepare to call C
+	cdef inum npoint = point_pos.shape[1]
+	cdef double      rmax_   = (0 if rmax is None else rmax)
+	cdef double[::1] ypos_   = ypos.reshape(-1)
+	cdef double[::1] xpos_   = xpos.reshape(-1)
+	cdef double[::1] point_pos_ = point_pos.reshape(-1)
+	cdef int[::1]    point_pix_ = point_pix.reshape(-1)
+	cdef double[::1] omap_   = omap.reshape(-1)
+	cdef int[::1]    odomains_ = odomains.reshape(-1)
+	c.distance_from_points_cellgrid(ny, nx, &ypos_[0], &xpos_[0], npoint, &point_pos_[0], &point_pix_[0], bsize[0], bsize[1], rmax_, dr, separable, &omap_[0], &odomains_[0])
+	if domains: return omap, odomains
+	else:       return omap
+
 
 def find_edges(mask, flat=False):
 	"""find_edges(mask, flat=False)
