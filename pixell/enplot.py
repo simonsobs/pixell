@@ -77,10 +77,10 @@ def plot(*arglist, **args):
 	"""
 	return list(plot_iterator(*arglist, **args))
 
-def pshow(*arglist, **args):
+def pshow(*arglist, method="auto", **args):
 	"""Convenience function to both build plots and show them.
 	pshow(...) is equivalent to show(plot(...))."""
-	show(plot(*arglist, **args))
+	show(plot(*arglist, **args), method=method)
 
 # Compatibility function
 def get_plots(*arglist, **args):

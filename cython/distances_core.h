@@ -7,6 +7,9 @@ inum find_edges_labeled(inum ny, inum nx, int * labels, inum ** edges);
 void distance_from_points_bubble(int ny, int nx, double * posmap, inum npoint, double * point_pos, int * point_pix, double rmax, double * dists, int * domains);
 void distance_from_points_bubble_separable(int ny, int nx, double * ypos, double * xpos, inum npoint, double * point_pos, int * point_pix, double rmax, double * dists, int * domains);
 
+void distance_from_points_cellgrid(int ny, int nx, double * ypos, double * xpos, inum npoint, double * point_pos,
+		int * point_pix, int bsize_y, int bsize_x, double rmax, double dr, int separable, double * dists, int * domains);
+
 typedef struct {
 	int nside, ny;
 	inum npix, ncap;
