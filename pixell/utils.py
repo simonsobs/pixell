@@ -4,9 +4,9 @@ except: xrange = range
 try: basestring
 except: basestring = str
 
-degree = np.pi/180
-arcmin = degree/60
-arcsec = arcmin/60
+degrees = degree = np.pi/180
+arcmins = arcmin = arcminutes = arcminute =  degree/60
+arcsec = arcsecs = arcseconds = arsecond = arcmin/60
 fwhm   = 1.0/(8*np.log(2))**0.5
 T_cmb = 2.725
 c  = 299792458.0
