@@ -2,8 +2,8 @@
 pixell
 =======
 
-.. image:: https://travis-ci.org/simonsobs/pixell.svg?branch=master
-           :target: https://travis-ci.org/simonsobs/pixell
+.. image:: https://github.com/simonsobs/pixell/workflows/Build/badge.svg
+           :target: https://github.com/simonsobs/pixell/actions?query=workflow%3ABuild
 
 .. image:: https://readthedocs.org/projects/pixell/badge/?version=latest
            :target: https://pixell.readthedocs.io/en/latest/?badge=latest
