@@ -18,13 +18,22 @@ jobs:
         with:
           python-version: '3.7'
 
-      - name: Install cibuildwheel
+      - name: Install cibuildwheel and other dependencies
         run: |
+          python3 -m pip install -U pip
+          python3 -m easy_install -U setuptools
+          python3 -m pip install pytest-cov
           python -m pip install cibuildwheel==1.4.2
 
-      - name: Build wheels
+      - name: Test and build wheels
         run: |
+          python3 setup.py build_ext -i
+          python3 -m pip install .
+          py.test --cov=pixell pixell/tests/ -s
+          find . -type f -iname '*.so' -print -delete
+          rm -rf _deps/
           python -m cibuildwheel --output-dir wheelhouse
+          ls wheelhouse
         env:
           TWINE_USERNAME: "__token__"
           CIBW_BEFORE_BUILD: "python3 -m pip install numpy scipy cython"
