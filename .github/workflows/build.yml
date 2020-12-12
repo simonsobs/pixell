@@ -27,7 +27,6 @@ jobs:
           python -m cibuildwheel --output-dir wheelhouse
         env:
           TWINE_USERNAME=__token__
-          # Note: TWINE_PASSWORD is set to an API token in Travis settings
           CIBW_BEFORE_BUILD="python3 -m pip install numpy scipy cython"
           CIBW_BUILD_VERBOSITY=3
           CIBW_BUILD="cp3?-*x86_64"
