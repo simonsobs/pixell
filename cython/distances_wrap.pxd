@@ -8,6 +8,8 @@ cdef extern from "distances_core.h":
 	inum find_edges(inum ny, inum nx, uint8_t * mask, inum ** edges)
 	inum find_edges_labeled(inum ny, inum nx, int * labels, inum ** edges)
 
+	void distance_from_points_cellgrid(int ny, int nx, double * ypos, double * xpos, inum npoint, double * point_pos, int * point_pix, int bsize_y, int bsize_x, double rmax, double dr, int separable, double * dists, int * domains)
+
 	# Healpix stuff below
 	ctypedef struct healpix_info:
 		int nside, ny

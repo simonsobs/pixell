@@ -8,8 +8,15 @@
 
 #define pi 3.141592653589793238462643383279502884197
 #define nneigh 4
+#define nneigh_hp 4
+int yoffs[8] = { 0,  0, -1, +1, +1, +1, -1, -1 };
+int xoffs[8] = {-1, +1,  0,  0, +1, -1, +1, -1 };
 
 double wall_time() { struct timeval tv; gettimeofday(&tv,0); return tv.tv_sec + 1e-6*tv.tv_usec; }
+int max(int a, int b) { return a > b ? a : b; }
+int min(int a, int b) { return a < b ? a : b; }
+int compar_int(int * a, int * b) { return *a-*b; }
+int wrap1(int a, int n) { return a < 0 ? a+n : a >= n ? a-n : a; }
 
 // The simple functions are too slow to serve as the basis for a distance transform.
 // I can't afford the full O(npix*nedge) scaling.
@@ -138,11 +145,11 @@ double dist_vincenty_helper(double ra1, double cos_dec1, double sin_dec1, double
 
 typedef struct { inum n, cap; int * y, * x; } PointVec;
 PointVec * pointvec_new() {
-	PointVec * v = realloc(NULL, sizeof(PointVec));
+	PointVec * v = malloc(sizeof(PointVec));
 	v->n   = 0;
 	v->cap = 1024;
-	v->y   = realloc(NULL, (inum)v->cap*sizeof(int));
-	v->x   = realloc(NULL, (inum)v->cap*sizeof(int));
+	v->y   = malloc((inum)v->cap*sizeof(int));
+	v->x   = malloc((inum)v->cap*sizeof(int));
 	return v;
 }
 void pointvec_push(PointVec * v, int y, int x) {
@@ -190,10 +197,6 @@ void distance_from_points_bubble(int ny, int nx, double * posmap, inum npoint, d
 		point_cos_dec[j] = cos(dec);
 		point_sin_dec[j] = sin(dec);
 	}
-
-	// offsets in neigborhood search
-	int yoffs[nneigh] = { 0,  0, -1, +1};
-	int xoffs[nneigh] = {-1, +1,  0,  0};
 
 	// These data structures will keep track of which points we're visiting
 	PointVec * curr = pointvec_new();
@@ -280,10 +283,6 @@ void distance_from_points_bubble_separable(int ny, int nx, double * ypos, double
 		pix_sin_dec[y] = sin(ypos[y]);
 	}
 
-	// offsets in neigborhood search
-	int yoffs[nneigh] = { 0,  0, -1, +1};
-	int xoffs[nneigh] = {-1, +1,  0,  0};
-
 	// These data structures will keep track of which points we're visiting
 	PointVec * curr = pointvec_new();
 	PointVec * next = pointvec_new();
@@ -333,6 +332,449 @@ void distance_from_points_bubble_separable(int ny, int nx, double * ypos, double
 	pointvec_free(curr);
 	pointvec_free(next);
 }
+
+// Grid-based version, to allow parallelism
+// Divide map into grid of cells. Each cell is a little map with its own
+// coordinates, dist map and domain map, as well as a queue of pixel indices
+// represneting the work-front. Each cell has a 1-pixel overlap with its neighbors.
+//
+// 1. Split data into cells.
+// 2. Use starter points (point_pix) to identify the starter cells
+// 3. Insert starter cells into the cell work-list
+// 4. OPM loop (dynamic, probably) over all the cells
+// 5. Solve each cell up to some distance r = r_complete + dr
+// 6. Exchange boundaries with neighbors
+// 7. Add any cell that has a non-empty work-list to the next cell work-list
+// 8. repeat from 4 until cell work-list is empty
+// 9. Copy out into the output maps
+//
+// Each cell could be solved using either the bubble or heap method. Bubble has lower
+// overhead but some pathological cases that lead to N^2 scaling. However, I think
+// the solve-up-to-r approach above should greatly mitigate this. Cleanest to make
+// the cell-solver to use configurable, and that again is cleanest if all methods work
+// on the same cell structure. The problem is that they use different data structures.
+// If the same Cell is to support both, then it will probably need to be a void pointer
+// or fat interface. Let's go with fat interface. That lets me implement bubble first
+// without worrying about heap.
+//
+// The memory overhead of storing positions, distances and domains both in the cells
+// and in the output data structures can be substantial. Two ways to avoid this:
+// 1. let cell be strided. that lets us support making whether to copy out this data
+//    or not configurable. Pro: simple, Con: bad memory access patterns for exactly
+//    the cases where it matters most
+// 2. don't allocate all the cells at once. Allocate and initialize on first access,
+//    and copy-out and deallocate when a cell is done. A cell is done when rmin across
+//    all working cells is higher than rmax for the cell. Can make a quick pass over
+//    *all* cells at the end of each round to check this.
+//    Pro: low memory overhead, Con: medium complicated, extra work scanning for cells to
+//    release
+
+enum { CELL_UNALLOC = 0, CELL_ACTIVE, CELL_DONE };
+typedef struct Cell {
+	int ny, nx, y1, y2, x1, x2, separable, status;
+	double rmax;       // the lowest r anywhere in this cell
+	double * ypos_cos; // separable ? [nx] : [ny*nx]
+	double * ypos_sin; // separable ? [nx] : [ny*nx]
+	double * xpos;     // separable ? [ny] : [ny*nx]
+	double * dists;
+	int    * domains;
+	PointVec * current;
+} Cell;
+
+// This structure holds the information describing a full cellgrid.
+typedef struct Cellgrid {
+	int ny, nx, bsize_y, bsize_x, nby, nbx, ncell, separable;
+	double *ypos, *xpos, rmax;
+	Cell * cells;
+} Cellgrid;
+
+
+#define make_copy_block(DTYPE)\
+DTYPE * copy_block_ ## DTYPE(DTYPE * idata, int gny, int gnx, int ldx, int lny, int lnx, int gy1, int gx1, int ly1, int lx1, int dir, DTYPE * odata) {\
+	if(dir < 0 && !idata) idata = malloc((size_t)gny*gnx*sizeof(DTYPE));\
+	if(dir > 0 && !odata) odata = malloc((size_t)lny*lnx*sizeof(DTYPE));\
+	for(int yi = 0; yi < lny; yi++) {\
+		int ly = ly1 + yi;\
+		int gy = wrap1(gy1+yi, gny);\
+		for(int xi = 0; xi < lnx; xi++) {\
+			int lx = lx1 + xi;\
+			int gx = wrap1(gx1+xi, gnx);\
+			size_t gi = (size_t)gy*gnx+gx;\
+			size_t li = (size_t)ly*ldx+lx;\
+			if     (dir > 0) odata[li] = idata[gi];\
+			else if(dir < 0) idata[gi] = odata[li];\
+		}\
+	}\
+	return dir > 0 ? odata : idata;\
+}
+make_copy_block(double);
+make_copy_block(int);
+#undef make_copy_block
+
+void allocate_cell(Cellgrid * grid, Cell * c, int by, int bx) {
+	// Global pixel ranges of this cell
+	// Each cell has a 1 pixel overlap with its neighbors. We do this by extending each
+	// cell by one pixel rightwards and upwards.
+	c->y1 = by*grid->bsize_y;
+	c->y2 = min((by+1)*grid->bsize_y,grid->ny)+1;
+	c->x1 = bx*grid->bsize_x;
+	c->x2 = min((bx+1)*grid->bsize_x,grid->nx)+1;
+	c->ny = c->y2-c->y1;
+	c->nx = c->x2-c->x1;
+	c->separable = grid->separable;
+	size_t n = (size_t)c->ny*c->nx;
+	c->dists = malloc(n*sizeof(double));
+	for(int i = 0; i < n; i++)
+		c->dists[i] = grid->rmax;
+	c->domains = malloc((size_t)n*sizeof(double));
+	for(size_t i = 0; i < n; i++) c->domains[i] = -1;
+	c->current = pointvec_new();
+	c->rmax    = 0;
+	c->status  = CELL_ACTIVE;
+}
+
+void fill_cell(Cellgrid * grid, Cell * c, int by, int bx) {
+	size_t n = (size_t)c->ny*c->nx;
+	size_t yposlen = 0;
+	double * ypos_tmp;
+	if(c->separable) {
+		// 1d array, so y size is 1
+		ypos_tmp= copy_block_double(grid->ypos, 1, grid->ny, 0, 1, c->ny, 0, c->y1, 0, 0, 1, NULL);
+		c->xpos = copy_block_double(grid->xpos, 1, grid->nx, 0, 1, c->nx, 0, c->x1, 0, 0, 1, NULL);
+		yposlen = c->ny;
+	} else {
+		ypos_tmp= copy_block_double(grid->ypos, grid->ny, grid->nx, c->nx, c->ny, c->nx, c->y1, c->x1, 0, 0, 1, NULL);
+		c->xpos = copy_block_double(grid->xpos, grid->ny, grid->nx, c->nx, c->ny, c->nx, c->y1, c->x1, 0, 0, 1, NULL);
+		yposlen = n;
+	}
+	// Store cos and sin of ypos instad of just ypos, to save some computations later
+	c->ypos_sin = malloc(yposlen*sizeof(double));
+	c->ypos_cos = malloc(yposlen*sizeof(double));
+	for(size_t i = 0; i < yposlen; i++) {
+		c->ypos_sin[i] = sin(ypos_tmp[i]);
+		c->ypos_cos[i] = cos(ypos_tmp[i]);
+	}
+	free(ypos_tmp);
+}
+
+// Initialize a cell, copying over information from ypos, xpos
+void init_cell(Cellgrid * grid, Cell * c, int by, int bx) {
+	allocate_cell(grid, c, by, bx);
+	fill_cell(grid, c, by, bx);
+}
+
+void finish_cell(Cellgrid * grid, Cell * c, double * dists, int * domains) {
+	// Copy out dists and domains
+	copy_block_double(dists,   grid->ny, grid->nx, c->nx, c->ny-1, c->nx-1, c->y1, c->x1, 0, 0, -1, c->dists);
+	copy_block_int   (domains, grid->ny, grid->nx, c->nx, c->ny-1, c->nx-1, c->y1, c->x1, 0, 0, -1, c->domains);
+	free(c->ypos_sin);
+	free(c->ypos_cos);
+	free(c->xpos);
+	free(c->dists);
+	free(c->domains);
+	pointvec_free(c->current);
+	c->status = CELL_DONE;
+}
+
+// Advance cell c from the current state up to the distance r_targ using the bubble algorithm
+int cell_solve_until(Cell * c, double * point_ra, double * point_cos_dec, double * point_sin_dec, double r_targ, double rmax) {
+	int it = 0;
+	PointVec * curr = c->current;
+	PointVec * next = pointvec_new();
+	PointVec * wait = pointvec_new();
+
+	// These will be used to store the domains from the beginning of each loop
+	int  * orig_domains = malloc(sizeof(int)   *c->ny*c->nx);
+
+	while(curr->n > 0) {
+		// Save our orig domains, since we will overwrite them while working
+		// with them in the loop
+		for(int i = 0; i < curr->n; i++) {
+			int y = curr->y[i], x = curr->x[i], pix = y*c->nx+x;
+			orig_domains[pix] = c->domains[pix];
+		}
+		// For each of our current points, see if we can improve on their neighbors.
+		// Points that have have reached r_targ will be removed from the working list
+		// and added back at the end, so we don't spend time going beyond r_targ
+		for(int i = 0; i < curr->n; i++) {
+			int y      = curr->y[i], x = curr->x[i];
+			int pix    = y*c->nx+x;
+			int ipoint = orig_domains[pix];
+			for(int oi = 0; oi < nneigh; oi++) {
+				int y2 = y+yoffs[oi], x2 = x+xoffs[oi];
+				// No wrapping here - that's handled outside the cell level. We just skip points
+				// that would go outside our boundary here.
+				if(y2 < 0 || y2 >= c->ny) continue;
+				if(x2 < 0 || x2 >= c->nx) continue;
+				int pix2 = y2*c->nx+x2;
+				if(c->domains[pix2] == ipoint) continue;
+				double pix_ra      = c->xpos    [c->separable ? x2 : pix2];
+				double pix_sin_dec = c->ypos_sin[c->separable ? y2 : pix2];
+				double pix_cos_dec = c->ypos_cos[c->separable ? y2 : pix2];
+				double cand_dist = dist_vincenty_helper(point_ra[ipoint], point_cos_dec[ipoint], point_sin_dec[ipoint],
+						pix_ra, pix_cos_dec, pix_sin_dec);
+				if(cand_dist < c->dists[pix2] && cand_dist < rmax) {
+					// It is dangerous to update these before the end of the loop, as they
+					// might not have had time to spread their own domain yet. I want a way to
+					// delay these writes
+					c->dists[pix2]   = cand_dist;
+					c->domains[pix2] = ipoint;
+					if(cand_dist < r_targ)
+						pointvec_push(next, y2, x2);
+					else
+						pointvec_push(wait, y2, x2);
+				}
+			}
+		}
+		pointvec_swap(&curr, &next);
+		next->n = 0;
+		it++;
+	}
+	// Ok, we have processed all our points up to r_targ. The waiting points become our
+	// new work set for next time
+	pointvec_swap(&curr, &wait);
+	pointvec_free(next);
+	pointvec_free(wait);
+	free(orig_domains);
+	c->current = curr;
+
+	return it;
+}
+
+PointVec * find_relevant_cells(Cellgrid * grid, PointVec * current_cells) {
+	// Find all neighbors of all active cells, including those cells themselves.
+	// Any uninitialized cells are also initialized as needed.
+	PointVec * cands = pointvec_new();
+	for(int i = 0; i < current_cells->n; i++) {
+		int by1 = current_cells->y[i];
+		int bx1 = current_cells->x[i];
+		int c1  = by1*grid->nbx+bx1;
+		// Update list of candidates for the next active set
+		pointvec_push(cands, c1, 0);
+		for(int dir = 0; dir < 4; dir++) {
+			int dy  = yoffs[dir];
+			int dx  = xoffs[dir];
+			int by2 = wrap1(by1+dy, grid->nby);
+			int bx2 = wrap1(bx1+dx, grid->nbx);
+			int c2  = by2*grid->nbx+bx2;
+			if(grid->cells[c2].status == CELL_DONE) continue;
+			pointvec_push(cands, c2, 0);
+		}
+	}
+	// The current list has lots of duplicates, so deduplicate
+	PointVec * ucands = pointvec_new();
+	qsort(cands->y, cands->n, sizeof(int), compar_int);
+	for(int i = 0; i < cands->n; i++)
+		if(i == 0 || cands->y[i] != cands->y[i-1])
+			pointvec_push(ucands, cands->y[i], cands->x[i]);
+	pointvec_free(cands);
+
+	// Initialize any cells that need it
+	#pragma omp parallel for
+	for(int i = 0; i < ucands->n; i++) {
+		int ci = ucands->y[i];
+		if(grid->cells[ci].status == CELL_UNALLOC)
+			init_cell(grid, &grid->cells[ci], ci / grid->nbx, ci % grid->nbx);
+	}
+
+	// Go from the hacky y=index, x=0 representation to the standard
+	// y,x representation. Though I don't like all the x,y stuff, indices
+	// are nicer, really. But making more data structures is cumbersome in C,
+	// I would have to add a new vector class. And it would lead to more modulo
+	// and division operations.
+	for(int i = 0; i < ucands->n; i++) {
+		ucands->x[i] = ucands->y[i] % grid->nbx;
+		ucands->y[i] = ucands->y[i] / grid->nbx;
+	}
+
+	// Caller must free this using pointvec_free
+	return ucands;
+}
+
+// Fetch overlapping edge data to cell cto from cell cfrom,
+// which is in direction dir relative from cto.
+void fetch_edge(Cell * cto, Cell * cfrom, int dir) {
+	int dy = yoffs[dir], dx = xoffs[dir];
+	// We will process a whole edge of cfrom. We will do this
+	// by building a starting pixel offset for it and cto,
+	// and a stride.
+	int ti0, fi0, ts, fs, n;
+	int tnmax = cto->ny*cto->nx;
+	int fnmax = cfrom->ny*cfrom->nx;
+	if(dy == 0) { // Horizontal fetch, so a vertical row of pixels
+		ti0 = dx < 0 ? 0 : cto->nx-1;
+		fi0 = dx < 0 ? cfrom->nx-1 : 0;
+		ts  = cto->nx;
+		fs  = cfrom->nx;
+		n   = cto->ny;
+	} else { // Vertical fetch, so a horizontal row of pixels
+		ti0 = dy < 0 ? 0 : (cto->ny-1)*cto->nx;
+		fi0 = dy < 0 ? (cfrom->ny-1)*cfrom->nx : 0;
+		ts  = 1;
+		fs  = 1;
+		n   = cto->nx;
+	}
+
+	if(cto->y1 == 99 && cto->x1 == 219 && cfrom->y1 == 99 && cfrom->x1 == 199) {
+		if(ts == -4) fprintf(stderr, "dummy\n");
+	}
+
+	// Ok, process the edge
+	for(int i = 0; i < n; i++) {
+		int ti = ti0 + i*ts;
+		int fi = fi0 + i*fs;
+		if(cfrom->dists[fi] < cto->dists[ti]) {
+			cto->dists[ti]   = cfrom->dists[fi];
+			cto->domains[ti] = cfrom->domains[fi];
+			pointvec_push(cto->current, ti/cto->nx, ti%cto->nx);
+		}
+	}
+}
+
+void distance_from_points_cellgrid(int ny, int nx, double * ypos, double * xpos, inum npoint, double * point_pos,
+		int * point_pix, int bsize_y, int bsize_x, double rmax, double dr, int separable, double * dists, int * domains)
+{
+	double * point_dec = point_pos;
+	double * point_ra  = point_pos+npoint;
+	int    * point_y   = point_pix;
+	int    * point_x   = point_pix+npoint;
+
+	// Allow us to disable rmax by setting it to zero
+	if(rmax <= 0) rmax = 1e300;
+
+	// Precompute cos and sin of dec
+	double * point_cos_dec = realloc(NULL, (inum)npoint*sizeof(double));
+	double * point_sin_dec = realloc(NULL, (inum)npoint*sizeof(double));
+	for(inum j = 0; j < npoint; j++) {
+		double dec = point_dec[j];
+		point_cos_dec[j] = cos(dec);
+		point_sin_dec[j] = sin(dec);
+	}
+
+	PointVec * current_cells = pointvec_new();
+	PointVec * next_cells    = pointvec_new();
+
+	// Set up our cellgrid
+	Cellgrid grid = { .ny = ny, .nx = nx, .bsize_y = bsize_y, .bsize_x = bsize_x, .ypos = ypos, .xpos = xpos,
+		.separable = separable, .rmax = rmax };
+
+	// Find our initial set of cells
+	grid.nby = (ny+bsize_y-1)/bsize_y;
+	grid.nbx = (nx+bsize_x-1)/bsize_x;
+	grid.ncell = grid.nby*grid.nbx;
+	grid.cells = calloc(grid.ncell, sizeof(Cell));
+	for(inum i = 0; i < npoint; i++) {
+		inum by = point_y[i] / bsize_y;
+		inum bx = point_x[i] / bsize_x;
+		inum ci = by*grid.nbx+bx;
+		if(grid.cells[ci].status == CELL_UNALLOC) {
+			allocate_cell(&grid, &grid.cells[ci], by, bx);
+			pointvec_push(current_cells, by, bx);
+		}
+		// And set up their initial pointvec
+		int y1 = by*bsize_y, yrel = point_y[i]-y1;
+		int x1 = bx*bsize_x, xrel = point_x[i]-x1;
+		int pixrel = yrel*grid.cells[ci].nx+xrel;
+		pointvec_push(grid.cells[ci].current, yrel, xrel);
+		grid.cells[ci].domains[pixrel] = i;
+		grid.cells[ci].dists[pixrel] = 0;
+	}
+	// Initialize them
+	#pragma omp parallel for
+	for(int i = 0; i < current_cells->n; i++) {
+		int by = current_cells->y[i], bx = current_cells->x[i], ci = by*grid.nbx+bx;
+		fill_cell(&grid, &grid.cells[ci], by, bx);
+	}
+
+	double r_complete = 0;
+
+	// Start our main work loop
+	while(current_cells->n > 0) {
+		// Advance each cell up to at most the distance r_complete+dr. Capping it like this was supposed
+		// to save time by not bothering with pixels that are running ahead of the rest, but in my benchmarks
+		// the best choice for dr is always infinity. I'll leave it in for now, but set the default to a huge
+		// number.
+		#pragma omp parallel for schedule(dynamic)
+		for(int i = 0; i < current_cells->n; i++) {
+			int by = current_cells->y[i];
+			int bx = current_cells->x[i];
+			int ci = by*grid.nbx+bx;
+			cell_solve_until(&grid.cells[ci], point_ra, point_cos_dec, point_sin_dec, r_complete+dr, rmax);
+			// After this current holds the work-in-progress indices. This can be empty
+		}
+
+		// Get the set of all cells that could be affected by the current cells. That's
+		// all the current ones, plus the non-finished neighbors. Initialize any that are
+		// uninitialized. We do this to prepare for the edge exchange step.
+		PointVec * ucands = find_relevant_cells(&grid, current_cells);
+		// Get data from neighbors
+		for(int dir = 0; dir < 4; dir++) {
+			int dy  = yoffs[dir], dx = xoffs[dir];
+			#pragma omp parallel for
+			for(int i = 0; i < ucands->n; i++) {
+				int by = ucands->y[i], bx = ucands->x[i], ci = by*grid.nbx+bx;
+				int by2 = wrap1(by+dy, grid.nby);
+				int bx2 = wrap1(bx+dx, grid.nbx);
+				int ci2 = by2*grid.nbx+bx2;
+				if(grid.cells[ci2].status == CELL_ACTIVE)
+					fetch_edge(&grid.cells[ci], &grid.cells[ci2], dir);
+			}
+		}
+		// Decide which cells to keep in the working set, which to finalize and
+		// which to ignore for now. Start by measuring rmin_work, the lowest rmin
+		// across all the current working sets of all the next-round candidates.
+		double rmin_work = rmax;
+		#pragma omp parallel for reduction(min:rmin_work) schedule(dynamic)
+		for(int i = 0; i < ucands->n; i++) {
+			int ci   = ucands->y[i]*grid.nbx+ucands->x[i];
+			Cell * c = &grid.cells[ci];
+			for(int j = 0; j < c->current->n; j++) {
+				int y = c->current->y[j], x = c->current->x[j];
+				rmin_work = fmin(rmin_work, c->dists[y*c->nx+x]);
+			}
+			// At the same time we measure rmax for the cells with no work left. We need
+			// this to decide which cells to finalize
+			if(c->current->n > 0) continue;
+			c->rmax = 0;
+			for(int pix = 0; pix < c->ny*c->nx; pix++)
+				if(c->rmax < c->dists[pix])
+					c->rmax = c->dists[pix];
+		}
+
+		// Then use this to decide what to do with each cell
+		next_cells->n = 0;
+		for(int i = 0; i < ucands->n; i++) {
+			int ci = ucands->y[i]*grid.nbx+ucands->x[i];
+			Cell * c = &grid.cells[ci];
+			// If the cell has any working set left, we keep it
+			if(c->current->n > 0)
+				pointvec_push(next_cells, ucands->y[i], ucands->x[i]);
+			// If the cell couldn't possibly change in the future,
+			// we finish it
+			else if(c->rmax <= rmin_work)
+				finish_cell(&grid, c, dists, domains);
+			// Otherwise we ignore it for now
+		}
+		pointvec_free(ucands);
+
+		// Prepare for next loop
+		pointvec_swap(&next_cells, &current_cells);
+
+	}
+
+	// We're done! Finalize all cells and exit
+	for(int i = 0; i < grid.ncell; i++)
+		if(grid.cells[i].status == CELL_ACTIVE)
+			finish_cell(&grid, &grid.cells[i], dists, domains);
+
+	free(grid.cells);
+	pointvec_free(current_cells);
+	pointvec_free(next_cells);
+	free(point_cos_dec);
+	free(point_sin_dec);
+}
+
+// Healpix stuff
 
 healpix_info * build_healpix_info(int nside) {
 	healpix_info * geo = malloc(sizeof(healpix_info));
@@ -539,7 +981,7 @@ void get_healpix_neighs(healpix_info * geo, int y, int x, int * oy, int * ox) {
 		}
 	}
 	// Handle shifted rows and wrapping
-	for(int i = 0; i < nneigh; i++) {
+	for(int i = 0; i < nneigh_hp; i++) {
 		int w = geo->nx[oy[i]];
 		if     (ox[i] < 0)  ox[i] += w;
 		else if(ox[i] >= w) ox[i] -= w;
@@ -554,8 +996,8 @@ void distance_from_points_bubble_healpix(healpix_info * geo, inum npoint, double
 	int    * point_y   = point_pix;
 	int    * point_x   = point_pix+npoint;
 	// offsets in neigborhood search
-	int yneigh[nneigh];
-	int xneigh[nneigh];
+	int yneigh[nneigh_hp];
+	int xneigh[nneigh_hp];
 	// Precompute cos and sin dec for the points
 	double * point_cos_dec = realloc(NULL, (inum)npoint*sizeof(double));
 	double * point_sin_dec = realloc(NULL, (inum)npoint*sizeof(double));
@@ -599,7 +1041,7 @@ void distance_from_points_bubble_healpix(healpix_info * geo, inum npoint, double
 			inum ipoint = domains[pix];
 			// Find out who our neighbors are
 			get_healpix_neighs(geo, y, x, yneigh, xneigh);
-			for(int oi = 0; oi < nneigh; oi++) {
+			for(int oi = 0; oi < nneigh_hp; oi++) {
 				int y2 = yneigh[oi], x2 = xneigh[oi];
 				inum pix2 = geo->off[y2]+x2;
 				if(domains[pix2] == ipoint) continue;
@@ -690,8 +1132,8 @@ void distance_from_points_heap_healpix(healpix_info * geo, inum npoint, double *
 	int    * point_y   = point_pix;
 	int    * point_x   = point_pix+npoint;
 	// offsets in neigborhood search
-	int yneigh[nneigh];
-	int xneigh[nneigh];
+	int yneigh[nneigh_hp];
+	int xneigh[nneigh_hp];
 	// Precompute cos and sin dec for the points
 	double * point_cos_dec = realloc(NULL, (inum)npoint*sizeof(double));
 	double * point_sin_dec = realloc(NULL, (inum)npoint*sizeof(double));
@@ -733,7 +1175,7 @@ void distance_from_points_heap_healpix(healpix_info * geo, inum npoint, double *
 		inum ipoint = domains[pix];
 		// Find out who our neighbors are
 		get_healpix_neighs(geo, y, x, yneigh, xneigh);
-		for(int oi = 0; oi < nneigh; oi++) {
+		for(int oi = 0; oi < nneigh_hp; oi++) {
 			int y2 = yneigh[oi], x2 = xneigh[oi];
 			inum pix2 = geo->off[y2]+x2;
 			if(domains[pix2] == ipoint) continue;
@@ -811,13 +1253,13 @@ inum find_edges_healpix(healpix_info * geo, uint8_t * mask, int ** edges) {
 	// Ironically, since going from pixel index to row, col in healpix is complicated,
 	// we will return a 2d yx for this normally 1d pixelization
 	PointVec * points = pointvec_new();
-	int yneigh[nneigh], xneigh[nneigh];
+	int yneigh[nneigh_hp], xneigh[nneigh_hp];
 	for(int y = 0; y < geo->ny; y++) {
 		for(int x = 0; x < geo->nx[y]; x++) {
 			get_healpix_neighs(geo, y, x, yneigh, xneigh);
 			inum i = geo->off[y]+x;
 			if(mask[i] != 0) continue;
-			for(int j = 0; j < nneigh; j++) {
+			for(int j = 0; j < nneigh_hp; j++) {
 				int y2 = yneigh[j], x2 = xneigh[j];
 				inum i2 = geo->off[y2]+x2;
 				if(mask[i2] != 0) {
@@ -843,13 +1285,13 @@ inum find_edges_labeled_healpix(healpix_info * geo, int32_t * labels, int ** edg
 	// Ironically, since going from pixel index to row, col in healpix is complicated,
 	// we will return a 2d yx for this normally 1d pixelization
 	PointVec * points = pointvec_new();
-	int yneigh[nneigh], xneigh[nneigh];
+	int yneigh[nneigh_hp], xneigh[nneigh_hp];
 	for(int y = 0; y < geo->ny; y++) {
 		for(int x = 0; x < geo->nx[y]; x++) {
 			get_healpix_neighs(geo, y, x, yneigh, xneigh);
 			inum i = geo->off[y]+x;
 			if(labels[i] == 0) continue;
-			for(int j = 0; j < nneigh; j++) {
+			for(int j = 0; j < nneigh_hp; j++) {
 				int y2 = yneigh[j], x2 = xneigh[j];
 				inum i2 = geo->off[y2]+x2;
 				if(labels[i2] != labels[i]) {

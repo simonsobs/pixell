@@ -8,7 +8,7 @@ degree = np.pi/180
 arcmin = degree/60
 arcsec = arcmin/60
 fwhm   = 1.0/(8*np.log(2))**0.5
-T_cmb  = 2.725
+T_cmb = 2.72548 # +/- 0.00057
 c  = 299792458.0
 h  = 6.62606957e-34
 k  = 1.3806488e-23
@@ -924,7 +924,7 @@ def pole_wrap(pos):
 def parse_box(desc):
 	"""Given a string of the form from:to,from:to,from:to,... returns
 	an array [{from,to},:]"""
-	return np.array([[float(word) for word in pair] for pair in desc.split(",")]).T
+	return np.array([[float(word) for word in pair.split(":")] for pair in desc.split(",")]).T
 
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result

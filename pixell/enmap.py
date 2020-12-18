@@ -85,9 +85,9 @@ class ndmap(np.ndarray):
 	def autocrop(self, method="plain", value="auto", margin=0, factors=None, return_info=False): return autocrop(self, method, value, margin, factors, return_info)
 	def apod(self, width, profile="cos", fill="zero"): return apod(self, width, profile=profile, fill=fill)
 	def stamps(self, pos, shape, aslist=False): return stamps(self, pos, shape, aslist=aslist)
-	def distance_from(self, points, omap=None, odomains=None, domains=False, method="bubble", rmax=None, step=1024): return distance_from(self.shape, self.wcs, points, omap=omap, odomains=odomains, domains=domains, method=method, rmax=rmax, step=step)
-	def distance_transform(self, omap=None, rmax=None): return distance_transform(self, omap=omap, rmax=rmax)
-	def labeled_distance_transform(self, omap=None, odomains=None, rmax=None): return labeled_distance_transform(self, omap=omap, odomains=odomains, rmax=rmax)
+	def distance_from(self, points, omap=None, odomains=None, domains=False, method="cellgrid", rmax=None, step=1024): return distance_from(self.shape, self.wcs, points, omap=omap, odomains=odomains, domains=domains, method=method, rmax=rmax, step=step)
+	def distance_transform(self, omap=None, rmax=None, method="cellgrid"): return distance_transform(self, omap=omap, rmax=rmax, method=method)
+	def labeled_distance_transform(self, omap=None, odomains=None, rmax=None, method="cellgrid"): return labeled_distance_transform(self, omap=omap, odomains=odomains, rmax=rmax, method=method)
 	@property
 	def plain(self): return ndmap(self, wcsutils.WCS(naxis=2))
 	def padslice(self, box, default=np.nan): return padslice(self, box, default=default)
@@ -466,6 +466,7 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 		pix    = map.sky2pix(somap.posmap(), safe=safe)
 		y1     = max(np.min(pix[0]).astype(int)-3,0)
 		y2     = min(np.max(pix[0]).astype(int)+3,map.shape[-2])
+		if y2-y1 <= 0: continue
 		pix[0] -= y1
 		somap[:] = utils.interpol(map[...,y1:y2,:], pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
 	return omap
@@ -1033,15 +1034,19 @@ def fft(emap, omap=None, nthread=0, normalize=True):
 	be directly compared to theory (apart from mask corrections)
 	, i.e., pixel area factors are corrected for.
 	"""
-	res = samewcs(enfft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
-	if normalize: res /= np.prod(emap.shape[-2:])**0.5
-	if normalize in ["phy","phys","physical"]: res *= emap.pixsize()**0.5
+	res  = samewcs(enfft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
+	norm = 1
+	if normalize: norm /= np.prod(emap.shape[-2:])**0.5
+	if normalize in ["phy","phys","physical"]: norm *= emap.pixsize()**0.5
+	if norm != 1: res *= norm
 	return res
 def ifft(emap, omap=None, nthread=0, normalize=True):
 	"""Performs the 2d iFFT of the complex enmap given, and returns a pixel-space enmap."""
-	res = samewcs(enfft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
-	if normalize: res /= np.prod(emap.shape[-2:])**0.5
-	if normalize in ["phy","phys","physical"]: res /= emap.pixsize()**0.5
+	res  = samewcs(enfft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
+	norm = 1
+	if normalize: norm /= np.prod(emap.shape[-2:])**0.5
+	if normalize in ["phy","phys","physical"]: norm /= emap.pixsize()**0.5
+	if norm != 1: res *= norm
 	return res
 
 # These are shortcuts for transforming from T,Q,U real-space maps to
@@ -1141,8 +1146,7 @@ def inpaint(map, mask, method="nearest"):
 	return omap
 
 def calc_window(shape):
-	"""Compute fourier-space window function. Like the other fourier-based
-	functions in this module, equi-spaced pixels are assumed. Since the
+	"""Compute fourier-space window function. Since the
 	window function is separable, it is returned as an x and y part,
 	such that window = wy[:,None]*wx[None,:]."""
 	wy = np.sinc(np.fft.fftfreq(shape[-2]))
@@ -1474,7 +1478,7 @@ def downgrade_geometry(shape, wcs, factor):
 def upgrade_geometry(shape, wcs, factor):
 	return scale_geometry(shape, wcs, factor)
 
-def distance_transform(mask, omap=None, rmax=None):
+def distance_transform(mask, omap=None, rmax=None, method="cellgrid"):
 	"""Given a boolean mask, produce an output map where the value in each pixel is the distance
 	to the closest false pixel in the mask. See distance_from for the meaning of rmax."""
 	from pixell import distances
@@ -1482,12 +1486,12 @@ def distance_transform(mask, omap=None, rmax=None):
 	for i in range(len(mask.preflat)):
 		edge_pix = np.array(distances.find_edges(mask.preflat[i]))
 		edge_pos = mask.pix2sky(edge_pix, safe=False)
-		omap.preflat[i] = distance_from(mask.shape, mask.wcs, edge_pos, rmax=rmax)
+		omap.preflat[i] = distance_from(mask.shape, mask.wcs, edge_pos, rmax=rmax, method=method)
 	# Distance is always zero inside mask
 	omap *= mask
 	return omap
 
-def labeled_distance_transform(labels, omap=None, odomains=None, rmax=None):
+def labeled_distance_transform(labels, omap=None, odomains=None, rmax=None, method="cellgrid"):
 	"""Given a map of labels going from 1 to nlabel, produce an output map where the value
 	in each pixel is the distance to the closest nonzero pixel in the labels, as well as a
 	map of which label each pixel was closest to. See distance_from for the meaning of rmax."""
@@ -1497,7 +1501,7 @@ def labeled_distance_transform(labels, omap=None, odomains=None, rmax=None):
 	for i in range(len(labels.preflat)):
 		edge_pix = np.array(distances.find_edges_labeled(labels.preflat[i]))
 		edge_pos = labels.pix2sky(edge_pix, safe=False)
-		_, domains = distance_from(labels.shape, labels.wcs, edge_pos, omap=omap.preflat[i], domains=True, rmax=rmax)
+		_, domains = distance_from(labels.shape, labels.wcs, edge_pos, omap=omap.preflat[i], domains=True, rmax=rmax, method=method)
 		# Get the edge_pix to label mapping
 		mapping = labels.preflat[i][edge_pix[0],edge_pix[1]]
 		mask    = domains >= 0
@@ -1507,11 +1511,11 @@ def labeled_distance_transform(labels, omap=None, odomains=None, rmax=None):
 		omap.preflat[i][mask] = 0
 	return omap, odomains
 
-def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, method="bubble", rmax=None, step=1024):
+def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, method="cellgrid", rmax=None, step=1024):
 	"""Find the distance from each pixel in the geometry (shape, wcs) to the
 	nearest of the points[{dec,ra},npoint], returning a [ny,nx] map of distances.
 	If domains==True, then it will also return a [ny,nx] map of the index of the point
-	that was closest to each pixel. If rmax is specified and the method is "bubble", then
+	that was closest to each pixel. If rmax is specified and the method is "cellgrid" or "bubble", then
 	distances will only be computed up to rmax. Beyond that distance will be set to rmax
 	and domains to -1. This can be used to speed up the calculation when one only cares
 	about nearby areas."""
@@ -1524,6 +1528,9 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 		if method == "bubble":
 			point_pix = utils.nint(sky2pix(shape, wcs, points))
 			return distances.distance_from_points_bubble_separable(dec, ra, points, point_pix, rmax=rmax, omap=omap, odomains=odomains, domains=domains)
+		elif method == "cellgrid":
+			point_pix = utils.nint(sky2pix(shape, wcs, points))
+			return distances.distance_from_points_cellgrid(dec, ra, points, point_pix, rmax=rmax, omap=omap, odomains=odomains, domains=domains)
 		elif method == "simple":
 			return distances.distance_from_points_simple_separable(dec, ra, points, omap=omap, odomains=odomains, domains=domains)
 		else: raise ValueError("Unknown method '%s'" % str(method))
@@ -1535,6 +1542,10 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 			pos = posmap(shape, wcs, safe=False)
 			point_pix = utils.nint(sky2pix(shape, wcs, points))
 			return distances.distance_from_points_bubble(pos, points, point_pix, rmax=rmax, omap=omap, odomains=odomains, domains=domains)
+		elif method == "cellgrid":
+			pos = posmap(shape, wcs, safe=False)
+			point_pix = utils.nint(sky2pix(shape, wcs, points))
+			return distances.distance_from_points_cellgrid(pos[0], pos[1], points, point_pix, rmax=rmax, omap=omap, odomains=odomains, domains=domains)
 		elif method == "simple":
 			geo = Geometry(shape, wcs)
 			for y in range(0, shape[-2], step):

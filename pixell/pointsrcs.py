@@ -31,7 +31,8 @@ from . import utils, enmap
 #### Map-space source simulation ###
 
 def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None, smul=1,
-		return_padded=False, pixwin=False, op=np.add, wrap="auto", verbose=False, cache=None):
+			 return_padded=False, pixwin=False, op=np.add, wrap="auto", verbose=False, cache=None,
+			 separable=False):
 	"""Simulate a point source map in the geometry given by shape, wcs
 	for the given srcs[nsrc,{dec,ra,T...}], using the beam[{r,val},npoint],
 	which must be equispaced. If omap is specified, the sources will be
@@ -74,7 +75,7 @@ def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None,
 	pixbox= np.array([[0,0],wmap.shape[-2:]],int)
 	nhit, cell_srcs = build_src_cells(pixbox, srcpix, cres, wrap=wrap)
 	# Optionally cache the posmap
-	if cache is None or cache[0] is None: posmap = wmap.posmap()
+	if cache is None or cache[0] is None: posmap = wmap.posmap(separable=separable)
 	else: posmap = cache[0]
 	if cache is not None: cache[0] = posmap
 	model = eval_srcs_loop(posmap, poss, amps, beam, cres, nhit, cell_srcs, dtype=wmap.dtype, op=op, verbose=verbose)
@@ -99,7 +100,7 @@ def eval_srcs_loop(posmap, poss, amps, beam, cres, nhit, cell_srcs, dtype=np.flo
 	for cy in range(ncy):
 		for cx in range(ncx):
 			nsrc = nhit[cy,cx]
-			if verbose: print("map cell %5d/%d with %5d srcs" % (cy*ncx+cx+1, ncy*ncx, nsrc))
+			if verbose and nsrc > 0: print("map cell %5d/%d with %5d srcs" % (cy*ncx+cx+1, ncy*ncx, nsrc))
 			if nsrc == 0: continue
 			srcs  = cell_srcs[cy,cx,:nsrc]
 			y1,y2 = (cy+0)*cres[0], (cy+1)*cres[0]
@@ -284,7 +285,7 @@ def read_dory_fits(fname, hdu=1):
 
 def read_dory_txt(fname):
 	try:
-		d = np.loadtxt(fname, usecols=[0,1,3,5,7], dtype=[("ra","d"),("dec","d"),("I","d"),("Q","d"),("U","d")]).view(np.recarray)
+		d = np.loadtxt(fname, usecols=[0,1,3,5,7], dtype=[("ra","d"),("dec","d"),("I","d"),("Q","d"),("U","d")]).view(np.recarray).reshape(-1)
 		d.I *= 1e3; d.Q *= 1e3; d.U *= 1e3
 		return d
 	except (ValueError, IndexError) as e:

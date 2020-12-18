@@ -332,8 +332,72 @@ class PixelTests(unittest.TestCase):
         assert np.all(np.isclose(box,dbox))
         assert np.isclose(parea/(ufact**2),uparea)
         assert np.isclose(parea/(dfact**2),dparea)
-                                
-        
+
+    def test_prepare_alm_mmax(self):
+        # Check if mmax is correctly handled by prepare_alm.
+
+        # Create lmax=mmax=3 alm array and corresponding alm_info.
+        lmax = 3
+        nalm = 10  # Triangular alm array of lmax=3 has 10 elements.
+        alm_in = np.arange(nalm, dtype=np.complex128)
+        ainfo_in = sharp.alm_info(
+            lmax=3, mmax=3, nalm=nalm, stride=1, layout="triangular")
+
+        # Case 1: provide only alm.
+        alm_out, ainfo_out = curvedsky.prepare_alm(alm=alm_in, ainfo=None)
+
+        np.testing.assert_array_almost_equal(alm_out, alm_in)
+        self.assertIs(ainfo_out.lmax, ainfo_in.lmax)
+        self.assertIs(ainfo_out.mmax, ainfo_in.mmax)
+        self.assertIs(ainfo_out.nelem, ainfo_in.nelem)
+
+        # Case 2: provide only alm_info.
+        alm_out, ainfo_out = curvedsky.prepare_alm(alm=None, ainfo=ainfo_in)
+        # Expect zero array.
+        np.testing.assert_array_almost_equal(alm_out, alm_in * 0)
+        self.assertIs(ainfo_out.lmax, ainfo_in.lmax)
+        self.assertIs(ainfo_out.mmax, ainfo_in.mmax)
+        self.assertIs(ainfo_out.nelem, ainfo_in.nelem)
+
+        # Case 3: provide alm and alm_info
+        alm_out, ainfo_out = curvedsky.prepare_alm(alm=alm_in, ainfo=ainfo_in)
+
+        np.testing.assert_array_almost_equal(alm_out, alm_in)
+        self.assertIs(ainfo_out.lmax, ainfo_in.lmax)
+        self.assertIs(ainfo_out.mmax, ainfo_in.mmax)
+        self.assertIs(ainfo_out.nelem, ainfo_in.nelem)
+
+        # Case 4: provide only alm with lmax=3 and mmax=1.
+        # This should currently fail.
+        nalm = 7
+        alm_in = np.arange(7, dtype=np.complex128)
+        self.assertRaises(AssertionError, curvedsky.prepare_alm,
+                          **dict(alm=alm_in, ainfo=None, lmax=lmax))
+
+        # Case 5: provide only alm_info with lmax=3 and mmax=1.
+        nalm = 7
+        ainfo_in = sharp.alm_info(
+            lmax=3, mmax=1, nalm=nalm, stride=1, layout="triangular")
+        alm_exp = np.zeros(7, dtype=np.complex128)
+        alm_out, ainfo_out = curvedsky.prepare_alm(alm=None, ainfo=ainfo_in)
+
+        np.testing.assert_array_almost_equal(alm_out, alm_exp)
+        self.assertIs(ainfo_out.lmax, ainfo_in.lmax)
+        self.assertIs(ainfo_out.mmax, ainfo_in.mmax)
+        self.assertIs(ainfo_out.nelem, ainfo_in.nelem)
+
+        # Case 6: provide both alm and alm_info with lmax=3 and mmax=1.
+        # This should be allowed.
+        nalm = 7
+        ainfo_in = sharp.alm_info(
+            lmax=3, mmax=1, nalm=nalm, stride=1, layout="triangular")
+        alm_in = np.arange(7, dtype=np.complex128)
+        alm_out, ainfo_out = curvedsky.prepare_alm(alm=alm_in, ainfo=ainfo_in)
+
+        np.testing.assert_array_almost_equal(alm_out, alm_in)
+        self.assertIs(ainfo_out.lmax, ainfo_in.lmax)
+        self.assertIs(ainfo_out.mmax, ainfo_in.mmax)
+        self.assertIs(ainfo_out.nelem, ainfo_in.nelem)
 
 if __name__ == '__main__':
     unittest.main()
