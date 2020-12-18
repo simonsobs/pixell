@@ -8,13 +8,30 @@ degree = np.pi/180
 arcmin = degree/60
 arcsec = arcmin/60
 fwhm   = 1.0/(8*np.log(2))**0.5
-T_cmb = 2.725
+T_cmb  = 2.725
 c  = 299792458.0
 h  = 6.62606957e-34
 k  = 1.3806488e-23
 AU = 149597870700.0
 day2sec = 86400.
 yr2days = 365.2422
+yr = yr2days*day2sec
+ly = c*yr
+pc = AU/arcsec
+
+# Solar system constants. Nice to have, unlikely to clash with anything, and
+# don't take up much space.
+R_sun     = 695700e3  ; M_sun     = 1.9885e30   ; r_sun     =  29e3*ly
+R_mercury = 2439.5e3  ; M_mercury = 0.330e24    ; r_mercury =  57.9e9
+R_venus   = 6052e3    ; M_venus   = 4.87e24     ; r_venus   = 108.2e9
+R_earth   = 6378.1e3  ; M_earth   = 5.9722e24   ; r_earth   = 149.6e9
+R_moon    = 1737.5e3  ; M_moon    = 0.073e24    ; r_moon    =   0.384e9
+R_mars    = 3396e3    ; M_mars    = 0.642e24    ; r_mars    = 227.9e9
+R_jupiter =71492e3    ; M_jupiter = 1898e24     ; r_jupiter = 778.6e9
+R_saturn  =60268e3    ; M_saturn  = 568e24      ; r_saturn  =1433.5e9
+R_uranus  =25559e3    ; M_uranus  = 86.8e24     ; r_uranus  =2872.5e9
+R_neptune =24764e3    ; M_neptune = 102e24      ; r_neptune =4495.1e9
+R_pluto   = 1185e3    ; M_pluto   = 0.0146e24   ; r_pluto   =5906.4e9
 
 # These are like degree, arcmin and arcsec, but turn any lists
 # they touch into arrays.
@@ -60,6 +77,11 @@ def find(array, vals, default=None):
 		if default is None: raise ValueError("Value not found in array")
 		else: res[bad] = default
 	return res
+
+def find_any(array, vals):
+	"""Like find, but skips missing entries"""
+	res = find(array, vals, default=-1)
+	return res[res >= 0]
 
 def contains(array, vals):
 	"""Given an array[n], returns a boolean res[n], which is True
@@ -1458,7 +1480,7 @@ def split_outside(a, sep, start="([{", end=")]}"):
 	return res
 
 def find_equal_groups(a, tol=0):
-	"""Given a[nsamp,ndim], return groups[ngroup][{ind,ind,ind,...}]
+	"""Given a[nsamp,...], return groups[ngroup][{ind,ind,ind,...}]
 	of indices into a for which all the values in the second index
 	of a is the same. find_equal_groups([[0,1],[1,2],[0,1]]) -> [[0,2],[1]]."""
 	def calc_diff(a1,a2):
