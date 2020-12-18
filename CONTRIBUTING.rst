@@ -106,8 +106,8 @@ Before you submit a pull request, check that it meets these guidelines:
 2. If the pull request adds functionality, the docs should be updated. Put
    your new functionality into a function with a docstring, and add the
    feature to the list in README.rst.
-3. The pull request should work for Python 2.7, 3.4, 3.5 and 3.6, and for PyPy. Check
-   https://travis-ci.org/simonsobs/pixell/pull_requests
+3. The pull request should work for Python 3.6, 3.7 and 3.8. Check
+   https://github.com/simonsobs/pixell/actions
    and make sure that the tests pass for all supported Python versions.
 
 
@@ -126,7 +126,7 @@ $ bumpversion patch # possible: major / minor / patch
 $ git push
 $ git push --tags
 
-Travis will then deploy to PyPI if tests pass.
+Github Actions will then deploy to PyPI if tests pass.
 
 The role of versioneer is to automatically embed version information
 in the distributed source code or installed package, based on the
