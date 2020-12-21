@@ -2043,6 +2043,7 @@ def write_fits(fname, emap, extra={}):
 	for key, val in extra.items():
 		header[key] = val
 	hdus   = astropy.io.fits.HDUList([astropy.io.fits.PrimaryHDU(emap, header)])
+	utils.mkdir(os.path.dirname(fname))
 	with warnings.catch_warnings():
 		warnings.filterwarnings('ignore')
 		hdus.writeto(fname, clobber=True)
@@ -2055,6 +2056,7 @@ def write_fits_geometry(fname, shape, wcs):
 		header["NAXIS%d"%(i+1)] = s
 	# Dummy, but must be present
 	header["BITPIX"] = -32
+	utils.mkdir(os.path.dirname(fname))
 	header.tofile(fname, overwrite=True)
 
 def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, verbose=False):
@@ -2096,6 +2098,7 @@ def write_hdf(fname, emap, extra={}):
 	the WCS metadata."""
 	import h5py
 	emap = enmap(emap, copy=False)
+	utils.mkdir(os.path.dirname(fname))
 	with h5py.File(fname, "w") as hfile:
 		hfile["data"] = emap
 		header = emap.wcs.to_header()
