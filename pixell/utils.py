@@ -13,6 +13,7 @@ c  = 299792458.0
 h  = 6.62606957e-34
 k  = 1.3806488e-23
 AU = 149597870700.0
+R_earth = 6378.1e3
 day2sec = 86400.
 yr2days = 365.2422
 yr = yr2days*day2sec
@@ -2136,3 +2137,63 @@ def encode_array_if_necessary(arr):
 			return np.char.encode(arr)
 		else:
 			return arr
+
+### These functions deal with the conversion between decimal and sexagesimal ###
+
+def to_sexa(x):
+	"""Given a number in decimal degrees x, returns (sign,deg,min,sec).
+	Given this x can be reconstructed as sign*(deg+min/60+sec/3600).
+	"""
+	# Handle both scalars and vectors efficiently. We need to do it like this
+	# because the vector stuff is 30x slower than the scalar implementation for
+	# single numbers. This construction only has a factor 2 slowdown.
+	try:
+		len(x)
+		x    = np.asanyarray(x)
+		sign = np.where(x < 0, -1, 1)*1
+		ifun = np.int32
+	except TypeError:
+		sign = -1 if x < 0 else 1
+		ifun = int
+	x    = x*sign
+	deg  = ifun(x)
+	x    = (x-deg)*60
+	min  = ifun(x)
+	sec  = (x-min)*60
+	return (sign, deg, min, sec)
+
+def from_sexa(sign, deg, min, sec):
+	"""Reconstruct a decimal number from the sexagesimal representation."""
+	return sign*(deg+min/60+sec/3600)
+
+def format_sexa(x, fmt="%(deg)+03d:%(min)02d:%(sec)06.2f"):
+	sign, deg, min, sec = to_sexa(x)
+	return fmt % {"deg": sign*deg, "min": min, "sec": sec}
+
+def jname(ra, dec, fmt="J%(ra_H)02d%(ra_M)02d%(ra_S)02d%(dec_d)+02d%(dec_m)02d%(dec_s)02d", tag=None, sep=" "):
+	"""Build a systematic object name for the given ra/dec in degrees. The format
+	is specified using the format string fmt. The default format string is
+	'J%(ra_H)02d%(ra_M)02d%(ra_S)02d%(dec_d)+02d%(dec_m)02d%(dec_s)02d'. This is
+	not fully compliant with the IAU specification, but it's what is used in ACT.
+	Formatting uses standard python string interpolation. The available variables are
+	ra:  right ascension in decimal degrees
+	dec: declination in decimal degrees
+	ra_d,  ra_m,  ra_s:  sexagesimal degrees, arcmins and arcsecs of right ascensions
+	dec_d, dec_m, dec_s: sexagesimal degrees, arcmins and arcsecs of declination
+	ra_H,  ra_M,  ra_S:  hours, minutes and seconds of right ascension
+	dec_H, rec_M, dec_S: hours, minutes and seconds of declination (doesn't make much sense)
+
+	tag is prefixed to the format, with sep as the separator. This lets one prefix
+	the survey name without needing to rewrite the whole format string.
+	"""
+	rad = to_sexa(ra%360)
+	rah = to_sexa(ra/15%24)
+	ded = to_sexa(dec)
+	deh = to_sexa(dec/15)
+	prefix = tag + sep if tag is not None else ""
+	return prefix + fmt % {
+		"ra": ra, "dec": dec,
+		"ra_d" :rad[0]*rad[1], "ra_m" : rad[2], "ra_s" : rad[3],
+		"ra_H" :rah[0]*rah[1], "ra_M" : rah[2], "ra_S" : rah[3],
+		"dec_d":ded[0]*ded[1], "dec_m": ded[2], "dec_s": ded[3],
+		"dec_H":deh[0]*deh[1], "dec_M": deh[2], "dec_S": deh[3]}
