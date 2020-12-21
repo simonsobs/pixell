@@ -34,7 +34,7 @@ class ndmap(np.ndarray):
 	that the WCS only has two axes with unit degrees. The ndmap itself uses
 	radians for everything."""
 	def __new__(cls, arr, wcs):
-		"""Wraps a numpy and bounding box into an ndmap."""
+		"""Wraps a numpy and a wcslib world coordinate system object into an ndmap."""
 		obj = np.asarray(arr).view(cls)
 		obj.wcs = wcs.deepcopy()
 		return obj
@@ -51,7 +51,8 @@ class ndmap(np.ndarray):
 		return ndmap(np.copy(self,order), self.wcs)
 	def sky2pix(self, coords, safe=True, corner=False): return sky2pix(self.shape, self.wcs, coords, safe, corner)
 	def pix2sky(self, pix,    safe=True, corner=False): return pix2sky(self.shape, self.wcs, pix,    safe, corner)
-	def box(self, corner=True): return box(self.shape, self.wcs, corner=corner)
+	def corners(self, npoint=10, corner=True): return corners(self.shape, self.wcs, npoint=npoint, corner=corner)
+	def box(self, npoint=10, corner=True): return box(self.shape, self.wcs, npoint=npoint, corner=corner)
 	def pixbox_of(self,oshape,owcs): return pixbox_of(self.wcs, oshape,owcs)
 	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
@@ -85,9 +86,9 @@ class ndmap(np.ndarray):
 	def autocrop(self, method="plain", value="auto", margin=0, factors=None, return_info=False): return autocrop(self, method, value, margin, factors, return_info)
 	def apod(self, width, profile="cos", fill="zero"): return apod(self, width, profile=profile, fill=fill)
 	def stamps(self, pos, shape, aslist=False): return stamps(self, pos, shape, aslist=aslist)
-	def distance_from(self, points, omap=None, odomains=None, domains=False, method="bubble", rmax=None, step=1024): return distance_from(self.shape, self.wcs, points, omap=omap, odomains=odomains, domains=domains, method=method, rmax=rmax, step=step)
-	def distance_transform(self, omap=None, rmax=None): return distance_transform(self, omap=omap, rmax=rmax)
-	def labeled_distance_transform(self, omap=None, odomains=None, rmax=None): return labeled_distance_transform(self, omap=omap, odomains=odomains, rmax=rmax)
+	def distance_from(self, points, omap=None, odomains=None, domains=False, method="cellgrid", rmax=None, step=1024): return distance_from(self.shape, self.wcs, points, omap=omap, odomains=odomains, domains=domains, method=method, rmax=rmax, step=step)
+	def distance_transform(self, omap=None, rmax=None, method="cellgrid"): return distance_transform(self, omap=omap, rmax=rmax, method=method)
+	def labeled_distance_transform(self, omap=None, odomains=None, rmax=None, method="cellgrid"): return labeled_distance_transform(self, omap=omap, odomains=odomains, rmax=rmax, method=method)
 	@property
 	def plain(self): return ndmap(self, wcsutils.WCS(naxis=2))
 	def padslice(self, box, default=np.nan): return padslice(self, box, default=default)
@@ -121,9 +122,9 @@ class ndmap(np.ndarray):
 	def submap(self, box, mode=None, wrap="auto"):
 		"""Extract the part of the map inside the given coordinate box
 		box : array_like
-			The [[fromy,fromx],[toy,tox]] bounding box to select.
-			The resulting map will have a bounding box as close
-			as possible to this, but will differ slightly due to
+			The [[fromy,fromx],[toy,tox]] coordinate box to select.
+			The resulting map will have bottom-left and top-right corners
+			as close as possible to this, but will differ slightly due to
 			the finite pixel size.
 		mode : str
 			How to handle partially selected pixels:
@@ -141,8 +142,8 @@ class ndmap(np.ndarray):
 def submap(map, box, mode=None, wrap="auto", iwcs=None):
 	"""Extract the part of the map inside the given coordinate box
 	box : array_like
-		The [[fromy,fromx],[toy,tox]] bounding box to select.
-		The resulting map will have a bounding box as close
+		The [[fromy,fromx],[toy,tox]] coordinate box to select.
+		The resulting map will have corners as close
 		as possible to this, but will differ slightly due to
 		the finite pixel size.
 	mode : str
@@ -169,11 +170,10 @@ def submap(map, box, mode=None, wrap="auto", iwcs=None):
 	return omap
 
 def subinds(shape, wcs, box, mode=None, cap=True, noflip=False):
-	"""Helper function for submap. Translates the bounding
-	box provided into a pixel units. Assumes rectangular
-	coordinates.
+	"""Helper function for submap. Translates the coordinate box provided
+	into a pixel units.
 
-	When translated to box into pixels, the result will in general have
+	When box is translated into pixels, the result will in general have
 	fractional pixels, which need to be rounded before we can do any slicing.
 	To get as robust results as possible, we want
 	 1. two boxes that touch should results in iboxses that also touch.
@@ -277,8 +277,26 @@ class Geometry:
 	def copy(self):
 		return Geometry(tuple(self.shape), self.wcs.deepcopy())
 
-def box(shape, wcs, npoint=10, corner=True):
-	"""Compute a bounding box for the given geometry."""
+def corners(shape, wcs, npoint=10, corner=True):
+	"""Return the coordinates of the bottom left and top right corners of the
+	geometry given by shape, wcs.
+
+	If corner==True it is similar to
+	enmap.pix2sky([[-0.5,shape[-2]-0.5],[-0.5,shape[-1]-0.5]]). That is, it
+	return sthe coordinate of the bottom left corner of the bottom left pixel and
+	the top right corner of the top right pixel. If corner==False, then it
+	instead returns the corresponding pixel centers.
+
+	It differs from the simple pix2sky calls above by handling 2*pi wrapping
+	ambiguities differently. enmap.corners ensures that the coordinates returned
+	are on the same side of the wrapping cut so that the coordinates of the
+	two corners can be compared without worrying about wrapping. It does this
+	by evaluating a set of intermediate points between the corners and counting
+	and undoing any sudden jumps in coordinates it finds. This is controlled by
+	the npoint option. The default of 10 should be more than enough.
+
+	Returns [{bottom left,top right},{dec,ra}] (or equivalent for other coordinate
+	systems."""
 	# Because of wcs's wrapping, we need to evaluate several
 	# extra pixels to make our unwinding unambiguous
 	pix = np.array([np.linspace(0,shape[-2],num=npoint,endpoint=True),
@@ -289,6 +307,9 @@ def box(shape, wcs, npoint=10, corner=True):
 		return np.array(coords).T[[0,-1]]*get_unit(wcs)
 	else:
 		return utils.unwind(np.array(coords)*get_unit(wcs)).T[[0,-1]]
+def box(shape, wcs, npoint=10, corner=True):
+	"""Alias for corners."""
+	return corners(shape, wcs, npoint=npoint, corner=corner)
 
 def enmap(arr, wcs=None, dtype=None, copy=True):
 	"""Construct an ndmap from data.
@@ -466,6 +487,7 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 		pix    = map.sky2pix(somap.posmap(), safe=safe)
 		y1     = max(np.min(pix[0]).astype(int)-3,0)
 		y2     = min(np.max(pix[0]).astype(int)+3,map.shape[-2])
+		if y2-y1 <= 0: continue
 		pix[0] -= y1
 		somap[:] = utils.interpol(map[...,y1:y2,:], pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
 	return omap
@@ -476,7 +498,7 @@ def pixbox_of(iwcs,oshape,owcs):
 	"""
 	# First check that our wcs is compatible
 	assert wcsutils.is_compatible(iwcs, owcs), "Incompatible wcs in enmap.extract: %s vs. %s" % (str(iwcs), str(owcs))
-	# Find the bounding box of the output in terms of input pixels.
+	# Find the pixel bounding box of the output in terms of the input.
 	# This is simple because our wcses are compatible, so they
 	# can only differ by a simple pixel offset. Here pixoff is
 	# pos_input - pos_output. This is equivalent to the coordinates of
@@ -1033,15 +1055,19 @@ def fft(emap, omap=None, nthread=0, normalize=True):
 	be directly compared to theory (apart from mask corrections)
 	, i.e., pixel area factors are corrected for.
 	"""
-	res = samewcs(enfft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
-	if normalize: res /= np.prod(emap.shape[-2:])**0.5
-	if normalize in ["phy","phys","physical"]: res *= emap.pixsize()**0.5
+	res  = samewcs(enfft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
+	norm = 1
+	if normalize: norm /= np.prod(emap.shape[-2:])**0.5
+	if normalize in ["phy","phys","physical"]: norm *= emap.pixsize()**0.5
+	if norm != 1: res *= norm
 	return res
 def ifft(emap, omap=None, nthread=0, normalize=True):
 	"""Performs the 2d iFFT of the complex enmap given, and returns a pixel-space enmap."""
-	res = samewcs(enfft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
-	if normalize: res /= np.prod(emap.shape[-2:])**0.5
-	if normalize in ["phy","phys","physical"]: res /= emap.pixsize()**0.5
+	res  = samewcs(enfft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
+	norm = 1
+	if normalize: norm /= np.prod(emap.shape[-2:])**0.5
+	if normalize in ["phy","phys","physical"]: norm /= emap.pixsize()**0.5
+	if norm != 1: res *= norm
 	return res
 
 # These are shortcuts for transforming from T,Q,U real-space maps to
@@ -1141,8 +1167,7 @@ def inpaint(map, mask, method="nearest"):
 	return omap
 
 def calc_window(shape):
-	"""Compute fourier-space window function. Like the other fourier-based
-	functions in this module, equi-spaced pixels are assumed. Since the
+	"""Compute fourier-space window function. Since the
 	window function is separable, it is returned as an x and y part,
 	such that window = wy[:,None]*wx[None,:]."""
 	wy = np.sinc(np.fft.fftfreq(shape[-2]))
@@ -1172,9 +1197,9 @@ def samewcs(arr, *args):
 def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=False, ref=None, **kwargs):
 	"""Consruct a shape,wcs pair suitable for initializing enmaps.
 	pos can be either a {dec,ra} center position or a [{from,to},{dec,ra}]
-	bounding box. At least one of res or shape must be specified.
-	If res is specified, it must either be a number, in
-	which the same resolution is used in each direction,
+	array giving the bottom-left and top-right corners of the desired geometry.
+	At least one of res or shape must be specified.  If res is specified, it
+	must either be a number, in which the same resolution is used in each direction,
 	or {dec,ra}. If shape is specified, it must be at least [2]. All angles
 	are given in radians.
 
@@ -1187,8 +1212,8 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	outside the physical map). This makes it easier to generate maps that are compatible
 	up to an integer pixel offset, as well as maps that are compatible with the predefined
 	spherical harmonics transform ring weights. The cost of this tweaking is that the
-	resulting bounding box can differ by a fraction of a pixel from the one requested.
-	To force the geometry to exactly match the bounding box provided you can pass force=True.
+	resulting corners can differ by a fraction of a pixel from the one requested.
+	To force the geometry to exactly match the corners provided you can pass force=True.
 	It is also possible to manually choose the reference point via the ref argument, which
 	must be a dec,ra coordinate pair (in radians)."""
 	# We use radians by default, while wcslib uses degrees, so need to rescale.
@@ -1198,7 +1223,7 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	pos = np.asarray(pos)*scale
 	if res is not None: res = np.asarray(res)*scale
 	# Apply a standard reference points unless one is manually specified, or we
-	# want to force the bounding box to exactly match the input.
+	# want to force the corners to exactly match the input.
 	try:
 		# if it's a (dec,ra) tuple in radians, make it (ra,dec) in degrees.
 		ref = (ref[1] * scale, ref[0] * scale)
@@ -1474,7 +1499,7 @@ def downgrade_geometry(shape, wcs, factor):
 def upgrade_geometry(shape, wcs, factor):
 	return scale_geometry(shape, wcs, factor)
 
-def distance_transform(mask, omap=None, rmax=None):
+def distance_transform(mask, omap=None, rmax=None, method="cellgrid"):
 	"""Given a boolean mask, produce an output map where the value in each pixel is the distance
 	to the closest false pixel in the mask. See distance_from for the meaning of rmax."""
 	from pixell import distances
@@ -1482,12 +1507,12 @@ def distance_transform(mask, omap=None, rmax=None):
 	for i in range(len(mask.preflat)):
 		edge_pix = np.array(distances.find_edges(mask.preflat[i]))
 		edge_pos = mask.pix2sky(edge_pix, safe=False)
-		omap.preflat[i] = distance_from(mask.shape, mask.wcs, edge_pos, rmax=rmax)
+		omap.preflat[i] = distance_from(mask.shape, mask.wcs, edge_pos, rmax=rmax, method=method)
 	# Distance is always zero inside mask
 	omap *= mask
 	return omap
 
-def labeled_distance_transform(labels, omap=None, odomains=None, rmax=None):
+def labeled_distance_transform(labels, omap=None, odomains=None, rmax=None, method="cellgrid"):
 	"""Given a map of labels going from 1 to nlabel, produce an output map where the value
 	in each pixel is the distance to the closest nonzero pixel in the labels, as well as a
 	map of which label each pixel was closest to. See distance_from for the meaning of rmax."""
@@ -1497,7 +1522,7 @@ def labeled_distance_transform(labels, omap=None, odomains=None, rmax=None):
 	for i in range(len(labels.preflat)):
 		edge_pix = np.array(distances.find_edges_labeled(labels.preflat[i]))
 		edge_pos = labels.pix2sky(edge_pix, safe=False)
-		_, domains = distance_from(labels.shape, labels.wcs, edge_pos, omap=omap.preflat[i], domains=True, rmax=rmax)
+		_, domains = distance_from(labels.shape, labels.wcs, edge_pos, omap=omap.preflat[i], domains=True, rmax=rmax, method=method)
 		# Get the edge_pix to label mapping
 		mapping = labels.preflat[i][edge_pix[0],edge_pix[1]]
 		mask    = domains >= 0
@@ -1507,11 +1532,11 @@ def labeled_distance_transform(labels, omap=None, odomains=None, rmax=None):
 		omap.preflat[i][mask] = 0
 	return omap, odomains
 
-def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, method="bubble", rmax=None, step=1024):
+def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, method="cellgrid", rmax=None, step=1024):
 	"""Find the distance from each pixel in the geometry (shape, wcs) to the
 	nearest of the points[{dec,ra},npoint], returning a [ny,nx] map of distances.
 	If domains==True, then it will also return a [ny,nx] map of the index of the point
-	that was closest to each pixel. If rmax is specified and the method is "bubble", then
+	that was closest to each pixel. If rmax is specified and the method is "cellgrid" or "bubble", then
 	distances will only be computed up to rmax. Beyond that distance will be set to rmax
 	and domains to -1. This can be used to speed up the calculation when one only cares
 	about nearby areas."""
@@ -1524,6 +1549,9 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 		if method == "bubble":
 			point_pix = utils.nint(sky2pix(shape, wcs, points))
 			return distances.distance_from_points_bubble_separable(dec, ra, points, point_pix, rmax=rmax, omap=omap, odomains=odomains, domains=domains)
+		elif method == "cellgrid":
+			point_pix = utils.nint(sky2pix(shape, wcs, points))
+			return distances.distance_from_points_cellgrid(dec, ra, points, point_pix, rmax=rmax, omap=omap, odomains=odomains, domains=domains)
 		elif method == "simple":
 			return distances.distance_from_points_simple_separable(dec, ra, points, omap=omap, odomains=odomains, domains=domains)
 		else: raise ValueError("Unknown method '%s'" % str(method))
@@ -1535,6 +1563,10 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 			pos = posmap(shape, wcs, safe=False)
 			point_pix = utils.nint(sky2pix(shape, wcs, points))
 			return distances.distance_from_points_bubble(pos, points, point_pix, rmax=rmax, omap=omap, odomains=odomains, domains=domains)
+		elif method == "cellgrid":
+			pos = posmap(shape, wcs, safe=False)
+			point_pix = utils.nint(sky2pix(shape, wcs, points))
+			return distances.distance_from_points_cellgrid(pos[0], pos[1], points, point_pix, rmax=rmax, omap=omap, odomains=odomains, domains=domains)
 		elif method == "simple":
 			geo = Geometry(shape, wcs)
 			for y in range(0, shape[-2], step):
