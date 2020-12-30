@@ -8,13 +8,31 @@ degree = np.pi/180
 arcmin = degree/60
 arcsec = arcmin/60
 fwhm   = 1.0/(8*np.log(2))**0.5
-T_cmb = 2.725
+T_cmb = 2.72548 # +/- 0.00057
 c  = 299792458.0
 h  = 6.62606957e-34
 k  = 1.3806488e-23
 AU = 149597870700.0
+R_earth = 6378.1e3
 day2sec = 86400.
 yr2days = 365.2422
+yr = yr2days*day2sec
+ly = c*yr
+pc = AU/arcsec
+
+# Solar system constants. Nice to have, unlikely to clash with anything, and
+# don't take up much space.
+R_sun     = 695700e3  ; M_sun     = 1.9885e30   ; r_sun     =  29e3*ly
+R_mercury = 2439.5e3  ; M_mercury = 0.330e24    ; r_mercury =  57.9e9
+R_venus   = 6052e3    ; M_venus   = 4.87e24     ; r_venus   = 108.2e9
+R_earth   = 6378.1e3  ; M_earth   = 5.9722e24   ; r_earth   = 149.6e9
+R_moon    = 1737.5e3  ; M_moon    = 0.073e24    ; r_moon    =   0.384e9
+R_mars    = 3396e3    ; M_mars    = 0.642e24    ; r_mars    = 227.9e9
+R_jupiter =71492e3    ; M_jupiter = 1898e24     ; r_jupiter = 778.6e9
+R_saturn  =60268e3    ; M_saturn  = 568e24      ; r_saturn  =1433.5e9
+R_uranus  =25559e3    ; M_uranus  = 86.8e24     ; r_uranus  =2872.5e9
+R_neptune =24764e3    ; M_neptune = 102e24      ; r_neptune =4495.1e9
+R_pluto   = 1185e3    ; M_pluto   = 0.0146e24   ; r_pluto   =5906.4e9
 
 # These are like degree, arcmin and arcsec, but turn any lists
 # they touch into arrays.
@@ -60,6 +78,11 @@ def find(array, vals, default=None):
 		if default is None: raise ValueError("Value not found in array")
 		else: res[bad] = default
 	return res
+
+def find_any(array, vals):
+	"""Like find, but skips missing entries"""
+	res = find(array, vals, default=-1)
+	return res[res >= 0]
 
 def contains(array, vals):
 	"""Given an array[n], returns a boolean res[n], which is True
@@ -902,7 +925,7 @@ def pole_wrap(pos):
 def parse_box(desc):
 	"""Given a string of the form from:to,from:to,from:to,... returns
 	an array [{from,to},:]"""
-	return np.array([[float(word) for word in pair] for pair in desc.split(",")]).T
+	return np.array([[float(word) for word in pair.split(":")] for pair in desc.split(",")]).T
 
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result
@@ -1458,7 +1481,7 @@ def split_outside(a, sep, start="([{", end=")]}"):
 	return res
 
 def find_equal_groups(a, tol=0):
-	"""Given a[nsamp,ndim], return groups[ngroup][{ind,ind,ind,...}]
+	"""Given a[nsamp,...], return groups[ngroup][{ind,ind,ind,...}]
 	of indices into a for which all the values in the second index
 	of a is the same. find_equal_groups([[0,1],[1,2],[0,1]]) -> [[0,2],[1]]."""
 	def calc_diff(a1,a2):
@@ -2114,3 +2137,63 @@ def encode_array_if_necessary(arr):
 			return np.char.encode(arr)
 		else:
 			return arr
+
+### These functions deal with the conversion between decimal and sexagesimal ###
+
+def to_sexa(x):
+	"""Given a number in decimal degrees x, returns (sign,deg,min,sec).
+	Given this x can be reconstructed as sign*(deg+min/60+sec/3600).
+	"""
+	# Handle both scalars and vectors efficiently. We need to do it like this
+	# because the vector stuff is 30x slower than the scalar implementation for
+	# single numbers. This construction only has a factor 2 slowdown.
+	try:
+		len(x)
+		x    = np.asanyarray(x)
+		sign = np.where(x < 0, -1, 1)*1
+		ifun = np.int32
+	except TypeError:
+		sign = -1 if x < 0 else 1
+		ifun = int
+	x    = x*sign
+	deg  = ifun(x)
+	x    = (x-deg)*60
+	min  = ifun(x)
+	sec  = (x-min)*60
+	return (sign, deg, min, sec)
+
+def from_sexa(sign, deg, min, sec):
+	"""Reconstruct a decimal number from the sexagesimal representation."""
+	return sign*(deg+min/60+sec/3600)
+
+def format_sexa(x, fmt="%(deg)+03d:%(min)02d:%(sec)06.2f"):
+	sign, deg, min, sec = to_sexa(x)
+	return fmt % {"deg": sign*deg, "min": min, "sec": sec}
+
+def jname(ra, dec, fmt="J%(ra_H)02d%(ra_M)02d%(ra_S)02d%(dec_d)+02d%(dec_m)02d%(dec_s)02d", tag=None, sep=" "):
+	"""Build a systematic object name for the given ra/dec in degrees. The format
+	is specified using the format string fmt. The default format string is
+	'J%(ra_H)02d%(ra_M)02d%(ra_S)02d%(dec_d)+02d%(dec_m)02d%(dec_s)02d'. This is
+	not fully compliant with the IAU specification, but it's what is used in ACT.
+	Formatting uses standard python string interpolation. The available variables are
+	ra:  right ascension in decimal degrees
+	dec: declination in decimal degrees
+	ra_d,  ra_m,  ra_s:  sexagesimal degrees, arcmins and arcsecs of right ascensions
+	dec_d, dec_m, dec_s: sexagesimal degrees, arcmins and arcsecs of declination
+	ra_H,  ra_M,  ra_S:  hours, minutes and seconds of right ascension
+	dec_H, rec_M, dec_S: hours, minutes and seconds of declination (doesn't make much sense)
+
+	tag is prefixed to the format, with sep as the separator. This lets one prefix
+	the survey name without needing to rewrite the whole format string.
+	"""
+	rad = to_sexa(ra%360)
+	rah = to_sexa(ra/15%24)
+	ded = to_sexa(dec)
+	deh = to_sexa(dec/15)
+	prefix = tag + sep if tag is not None else ""
+	return prefix + fmt % {
+		"ra": ra, "dec": dec,
+		"ra_d" :rad[0]*rad[1], "ra_m" : rad[2], "ra_s" : rad[3],
+		"ra_H" :rah[0]*rah[1], "ra_M" : rah[2], "ra_S" : rah[3],
+		"dec_d":ded[0]*ded[1], "dec_m": ded[2], "dec_s": ded[3],
+		"dec_H":deh[0]*deh[1], "dec_M": deh[2], "dec_S": deh[3]}
