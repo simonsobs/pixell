@@ -541,10 +541,8 @@ def almxfl(alm,lfilter=None,ainfo=None):
 	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
 	if callable(lfilter):
 		l = np.arange(ainfo.lmax+1.0)
-		ofilt = lfilter(l)
-	else:
-		ofilt = lfilter
-	return ainfo.lmul(alm, ofilt)
+		lfilter = lfilter(l)
+	return ainfo.lmul(alm, lfilter)
 
 def filter(imap,lfilter,ainfo=None,lmax=None):
 	"""Filter a map isotropically by a function.
