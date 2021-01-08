@@ -2203,7 +2203,7 @@ class ndmap_proxy_fits(ndmap_proxy):
 		self.stokes_flips = get_stokes_flips(hdu)
 		def slist(vals):
 			return ",".join([str(v) for v in vals])
-		if verbose and np.any(self.stokes_flips) >= 0:
+		if verbose and np.any(self.stokes_flips >= 0):
 			print("Converting index %s for Stokes axis %s from IAU to COSMO in %s" % (
 				slist(self.stokes_flips[self.stokes_flips >= 0]),
 				slist(np.where(self.stokes_flips >= 0)[0]),
