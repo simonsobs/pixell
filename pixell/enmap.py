@@ -34,7 +34,7 @@ class ndmap(np.ndarray):
 	that the WCS only has two axes with unit degrees. The ndmap itself uses
 	radians for everything."""
 	def __new__(cls, arr, wcs):
-		"""Wraps a numpy and bounding box into an ndmap."""
+		"""Wraps a numpy and a wcslib world coordinate system object into an ndmap."""
 		obj = np.asarray(arr).view(cls)
 		obj.wcs = wcs.deepcopy()
 		return obj
@@ -51,7 +51,8 @@ class ndmap(np.ndarray):
 		return ndmap(np.copy(self,order), self.wcs)
 	def sky2pix(self, coords, safe=True, corner=False): return sky2pix(self.shape, self.wcs, coords, safe, corner)
 	def pix2sky(self, pix,    safe=True, corner=False): return pix2sky(self.shape, self.wcs, pix,    safe, corner)
-	def box(self, corner=True): return box(self.shape, self.wcs, corner=corner)
+	def corners(self, npoint=10, corner=True): return corners(self.shape, self.wcs, npoint=npoint, corner=corner)
+	def box(self, npoint=10, corner=True): return box(self.shape, self.wcs, npoint=npoint, corner=corner)
 	def pixbox_of(self,oshape,owcs): return pixbox_of(self.wcs, oshape,owcs)
 	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
@@ -121,9 +122,9 @@ class ndmap(np.ndarray):
 	def submap(self, box, mode=None, wrap="auto"):
 		"""Extract the part of the map inside the given coordinate box
 		box : array_like
-			The [[fromy,fromx],[toy,tox]] bounding box to select.
-			The resulting map will have a bounding box as close
-			as possible to this, but will differ slightly due to
+			The [[fromy,fromx],[toy,tox]] coordinate box to select.
+			The resulting map will have bottom-left and top-right corners
+			as close as possible to this, but will differ slightly due to
 			the finite pixel size.
 		mode : str
 			How to handle partially selected pixels:
@@ -141,8 +142,8 @@ class ndmap(np.ndarray):
 def submap(map, box, mode=None, wrap="auto", iwcs=None):
 	"""Extract the part of the map inside the given coordinate box
 	box : array_like
-		The [[fromy,fromx],[toy,tox]] bounding box to select.
-		The resulting map will have a bounding box as close
+		The [[fromy,fromx],[toy,tox]] coordinate box to select.
+		The resulting map will have corners as close
 		as possible to this, but will differ slightly due to
 		the finite pixel size.
 	mode : str
@@ -169,11 +170,10 @@ def submap(map, box, mode=None, wrap="auto", iwcs=None):
 	return omap
 
 def subinds(shape, wcs, box, mode=None, cap=True, noflip=False):
-	"""Helper function for submap. Translates the bounding
-	box provided into a pixel units. Assumes rectangular
-	coordinates.
+	"""Helper function for submap. Translates the coordinate box provided
+	into a pixel units.
 
-	When translated to box into pixels, the result will in general have
+	When box is translated into pixels, the result will in general have
 	fractional pixels, which need to be rounded before we can do any slicing.
 	To get as robust results as possible, we want
 	 1. two boxes that touch should results in iboxses that also touch.
@@ -277,8 +277,26 @@ class Geometry:
 	def copy(self):
 		return Geometry(tuple(self.shape), self.wcs.deepcopy())
 
-def box(shape, wcs, npoint=10, corner=True):
-	"""Compute a bounding box for the given geometry."""
+def corners(shape, wcs, npoint=10, corner=True):
+	"""Return the coordinates of the bottom left and top right corners of the
+	geometry given by shape, wcs.
+
+	If corner==True it is similar to
+	enmap.pix2sky([[-0.5,shape[-2]-0.5],[-0.5,shape[-1]-0.5]]). That is, it
+	return sthe coordinate of the bottom left corner of the bottom left pixel and
+	the top right corner of the top right pixel. If corner==False, then it
+	instead returns the corresponding pixel centers.
+
+	It differs from the simple pix2sky calls above by handling 2*pi wrapping
+	ambiguities differently. enmap.corners ensures that the coordinates returned
+	are on the same side of the wrapping cut so that the coordinates of the
+	two corners can be compared without worrying about wrapping. It does this
+	by evaluating a set of intermediate points between the corners and counting
+	and undoing any sudden jumps in coordinates it finds. This is controlled by
+	the npoint option. The default of 10 should be more than enough.
+
+	Returns [{bottom left,top right},{dec,ra}] (or equivalent for other coordinate
+	systems."""
 	# Because of wcs's wrapping, we need to evaluate several
 	# extra pixels to make our unwinding unambiguous
 	pix = np.array([np.linspace(0,shape[-2],num=npoint,endpoint=True),
@@ -289,6 +307,9 @@ def box(shape, wcs, npoint=10, corner=True):
 		return np.array(coords).T[[0,-1]]*get_unit(wcs)
 	else:
 		return utils.unwind(np.array(coords)*get_unit(wcs)).T[[0,-1]]
+def box(shape, wcs, npoint=10, corner=True):
+	"""Alias for corners."""
+	return corners(shape, wcs, npoint=npoint, corner=corner)
 
 def enmap(arr, wcs=None, dtype=None, copy=True):
 	"""Construct an ndmap from data.
@@ -477,7 +498,7 @@ def pixbox_of(iwcs,oshape,owcs):
 	"""
 	# First check that our wcs is compatible
 	assert wcsutils.is_compatible(iwcs, owcs), "Incompatible wcs in enmap.extract: %s vs. %s" % (str(iwcs), str(owcs))
-	# Find the bounding box of the output in terms of input pixels.
+	# Find the pixel bounding box of the output in terms of the input.
 	# This is simple because our wcses are compatible, so they
 	# can only differ by a simple pixel offset. Here pixoff is
 	# pos_input - pos_output. This is equivalent to the coordinates of
@@ -1176,9 +1197,9 @@ def samewcs(arr, *args):
 def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=False, ref=None, **kwargs):
 	"""Consruct a shape,wcs pair suitable for initializing enmaps.
 	pos can be either a {dec,ra} center position or a [{from,to},{dec,ra}]
-	bounding box. At least one of res or shape must be specified.
-	If res is specified, it must either be a number, in
-	which the same resolution is used in each direction,
+	array giving the bottom-left and top-right corners of the desired geometry.
+	At least one of res or shape must be specified.  If res is specified, it
+	must either be a number, in which the same resolution is used in each direction,
 	or {dec,ra}. If shape is specified, it must be at least [2]. All angles
 	are given in radians.
 
@@ -1191,8 +1212,8 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	outside the physical map). This makes it easier to generate maps that are compatible
 	up to an integer pixel offset, as well as maps that are compatible with the predefined
 	spherical harmonics transform ring weights. The cost of this tweaking is that the
-	resulting bounding box can differ by a fraction of a pixel from the one requested.
-	To force the geometry to exactly match the bounding box provided you can pass force=True.
+	resulting corners can differ by a fraction of a pixel from the one requested.
+	To force the geometry to exactly match the corners provided you can pass force=True.
 	It is also possible to manually choose the reference point via the ref argument, which
 	must be a dec,ra coordinate pair (in radians)."""
 	# We use radians by default, while wcslib uses degrees, so need to rescale.
@@ -1202,7 +1223,7 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	pos = np.asarray(pos)*scale
 	if res is not None: res = np.asarray(res)*scale
 	# Apply a standard reference points unless one is manually specified, or we
-	# want to force the bounding box to exactly match the input.
+	# want to force the corners to exactly match the input.
 	try:
 		# if it's a (dec,ra) tuple in radians, make it (ra,dec) in degrees.
 		ref = (ref[1] * scale, ref[0] * scale)
