@@ -5,7 +5,6 @@ DEPDIR=_deps
 cd $DEPDIR
 [ -e libsharp ] || git clone https://github.com/Libsharp/libsharp # do we want a frozen version?
 cd libsharp
-echo $TRAVIS
 echo $CIBW_PLATFORM
 echo $CIBUILDWHEEL
 # Only the last dockerenv check actually works for cibuildwheel
