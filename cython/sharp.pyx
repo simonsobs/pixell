@@ -376,7 +376,8 @@ cdef class alm_info:
 				for c1 in range(ncomp):
 					alm[c1,lm] = 0
 					for c2 in range(ncomp):
-						alm[c1,lm] += lmat[c1,c2,l]*v[c2]
+						pass
+						#alm[c1,lm] += lmat[c1,c2,l]*v[c2]
 			# If lmat is too short, interpret missing values as zero
 			for l in range(lcap, self.lmax+1):
 				lm = mstart[m]+l*self.stride
@@ -401,7 +402,8 @@ cdef class alm_info:
 				for c1 in range(ncomp):
 					alm[c1,lm] = 0
 					for c2 in range(ncomp):
-						alm[c1,lm] += lmat[c1,c2,l]*v[c2]
+						pass
+						#alm[c1,lm] += lmat[c1,c2,l]*v[c2]
 			for l in range(lcap, self.lmax+1):
 				lm = mstart[m]+l*self.stride
 				for c1 in range(ncomp):
@@ -548,8 +550,10 @@ cdef execute_helper(int type,
 		alm_info ainfo, np.ndarray[np.uintp_t,ndim=1] alm,
 		map_info minfo, np.ndarray[np.uintp_t,ndim=1] map,
 		int spin=0, int ntrans=1, int flags=0):
+	#csharp.sharp_execute(type, spin, <void*>&alm[0], <void*>&map[0],
+	#		minfo.geom, ainfo.info, ntrans, flags, NULL, NULL)
 	csharp.sharp_execute(type, spin, <void*>&alm[0], <void*>&map[0],
-			minfo.geom, ainfo.info, ntrans, flags, NULL, NULL)
+			minfo.geom, ainfo.info, flags, NULL, NULL)
 
 cdef csharp.sharp_geom_info * make_geometry_helper(
 		int ntheta,
