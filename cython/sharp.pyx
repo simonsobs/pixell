@@ -376,8 +376,7 @@ cdef class alm_info:
 				for c1 in range(ncomp):
 					alm[c1,lm] = 0
 					for c2 in range(ncomp):
-						pass
-						#alm[c1,lm] += lmat[c1,c2,l]*v[c2]
+						alm[c1,lm] = alm[c1,lm] + lmat[c1,c2,l] * v[c2]
 			# If lmat is too short, interpret missing values as zero
 			for l in range(lcap, self.lmax+1):
 				lm = mstart[m]+l*self.stride
@@ -402,8 +401,7 @@ cdef class alm_info:
 				for c1 in range(ncomp):
 					alm[c1,lm] = 0
 					for c2 in range(ncomp):
-						pass
-						#alm[c1,lm] += lmat[c1,c2,l]*v[c2]
+						alm[c1,lm] = alm[c1,lm] + lmat[c1,c2,l] * v[c2]
 			for l in range(lcap, self.lmax+1):
 				lm = mstart[m]+l*self.stride
 				for c1 in range(ncomp):
