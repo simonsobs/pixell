@@ -12,6 +12,7 @@ T_cmb = 2.72548 # +/- 0.00057
 c  = 299792458.0
 h  = 6.62606957e-34
 k  = 1.3806488e-23
+G  = 6.67430e-11
 AU = 149597870700.0
 R_earth = 6378.1e3
 day2sec = 86400.
@@ -955,8 +956,8 @@ def allgather(a, comm):
 def allgatherv(a, comm, axis=0):
 	"""Perform an mpi allgatherv along the specified axis of the array
 	a, returning an array with the individual process arrays concatenated
-	along that dimension. For example gatherv([[1,2]],comm) on one task
-	and gatherv([[3,4],[5,6]],comm) on another task results in
+	along that dimension. For example allgatherv([[1,2]],comm) on one task
+	and allgatherv([[3,4],[5,6]],comm) on another task results in
 	[[1,2],[3,4],[5,6]] for both tasks."""
 	a  = np.asarray(a)
 	fa = moveaxis(a, axis, 0)
