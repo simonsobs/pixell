@@ -521,39 +521,46 @@ def rand_alm_white(ainfo, pre=None, alm=None, seed=None, dtype=np.complex128, m_
 	if m_major: ainfo.transpose_alm(alm,alm)
 	return alm
 
-def almxfl(alm,lfunc,ainfo=None):
-	"""Filter alms isotropically by a function.
-	Returns alm * lfunc(ell)
+def almxfl(alm,lfilter=None,ainfo=None):
+	"""Filter alms isotropically. Unlike healpy (at time of writing),
+	this function allows leading dimensions in the alm, and also allows
+	the filter to be specified as a function instead of an array.
 
 	Args:
 	    alm: (...,N) ndarray of spherical harmonic alms
-	    lfunc: a function mapping multipole ell to the filtering expression
-	    ainfo: If ainfo is provided, it is an alm_info describing the layout
-	of the input alm. Otherwise it will be inferred from the alm itself.
+	    lfilter: either an array containing the 1d filter to apply starting with ell=0
+    	and separated by delta_ell=1, or a function mapping multipole ell to the 
+	    filtering expression.
+	    ainfo: 	If ainfo is provided, it is an alm_info describing the layout 
+     	of the input alm. Otherwise it will be inferred from the alm itself.
 
 	Returns:
-	    falm: The filtered alms alm * lfunc(ell)
+	    falm: The filtered alms a_{l,m} * lfilter(l)
 	"""
 	alm   = np.asarray(alm)
 	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
-	l = np.arange(ainfo.lmax+1.0)
-	return ainfo.lmul(alm, lfunc(l))
+	if callable(lfilter):
+		l = np.arange(ainfo.lmax+1.0)
+		lfilter = lfilter(l)
+	return ainfo.lmul(alm, lfilter)
 
-def filter(imap,lfunc,ainfo=None,lmax=None):
+def filter(imap,lfilter,ainfo=None,lmax=None):
 	"""Filter a map isotropically by a function.
-	Returns alm2map(map2alm(alm * lfunc(ell),lmax))
+	Returns alm2map(map2alm(alm * lfilt(ell),lmax))
 
 	Args:
 	    imap: (...,Ny,Nx) ndmap stack of enmaps.
 	    lmax: integer specifying maximum multipole beyond which the alms are zeroed
-	    lfunc: a function mapping multipole ell to the filtering expression
+	    lfilter: either an array containing the 1d filter to apply starting with ell=0
+    	and separated by delta_ell=1, or a function mapping multipole ell to the 
+	    filtering expression.
 	    ainfo: 	If ainfo is provided, it is an alm_info describing the layout 
 	of the input alm. Otherwise it will be inferred from the alm itself.
 
 	Returns:
 	    omap: (...,Ny,Nx) ndmap stack of filtered enmaps
 	"""
-	return alm2map(almxfl(map2alm(imap,ainfo=ainfo,lmax=lmax,spin=0),lfunc=lfunc,ainfo=ainfo),enmap.empty(imap.shape,imap.wcs,dtype=imap.dtype),spin=0,ainfo=ainfo)
+	return alm2map(almxfl(map2alm(imap,ainfo=ainfo,lmax=lmax,spin=0),lfilter=lfilter,ainfo=ainfo),enmap.empty(imap.shape,imap.wcs,dtype=imap.dtype),spin=0,ainfo=ainfo)
 	
 
 
