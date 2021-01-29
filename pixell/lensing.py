@@ -91,7 +91,7 @@ def phi_to_kappa(phi_alm,phi_ainfo=None):
 	    kappa_alm: The filtered alms phi_alm * l * (l+1) / 2
 	"""
 	from . import curvedsky
-	return curvedsky.almxfl(alm=phi_alm,lfunc=lambda x: x*(x+1)/2,ainfo=phi_ainfo)
+	return curvedsky.almxfl(alm=phi_alm,lfilter=lambda x: x*(x+1)/2,ainfo=phi_ainfo)
 
 def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, dtype=np.float64, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
 	from . import curvedsky, sharp
