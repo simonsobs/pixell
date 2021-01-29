@@ -93,6 +93,7 @@ schemes["gray"]    = Colorscheme("0:000000,1:ffffff")
 schemes["wmap"]    = Colorscheme("0:000080,0.15:0000ff,0.4:00ffff,0.7:ffff00,0.9:ff5500,1:800000")
 schemes["planck_old"]= Colorscheme("0:0000ff,0.33:ffedd9,0.83:ff4b00,1:640000")
 schemes["planck"]    = Colorscheme("0:0000ff,0.332:00d7ff,0.5:ffedd9,0.664:ffb400,0.828:ff4b00,1:640000")
+schemes["pcont"]    = Colorscheme("0:0000ff,0.332:00d7ff,0.5:00cc00,0.664:ffb400,0.828:ff4b00,1:640000")
 schemes["pwhite"]    = Colorscheme("0:0000ff,0.332:00d7ff,0.5:ffffff,0.55:ffedd9,0.664:ffb400,0.828:ff4b00,1:640000")
 
 schemes["hotcold"] = Colorscheme("0:0000ff,0.5:000000,1:ff0000")
