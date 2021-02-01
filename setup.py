@@ -50,9 +50,7 @@ elif sys.platform == 'darwin':
     compile_opts['extra_link_args'] = ['-fopenmp', '-Wl,-rpath,' + rpath]
 # Linux
 elif sys.platform == 'linux':
-    #compile_opts['extra_link_args'] = ['-fopenmp']
-    compile_opts['extra_link_args'] = ['-fopenmp', '-g', '-fPIC', '-Wl,-rpath,' + '/home/adriaand/local/pixell/_deps/libsharp2/build/lib']
-    #compile_opts['extra_link_args'] = ['-fopenmp', '-g', '-fPIC']
+    compile_opts['extra_link_args'] = ['-fopenmp']
 
 def pip_install(package):
     import pip
@@ -103,9 +101,6 @@ test_requirements = ['pip>=9.0',
                      'pytest-cov>=2.6',
                      'coveralls>=1.5',
                      'pytest>=4.6']
-    
-    
-    
 
 fcflags = os.getenv('FCFLAGS')
 if fcflags is None or fcflags.strip() == '':
@@ -201,12 +196,12 @@ setup(
     ext_modules=[
         Extension('pixell.sharp',
             sources=['cython/sharp.c', 'cython/sharp_utils.c'],
-            #libraries=['sharp','c_utils', 'fftpack', 'm'],
             libraries=['sharp2', 'm'],
-            #library_dirs=['_deps/libsharp/auto/lib'],
             library_dirs=['_deps/libsharp2/build/lib'],
             include_dirs=[np.get_include()],
-            **compile_opts),
+                  **dict(compile_opts,
+                         **{'extra_link_args': compile_opts['extra_link_args'] +
+                            ['-Wl,-rpath,' + os.path.abspath('_deps/libsharp2/build/lib')]})),
         Extension('pixell.distances',
             sources=['cython/distances.c','cython/distances_core.c'],
             include_dirs=[np.get_include()],
@@ -227,8 +222,6 @@ setup(
             sources=['fortran/array_ops_64.f90'],
             **compile_opts),
     ],
-    #include_dirs = ['_deps/libsharp/auto/include'],
-    #library_dirs = ['_deps/libsharp/auto/lib'],
     include_dirs = ['_deps/libsharp2/build/include'],
     library_dirs = ['_deps/libsharp2/build/lib'],
     install_requires=requirements,
