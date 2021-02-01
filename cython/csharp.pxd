@@ -38,9 +38,6 @@ cdef extern from "csharp.h":
 	void sharp_make_triangular_alm_info (int lmax, int mmax, int stride,
 		sharp_alm_info **alm_info)
 	void sharp_destroy_alm_info (sharp_alm_info *info)
-	#void sharp_execute (int type, int spin, void *alm, void *map,
-	#	sharp_geom_info *geom_info, sharp_alm_info *alm_info, int ntrans,
-	#	int flags, double *time, unsigned long long *opcnt)
 	void sharp_execute (int type, int spin, void *alm, void *map,
 		sharp_geom_info *geom_info, sharp_alm_info *alm_info,
 		int flags, double *time, unsigned long long *opcnt)

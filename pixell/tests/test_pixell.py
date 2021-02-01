@@ -399,6 +399,184 @@ class PixelTests(unittest.TestCase):
         self.assertIs(ainfo_out.mmax, ainfo_in.mmax)
         self.assertIs(ainfo_out.nelem, ainfo_in.nelem)
 
+    def test_sharp_alm2map_roundtrip(self):
+                
+        # Test the wrapper around libsharps alm2map/map2alm.
+        lmax = 3
+        ainfo = sharp.alm_info(lmax)
+
+        nrings = lmax + 1
+        nphi = 2 * lmax + 1
+        minfo = sharp.map_info_gauss_legendre(nrings, nphi)
+
+        sht = sharp.sht(minfo, ainfo)
+
+        # Test different input shapes and dtypes.
+        # Case 1a: 1d double precision.
+        spin = 0
+        alm = np.zeros((ainfo.nelem), dtype=np.complex128)
+        alm[4] = 1. + 1.j
+
+        omap = sht.alm2map(alm, spin=spin)
+        self.assertEqual(omap.shape, (minfo.npix,))
+        self.assertEqual(omap.dtype, np.float64)
+        alm_out = sht.map2alm(omap, spin=spin)
+
+        np.testing.assert_array_almost_equal(alm_out, alm)
+
+        # Case 1b: 1d single precision.
+        spin = 0
+        alm = np.zeros((ainfo.nelem), dtype=np.complex64)
+        alm[4] = 1. + 1.j
+
+        omap = sht.alm2map(alm, spin=spin)
+        self.assertEqual(omap.shape, (minfo.npix,))
+        self.assertEqual(omap.dtype, np.float32)
+        alm_out = sht.map2alm(omap, spin=spin)
+
+        np.testing.assert_array_almost_equal(alm_out, alm)
+
+        # Case 2a: 2d double precision.
+        spin = 1
+        nspin = 2
+        alm = np.zeros((nspin, ainfo.nelem), dtype=np.complex128)
+        alm[0,4] = 1. + 1.j
+        alm[1,4] = 2. - 2.j
+
+        omap = sht.alm2map(alm, spin=spin)
+        self.assertEqual(omap.shape, (nspin, minfo.npix))
+        self.assertEqual(omap.dtype, np.float64)
+        alm_out = sht.map2alm(omap, spin=spin)
+
+        np.testing.assert_array_almost_equal(alm_out, alm)
+
+        # Case 2b: 2d single precision.
+        spin = 1
+        nspin = 2
+        alm = np.zeros((nspin, ainfo.nelem), dtype=np.complex64)
+        alm[0,4] = 1. + 1.j
+        alm[1,4] = 2. - 2.j
+
+        omap = sht.alm2map(alm, spin=spin)
+        self.assertEqual(omap.shape, (nspin, minfo.npix))
+        self.assertEqual(omap.dtype, np.float32)
+        alm_out = sht.map2alm(omap, spin=spin)
+
+        np.testing.assert_array_almost_equal(alm_out, alm)
+
+        # Case 3a: 3d double precision.
+        spin = 1
+        nspin = 2
+        ntrans = 3
+        alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=np.complex128)
+        alm[0,0,4] = 1. + 1.j
+        alm[0,1,4] = 2. - 2.j
+        alm[1,0,4] = 3. + 3.j
+        alm[1,1,4] = 4. - 4.j
+        alm[2,0,4] = 5. + 5.j
+        alm[2,1,4] = 6. - 6.j
+
+        omap = sht.alm2map(alm, spin=spin)
+        self.assertEqual(omap.shape, (ntrans, nspin, minfo.npix))
+        self.assertEqual(omap.dtype, np.float64)
+        alm_out = sht.map2alm(omap, spin=spin)
+
+        np.testing.assert_array_almost_equal(alm_out, alm)
+
+        # Case 3b: 3d single precision.
+        spin = 1
+        nspin = 2
+        ntrans = 3
+        alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=np.complex64)
+        alm[0,0,4] = 1. + 1.j
+        alm[0,1,4] = 2. - 2.j
+        alm[1,0,4] = 3. + 3.j
+        alm[1,1,4] = 4. - 4.j
+        alm[2,0,4] = 5. + 5.j
+        alm[2,1,4] = 6. - 6.j
+
+        omap = sht.alm2map(alm, spin=spin)
+        self.assertEqual(omap.shape, (ntrans, nspin, minfo.npix))
+        self.assertEqual(omap.dtype, np.float32)
+        alm_out = sht.map2alm(omap, spin=spin)
+
+        np.testing.assert_array_almost_equal(alm_out, alm)
+
+    def test_sharp_alm2map_der1(self):
+                
+        # Test the wrapper around libsharps alm2map_der1.
+        lmax = 3
+        ainfo = sharp.alm_info(lmax)
+
+        nrings = lmax + 1
+        nphi = 2 * lmax + 1
+        minfo = sharp.map_info_gauss_legendre(nrings, nphi)
+
+        sht = sharp.sht(minfo, ainfo)
+
+        # Test different input shapes and dtypes.
+        # Case 1a: 1d double precision.
+        alm = np.zeros((ainfo.nelem), dtype=np.complex128)
+        alm[4] = 1. + 1.j
+
+        omap = sht.alm2map_der1(alm)
+        # Compare to expected value by doing spin 1 transform
+        # on sqrt(ell (ell + 1)) alm.
+        alm_spin = np.zeros((2, ainfo.nelem), dtype=np.complex128)
+        alm_spin[0] = alm * np.sqrt(2)
+        omap_exp = sht.alm2map(alm_spin, spin=1)
+
+        np.testing.assert_array_almost_equal(omap, omap_exp)
+
+        # Case 1b: 1d single precision.
+        alm = np.zeros((ainfo.nelem), dtype=np.complex64)
+        alm[4] = 1. + 1.j
+
+        omap = sht.alm2map_der1(alm)
+        # Compare to expected value by doing spin 1 transform
+        # on sqrt(ell (ell + 1)) alm.
+        alm_spin = np.zeros((2, ainfo.nelem), dtype=np.complex64)
+        alm_spin[0] = alm * np.sqrt(2)
+        omap_exp = sht.alm2map(alm_spin, spin=1)
+
+        np.testing.assert_array_almost_equal(omap, omap_exp)
+
+        # Case 2a: 2d double precision.
+        ntrans = 3
+        alm = np.zeros((ntrans, ainfo.nelem), dtype=np.complex128)
+        alm[0,4] = 1. + 1.j
+        alm[1,4] = 2. + 2.j
+        alm[2,4] = 3. + 3.j
+
+        omap = sht.alm2map_der1(alm)
+        # Compare to expected value by doing spin 1 transform
+        # on sqrt(ell (ell + 1)) alm.
+        alm_spin = np.zeros((ntrans, 2, ainfo.nelem), dtype=np.complex128)
+        alm_spin[0,0] = alm[0] * np.sqrt(2)
+        alm_spin[1,0] = alm[1] * np.sqrt(2)
+        alm_spin[2,0] = alm[2] * np.sqrt(2)
+        omap_exp = sht.alm2map(alm_spin, spin=1)
+
+        np.testing.assert_array_almost_equal(omap, omap_exp)
+
+        # Case 2b: 2d single precision.
+        ntrans = 3
+        alm = np.zeros((ntrans, ainfo.nelem), dtype=np.complex64)
+        alm[0,4] = 1. + 1.j
+        alm[1,4] = 2. + 2.j
+        alm[2,4] = 3. + 3.j
+
+        omap = sht.alm2map_der1(alm)
+        # Compare to expected value by doing spin 1 transform
+        # on sqrt(ell (ell + 1)) alm.
+        alm_spin = np.zeros((ntrans, 2, ainfo.nelem), dtype=np.complex64)
+        alm_spin[0,0] = alm[0] * np.sqrt(2)
+        alm_spin[1,0] = alm[1] * np.sqrt(2)
+        alm_spin[2,0] = alm[2] * np.sqrt(2)
+        omap_exp = sht.alm2map(alm_spin, spin=1)
+
+        np.testing.assert_array_almost_equal(omap, omap_exp)
+
 if __name__ == '__main__':
     unittest.main()
     test_sim_slice()
