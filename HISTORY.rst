@@ -2,39 +2,27 @@
 History
 =======
 
-0.1.0 (2018-06-15)
-------------------
 
-* First release on PyPI.
+0.11.0 (2021-02-02)
+-------------------
 
-0.5.2 (2019-01-22)
-------------------
+Changes relative to 0.10.3 include:
 
-* API for most modules is close to converged
-* Significant number of bug fixes and new features
-* Versioning system implemented through versioneer and bumpversion
-* Automated pixel level tests for discovering effects of low-level changes
+* Bug-fix for enmap.project that led to crashes
+* enplot improvements
+* Improvements to fft and ifft overhead
+* alm filtering API improvements
+* Changes to CMB dipole parameter
+* Allow lmax!=mmax in curvedsky routines
+* Python 3.9 builds and Github actions instead of Travis
 
-0.6.0 (2019-09-18)
-------------------
 
-Changes relative to 0.5.2 include:
+0.10.3 (2020-06-26)
+-------------------
 
-* Improvements in accuracy for map extent, area and Fourier wavenumbers
-* Spherical harmonic treatment consistent with healpy
-* Additional helper functions, e.g enmap.insert
-* Helper arguments, e.g. physical normalization for enmap.fft
-* Bug fixes e.g. in rand_alm
-* Improved installation procedure and documentation
+Changes relative to 0.10.2 include:
 
-0.9.6 (2020-06-22)
-------------------
-
-Changes relative to 0.6.0 include:
-
-* Ability to read compressed FITS images
-* Fixed a bug to make aberration and modulation accurate to all orders
-* Expanded alm2cl to handle full cross-spectra and broadcasting
+* Bug fix for automatic IAU -> COSMO, recognizes POLCCONV instead of POLCONV.
 
 0.10.2 (2020-06-26)
 -------------------
@@ -49,9 +37,39 @@ Changes relative to 0.9.6 include:
   other projections)
 * A test script test-pixell is distributed with the package
 
-0.10.3 (2020-06-26)
--------------------
+0.9.6 (2020-06-22)
+------------------
 
-Changes relative to 0.10.2 include:
+Changes relative to 0.6.0 include:
 
-* Bug fix for automatic IAU -> COSMO, recognizes POLCCONV instead of POLCONV.
+* Ability to read compressed FITS images
+* Fixed a bug to make aberration and modulation accurate to all orders
+* Expanded alm2cl to handle full cross-spectra and broadcasting
+
+0.6.0 (2019-09-18)
+------------------
+
+Changes relative to 0.5.2 include:
+
+* Improvements in accuracy for map extent, area and Fourier wavenumbers
+* Spherical harmonic treatment consistent with healpy
+* Additional helper functions, e.g enmap.insert
+* Helper arguments, e.g. physical normalization for enmap.fft
+* Bug fixes e.g. in rand_alm
+* Improved installation procedure and documentation
+
+
+0.5.2 (2019-01-22)
+------------------
+
+* API for most modules is close to converged
+* Significant number of bug fixes and new features
+* Versioning system implemented through versioneer and bumpversion
+* Automated pixel level tests for discovering effects of low-level changes
+
+  
+0.1.0 (2018-06-15)
+------------------
+
+* First release on PyPI.
+
