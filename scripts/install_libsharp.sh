@@ -42,11 +42,13 @@ echo $CIBW_PLATFORM
 echo $CIBUILDWHEEL
 # Only the last dockerenv check actually works for cibuildwheel
 if [[ $CIBUILDWHEEL ]] ; then
-	CFLAGS="-DMULTIARCH -std=c99 -O3 -ffast-math" ./configure --prefix=${PWD}/build
+	CFLAGS="-DMULTIARCH -std=c99 -O3 -ffast-math"
 else
 	echo "Using -march=native. Binary will not be portable."
-	CFLAGS="-march=native -std=c99 -O3 -ffast-math" ./configure --prefix=${PWD}/build
+	CFLAGS="-march=native -std=c99 -O3 -ffast-math"
 fi
+
+CFLAGS=$CFLAGS ./configure --prefix=${PWD}/build --enable-shared=no --with-pic=yes
 
 cat config.log
 make
