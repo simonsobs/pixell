@@ -197,7 +197,7 @@ setup(
         Extension('pixell.sharp',
             sources=['cython/sharp.c', 'cython/sharp_utils.c'],
             libraries=['sharp2', 'm'],
-            library_dirs=['_deps/libsharp2/build/lib'],
+            library_dirs=[os.path.abspath('_deps/libsharp2/build/lib')],
             include_dirs=[np.get_include()],
                   **dict(compile_opts,
                          **{'extra_link_args': compile_opts['extra_link_args'] +

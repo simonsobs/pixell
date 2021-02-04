@@ -1,8 +1,3 @@
-//#include "sharp.h"
-////#include "sharp_mpi.h"
-//#include "sharp_almhelpers.h"
-//#include "sharp_geomhelpers.h"
 #include "libsharp2/sharp.h"
-//#include "sharp_mpi.h"
 #include "libsharp2/sharp_almhelpers.h"
 #include "libsharp2/sharp_geomhelpers.h"
