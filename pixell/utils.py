@@ -1516,6 +1516,45 @@ def minmax(a, axis=None):
 	a lot."""
 	return np.array([np.min(a, axis=axis),np.max(a, axis=axis)])
 
+def broadcast_shape(*shapes):
+	ndim   = max([len(shape) for shape in shapes])
+	oshape = []
+	for i in range(ndim):
+		olen = 1
+		for shape in shapes:
+			if len(shape) <= i: continue
+			v = shape[-1-i]
+			if olen != 1 and v != olen:
+				raise ValueError("operands could not be broadcast togehter with shapes " + " ".join([str(shape) for shape in shapes]))
+			olen = max(olen, v)
+		oshape.insert(0, olen)
+	return tuple(oshape)
+
+def broadcast_arrays(*arrays, npre=0):
+	"""Like np.broadcast_arrays, but allows arrays to be None, in which case they are
+	passed just passed through as None without affecting the rest of the broadcasting.
+	The argument npre specifies the number of dimensions at the beginning of the arrays
+	to exempt from broadcasting. This can be either an integer or a list of integers.
+	"""
+	npre    = np.broadcast_to(npre, len(arrays))
+	narr    = len(arrays)
+	arrays  = list(arrays)
+	warrs, wshapes = [], []
+	for i in range(narr):
+		if arrays[i] is None: continue
+		arrays[i] = np.asanyarray(arrays[i])
+		warrs.append(arrays[i])
+		wshapes.append(arrays[i].shape[npre[i]:])
+	# Find broadcasting shape
+	oshape = broadcast_shape(*wshapes)
+	# Broadcast and insert into output array
+	res    = [None for a in arrays]
+	for i, (n, arr) in enumerate(zip(npre, arrays)):
+		if arr is not None:
+			ninsert = n+len(oshape)-arr.ndim
+			res[i]  = np.broadcast_to(arr[(slice(None),)*n+(None,)*ninsert], arr.shape[:n]+oshape)
+	return res
+
 def point_in_polygon(points, polys):
 	"""Given a points[...,2] and a set of polys[...,nvertex,2], return
 	inside[...]. points[...,0] and polys[...,0,0] must broadcast correctly.
@@ -1638,6 +1677,13 @@ def triangle_wave(x, period=1):
 	res[m2] = 2-x[m2]
 	res[m3] = x[m3]-4
 	return res
+
+def calc_beam_area(beam_profile):
+	"""Calculate the beam area in steradians given a beam profile[{r,b},npoint].
+	r is in radians, b should have a peak of 1.."""
+	from scipy import integrate
+	r, b = beam_profile
+	return integrate.simps(2*np.pi*r*b,r)
 
 def flux_factor(beam_area, freq, T0=T_cmb):
 	"""Compute the factor A that when multiplied with a linearized
