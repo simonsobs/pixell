@@ -1544,6 +1544,14 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 	if wcsutils.is_plain(wcs): warnings.warn("Distance functions are not tested on plain coordinate systems.")
 	if omap is None: omap = empty(shape[-2:], wcs)
 	if domains and odomains is None: odomains = empty(shape[-2:], wcs, np.int32)
+	points = np.asarray(points)
+	# Handle case where no points are specified
+	if points.size == 0:
+		if rmax is None: rmax = np.inf
+		omap[:] = rmax
+		if domains: odomains[:] = -1
+		return (omap, odomains) if domains else omap
+	# Ok, we have at least one point, use the normal stuff
 	if wcsutils.is_cyl(wcs):
 		dec, ra = posaxes(shape, wcs)
 		if method == "bubble":
@@ -1641,6 +1649,14 @@ def distance_from_healpix(nside, points, omap=None, odomains=None, domains=False
 	if domains and odomains is None: odomains = np.empty(info.npix, np.int32)
 	pixs = utils.nint(healpy.ang2pix(nside, np.pi/2-points[0], points[1]))
 	return distances.distance_from_points_healpix(info, points, pixs, rmax=rmax, omap=omap, odomains=odomains, domains=domains, method=method)
+
+def grow_mask(mask, r):
+	"""Grow the True part of boolean mask "mask" by a distance of r radians"""
+	return (~mask).distance_transform(rmax=r) < r
+
+def shrink_mask(mask, r):
+	"""Shrink the True part of boolean mask "mask" by a distance of r radians"""
+	return mask.distance_transform(rmax=r) >= r
 
 def pad(emap, pix, return_slice=False, wrap=False):
 	"""Pad enmap "emap", creating a larger map with zeros filled in on the sides.
@@ -2227,7 +2243,7 @@ class ndmap_proxy_fits(ndmap_proxy):
 		self.stokes_flips = get_stokes_flips(hdu)
 		def slist(vals):
 			return ",".join([str(v) for v in vals])
-		if verbose and np.any(self.stokes_flips) >= 0:
+		if verbose and np.any(self.stokes_flips >= 0):
 			print("Converting index %s for Stokes axis %s from IAU to COSMO in %s" % (
 				slist(self.stokes_flips[self.stokes_flips >= 0]),
 				slist(np.where(self.stokes_flips >= 0)[0]),

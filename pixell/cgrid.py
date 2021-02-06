@@ -100,7 +100,7 @@ def calc_label_pos(linesegs, shape):
 			# here. Not sure why. It messed up polar coordinates, so I removed it
 			# for now.
 			ldist  = curve
-			rdist  = shape - curve
+			rdist  = shape - curve - 1
 			cross1 = np.sign(ldist[1:]) != np.sign(ldist[:-1])
 			cross2 = np.sign(rdist[1:]) != np.sign(rdist[:-1])
 			cands  = np.array(np.where(cross1 | cross2))
