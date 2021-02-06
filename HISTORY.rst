@@ -2,6 +2,13 @@
 History
 =======
 
+0.11.2 (2021-02-04)
+-------------------
+
+Changes relative to 0.11.0 include:
+
+* Bug-fix for when using rmax in distance_transform
+
 
 0.11.0 (2021-02-02)
 -------------------
