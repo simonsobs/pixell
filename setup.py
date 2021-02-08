@@ -52,7 +52,6 @@ elif sys.platform == 'darwin':
 elif sys.platform == 'linux':
     compile_opts['extra_link_args'] = ['-fopenmp']
 
-
 def pip_install(package):
     import pip
     if hasattr(pip, 'main'):
@@ -102,9 +101,6 @@ test_requirements = ['pip>=9.0',
                      'pytest-cov>=2.6',
                      'coveralls>=1.5',
                      'pytest>=4.6']
-    
-    
-    
 
 fcflags = os.getenv('FCFLAGS')
 if fcflags is None or fcflags.strip() == '':
@@ -124,7 +120,7 @@ def presrc():
     
 def prebuild():
     # Handle the special external dependencies.
-    if not os.path.exists('_deps/libsharp/success.txt'):
+    if not os.path.exists('_deps/libsharp2/success.txt'):
         try:
             sp.check_call('scripts/install_libsharp.sh', shell=True)
         except sp.CalledProcessError:
@@ -200,8 +196,8 @@ setup(
     ext_modules=[
         Extension('pixell.sharp',
             sources=['cython/sharp.c', 'cython/sharp_utils.c'],
-            libraries=['sharp','c_utils', 'fftpack', 'm'],
-            library_dirs=['_deps/libsharp/auto/lib'],
+            libraries=['sharp2', 'm'],
+            library_dirs=['_deps/libsharp2/build/lib'],
             include_dirs=[np.get_include()],
             **compile_opts),
         Extension('pixell.distances',
@@ -224,8 +220,8 @@ setup(
             sources=['fortran/array_ops_64.f90'],
             **compile_opts),
     ],
-    include_dirs = ['_deps/libsharp/auto/include'],
-    library_dirs = ['_deps/libsharp/auto/lib'],
+    include_dirs = ['_deps/libsharp2/build/include'],
+    library_dirs = ['_deps/libsharp2/build/lib'],
     install_requires=requirements,
     extras_require = {'fftw':['pyFFTW>=0.10'],'mpi':['mpi4py>=2.0']},
     license="BSD license",
