@@ -202,6 +202,7 @@ setup(
             **compile_opts),
         Extension('pixell.distances',
             sources=['cython/distances.c','cython/distances_core.c'],
+            libraries=['m'],
             include_dirs=[np.get_include()],
             **compile_opts),
         Extension('pixell._interpol_32',
