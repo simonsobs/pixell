@@ -1182,8 +1182,11 @@ def apply_window(emap, pow=1.0):
 	return ifft(fft(emap) * wy[:,None]**pow * wx[None,:]**pow).real
 
 def samewcs(arr, *args):
-	"""Returns arr with the same wcs information as the first enmap among args.
-	If no mathces are found, arr is returned as is."""
+	"""Returns arr with the same wcs information as the first enmap among
+	args.  If no matches are found, arr is returned as is.  Will
+	reference, rather than copy, the underlying array data
+	whenever possible.
+	"""
 	for m in args:
 		try: return ndmap(arr, m.wcs)
 		except AttributeError: pass
