@@ -317,7 +317,7 @@ def parse_args(args=sys.argv[1:], noglob=False):
 	if not noglob:
 		ifiles = []
 		for pattern in res.ifiles:
-			matches = glob.glob(pattern)
+			matches = sorted(glob.glob(pattern))
 			if len(matches) > 0:
 				ifiles += matches
 			else:
