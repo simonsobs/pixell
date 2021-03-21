@@ -368,6 +368,20 @@ def interpol_prefilter(a, npre=None, order=3, inplace=False):
 			aflat[i] = scipy.ndimage.spline_filter(aflat[i], order=order)
 	return a
 
+def interp(x, xp, fp, left=None, right=None, period=None):
+	"""Unlike utils.interpol, this is a simple wrapper around np.interp that extends it
+	to support fp[...,n] instead of just fp[n]. It does this by looping over the other
+	dimensions in python, and calling np.interp for each entry in the pre-dimensions.
+	So this function does not save any time over doing that looping manually, but it
+	avoid typing this annoying loop over and over."""
+	x, xp, fp = [np.asanyarray(a) for a in [x, xp, fp]]
+	fp_flat   = fp.reshape(-1, fp.shape[-1])
+	f_flat    = np.empty((fp_flat.shape[0],)+x.shape, fp.dtype)
+	for f1, fp1 in zip(fp_flat, f_flat):
+		f1[:] = np.interp(x, xp, fp1, left=left, right=right, period=period)
+	f = f_flat.reshape(fp.shape[:-1]+(x.hape,))
+	return f
+
 def bin_multi(pix, shape, weights=None):
 	"""Simple multidimensional binning. Not very fast.
 	Given pix[{coords},:] where coords are indices into an array
@@ -1513,6 +1527,31 @@ def find_equal_groups(a, tol=0):
 				res[-1].append(xj)
 				done[j] = True
 	return res
+
+def find_equal_groups_fast(vals):
+	"""Group 1d array vals[n] into equal groups. Returns uvals, order, edges
+	Using these, group #i is made up of the values with index order[edges[i]:edges[i+1]],
+	and all these elements correspond to value uvals[i]. Accomplishes the same
+	basic task as find_equal_groups, but
+	1. Only works on 1d arrays
+	2. Does works with exact quality, with no support for approximate equality
+	3. Returns 3 numpy arrays instead of a list of lists.
+	"""
+	order = np.argsort(vals)
+	uvals, edges = np.unique(vals[order], return_index=True)
+	edges = np.concatenate([edges,[len(vals)]])
+	return uvals, order, edges
+
+def pathsplit(path):
+	"""Like os.path.split, but for all components, not just the last one.
+	Why did I have to write this function? It should have been in os already!"""
+	# This takes care of all OS-dependent path stuff. Afterwards we can safely split by /
+	path = os.path.normpath(path)
+	# This is to handle the common special case of a path starting with /
+	if path.startswith("/"):
+		return ["/"] + path.split("/")[1:]
+	else:
+		return path.split("/")
 
 def minmax(a, axis=None):
 	"""Shortcut for np.array([np.min(a),np.max(a)]), since I do this

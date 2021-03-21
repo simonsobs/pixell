@@ -1121,8 +1121,8 @@ def map_mul(mat, vec):
 	"""Elementwise matrix multiplication mat*vec. Result will have
 	the same shape as vec. Multiplication happens along the last non-pixel
 	indices."""
-	# Allow scalar product
-	if mat.ndim == 2 and vec.ndim == 2: return mat*vec
+	# Allow scalar product, broadcasting if necessary
+	if mat.ndim < 3: return mat*vec
 	# Otherwise we do a matrix product along the last axes
 	ovec = samewcs(np.einsum("...abyx,...byx->...ayx", mat, vec), mat, vec)
 	return ovec
@@ -1830,7 +1830,7 @@ def rbin(map, center=[0,0], bsize=None, brel=1.0, return_nhit=False):
 	the pixel size. brel can be used to scale up the bin size. This is
 	mostly useful when using automatic bsize.
 
-	Returns bvals[...,nbin] and r[nbin], where bvals is the mean
+	Returns bvals[...,nbin], r[nbin], where bvals is the mean
 	of the map in each radial bin and r is the mid-point of each bin
 	"""
 	r = map.modrmap(ref=center)
