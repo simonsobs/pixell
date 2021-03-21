@@ -1774,6 +1774,9 @@ def _widen(map,n):
 	and the last two to give the map a total dimensionality of n."""
 	return map[(slice(None),) + (None,)*(n-3) + (slice(None),slice(None))]
 
+def laplace(m):
+	return -ifft(fft(m)*np.sum(m.lmap()**2,0)).real
+
 def apod(m, width, profile="cos", fill="zero"):
 	"""Apodize the provided map. Currently only cosine apodization is
 	implemented.
