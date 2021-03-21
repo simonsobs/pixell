@@ -39,7 +39,7 @@ cdef extern from "csharp.h":
 		sharp_alm_info **alm_info)
 	void sharp_destroy_alm_info (sharp_alm_info *info)
 	void sharp_execute (int type, int spin, void *alm, void *map,
-		sharp_geom_info *geom_info, sharp_alm_info *alm_info, int ntrans,
+		sharp_geom_info *geom_info, sharp_alm_info *alm_info,
 		int flags, double *time, unsigned long long *opcnt)
 
 	void sharp_make_weighted_healpix_geom_info (int nside, int stride,

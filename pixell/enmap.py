@@ -295,8 +295,9 @@ def corners(shape, wcs, npoint=10, corner=True):
 	and undoing any sudden jumps in coordinates it finds. This is controlled by
 	the npoint option. The default of 10 should be more than enough.
 
-	Returns [{bottom left,top right},{dec,ra}] (or equivalent for other coordinate
-	systems."""
+	Returns [{bottom left,top right},{dec,ra}] in radians 
+	(or equivalent for other coordinate systems). 
+	e.g. an array of the form [[dec_min, ra_min ], [dec_max, ra_max]]."""
 	# Because of wcs's wrapping, we need to evaluate several
 	# extra pixels to make our unwinding unambiguous
 	pix = np.array([np.linspace(0,shape[-2],num=npoint,endpoint=True),
@@ -1181,8 +1182,11 @@ def apply_window(emap, pow=1.0):
 	return ifft(fft(emap) * wy[:,None]**pow * wx[None,:]**pow).real
 
 def samewcs(arr, *args):
-	"""Returns arr with the same wcs information as the first enmap among args.
-	If no mathces are found, arr is returned as is."""
+	"""Returns arr with the same wcs information as the first enmap among
+	args.  If no matches are found, arr is returned as is.  Will
+	reference, rather than copy, the underlying array data
+	whenever possible.
+	"""
 	for m in args:
 		try: return ndmap(arr, m.wcs)
 		except AttributeError: pass
