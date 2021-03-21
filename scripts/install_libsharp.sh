@@ -3,17 +3,10 @@
 DEPDIR=_deps
 [ -e $DEPDIR ] || mkdir $DEPDIR
 cd $DEPDIR
-[ -e libsharp ] || git clone https://github.com/Libsharp/libsharp # do we want a frozen version?
-cd libsharp
-echo $CIBW_PLATFORM
-echo $CIBUILDWHEEL
-# Only the last dockerenv check actually works for cibuildwheel
-if [[ $CIBUILDWHEEL ]] ; then
-	sed -i 's/march=native/march=x86-64/g' configure.ac
-else
-	echo "Not replacing native with x86-64. Binary will not be portable."
-fi
-cat configure.ac
+[ -e libsharp2 ] || git clone https://gitlab.mpcdf.mpg.de/mtr/libsharp.git libsharp2 # do we want a frozen version?
+cd libsharp2
+mkdir -p build
+
 aclocal
 if [ $? -eq 0 ]; then
     echo Found automake.
@@ -41,10 +34,25 @@ else
 		exit 127
 	fi
 fi
-autoconf
-./configure --enable-pic
+
+autoreconf -i
+cat configure.ac
+
+echo $CIBW_PLATFORM
+echo $CIBUILDWHEEL
+# Only the last dockerenv check actually works for cibuildwheel
+if [[ $CIBUILDWHEEL ]] ; then
+	CFLAGS="-DMULTIARCH -std=c99 -O3 -ffast-math"
+else
+	echo "Using -march=native. Binary will not be portable."
+	CFLAGS="-march=native -std=c99 -O3 -ffast-math"
+fi
+
+CFLAGS=$CFLAGS ./configure --prefix=${PWD}/build --enable-shared=no --with-pic=yes
+
 cat config.log
 make
+make install
 if [ $? -eq 0 ]; then
     echo Successfully installed libsharp.
 	touch success.txt

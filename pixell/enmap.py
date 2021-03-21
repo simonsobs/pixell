@@ -295,8 +295,9 @@ def corners(shape, wcs, npoint=10, corner=True):
 	and undoing any sudden jumps in coordinates it finds. This is controlled by
 	the npoint option. The default of 10 should be more than enough.
 
-	Returns [{bottom left,top right},{dec,ra}] (or equivalent for other coordinate
-	systems."""
+	Returns [{bottom left,top right},{dec,ra}] in radians 
+	(or equivalent for other coordinate systems). 
+	e.g. an array of the form [[dec_min, ra_min ], [dec_max, ra_max]]."""
 	# Because of wcs's wrapping, we need to evaluate several
 	# extra pixels to make our unwinding unambiguous
 	pix = np.array([np.linspace(0,shape[-2],num=npoint,endpoint=True),
@@ -1121,8 +1122,8 @@ def map_mul(mat, vec):
 	"""Elementwise matrix multiplication mat*vec. Result will have
 	the same shape as vec. Multiplication happens along the last non-pixel
 	indices."""
-	# Allow scalar product
-	if mat.ndim == 2 and vec.ndim == 2: return mat*vec
+	# Allow scalar product, broadcasting if necessary
+	if mat.ndim < 3: return mat*vec
 	# Otherwise we do a matrix product along the last axes
 	ovec = samewcs(np.einsum("...abyx,...byx->...ayx", mat, vec), mat, vec)
 	return ovec
@@ -1181,8 +1182,11 @@ def apply_window(emap, pow=1.0):
 	return ifft(fft(emap) * wy[:,None]**pow * wx[None,:]**pow).real
 
 def samewcs(arr, *args):
-	"""Returns arr with the same wcs information as the first enmap among args.
-	If no mathces are found, arr is returned as is."""
+	"""Returns arr with the same wcs information as the first enmap among
+	args.  If no matches are found, arr is returned as is.  Will
+	reference, rather than copy, the underlying array data
+	whenever possible.
+	"""
 	for m in args:
 		try: return ndmap(arr, m.wcs)
 		except AttributeError: pass
@@ -1833,7 +1837,7 @@ def rbin(map, center=[0,0], bsize=None, brel=1.0, return_nhit=False):
 	the pixel size. brel can be used to scale up the bin size. This is
 	mostly useful when using automatic bsize.
 
-	Returns bvals[...,nbin] and r[nbin], where bvals is the mean
+	Returns bvals[...,nbin], r[nbin], where bvals is the mean
 	of the map in each radial bin and r is the mid-point of each bin
 	"""
 	r = map.modrmap(ref=center)

@@ -4,7 +4,6 @@ cimport numpy as np
 cimport csharp
 from libc.math cimport atan2
 from libc.stdint cimport uintptr_t
-#from cython.parallel import prange, parallel
 
 cdef class map_info:
 	"""This class is a thin wrapper for the sharp geom_info struct, which represents
@@ -376,7 +375,7 @@ cdef class alm_info:
 				for c1 in range(ncomp):
 					alm[c1,lm] = 0
 					for c2 in range(ncomp):
-						alm[c1,lm] += lmat[c1,c2,l]*v[c2]
+						alm[c1,lm] = alm[c1,lm] + lmat[c1,c2,l] * v[c2]
 			# If lmat is too short, interpret missing values as zero
 			for l in range(lcap, self.lmax+1):
 				lm = mstart[m]+l*self.stride
@@ -401,7 +400,7 @@ cdef class alm_info:
 				for c1 in range(ncomp):
 					alm[c1,lm] = 0
 					for c2 in range(ncomp):
-						alm[c1,lm] += lmat[c1,c2,l]*v[c2]
+						alm[c1,lm] = alm[c1,lm] + lmat[c1,c2,l] * v[c2]
 			for l in range(lcap, self.lmax+1):
 				lm = mstart[m]+l*self.stride
 				for c1 in range(ncomp):
@@ -470,8 +469,11 @@ cdef class sht:
 			map = map.reshape(alm.shape[:-1]+map.shape[-2:])
 		else:
 			assert map.ndim >= 2, "map must be at least 2d"
-			assert map.shape[-2] == 2, "Second to last dimensino of map must have length 2"
+			assert map.shape[-2] == 2, "Second to last dimension of map must have length 2"
 			assert alm.shape[:-1]==map.shape[:-2], "alm.shape[:-1] != map.shape[:-2]"
+		if alm.ndim == 2:
+		        # Insert spin axis to ensure dimension check in execute passes.
+			alm = alm.reshape(alm.shape[0], 1, alm.shape[1])
 		execute(csharp.SHARP_ALM2MAP_DERIV1, self.ainfo, alm, self.minfo, map, spin=0)
 		return map
 
@@ -515,29 +517,33 @@ cpdef execute_dp(int type, int spin, alm_info ainfo, np.ndarray[np.complex128_t,
 	cdef int ntrans = map.shape[0]
 	cdef int nmap = map.shape[0]*map.shape[1]
 	cdef int nalm = alm.shape[0]*alm.shape[1]
-	cdef np.ndarray[np.uintp_t,ndim=1,mode="c"]      aptrs = np.empty(nalm,dtype=np.uintp)
-	cdef np.ndarray[np.uintp_t,ndim=1,mode="c"]      mptrs = np.empty(nmap,dtype=np.uintp)
+	cdef np.ndarray[np.uintp_t,ndim=1,mode="c"]	 aptrs = np.empty(alm.shape[1],dtype=np.uintp)
+	cdef np.ndarray[np.uintp_t,ndim=1,mode="c"]	 mptrs = np.empty(map.shape[1],dtype=np.uintp)
+
 	cdef int i, j
 	for i in range(ntrans):
 		for j in range(alm.shape[1]):
-			aptrs[i*alm.shape[1]+j] = <np.uintp_t>&alm[i,j,0]
+			aptrs[j] = <np.uintp_t>&alm[i,j,0]
 		for j in range(map.shape[1]):
-			mptrs[i*map.shape[1]+j] = <np.uintp_t>&map[i,j,0]
-	execute_helper(type, ainfo, aptrs, minfo, mptrs, spin, ntrans, csharp.SHARP_DP)
+			mptrs[j] = <np.uintp_t>&map[i,j,0]
+		execute_helper(type, ainfo, aptrs, minfo, mptrs,
+			       spin, csharp.SHARP_DP)
 
 cpdef execute_sp(int type, int spin, alm_info ainfo, np.ndarray[np.complex64_t,ndim=3,mode="c"] alm, map_info minfo, np.ndarray[np.float32_t,ndim=3,mode="c"] map):
 	cdef int ntrans = map.shape[0]
 	cdef int nmap = map.shape[0]*map.shape[1]
 	cdef int nalm = alm.shape[0]*alm.shape[1]
-	cdef np.ndarray[np.uintp_t,ndim=1,mode="c"]      aptrs = np.empty(nalm,dtype=np.uintp)
-	cdef np.ndarray[np.uintp_t,ndim=1,mode="c"]      mptrs = np.empty(nmap,dtype=np.uintp)
+	cdef np.ndarray[np.uintp_t,ndim=1,mode="c"]	 aptrs = np.empty(alm.shape[1],dtype=np.uintp)
+	cdef np.ndarray[np.uintp_t,ndim=1,mode="c"]	 mptrs = np.empty(map.shape[1],dtype=np.uintp)
+
 	cdef int i, j
 	for i in range(ntrans):
 		for j in range(alm.shape[1]):
-			aptrs[i*alm.shape[1]+j] = <np.uintp_t>&alm[i,j,0]
+			aptrs[j] = <np.uintp_t>&alm[i,j,0]
 		for j in range(map.shape[1]):
-			mptrs[i*map.shape[1]+j] = <np.uintp_t>&map[i,j,0]
-	execute_helper(type, ainfo, aptrs, minfo, mptrs, spin, ntrans, 0)
+			mptrs[j] = <np.uintp_t>&map[i,j,0]
+		execute_helper(type, ainfo, aptrs, minfo, mptrs,
+			       spin, 0)
 
 cdef check_cont_dp(np.ndarray[np.float64_t,ndim=1,mode="c"] map_row, np.ndarray[np.complex128_t,ndim=1,mode="c"] alm_row): pass
 cdef check_cont_sp(np.ndarray[np.float32_t,ndim=1,mode="c"] map_row, np.ndarray[np.complex64_t, ndim=1,mode="c"] alm_row): pass
@@ -547,9 +553,9 @@ typemap = { "map2alm": csharp.SHARP_MAP2ALM, "alm2map": csharp.SHARP_ALM2MAP, "a
 cdef execute_helper(int type,
 		alm_info ainfo, np.ndarray[np.uintp_t,ndim=1] alm,
 		map_info minfo, np.ndarray[np.uintp_t,ndim=1] map,
-		int spin=0, int ntrans=1, int flags=0):
+		int spin=0, int flags=0):
 	csharp.sharp_execute(type, spin, <void*>&alm[0], <void*>&map[0],
-			minfo.geom, ainfo.info, ntrans, flags, NULL, NULL)
+			minfo.geom, ainfo.info, flags, NULL, NULL)
 
 cdef csharp.sharp_geom_info * make_geometry_helper(
 		int ntheta,

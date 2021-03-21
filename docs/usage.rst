@@ -137,9 +137,16 @@ the WCS information is removed, one can always add it back like this:
 		Traceback (most recent call last):
 		AttributeError: 'numpy.ndarray' object has no attribute 'wcs'
 		>>> # Uh oh, the WCS information was removed by some_function
-		>>> omap = enmap.enmap(omap,wcs) # restore the wcs
-		>>> omap = enmap.samewcs(omap,imap) # another way to restore the wcs
+		>>> omap = enmap.ndmap(omap, wcs) # restore the wcs
+		>>> omap = enmap.samewcs(omap, imap) # another way to restore the wcs
+		>>> # This does the same thing, but force-copies the data array.
+		>>> omap = enmap.enmap(omap, wcs)
 
+Note that ``ndmap`` and ``samewcs`` will not copy the underlying data
+array if they don't have to; the returned object will reference the
+same memory used by the input array (as though you had done
+numpy.asarray).  In contrast, ``enmap.enmap`` will always create a
+copy of the input data.
 
 
 Reading maps from disk
