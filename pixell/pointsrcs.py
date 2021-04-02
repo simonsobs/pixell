@@ -31,8 +31,7 @@ from . import utils, enmap
 #### Map-space source simulation ###
 
 def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None, smul=1,
-			 return_padded=False, pixwin=False, op=np.add, wrap="auto", verbose=False, cache=None,
-			 separable=False):
+		return_padded=False, pixwin=False, op=np.add, wrap="auto", verbose=False, cache=None, separable=False):
 	"""Simulate a point source map in the geometry given by shape, wcs
 	for the given srcs[nsrc,{dec,ra,T...}], using the beam[{r,val},npoint],
 	which must be equispaced. If omap is specified, the sources will be
@@ -69,7 +68,7 @@ def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None,
 	padding = [cres,cres+epix]
 	wmap, wslice  = enmap.pad(omap, padding, return_slice=True)
 	# Overall we will have this many grid cells
-	cshape = wmap.shape[-2:]/cres
+	cshape = wmap.shape[-2:]//cres
 	# Find out which sources matter for which cells
 	srcpix = wmap.sky2pix(poss.T).T
 	pixbox= np.array([[0,0],wmap.shape[-2:]],int)
@@ -194,7 +193,7 @@ def cellify(map, res):
 	reshaped into a cell grid [...,ncelly,ncellx,ry,rx]. The map will be
 	truncated if necessary"""
 	res    = np.array(res,int)
-	cshape = map.shape[-2:]/res
+	cshape = map.shape[-2:]//res
 	omap   = map[...,:cshape[0]*res[0],:cshape[1]*res[1]]
 	omap   = omap.reshape(omap.shape[:-2]+(cshape[0],res[0],cshape[1],res[1]))
 	omap   = utils.moveaxis(omap, -3, -2)
@@ -248,7 +247,7 @@ def read(fname, format="auto"):
 			elif f == "nemo":     return read_nemo(fname)
 			elif f == "simple":   return read_simple(fname)
 			else: raise ValueError("Unrecognized point source format '%s' for file '%s'" % (f, fname))
-		except (ValueError, IOError) as e: pass
+		except (ValueError, IOError, OSError) as e: pass
 	raise IOError("Unable to read point source file '%s' with format '%s'" % (fname, f))
 
 def read_nemo(fname):
@@ -259,7 +258,7 @@ def read_nemo(fname):
 		idtype = [("name","2S64"),("ra","d"),("dec","d"),("snr","d"),("npix","i"),("template","S32"),("glat","d"),("I","d"), ("dI","d")]
 		try: icat = np.loadtxt(fname, dtype=idtype)
 		except (ValueError, IndexError) as e:
-			raise IOError(e.message)
+			raise IOError(e.args[0])
 	odtype = [("name","S64"),("ra","d"),("dec","d"),("snr","d"),("I","d"),("dI","d"),("npix","i"),("template","S32"),("glat","d")]
 	ocat = np.zeros(len(icat), odtype).view(np.recarray)
 	ocat.name = np.char.add(*icat["name"].T)
@@ -273,7 +272,7 @@ def read_simple(fname):
 		try:
 			return np.loadtxt(fname, dtype=[("ra","d"),("dec","d"),("I","d")], usecols=range(3), ndmin=1).view(np.recarray)
 		except ValueError as e:
-			raise IOError(e.message)
+			raise IOError(e.args[0])
 
 def read_dory_fits(fname, hdu=1):
 	d = fits.open(fname)[hdu].data
@@ -289,7 +288,7 @@ def read_dory_txt(fname):
 		d.I *= 1e3; d.Q *= 1e3; d.U *= 1e3
 		return d
 	except (ValueError, IndexError) as e:
-		raise IOError(e.message)
+		raise IOError(e.args[0])
 
 def read_fits(fname, hdu=1, fix=True):
 	d = fits.open(fname)[hdu].data

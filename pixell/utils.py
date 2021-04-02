@@ -12,6 +12,7 @@ T_cmb = 2.72548 # +/- 0.00057
 c  = 299792458.0
 h  = 6.62606957e-34
 k  = 1.3806488e-23
+G  = 6.67430e-11
 AU = 149597870700.0
 R_earth = 6378.1e3
 day2sec = 86400.
@@ -214,10 +215,13 @@ def mjd2ctime(mjd):
 	"""Converts from modified julian date to unix time"""
 	return (np.asarray(mjd)-40587.0)*86400
 
-def medmean(x, frac=0.5):
-	x = np.sort(x.reshape(-1))
-	i = int(x.size*frac)//2
-	return np.mean(x[i:-i])
+def medmean(x, axis=None, frac=0.5):
+	x = np.asarray(x)
+	if axis is None: x = x.reshape(-1)
+	else:            x = np.moveaxis(x, axis, -1)
+	x = np.sort(x, -1)
+	i = int(x.shape[-1]*frac)//2
+	return np.mean(x[...,i:-i],-1)
 
 def moveaxis(a, o, n):
 	if o < 0: o = o+a.ndim
@@ -363,6 +367,20 @@ def interpol_prefilter(a, npre=None, order=3, inplace=False):
 		for i in range(len(aflat)):
 			aflat[i] = scipy.ndimage.spline_filter(aflat[i], order=order)
 	return a
+
+def interp(x, xp, fp, left=None, right=None, period=None):
+	"""Unlike utils.interpol, this is a simple wrapper around np.interp that extends it
+	to support fp[...,n] instead of just fp[n]. It does this by looping over the other
+	dimensions in python, and calling np.interp for each entry in the pre-dimensions.
+	So this function does not save any time over doing that looping manually, but it
+	avoid typing this annoying loop over and over."""
+	x, xp, fp = [np.asanyarray(a) for a in [x, xp, fp]]
+	fp_flat   = fp.reshape(-1, fp.shape[-1])
+	f_flat    = np.empty((fp_flat.shape[0],)+x.shape, fp.dtype)
+	for f1, fp1 in zip(fp_flat, f_flat):
+		f1[:] = np.interp(x, xp, fp1, left=left, right=right, period=period)
+	f = f_flat.reshape(fp.shape[:-1]+(x.hape,))
+	return f
 
 def bin_multi(pix, shape, weights=None):
 	"""Simple multidimensional binning. Not very fast.
@@ -955,8 +973,8 @@ def allgather(a, comm):
 def allgatherv(a, comm, axis=0):
 	"""Perform an mpi allgatherv along the specified axis of the array
 	a, returning an array with the individual process arrays concatenated
-	along that dimension. For example gatherv([[1,2]],comm) on one task
-	and gatherv([[3,4],[5,6]],comm) on another task results in
+	along that dimension. For example allgatherv([[1,2]],comm) on one task
+	and allgatherv([[3,4],[5,6]],comm) on another task results in
 	[[1,2],[3,4],[5,6]] for both tasks."""
 	a  = np.asarray(a)
 	fa = moveaxis(a, axis, 0)
@@ -1510,10 +1528,74 @@ def find_equal_groups(a, tol=0):
 				done[j] = True
 	return res
 
+def find_equal_groups_fast(vals):
+	"""Group 1d array vals[n] into equal groups. Returns uvals, order, edges
+	Using these, group #i is made up of the values with index order[edges[i]:edges[i+1]],
+	and all these elements correspond to value uvals[i]. Accomplishes the same
+	basic task as find_equal_groups, but
+	1. Only works on 1d arrays
+	2. Does works with exact quality, with no support for approximate equality
+	3. Returns 3 numpy arrays instead of a list of lists.
+	"""
+	order = np.argsort(vals)
+	uvals, edges = np.unique(vals[order], return_index=True)
+	edges = np.concatenate([edges,[len(vals)]])
+	return uvals, order, edges
+
+def pathsplit(path):
+	"""Like os.path.split, but for all components, not just the last one.
+	Why did I have to write this function? It should have been in os already!"""
+	# This takes care of all OS-dependent path stuff. Afterwards we can safely split by /
+	path = os.path.normpath(path)
+	# This is to handle the common special case of a path starting with /
+	if path.startswith("/"):
+		return ["/"] + path.split("/")[1:]
+	else:
+		return path.split("/")
+
 def minmax(a, axis=None):
 	"""Shortcut for np.array([np.min(a),np.max(a)]), since I do this
 	a lot."""
 	return np.array([np.min(a, axis=axis),np.max(a, axis=axis)])
+
+def broadcast_shape(*shapes):
+	ndim   = max([len(shape) for shape in shapes])
+	oshape = []
+	for i in range(ndim):
+		olen = 1
+		for shape in shapes:
+			if len(shape) <= i: continue
+			v = shape[-1-i]
+			if olen != 1 and v != olen:
+				raise ValueError("operands could not be broadcast togehter with shapes " + " ".join([str(shape) for shape in shapes]))
+			olen = max(olen, v)
+		oshape.insert(0, olen)
+	return tuple(oshape)
+
+def broadcast_arrays(*arrays, npre=0):
+	"""Like np.broadcast_arrays, but allows arrays to be None, in which case they are
+	passed just passed through as None without affecting the rest of the broadcasting.
+	The argument npre specifies the number of dimensions at the beginning of the arrays
+	to exempt from broadcasting. This can be either an integer or a list of integers.
+	"""
+	npre    = np.broadcast_to(npre, len(arrays))
+	narr    = len(arrays)
+	arrays  = list(arrays)
+	warrs, wshapes = [], []
+	for i in range(narr):
+		if arrays[i] is None: continue
+		arrays[i] = np.asanyarray(arrays[i])
+		warrs.append(arrays[i])
+		wshapes.append(arrays[i].shape[npre[i]:])
+	# Find broadcasting shape
+	oshape = broadcast_shape(*wshapes)
+	# Broadcast and insert into output array
+	res    = [None for a in arrays]
+	for i, (n, arr) in enumerate(zip(npre, arrays)):
+		if arr is not None:
+			ninsert = n+len(oshape)-arr.ndim
+			res[i]  = np.broadcast_to(arr[(slice(None),)*n+(None,)*ninsert], arr.shape[:n]+oshape)
+	return res
 
 def point_in_polygon(points, polys):
 	"""Given a points[...,2] and a set of polys[...,nvertex,2], return
@@ -1596,6 +1678,45 @@ def block_mean_filter(a, width):
 		a[:]   = work[...,:a.shape[-1]]
 	return a
 
+def block_reduce(a, bsize, op=np.mean):
+	"""Replace each block of length bsize along the last axis of a
+	with an aggregate value given by the operation op. op must
+	accept op(array, axis), just like np.sum or np.mean. a need not
+	have a whole number of blocks. In that case, the last block will
+	have fewer than bsize samples in it."""
+	if bsize == 1: return a
+	a     = np.asarray(a)
+	nsamp = a.shape[-1]
+	nwhole= nsamp//bsize
+	blocks= a[...,:nwhole*bsize].reshape(a.shape[:-1]+(nwhole,bsize))
+	vals  = op(blocks, -1)
+	if nwhole*bsize != nsamp:
+		vals = np.concatenate([vals, op(a[...,None,nwhole*bsize:],-1)],-1)
+	return vals
+
+def block_expand(a, bsize, osize, op="nearest"):
+	nwhole = osize//bsize
+	nrest  = osize-nwhole*bsize
+	if op == "nearest":
+		bind = np.arange(osize)//bsize
+		return a[...,bind]
+	elif op == "linear":
+		# Index relative to block centers. For bsize samples in a block,
+		# the intervals have size 1/nblock, and the first sample is offset
+		# by half an interval. Hence sample #i is at ((i+1)+0.5)/nblock-0.5
+		find   = (np.arange(nwhole*bsize)+0.5)/bsize - 0.5
+		if nrest != 0:
+			find = np.concatenate([find, nwhole + (np.arange(nrest)+0.5)/nrest-0.5])
+		i1 = np.floor(find).astype(int)
+		i2 = i1+1
+		x2 = find % 1
+		x1 = 1 - x2
+		i1 = np.maximum(i1, 0)
+		i2 = np.minimum(i2, a.shape[-1]-1)
+		return a[...,i1]*x1 + a[...,i2]*x2
+	else:
+		raise ValueError("Unrecognized operation '%s'" % op)
+
 def ctime2date(timestamp, tzone=0, fmt="%Y-%m-%d"):
 	return datetime.datetime.utcfromtimestamp(timestamp+tzone*3600).strftime(fmt)
 
@@ -1637,6 +1758,13 @@ def triangle_wave(x, period=1):
 	res[m2] = 2-x[m2]
 	res[m3] = x[m3]-4
 	return res
+
+def calc_beam_area(beam_profile):
+	"""Calculate the beam area in steradians given a beam profile[{r,b},npoint].
+	r is in radians, b should have a peak of 1.."""
+	from scipy import integrate
+	r, b = beam_profile
+	return integrate.simps(2*np.pi*r*b,r)
 
 def flux_factor(beam_area, freq, T0=T_cmb):
 	"""Compute the factor A that when multiplied with a linearized
@@ -2197,3 +2325,93 @@ def jname(ra, dec, fmt="J%(ra_H)02d%(ra_M)02d%(ra_S)02d%(dec_d)+02d%(dec_m)02d%(
 		"ra_H" :rah[0]*rah[1], "ra_M" : rah[2], "ra_S" : rah[3],
 		"dec_d":ded[0]*ded[1], "dec_m": ded[2], "dec_s": ded[3],
 		"dec_H":deh[0]*deh[1], "dec_M": deh[2], "dec_S": deh[3]}
+
+def ang2chord(ang):
+	"""Converts from the angle between two points on a circle to the length of the chord between them"""
+	return 2*np.sin(ang/2)
+
+def chord2ang(chord):
+	"""Inverse of ang2chord."""
+	return 2*np.arcsin(chord/2)
+
+def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
+	"""Find close matches between positions given by pos1[:,ndim] and pos2[:,ndim],
+	up to a maximum distance of rmax (in the same units as the positions).
+
+	The argument "coords" controls how the coordinates are interpreted. If it is
+	"cartesian", then they are assumed to be cartesian coordinates. If it is
+	"radec" or "phitheta", then the coordinates are assumed to be angles in radians,
+	which will be transformed to coordinates internally before being used. "radec"
+	is equator-based while "phitheta" is zenith-based. The default, "auto", will assume
+	"radec" if ndim == 2, and "cartesian" otherwise.
+
+	It's possible that multiple objects from the catalogs are within rmax of each
+	other. The "mode" argument controls how this is handled.
+	mode == "all":
+	 Returns a list of pairs of indices into the two lists, one for each pair of
+	 objects that are close enough to each other, regardless of the presence of
+	 any other matches. Any given object can be mentioned multiple times in this
+	 list.
+	mode == "closest":
+	 Like "all", but only the closest time an index appears in a pair is kept, the
+	 others are discarded.
+	mode == "first":
+	 Like "all", but only the first time an index appears in a pair is kept, the
+	 others are discarted. This can be useful if some objects should be given
+	 higher priority than others. For example, one could sort pos1 and pos2 by
+	 brightness and then use mode == "first" to prefer bright objects in the match."""
+	from scipy import spatial
+	
+	pos1 = np.asarray(pos1); n1 = len(pos1)
+	pos2 = np.asarray(pos2); n2 = len(pos2)
+
+	assert pos1.ndim == 2, "crossmatch: pos1 must be [npoint,ndim], but was %s" % str(pos1.shape)
+	assert pos2.ndim == 2, "crossmatch: pos2 must be [npoint,ndim], but was %s" % str(pos2.shape)
+	assert pos1.shape[1] == pos2.shape[1], "crossmatch: pos1's shape %s is incompatible with pos2's shape %s" % (str(pos1.shape), str(pos2.shape))
+
+	# Normalize the coordinates
+	if coords == "auto":
+		coords = "radec" if pos1.shape[1] == 2 else "cartesian"
+	if coords == "radec":
+		trans = lambda pos: ang2rect(pos, zenith=False, axis=1)
+		reff  = ang2chord(rmax)
+	elif coords == "phitheta":
+		trans = lambda pos: ang2rect(pos, zenith=True,  axis=1)
+		reff  = ang2chord(rmax)
+	elif coords == "cartesian":
+		trans = lambda pos: pos
+		reff  = rmax
+	else:
+		raise ValueError("crossmatch: Unrecognized value for coords: %s" % (str(coords)))
+	pos1 = trans(pos1)
+	pos2 = trans(pos2)
+
+	# Start by generating the full list
+	tree1   = spatial.cKDTree(pos1)
+	tree2   = spatial.cKDTree(pos2)
+	matches = tree1.query_ball_tree(tree2, r=reff)
+	pairs   = [(i1,i2) for i1, group in enumerate(matches) for i2 in group]
+
+	if mode == "all":
+		return pairs
+	else:
+		if mode == "first":
+			# "first" mode only keeps the first group an object appears in. So the pairs
+			# are already in the right order.
+			pass
+		elif mode == "closest":
+			parr   = np.array(pairs)
+			d2     = np.sum((pos1[parr[:,0]]-pos2[parr[:,1]])**2,1)
+			order  = np.argsort(d2)
+			pairs  = [pairs[i] for i in order]
+		else:
+			raise ValueError("crossmatch: Unrecognized mode: %s" % (str(mode)))
+		# Filter out all but the first mention of each
+		done1 = np.zeros(n1, bool)
+		done2 = np.zeros(n2, bool)
+		opairs= []
+		for i1, i2 in pairs:
+			if done1[i1] or done2[i2]: continue
+			done1[i1] = done2[i2] = True
+			opairs.append((i1,i2))
+		return opairs
