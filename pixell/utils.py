@@ -2326,6 +2326,14 @@ def jname(ra, dec, fmt="J%(ra_H)02d%(ra_M)02d%(ra_S)02d%(dec_d)+02d%(dec_m)02d%(
 		"dec_d":ded[0]*ded[1], "dec_m": ded[2], "dec_s": ded[3],
 		"dec_H":deh[0]*deh[1], "dec_M": deh[2], "dec_S": deh[3]}
 
+def ang2chord(ang):
+	"""Converts from the angle between two points on a circle to the length of the chord between them"""
+	return 2*np.sin(ang/2)
+
+def chord2ang(chord):
+	"""Inverse of ang2chord."""
+	return 2*np.arcsin(chord/2)
+
 def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 	"""Find close matches between positions given by pos1[:,ndim] and pos2[:,ndim],
 	up to a maximum distance of rmax (in the same units as the positions).
@@ -2366,10 +2374,13 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 		coords = "radec" if pos1.shape[1] == 2 else "cartesian"
 	if coords == "radec":
 		trans = lambda pos: ang2rect(pos, zenith=False, axis=1)
+		reff  = ang2chord(rmax)
 	elif coords == "phitheta":
 		trans = lambda pos: ang2rect(pos, zenith=True,  axis=1)
+		reff  = ang2chord(rmax)
 	elif coords == "cartesian":
 		trans = lambda pos: pos
+		reff  = rmax
 	else:
 		raise ValueError("crossmatch: Unrecognized value for coords: %s" % (str(coords)))
 	pos1 = trans(pos1)
@@ -2378,7 +2389,7 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 	# Start by generating the full list
 	tree1   = spatial.cKDTree(pos1)
 	tree2   = spatial.cKDTree(pos2)
-	matches = tree1.query_ball_tree(tree2, r=rmax)
+	matches = tree1.query_ball_tree(tree2, r=reff)
 	pairs   = [(i1,i2) for i1, group in enumerate(matches) for i2 in group]
 
 	if mode == "all":
