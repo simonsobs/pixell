@@ -92,3 +92,10 @@ powspec - CMB power spectra utilities
    :members:          
    :undoc-members:
       
+enplot - Producing plots from ndmaps
+------------------------------------
+
+.. automodule:: pixell.enplot
+   :members:    
+   :undoc-members:
+
