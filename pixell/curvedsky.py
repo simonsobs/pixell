@@ -1,6 +1,6 @@
 """This module provides functions for taking into account the curvature of the
 full sky."""
-from __future__ import print_function
+from __future__ import print_function, division
 from . import sharp
 import numpy as np
 from . import enmap, powspec, wcsutils, utils
@@ -309,6 +309,58 @@ def map2alm_raw(map, alm, minfo, ainfo, spin=[0,2], copy=False):
 		alm_full[:,i1:i2,:] = sht.map2alm(map_flat[:,i1:i2,:], alm_full[:,i1:i2,:], spin=s)
 	return alm
 
+#####################
+### 1d Transforms ###
+#####################
+
+def profile2harm(br, r, lmax=None, oversample=1, left=None, right=None):
+	"""This is an alternative to healpy.beam2bl. In my tests it's a bit more
+	accurate and about 3x faster, most of which is spent constructing
+	the quadrature. It does use some interpolation internally, though, so
+	there might be cases where it's less accurate. Transforms the
+	function br(r) to bl(l). br has shape [...,nr], and the output will have
+	shape [...,nl]. Implemented using sharp SHTs with one
+	pixel per row and mmax=0. r is in radians and must be in ascending order."""
+	br    = np.asarray(br)
+	r     = np.asarray(r)
+	# 1. We will implement this using a SHT. Start by setting up its parameters
+	dr    = (r[-1]-r[0])/(len(r)-1)
+	n     = utils.nint(np.pi/dr)
+	m     = int(np.ceil(r[-1]/dr))
+	minfo = sharp.map_info_clenshaw_curtis(n*oversample, nphi=1)
+	minfo = minfo.select_rows(np.arange(m))
+	if lmax is None: lmax = n//2-1
+	ainfo = sharp.alm_info(lmax=lmax, mmax=0)
+	sht   = sharp.sht(minfo, ainfo)
+	# 2. Interpolate br to the minfo geometry. Simple linear interpolation.
+	l     = np.arange(lmax+1)
+	npre  = np.prod(br.shape[:-1], dtype=int)
+	harm  = np.zeros((npre,lmax+1),br.dtype)
+	alm   = np.zeros(ainfo.nelem, np.result_type(br,0j))
+	# This is to support br[...,nr] instead of just br[nr]
+	for i, br_single in enumerate(br.reshape(npre,-1)):
+		map = np.interp(minfo.theta, r, br_single, left=left, right=right)
+		sht.map2alm(map, alm)
+		harm[i] = alm.real * (4*np.pi/(2*l+1))**0.5
+	harm = harm.reshape(br.shape[:-1] + (harm.shape[-1],))
+	return harm
+
+def harm2profile(bl, r):
+	"""The inverse of profile2beam or healpy.beam2bl. *Much* faster
+	than these (150x faster in my test case). Should be exact too."""
+	bl = np.asarray(bl)
+	r  = np.asarray(r)
+	rtype = bl.reshape(-1)[0].real.dtype
+	minfo = sharp.map_info(theta=r, nphi=1)
+	ainfo = sharp.alm_info(lmax=bl.size-1, mmax=0)
+	sht   = sharp.sht(minfo, ainfo)
+	l     = np.arange(bl.shape[-1])
+	alm   = bl * ((2*l+1)/(4*np.pi))**0.5 + 0j
+	br    = np.zeros(bl.shape[:-1]+(r.size,), rtype)
+	for a, b in zip(alm.reshape(-1, alm.shape[-1]), br.reshape(-1, br.shape[-1])):
+		sht.alm2map(a,b)
+	return br
+
 ### Helper function ###
 
 def make_projectable_map_cyl(map, verbose=False):
@@ -529,10 +581,10 @@ def almxfl(alm,lfilter=None,ainfo=None):
 	Args:
 	    alm: (...,N) ndarray of spherical harmonic alms
 	    lfilter: either an array containing the 1d filter to apply starting with ell=0
-    	and separated by delta_ell=1, or a function mapping multipole ell to the 
+	    and separated by delta_ell=1, or a function mapping multipole ell to the 
 	    filtering expression.
-	    ainfo: 	If ainfo is provided, it is an alm_info describing the layout 
-     	of the input alm. Otherwise it will be inferred from the alm itself.
+	    ainfo: If ainfo is provided, it is an alm_info describing the layout 
+	    of the input alm. Otherwise it will be inferred from the alm itself.
 
 	Returns:
 	    falm: The filtered alms a_{l,m} * lfilter(l)
@@ -552,16 +604,15 @@ def filter(imap,lfilter,ainfo=None,lmax=None):
 	    imap: (...,Ny,Nx) ndmap stack of enmaps.
 	    lmax: integer specifying maximum multipole beyond which the alms are zeroed
 	    lfilter: either an array containing the 1d filter to apply starting with ell=0
-    	and separated by delta_ell=1, or a function mapping multipole ell to the 
+	    and separated by delta_ell=1, or a function mapping multipole ell to the 
 	    filtering expression.
-	    ainfo: 	If ainfo is provided, it is an alm_info describing the layout 
+	    ainfo: If ainfo is provided, it is an alm_info describing the layout 
 	of the input alm. Otherwise it will be inferred from the alm itself.
 
 	Returns:
 	    omap: (...,Ny,Nx) ndmap stack of filtered enmaps
 	"""
 	return alm2map(almxfl(map2alm(imap,ainfo=ainfo,lmax=lmax,spin=0),lfilter=lfilter,ainfo=ainfo),enmap.empty(imap.shape,imap.wcs,dtype=imap.dtype),spin=0,ainfo=ainfo)
-	
 
 
 def alm2cl(alm, alm2=None, ainfo=None):
