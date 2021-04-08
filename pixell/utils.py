@@ -42,6 +42,14 @@ adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
 
+def D(f, eps=1e-10):
+	"""Clever derivative operator for real-valued functions
+	f(x) from Ivan Yashchuck. Accurate to third order in eps.
+	Only calls f(x) once to evaluate the derivative, but f must
+	accept complex arguments. Example usage:
+	D(lambda x: x**4)(1) => 4.0"""
+	def Df(x): return f(x+eps*1j).imag / eps
+	return Df
 
 def lines(file_or_fname):
 	"""Iterates over lines in a file, which can be specified
