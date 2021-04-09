@@ -42,6 +42,14 @@ adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
 
+def D(f, eps=1e-10):
+	"""Clever derivative operator for real-valued functions
+	f(x) from Ivan Yashchuck. Accurate to second order in eps.
+	Only calls f(x) once to evaluate the derivative, but f must
+	accept complex arguments. Example usage:
+	D(lambda x: x**4)(1) => 4.0"""
+	def Df(x): return f(x+eps*1j).imag / eps
+	return Df
 
 def lines(file_or_fname):
 	"""Iterates over lines in a file, which can be specified
@@ -377,9 +385,9 @@ def interp(x, xp, fp, left=None, right=None, period=None):
 	x, xp, fp = [np.asanyarray(a) for a in [x, xp, fp]]
 	fp_flat   = fp.reshape(-1, fp.shape[-1])
 	f_flat    = np.empty((fp_flat.shape[0],)+x.shape, fp.dtype)
-	for f1, fp1 in zip(fp_flat, f_flat):
+	for f1, fp1 in zip(f_flat, fp_flat):
 		f1[:] = np.interp(x, xp, fp1, left=left, right=right, period=period)
-	f = f_flat.reshape(fp.shape[:-1]+(x.hape,))
+	f = f_flat.reshape(fp.shape[:-1]+x.shape)
 	return f
 
 def bin_multi(pix, shape, weights=None):
@@ -2326,6 +2334,14 @@ def jname(ra, dec, fmt="J%(ra_H)02d%(ra_M)02d%(ra_S)02d%(dec_d)+02d%(dec_m)02d%(
 		"dec_d":ded[0]*ded[1], "dec_m": ded[2], "dec_s": ded[3],
 		"dec_H":deh[0]*deh[1], "dec_M": deh[2], "dec_S": deh[3]}
 
+def ang2chord(ang):
+	"""Converts from the angle between two points on a circle to the length of the chord between them"""
+	return 2*np.sin(ang/2)
+
+def chord2ang(chord):
+	"""Inverse of ang2chord."""
+	return 2*np.arcsin(chord/2)
+
 def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 	"""Find close matches between positions given by pos1[:,ndim] and pos2[:,ndim],
 	up to a maximum distance of rmax (in the same units as the positions).
@@ -2333,9 +2349,9 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 	The argument "coords" controls how the coordinates are interpreted. If it is
 	"cartesian", then they are assumed to be cartesian coordinates. If it is
 	"radec" or "phitheta", then the coordinates are assumed to be angles in radians,
-	which will be transformed to coordinates internally before being used. "radec"
-	is equator-based while "phitheta" is zenith-based. The default, "auto", will assume
-	"radec" if ndim == 2, and "cartesian" otherwise.
+	which will be transformed to cartesian coordinates internally before being used.
+	"radec" is equator-based while "phitheta" is zenith-based. The default, "auto",
+	will assume "radec" if ndim == 2, and "cartesian" otherwise.
 
 	It's possible that multiple objects from the catalogs are within rmax of each
 	other. The "mode" argument controls how this is handled.
@@ -2366,10 +2382,13 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 		coords = "radec" if pos1.shape[1] == 2 else "cartesian"
 	if coords == "radec":
 		trans = lambda pos: ang2rect(pos, zenith=False, axis=1)
+		reff  = ang2chord(rmax)
 	elif coords == "phitheta":
 		trans = lambda pos: ang2rect(pos, zenith=True,  axis=1)
+		reff  = ang2chord(rmax)
 	elif coords == "cartesian":
 		trans = lambda pos: pos
+		reff  = rmax
 	else:
 		raise ValueError("crossmatch: Unrecognized value for coords: %s" % (str(coords)))
 	pos1 = trans(pos1)
@@ -2378,7 +2397,7 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 	# Start by generating the full list
 	tree1   = spatial.cKDTree(pos1)
 	tree2   = spatial.cKDTree(pos2)
-	matches = tree1.query_ball_tree(tree2, r=rmax)
+	matches = tree1.query_ball_tree(tree2, r=reff)
 	pairs   = [(i1,i2) for i1, group in enumerate(matches) for i2 in group]
 
 	if mode == "all":
