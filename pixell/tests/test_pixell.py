@@ -603,22 +603,21 @@ class PixelTests(unittest.TestCase):
         ps = np.vstack((yy,xx))
         decs,ras = enmap.pix2sky(shape,wcs,ps)
         
-        # Simulate these sources with unit flux and 2.5 arcmin FWHM
+        # Simulate these sources with unit peak value and 2.5 arcmin FWHM
         N = ps.shape[1]
         srcs = np.zeros((N,3))
         srcs[:,0] = decs
         srcs[:,1] = ras
         srcs[:,2] = ras*0 + 1
-        fwhm = 2.5 * u.arcmin
-        sigma = fwhm/2./np.sqrt(2.*np.log(2.))
+        sigma = 2.5 * u.fwhm * u.arcmin
         omap = pointsrcs.sim_srcs(shape,wcs,srcs,beam=sigma)
 
         # Reproject thumbnails centered on the sources
         # with gnomonic/tangent projection
         proj = "tan"
         r = 10*u.arcmin
-        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj, apod=2*u.arcmin,
-                order=3, oversample=2,pixwin=False)
+        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj, 
+            apod=2*u.arcmin, order=3, oversample=2,pixwin=False)
 
         # Create a reference source at the equator to compare this against
         ishape,iwcs = enmap.geometry(shape=ret.shape,res=res,pos=(0,0),proj=proj)
