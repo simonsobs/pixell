@@ -612,10 +612,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 		ithumb = imap.extract_pixbox(pixbox)
 		if extensive: ithumb /= ithumb.pixsizemap()
 		ithumb = ithumb.apod(apod_pix, fill="median")
-		if pixwin:
-			wy, wx = enmap.calc_window(ithumb.shape[-2:])
-			ptransfer = wy[:,None]**(-1) * wx[None,:]**(-1)
-			ithumb = enmap.ifft(ptransfer*enmap.fft(ithumb)).real
+		if pixwin: ithumb = enmap.apply_window(ithumb, -1)
 		if filter is not None: ithumb = filter(ithumb)
 		if verbose:
 			print("%4d/%d %6.2f %6.2f %8.2f %dx%d" % (si+1, nsrc, coords[si,0]/utils.degree, coords[si,1]/utils.degree, np.max(ithumb), ithumb.shape[-2], ithumb.shape[-1]))
