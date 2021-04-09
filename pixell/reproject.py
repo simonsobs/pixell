@@ -644,4 +644,5 @@ def thumbnails_ivar(imap, coords, r=5*utils.arcmin, res=None, proj="tan",
 	combined. An example of this is a hitcount map or ivar per pixel. Conversely, if
 	you have an intensive quantity like ivar per arcmin you should set extensive=False."""
 	return thumbnails(imap, coords, r=r, res=res, proj=proj, oshape=oshape, owcs=owcs,
-			order=1, oversample=1, pol=False, extensive=extensive, verbose=verbose,)
+			order=1, oversample=1, pol=False, extensive=extensive, verbose=verbose,
+			pixwin=False)

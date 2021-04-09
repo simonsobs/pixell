@@ -579,7 +579,7 @@ class PixelTests(unittest.TestCase):
         np.testing.assert_array_almost_equal(omap, omap_exp)
 
     def test_thumbnails(self):
-        print("Testing thumbnails (slow)...")
+        print("Testing thumbnails...")
 
         # Make a geometry far away from the equator
         dec_min = 70 * u.degree
