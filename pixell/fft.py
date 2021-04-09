@@ -84,8 +84,23 @@ def fft(tod, ft=None, nthread=0, axes=[-1], flags=None):
 		otype = np.result_type(tod.dtype,0j)
 		ft  = empty(tod.shape, otype)
 		tod = tod.astype(otype, copy=False)
-	plan = engines[engine].FFTW(tod, ft, flags=flags, threads=nt, axes=axes)
-	plan()
+	try:
+		plan = engines[engine].FFTW(tod, ft, flags=flags, threads=nt, axes=axes)
+	except RuntimeError:
+		# Try again with partially flattened arrays in case MKL FFTW was used.
+		# The intel MKL FFTW wrapper does not allow ndim > len(axes) + 1 arrays.
+		shape_ft = ft.shape
+		naxes = np.atleast_1d(axes).size
+		ft = utils.partial_flatten(ft, axes=axes, pos=0)
+		tod = utils.partial_flatten(tod, axes=axes, pos=0)
+		axes_new = list(range(-1, -1 - naxes, -1))
+		plan = engines[engine].FFTW(tod, ft, flags=flags, threads=nt,
+					    axes=axes_new)
+		plan()
+		ft = utils.partial_expand(ft, shape_ft, axes=axes, pos=0)
+		ft = np.ascontiguousarray(ft)
+	else:
+		plan()
 	return ft
 
 def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None):
@@ -102,12 +117,26 @@ def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None):
 	if ft.size == 0: return
 	nt = nthread or nthread_ifft
 	if flags is None: flags = default_flags
-	if tod is None: tod = empty(ft.shape, ft.dtype)
-	plan = engines[engine].FFTW(ft, tod, flags=flags, direction='FFTW_BACKWARD', threads=nt, axes=axes)
+	if tod is None:	tod = empty(ft.shape, ft.dtype)
+	try:
+		plan = engines[engine].FFTW(ft, tod, flags=flags, direction='FFTW_BACKWARD',
+					    threads=nt, axes=axes)
+	except RuntimeError:
+		# Try again in case MKL FFTW was used, see comments in fft().
+		shape_tod = tod.shape
+		naxes = np.atleast_1d(axes).size
+		tod = utils.partial_flatten(tod, axes=axes, pos=0)
+		ft = utils.partial_flatten(ft, axes=axes, pos=0)
+		axes_new = list(range(-1, -1 - naxes, -1))
+		plan = engines[engine].FFTW(ft, tod, flags=flags, direction='FFTW_BACKWARD',
+					    threads=nt, axes=axes_new)
+		plan(normalise_idft=False)
+		tod = utils.partial_expand(tod, shape_tod, axes=axes, pos=0)
+		tod = np.ascontiguousarray(tod)
+	else:
+		plan(normalise_idft=False)
 	# I get a small, cumulative loss in amplitude when using
-	# pyfftw's normalize function.. So normalize manually instead
-	#plan(normalise_idft=normalize)
-	plan(normalise_idft=False)
+	# pyfftw's normalize function.. So normalize manually instead	
 	if normalize: tod /= np.product([tod.shape[i] for i in axes])
 	return tod
 

@@ -17,6 +17,7 @@ from pixell import reproject
 from pixell import wcsutils
 from pixell import utils as u
 from pixell import colors
+from pixell import fft
 import numpy as np
 import pickle
 import os,sys
@@ -125,6 +126,90 @@ class PixelTests(unittest.TestCase):
         imap = enmap.enmap(np.random.random(shape),wcs)
         assert np.all(np.isclose(imap,enmap.ifft(enmap.fft(imap,normalize='phy'),normalize='phy').real))
         assert np.all(np.isclose(imap,enmap.ifft(enmap.fft(imap)).real))
+
+    def test_fft_input_shape(self):
+        # Tests fft for various shapes and choices of axes.
+        # 1D FFT over last axis for 3d array.
+        signal = np.ones((1, 2, 5))
+        signal[0,1,:] = 10.
+        out_exp = np.zeros((1, 2, 5), dtype=np.complex128)
+        out_exp[0,0,0] = 5
+        out_exp[0,1,0] = 50
+        out = fft.fft(signal)
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 1D FFT over middle axis for 3d array.
+        signal = np.ones((1, 5, 2))
+        signal[0,:,1] = 10.
+        out_exp = np.zeros((1, 5, 2), dtype=np.complex128)
+        out_exp[0,0,0] = 5
+        out_exp[0,0,1] = 50
+        out = fft.fft(signal, axes=[-2])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 2D FFT over last 2 axes of 4d array.
+        signal = np.ones((1, 2, 5, 10))
+        signal[0,1,:] = 10.
+        out_exp = np.zeros((1, 2, 5, 10), dtype=np.complex128)
+        out_exp[0,0,0,0] = 50
+        out_exp[0,1,0,0] = 500
+        out = fft.fft(signal, axes=[-2, -1])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 2D FFT over middle 2 axes of 4d array.
+        signal = np.ones((1, 5, 10, 2))
+        signal[0,:,:,1] = 10.
+        out_exp = np.zeros((1, 5, 10, 2), dtype=np.complex128)
+        out_exp[0,0,0,0] = 50
+        out_exp[0,0,0,1] = 500
+        out = fft.fft(signal, axes=[-3, -2])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+    def test_ifft_input_shape(self):
+        # Tests ifft for various shapes and choices of axes.
+        # 1D IFFT over last axis for 3d array.
+        fsignal = np.ones((1, 2, 5), dtype=np.complex128)
+        fsignal[0,1,:] = 10.
+        out_exp = np.zeros((1, 2, 5))
+        out_exp[0,0,0] = 5
+        out_exp[0,1,0] = 50
+        out = fft.ifft(fsignal)
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 1D IFFT over middle axis for 3d array.
+        fsignal = np.ones((1, 5, 2), dtype=np.complex128)
+        fsignal[0,:,1] = 10.
+        out_exp = np.zeros((1, 5, 2))
+        out_exp[0,0,0] = 5
+        out_exp[0,0,1] = 50
+        out = fft.ifft(fsignal, axes=[-2])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 2D IFFT over last 2 axes of 4d array.
+        fsignal = np.ones((1, 2, 5, 10), dtype=np.complex128)
+        fsignal[0,1,:] = 10.
+        out_exp = np.zeros((1, 2, 5, 10))
+        out_exp[0,0,0,0] = 50
+        out_exp[0,1,0,0] = 500
+        out = fft.ifft(fsignal, axes=[-2, -1])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 2D IFFT over middle 2 axes of 4d array.
+        fsignal = np.ones((1, 5, 10, 2), dtype=np.complex128)
+        fsignal[0,:,:,1] = 10.
+        out_exp = np.zeros((1, 5, 10, 2))
+        out_exp[0,0,0,0] = 50
+        out_exp[0,0,0,1] = 500
+        out = fft.ifft(fsignal, axes=[-3, -2])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
 
     def test_extract(self):
         # Tests that extraction is sensible
