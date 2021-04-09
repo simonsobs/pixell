@@ -546,7 +546,7 @@ def populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400):
 
 def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*utils.arcmin,
 		order=3, oversample=4, pol=None, oshape=None, owcs=None, extensive=False, verbose=False,
-		filter=None):
+		filter=None,pixwin=False):
 	"""Given an enmap [...,ny,nx] and a set of coords [n,{dec,ra}], extract a set
 	of thumbnail images [n,...,thumby,thumbx] centered on each set of
 	coordinates. Each of these thumbnail images is projected onto a local tangent
@@ -579,7 +579,9 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 	then it's intensive.
 
 	For reprojecting inverse variance maps, consider using the wrapper thumbnails_ivar,
-	which makes it easier to avoid common pitfalls."""
+	which makes it easier to avoid common pitfalls.
+    
+    If pixwin is True, the pixel window will be deconvolved."""
 	# FIXME: Specifying a geometry manually is broken - see usage of r in neighborhood_pixboxes below
 	# Handle arbitrary coords shape
 	coords = np.asarray(coords)
@@ -610,6 +612,10 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 		ithumb = imap.extract_pixbox(pixbox)
 		if extensive: ithumb /= ithumb.pixsizemap()
 		ithumb = ithumb.apod(apod_pix, fill="median")
+		if pixwin:
+			wy, wx = enmap.calc_window(ithumb.shape[-2:])
+			ptransfer = wy[:,None]**(-1) * wx[None,:]**(-1)
+			ithumb = enmap.ifft(ptransfer*enmap.fft(ithumb)).real
 		if filter is not None: ithumb = filter(ithumb)
 		if verbose:
 			print("%4d/%d %6.2f %6.2f %8.2f %dx%d" % (si+1, nsrc, coords[si,0]/utils.degree, coords[si,1]/utils.degree, np.max(ithumb), ithumb.shape[-2], ithumb.shape[-1]))
@@ -638,4 +644,4 @@ def thumbnails_ivar(imap, coords, r=5*utils.arcmin, res=None, proj="tan",
 	combined. An example of this is a hitcount map or ivar per pixel. Conversely, if
 	you have an intensive quantity like ivar per arcmin you should set extensive=False."""
 	return thumbnails(imap, coords, r=r, res=res, proj=proj, oshape=oshape, owcs=owcs,
-			order=1, oversample=1, pol=False, extensive=extensive, verbose=verbose)
+			order=1, oversample=1, pol=False, extensive=extensive, verbose=verbose,)

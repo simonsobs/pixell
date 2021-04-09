@@ -14,6 +14,7 @@ from pixell import array_ops
 from pixell import enplot
 from pixell import powspec
 from pixell import reproject
+from pixell import pointsrcs
 from pixell import wcsutils
 from pixell import utils as u
 from pixell import colors
@@ -576,6 +577,60 @@ class PixelTests(unittest.TestCase):
         omap_exp = sht.alm2map(alm_spin, spin=1)
 
         np.testing.assert_array_almost_equal(omap, omap_exp)
+
+    def test_thumbnails(self):
+        print("Testing thumbnails (slow)...")
+
+        # Make a geometry far away from the equator
+        dec_min = 70 * u.degree
+        dec_max = 80 * u.degree
+        res = 0.5 * u.arcmin
+        shape,wcs = enmap.band_geometry((dec_min,dec_max),res=res)
+
+        # Create a set of point source positions separated by
+        # 2 degrees but with 1 column wrapping around the RA
+        # direction
+        width = 120 * u.arcmin
+        Ny = int((dec_max-dec_min)/(width))
+        Nx = int((2*np.pi/(width)))
+        pys = np.linspace(0,shape[0],Ny)[1:-1]
+        pxs = np.linspace(0,shape[1],Nx)[:-1]
+        Ny = len(pys)
+        Nx = len(pxs)
+        xx,yy = np.meshgrid(pxs,pys)
+        xx = xx.reshape(-1)
+        yy = yy.reshape(-1)
+        ps = np.vstack((yy,xx))
+        decs,ras = enmap.pix2sky(shape,wcs,ps)
+        
+        # Simulate these sources with unit flux and 2.5 arcmin FWHM
+        N = ps.shape[1]
+        srcs = np.zeros((N,3))
+        srcs[:,0] = decs
+        srcs[:,1] = ras
+        srcs[:,2] = ras*0 + 1
+        fwhm = 2.5 * u.arcmin
+        sigma = fwhm/2./np.sqrt(2.*np.log(2.))
+        omap = pointsrcs.sim_srcs(shape,wcs,srcs,beam=sigma)
+
+        # Reproject thumbnails centered on the sources
+        # with gnomonic/tangent projection
+        proj = "tan"
+        r = 10*u.arcmin
+        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj, apod=2*u.arcmin,
+                order=3, oversample=2,pixwin=False)
+
+        # Create a reference source at the equator to compare this against
+        ishape,iwcs = enmap.geometry(shape=ret.shape,res=res,pos=(0,0),proj=proj)
+        imodrmap = enmap.modrmap(ishape,iwcs)
+        model = np.exp(-imodrmap**2./2./sigma**2.)
+
+        # Make sure all thumbnails agree with the reference at the
+        # sub-percent level
+        for i in range(ret.shape[0]):
+            diff = ret[i] - model
+            assert np.all(np.isclose(diff,0,atol=1e-3))
+                    
 
 if __name__ == '__main__':
     unittest.main()
