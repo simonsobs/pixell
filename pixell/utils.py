@@ -42,6 +42,14 @@ adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
 
+def D(f, eps=1e-10):
+	"""Clever derivative operator for real-valued functions
+	f(x) from Ivan Yashchuck. Accurate to second order in eps.
+	Only calls f(x) once to evaluate the derivative, but f must
+	accept complex arguments. Example usage:
+	D(lambda x: x**4)(1) => 4.0"""
+	def Df(x): return f(x+eps*1j).imag / eps
+	return Df
 
 def lines(file_or_fname):
 	"""Iterates over lines in a file, which can be specified
@@ -2341,9 +2349,9 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 	The argument "coords" controls how the coordinates are interpreted. If it is
 	"cartesian", then they are assumed to be cartesian coordinates. If it is
 	"radec" or "phitheta", then the coordinates are assumed to be angles in radians,
-	which will be transformed to coordinates internally before being used. "radec"
-	is equator-based while "phitheta" is zenith-based. The default, "auto", will assume
-	"radec" if ndim == 2, and "cartesian" otherwise.
+	which will be transformed to cartesian coordinates internally before being used.
+	"radec" is equator-based while "phitheta" is zenith-based. The default, "auto",
+	will assume "radec" if ndim == 2, and "cartesian" otherwise.
 
 	It's possible that multiple objects from the catalogs are within rmax of each
 	other. The "mode" argument controls how this is handled.
