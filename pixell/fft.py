@@ -30,7 +30,7 @@ class numpy_FFTW:
 			if not normalise_idft:
 				self.b *= np.product([self.b.shape[i] for i in self.axes])
 
-def numpy_n_byte_align_empty(shape, alignment, dtype):
+def numpy_empty_aligned(shape, dtype, n=None):
 	"""This dummy function just skips the alignment, since numpy
 	doesn't provide an easy way to get it."""
 	return np.empty(shape, dtype)
@@ -38,7 +38,7 @@ def numpy_n_byte_align_empty(shape, alignment, dtype):
 class NumpyEngine: pass
 numpy_engine = NumpyEngine()
 numpy_engine.FFTW = numpy_FFTW
-numpy_engine.n_byte_align_empty = numpy_n_byte_align_empty
+numpy_engine.n_byte_align_empty = numpy_empty_aligned
 engines["numpy"] = numpy_engine
 engine = "numpy"
 
@@ -203,7 +203,7 @@ def asfcarray(a):
 	return np.asarray(a, np.result_type(a,0.0))
 
 def empty(shape, dtype):
-	return engines[engine].n_byte_align_empty(shape, alignment, dtype)
+	return engines[engine].empty_aligned(shape, dtype=dtype, n=alignment)
 
 def fftfreq(n, d=1.0): return np.fft.fftfreq(n, d=d)
 def rfftfreq(n, d=1.0): return np.arange(n//2+1)/(1.0*n*d)
@@ -225,5 +225,5 @@ def shift(a, shift, axes=None, nofft=False, deriv=None):
 			phase *= -2j*np.pi*freqs
 		fa   *= phase[(None,)*ax + (slice(None),) + (None,)*(a.ndim-ax-1)]
 	if not nofft: ifft(fa, ca, axes=axes, normalize=True)
-	else:         ca = fa
+	else:	      ca = fa
 	return ca if np.iscomplexobj(a) else ca.real
