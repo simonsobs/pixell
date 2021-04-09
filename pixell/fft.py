@@ -38,7 +38,7 @@ def numpy_empty_aligned(shape, dtype, n=None):
 class NumpyEngine: pass
 numpy_engine = NumpyEngine()
 numpy_engine.FFTW = numpy_FFTW
-numpy_engine.n_byte_align_empty = numpy_empty_aligned
+numpy_engine.empty_aligned = numpy_empty_aligned
 engines["numpy"] = numpy_engine
 engine = "numpy"
 
