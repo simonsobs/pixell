@@ -8,87 +8,10 @@ except ImportError: pass
 try: basestring
 except NameError: basestring = str
 
-# ----------------------------
-
-# Analyst-facing functions
-
 def postage_stamp(inmap, ra_deg, dec_deg, width_arcmin,
                   res_arcmin, proj='gnomonic', return_cutout=False,
                   npad=3, rotate_pol=True, **kwargs):
-    """Extract a postage stamp from a larger map by reprojecting
-    to a coordinate system centered on the given position.
-
-    Args:
-        imap: (ncomp,Ny,Nx) or (Ny,Nx) enmap array from which to 
-        extract stamps or filename or list of filenames for map
-        ra_deg: right ascension in degrees
-        dec_deg: declination in degrees
-        width_arcmin: stamp dimension in arcminutes
-        res_arcmin: width of pixel in arcminutes
-        proj: coordinate system for postage stamp; default is 'gnomonic';
-        can also specify 'cea' or 'car'
-        return_cutout: return the pre-reprojection cutout as well
-        npad: integer specifying number of extra pixels in pre-reprojection
-        cutout
-        **kwargs: additional parameters passed to interpolation enmap.at
-        function
-
-    Returns:
-        rots: ndmap containing reprojected maps
-        If return_cutout is True,
-        cutout: pre-reprojection cutout as ndmap
-
-    """
-    proj = proj.strip().lower()
-    assert proj in ['gnomonic', 'car', 'cea']
-    dec = np.deg2rad(dec_deg)
-    ra = np.deg2rad(ra_deg)
-    width = np.deg2rad(width_arcmin / 60.)
-    res = np.deg2rad(res_arcmin / 60.)
-    
-    if not(type(inmap) is list or type(inmap) is tuple):
-        imaps = [inmap]
-    else:
-        imaps = inmap
-
-    rots = []
-    stamps = []
-    for imap in imaps:
-        if isinstance(imap,basestring):
-            ishape,iwcs = enmap.read_map_geometry(imap)
-        else:
-            ishape,iwcs = imap.shape,imap.wcs
-        mapres = np.min(np.abs(enmap.extent(ishape,iwcs))/ishape[-2:])
-        # cut out a stamp assuming CAR ; TODO: generalize?
-        stamp = cutout(imap, width=npad*mapres+np.deg2rad(width_arcmin / 60.) /
-                       np.cos(dec), ra=ra, dec=dec,
-                       return_slice=isinstance(imap,basestring))
-        if isinstance(imap,basestring):
-            stamp = enmap.read_map(imap, sel=stamp)
-        if stamp is None:
-            return (None,None) if return_cutout else None
-        if stamp.ndim==2: stamp = stamp[None,:]
-        ncomp = stamp.shape[0]
-        assert ncomp==1 or ncomp==3, \
-            "Only leading dimensions of 1 (intensity) or 3 (I,Q,U) are supported."
-        sshape, swcs = stamp.shape, stamp.wcs
-        if proj == 'car' or proj == 'cea':
-            tshape, twcs = rect_geometry(width=width, res=res, proj=proj)
-        elif proj == 'gnomonic':
-            tshape, twcs = gnomonic_pole_geometry(width, res)
-        rpix = get_rotated_pixels(sshape, swcs, tshape, twcs, inverse=False,
-                                  pos_target=None, center_target=(0., 0.),
-                                  center_source=(dec, ra))
-        rot = enmap.enmap(rotate_map(stamp, pix_target=rpix[:2], **kwargs), twcs)
-        if ncomp==3 and rotate_pol:
-            rot[1:3] = enmap.rotate_pol(rot[1:3], -rpix[2]) # for polarization rotation if enough components
-        rots.append(rot.copy())
-        if return_cutout: stamps.append(enmap.enmap(stamp.copy(),swcs))
-    rots = enmap.enmap(np.stack(rots),twcs)
-    if len(imaps)==1: rots = rots[0]
-    if return_cutout:
-        return rots,stamps[0] if len(imaps)==1 else stamps
-    return rots
+				  raise Exception("postage_stamp has been deprecated. Please use thumbnails instead.")
 
 
 def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
