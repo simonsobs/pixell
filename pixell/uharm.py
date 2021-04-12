@@ -1,0 +1,230 @@
+"""This module provides functions that make it easier to write curvature-agnostic code
+that looks the same whether it's operating using the flat-sky approximation (2d FFTs)
+or the curved sky (SHTs and alms)"""
+import numpy as np
+from . import utils, enmap, curvedsky, sharp
+
+# Unified Harmonic Transform
+class UHT:
+	"""The UHT class provides a Unified Harmonic Transform, which provides both
+	FFTs and SHTs under a unified interface. The purpose of this class is to be able
+	to write various filtering and convolution operations in a flat-sky-agnostic way.
+	
+	After initialization, the main purpose of the UHT object is to transform between
+	pixel-space ("map") and harmonic-space ("harm") representations. In both flat-sky
+	and curved-sky modes, the map-space representation is an enmap, but the harmonic
+	space reprsentation differ for the two. In flat-sky the harmonic representation is
+	also an enmap, while in curved-sky mode it's an alm.
+
+	The UHT object also provides functions for working with 1d functions or r or l.
+	Functions of r can be transformed to harmonic form using rprof2hprof. Due to
+	the symmetry, the harmonic space reprsentation of these is a bit different from
+	that of the maps. In flat mode, the result is still an enmap, but in curved mode
+	it's just a 1d function of l. If you already have a function of l, it can be put
+	in the standard form using the lexpand function.
+
+	You can multiply the harmonic representation of profiles with that of the maps
+	by using lmul.
+
+	This all sounds complicated, but the point is that this UHT object takes care
+	of these details. For example, here is how you would smooth a map given the
+	real-space reprsentation of a beam:
+
+		uht  = UHT(shape, wcs)
+		beam = uth.rprof2hprof(br, r)
+		omap = uht.harm2map(uht.lmul(beam, uht.map2harm(map)))
+
+	Notice how none of this depended on flat/curved sky or the the details of the harmonic
+	space representation.
+
+	Explanation of terms and representations:
+
+	* map:   An enmap with shape [...,ny,nx] representing some or all of the sky
+	* rprof: Radial profiles br[...,nr] valuated at the points r[nr], typically a beam.
+	* lprof: A 1d function of l: bl[...,nl]. Does not have to match the internal lmax.
+	* harm:  The harmonic-space representation of a map, as produced by map2harm.
+	  - flat:   A complex enmap[...,ny,nx] corresponding to the the multipoles self.l
+	  - curved: Alms[...,self.lmax+1]
+	* hprof: The harmonic-space representation of an isotropic function, as produced by
+	  rprof2hprof or lprof2hprof. Can be multiplied with harm using lmul.
+	  - flat:   An enmap[...,ny,nx] corresponding to the multipoles self.l
+	  - curved: A 1d array [...,self.lmax+1]
+	"""
+	def __init__(self, shape, wcs, mode="auto", lmax=None, max_distortion=0.1):
+		"""Initialize a UHT object.
+		Arguments:
+			shape, wcs: The geometry of the enmaps the UHT object will be used on.
+			mode: The flat/curved sky mode to use. "flat" selects the flat-sky approximation,
+				"curved" uses full SHTs, and "auto" (the detault) selects flat or curved based on
+				the estimated maximum distortion in the map.
+			lmax: The maximum multipole to use in calculations. Ignored in flat-sky mode.
+			max_distortion: The maximum relative scale difference across the map that's acceptable
+				before curved sky is necessary."""
+		self.shape, self.wcs = shape[-2:], wcs
+		if mode == "auto":
+			dist = estimate_distortion(shape, wcs)
+			if dist <= max_distortion: mode = "flat"
+			else:                      mode = "curved"
+		self.mode = mode
+		if mode == "flat":
+			self.l    = enmap.modlmap(shape, wcs)
+			self.lmax = utils.nint(np.max(self.l))
+			# TODO: Understand why pi is necessary here.
+			self.nper = self.l[1,0]*self.l[0,1]/np.pi
+			self.ntot = self.nper*shape[-2]*shape[-1]
+		elif mode == "curved":
+			if lmax is None:
+				res  = np.min(np.abs(wcs.wcs.cdelt))*utils.degree
+				lmax = res2lmax(res)
+			self.lmax = lmax
+			self.l    = np.arange(lmax+1)
+			self.ainfo= sharp.alm_info(lmax=lmax)
+			self.nper = 2*self.l+1
+			self.ntot = np.sum(self.nper)
+		else:
+			raise ValueError("Unrecognized mode in UHT: '%s'" % (str(mode)))
+	def map2harm(self, map, spin=0):
+		if self.mode == "flat":
+			return enmap.map2harm(map, spin=spin, normalize="phys")
+		else:
+			return curvedsky.map2alm(map, ainfo=self.ainfo)
+	def harm2map(self, harm, spin=0):
+		if self.mode == "flat":
+			return enmap.harm2map(harm, spin=spin, normalize="phys").real
+		else:
+			rtype= np.zeros(1, harm.dtype).real.dtype
+			omap = enmap.zeros(harm.shape[:-1]+self.shape, self.wcs, rtype)
+			return curvedsky.alm2map(harm, omap, ainfo=self.ainfo, spin=spin)
+	def harm2map_adjoint(self, map, spin=0):
+		if self.mode == "flat":
+			return enmap.harm2map_adjoint(map, spin=spin, normalize="phys")
+		else:
+			return curvedsky.alm2map_adjoint(map, ainfo=self.ainfo)
+	def map2harm_adjoint(self, harm, spin=0):
+		if self.mode == "flat":
+			return enmap.map2harm_adjoint(harm, spin=spin, normalize="phys")
+		else:
+			rtype= np.zeros(1, harm.dtype).real.dtype
+			omap = enmap.zeros(harm.shape[:-1]+self.shape, self.wcs, rtype)
+			return curvedsky.map2alm_adjoint(harm, omap, ainfo=self.ainfo, spin=spin)
+	def rprof2hprof(self, br, r):
+		"""Like map2harm, but for a 1d function of r."""
+		if self.mode == "flat":
+			return profile2harm_flat_2d(br, r, self.shape, self.wcs)
+		else:
+			return curvedsky.profile2harm(br, r, lmax=self.lmax)
+	def hprof2rprof(self, harm, r):
+		"""Inverse of hprof2rprof"""
+		if self.mode == "flat":
+			return harm2profile_flat_2d(harm, r)
+		else:
+			return curvedsky.harm2profile(harm, r)
+	def lprof2hprof(self, lprof):
+		if self.mode == "flat":
+			return utils.interpol(lprof, self.l[None], order=1, mode="constant")
+		else:
+			if lprof.shape[-1] >= self.lmax+1:
+				return lprof[...,:self.lmax+1]
+			else:
+				return np.concatenate([lprof, np.zeros(lprof.shape[:-1]+(self.lmax+1-lprof.shape[-1],), lprof.dtype)], -1)
+	def hprof2harm(self, hprof):
+		if self.mode == "flat":
+			return hprof.copy()
+		else:
+			mapping = self.ainfo.get_map()
+			return lprof[...,mapping[:,0]]
+	def hmul(self, hprof, harm, inplace=False):
+		"""Perform the multiplication hprof*harm -> harm. See the UHT class docstring for
+		the meaning of these terms. In flat mode, hprof must be [ny,nx], [ncomp,ny,nx] or
+		[ncomp,ncomp,ny,nx].  In curved mode, hprof must be [nl], [ncomp,nl] or [ncomp,ncomp,nl]."""
+		harm = np.asanyarray(harm)
+		if self.mode == "flat":
+			if not inplace: harm = harm.copy()
+			harm[:] = enmap.map_mul(hprof, harm)
+			return harm
+		else:
+			out = harm if inplace else None
+			harm = harm.astype(np.result_type(harm,0j), copy=False)
+			return self.ainfo.lmul(harm, hprof, out=out)
+	def sum_harm(self, harm):
+		"""Return the sum over all harmonic modes sum(l) sum(m=-l:l) harm(l,m)"""
+		harm = np.asanyarray(harm)
+		if self.mode == "flat":
+			return np.sum(harm*self.nper,(-2,-1))
+		else:
+			# Double everything, then subtract m=0 modes that should not have been doubled
+			return np.sum(harm,-1)*2 - np.sum(harm[...,self.ainfo.mstart[0]:self.ainfo.mstart[1]],-1)
+	def sum_hprof(self, hprof):
+		"""Like sum_harm but for representations of isotropic functions."""
+		hprof = np.asanyarray(hprof)
+		if self.mode == "flat":
+			return np.sum(hprof*self.nper,(-2,-1))
+		else:
+			return np.sum(hprof*self.nper,-1)
+
+####################
+# Helper functions #
+####################
+
+def profile2harm_flat(br, r, oversample=2, pad_factor=2):
+	"""Flat-sky approximation to curvedsky.profile2harm. Accurate to about 0.5% for a 1.4 arcmin
+	fwhm beam. Only supports a 1d br"""
+	# Build a 2d pixelization we will evaluate the ffts on
+	res  = beam2res(br, r)
+	rmax = beam2rmax(br, r)*pad_factor
+	n    = 2*utils.nint(rmax/res*oversample)+1
+	shape, wcs = enmap.geometry(pos=[0,0], res=res/oversample, shape=(n,n), proj="car")
+	# Compute the 2d beam in harmonic space
+	lbeam_2d = profile2harm_flat_2d(br, r, shape, wcs)
+	# Reduce to equispaced standard beam
+	bl_tmp, l_tmp = lbeam_2d.lbin()
+	lmax = res2lmax(res)
+	l  = np.arange(lmax+1)
+	bl = np.interp(l, l_tmp, bl_tmp)
+	return bl
+
+def profile2harm_flat_2d(br, r, shape, wcs):
+	"""Given a 1d beam br(r), compute the 2d beam transform bl(ly,lx) for
+	the l-space of the map with the given shape, wcs, assuming a flat sky.
+	Despite the name, it is not specific to beams - any real-space function of r
+	will do. br can have arbitrary pre-dimensions [...,nr]"""
+	br     = np.asarray(br)
+	cpix   = np.array(shape[-2:])//2-1
+	cpos   = enmap.pix2sky(shape, wcs, cpix)
+	rmap   = enmap.shift(enmap.modrmap(shape, wcs, cpos), -cpix)
+	bmap   = enmap.ndmap(utils.interp(rmap, r, br, right=0), wcs)
+	# Normalize the beam so that l=0 corresponds to the sky mean of the beam,
+	# like it is for get_lbeam_exact
+	harm  = enmap.fft(bmap, normalize=False).real
+	harm *= harm.pixsize()
+	return harm
+
+def harm2profile_flat_2d(harm, r=None):
+	"""Inverse of profile2harm_flat_2d. harm should be an enmap.
+	r is [:] in radians."""
+	harm = harm / harm.pixsize()
+	bmap = enmap.ifft(harm, normalize=False).real
+	wbr, wr = bmap.rbin()
+	if r is None: return wbr, r
+	else:         return utils.interp(r, wr, wbr, right=0)
+
+def beam2res(br, r):
+	fwhm = 2*r[np.where(br>=br[0]*0.5)[0][-1]]
+	res  = fwhm/3
+	return res
+
+def beam2rmax(br, r, tol=1e-5, return_index=False):
+	imax = np.where(br>=br[0]*tol)[0][-1]
+	if return_index: return r[imax], imax
+	else:            return r[imax]
+
+def res2lmax(res):
+	"""Get the lmax needed to represent the spatial scale res in radians"""
+	return utils.nint(np.pi/res)
+
+def estimate_distortion(shape, wcs):
+	"""Get the maximum distortion in the map, assuming a cylindrical projection"""
+	dec1, dec2 = enmap.corners(shape, wcs)[:,0]
+	rmin = min(np.cos(dec1),np.cos(dec2))
+	rmax = 1 if not dec1*dec2 > 0 else max(np.cos(dec1),np.cos(dec2))
+	return rmax/rmin-1
