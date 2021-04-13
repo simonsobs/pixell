@@ -22,8 +22,6 @@ import numpy as np
 import pickle
 import os,sys
 
-fft.set_engine('numpy')
-
 try:                              # when invoked directly...
     import pixel_tests as ptests
 except ImportError:               # when imported through py.test
