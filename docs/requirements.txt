@@ -1,0 +1,4 @@
+# These are package requirements for docs build only.
+
+# Since numpy is "used" at root level, we can't just mock it.
+numpy
