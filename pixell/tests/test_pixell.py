@@ -22,6 +22,8 @@ import numpy as np
 import pickle
 import os,sys
 
+fft.set_engine('numpy')
+
 try:                              # when invoked directly...
     import pixel_tests as ptests
 except ImportError:               # when imported through py.test
@@ -159,6 +161,18 @@ class PixelTests(unittest.TestCase):
         np.testing.assert_allclose(out, out_exp, atol=1e-12)
         self.assertTrue(out.flags['C_CONTIGUOUS'])
 
+        # 2D FFT over last 2 axes of 4d non-contiguous array.
+        signal = np.ones((1, 2, 5, 10), dtype=np.complex128)
+        signal[0,1,:] = 10
+        ft = np.zeros((5, 10, 1, 2), dtype=np.complex128).transpose(2, 3, 0, 1)
+        out_exp = np.zeros_like(ft)
+        out_exp[0,0,0,0] = 50
+        out_exp[0,1,0,0] = 500
+        out = fft.fft(signal, ft=ft, axes=[-2, -1])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(np.shares_memory(ft, out))
+        self.assertFalse(out.flags['C_CONTIGUOUS'])
+
         # 2D FFT over middle 2 axes of 4d array.
         signal = np.ones((1, 5, 10, 2))
         signal[0,:,:,1] = 10.
@@ -200,6 +214,18 @@ class PixelTests(unittest.TestCase):
         out = fft.ifft(fsignal, axes=[-2, -1])
         np.testing.assert_allclose(out, out_exp, atol=1e-12)
         self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 2D IFFT over last 2 axes of 4d non-contiguous array.
+        fsignal = np.ones((1, 2, 5, 10), dtype=np.complex128)
+        fsignal[0,1,:] = 10.
+        tod = np.zeros((5, 10, 1, 2), dtype=np.complex128).transpose(2, 3, 0, 1)
+        out_exp = np.zeros_like(tod)
+        out_exp[0,0,0,0] = 50
+        out_exp[0,1,0,0] = 500
+        out = fft.ifft(fsignal, tod=tod, axes=[-2, -1])
+        self.assertTrue(np.shares_memory(tod, out))
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertFalse(out.flags['C_CONTIGUOUS'])
 
         # 2D IFFT over middle 2 axes of 4d array.
         fsignal = np.ones((1, 5, 10, 2), dtype=np.complex128)
