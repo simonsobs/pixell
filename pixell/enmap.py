@@ -22,6 +22,10 @@ from . import utils, wcsutils, powspec, fft as enfft
 try: basestring
 except NameError: basestring = str
 
+mute = {
+	"polconv_fix": False,
+}
+
 # PyFits uses row-major ordering, i.e. C ordering, while the fits file
 # itself uses column-major ordering. So an array which is (ncomp,ny,nx)
 # will be (nx,ny,ncomp) in the file. This means that the axes in the ndmap
@@ -1128,7 +1132,9 @@ def queb_rotmat(lmap, inverse=False, iau=False, spin=2):
 	# tangential direction, not radial. This matches flipperpol too.
 	# This corresponds to the Healpix convention. To get IAU,
 	# flip the sign of a.
-	sgn = -1 if iau else 1
+	sgn = 1 if iau else -1
+	if not mute["polconv_fix"]:
+		warnings.warn("enmap polarization convention changed. The old iau was actually healpix, and vice versa. This has been fixed now, and the enmap meaning of iau and healpix now matches that of curvedsky, and the rest of the world. If you suddenly get gibberish EE spectra, then you will need to change the value of the iau flag you pass to harm2map, map2harm, etc.. To mute this warnings, set enmapl.mute[\"polconv_fix\"] = True")
 	a    = sgn*spin*np.arctan2(-lmap[1], lmap[0])
 	c, s = np.cos(a), np.sin(a)
 	if inverse: s = -s
