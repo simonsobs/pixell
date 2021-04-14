@@ -177,7 +177,14 @@ def empty(shape, dtype):
 	return engines[engine].n_byte_align_empty(shape, alignment, dtype)
 
 def fftfreq(n, d=1.0): return np.fft.fftfreq(n, d=d)
-def rfftfreq(n, d=1.0): return np.arange(n//2+1)/(1.0*n*d)
+def rfftfreq(n, d=1.0): return np.arange(n//2+1)/(n*d)
+
+def ind2freq (n, i, d=1.0): return np.where(i < n/2, i, -n+i)/(d*n)
+def int2rfreq(n, i, d=1.0): return i/(n*d)
+def freq2ind(n, f, d=1.0):
+	j = f*(d*n)
+	return np.where(j >= 0, j, n+j)
+def rfreq2ind(n, f, d=1.0): return f*(n*d)
 
 def shift(a, shift, axes=None, nofft=False, deriv=None):
 	"""Shift the array a by a (possibly fractional) number of samples "shift"

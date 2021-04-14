@@ -97,6 +97,7 @@ def contains(array, vals):
 	"""Given an array[n], returns a boolean res[n], which is True
 	for any element in array that is also in vals, and False otherwise."""
 	array = np.asarray(array)
+	vals  = np.asarray(vals)
 	vals  = np.sort(vals)
 	inds  = np.searchsorted(vals, array)
 	# If a value would be inserted after the end, it wasn't
