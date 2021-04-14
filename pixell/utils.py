@@ -42,6 +42,13 @@ adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
 
+def D(f, eps=1e-10):
+	"""Clever derivative operator for function f(x) from Ivan Yashchuck.
+	Accurate to second order in eps. Only calls f(x) once to evaluate the
+	derivative, but f must accept complex arguments. Only works for real x.
+	Example usage: D(lambda x: x**4)(1) => 4.0"""
+	def Df(x): return f(x+eps*1j).imag / eps
+	return Df
 
 def lines(file_or_fname):
 	"""Iterates over lines in a file, which can be specified
@@ -377,9 +384,9 @@ def interp(x, xp, fp, left=None, right=None, period=None):
 	x, xp, fp = [np.asanyarray(a) for a in [x, xp, fp]]
 	fp_flat   = fp.reshape(-1, fp.shape[-1])
 	f_flat    = np.empty((fp_flat.shape[0],)+x.shape, fp.dtype)
-	for f1, fp1 in zip(fp_flat, f_flat):
+	for f1, fp1 in zip(f_flat, fp_flat):
 		f1[:] = np.interp(x, xp, fp1, left=left, right=right, period=period)
-	f = f_flat.reshape(fp.shape[:-1]+(x.hape,))
+	f = f_flat.reshape(fp.shape[:-1]+x.shape)
 	return f
 
 def bin_multi(pix, shape, weights=None):
@@ -1766,15 +1773,14 @@ def calc_beam_area(beam_profile):
 	r, b = beam_profile
 	return integrate.simps(2*np.pi*r*b,r)
 
-def flux_factor(beam_area, freq, T0=T_cmb):
-	"""Compute the factor A that when multiplied with a linearized
-	temperature increment dT around T0 (in K) at the given frequency freq
-	in Hz and integrated over the given beam_area in steradians, produces
-	the corresponding flux = A*dT. This is useful for converting between
-	point source amplitudes and point source fluxes.
+def planck(f, T):
+	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
+	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
+blackbody = planck
 
-	For uK to mJy use flux_factor(beam_area, freq)/1e3
-	"""
+def dplanck(f, T):
+	"""The derivative of the planck spectrum with respect to temperature, evaluated
+	at frequencies f and temperature T, in units of Jy/sr/K."""
 	# A blackbody has intensity I = 2hf**3/c**2/(exp(hf/kT)-1) = V/(exp(x)-1)
 	# with V = 2hf**3/c**2, x = hf/kT.
 	# dI/dx = -V/(exp(x)-1)**2 * exp(x)
@@ -1783,26 +1789,9 @@ def flux_factor(beam_area, freq, T0=T_cmb):
 	#       = 2*h**2*f**4/c**2/k/T**2 * exp(x)/(exp(x)-1)**2
 	#       = 2*x**4 * k**3*T**2/(h**2*c**2) * exp(x)/(exp(x)-1)**2
 	#       = .... /(4*sinh(x/2)**2)
-	x     = h*freq/(k*T0)
-	dIdT  = 2*x**4 * k**3*T0**2/(h**2*c**2) / (4*np.sinh(x/2)**2)
-	dJydK = dIdT * 1e26 * beam_area
-	return dJydK
-
-def noise_flux_factor(beam_area, freq, T0=T_cmb):
-	"""Compute the factor A that converts from white noise level in K sqrt(steradian)
-	to uncertainty in Jy for the given beam area in steradians and frequency in Hz.
-	This assumes white noise and a gaussian beam, so that the area of the real-space squared beam is
-	just half that of the normal beam area.
-
-	For uK arcmin to mJy, use noise_flux_factor(beam_area, freq)*arcmin/1e3
-	"""
-	squared_beam_area = beam_area/2
-	return flux_factor(beam_area/squared_beam_area**0.5, freq, T0=T0)
-
-def planck(f, T):
-	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
-	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
-blackbody = planck
+	x     = h*f/(k*T)
+	dIdT  = 2*x**4 * k**3*T**2/(h**2*c**2) / (4*np.sinh(x/2)**2) * 1e26
+	return dIdT
 
 def graybody(f, T, beta=1):
 	"""Return a graybody spectrum at the frequency f and temperature T in Jy/sr"""
@@ -1815,6 +1804,31 @@ def tsz_spectrum(f, T=T_cmb):
 	x  = h*f/(k*T)
 	ex = np.exp(x)
 	return 2*h*f**3/c**2 * (x*ex)/(ex-1)**2 * (x*(ex+1)/(ex-1)-4) * 1e26
+
+# Helper functions for conversion from peak amplitude in cmb maps to flux
+
+def flux_factor(beam_area, freq, T0=T_cmb):
+	"""Compute the factor A that when multiplied with a linearized
+	temperature increment dT around T0 (in K) at the given frequency freq
+	in Hz and integrated over the given beam_area in steradians, produces
+	the corresponding flux = A*dT. This is useful for converting between
+	point source amplitudes and point source fluxes.
+
+	For uK to mJy use flux_factor(beam_area, freq)/1e3
+	"""
+	return dplanck(freq, T0)*beam_area
+
+def noise_flux_factor(beam_area, freq, T0=T_cmb):
+	"""Compute the factor A that converts from white noise level in K sqrt(steradian)
+	to uncertainty in Jy for the given beam area in steradians and frequency in Hz.
+	This assumes white noise and a gaussian beam, so that the area of the real-space squared beam is
+	just half that of the normal beam area.
+
+	For uK arcmin to mJy, use noise_flux_factor(beam_area, freq)*arcmin/1e3
+	"""
+	squared_beam_area = beam_area/2
+	return dplanck(freq, T0)*beam_area/squared_beam_area**0.5
+
 
 ### Binning ####
 
@@ -2326,6 +2340,14 @@ def jname(ra, dec, fmt="J%(ra_H)02d%(ra_M)02d%(ra_S)02d%(dec_d)+02d%(dec_m)02d%(
 		"dec_d":ded[0]*ded[1], "dec_m": ded[2], "dec_s": ded[3],
 		"dec_H":deh[0]*deh[1], "dec_M": deh[2], "dec_S": deh[3]}
 
+def ang2chord(ang):
+	"""Converts from the angle between two points on a circle to the length of the chord between them"""
+	return 2*np.sin(ang/2)
+
+def chord2ang(chord):
+	"""Inverse of ang2chord."""
+	return 2*np.arcsin(chord/2)
+
 def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 	"""Find close matches between positions given by pos1[:,ndim] and pos2[:,ndim],
 	up to a maximum distance of rmax (in the same units as the positions).
@@ -2333,9 +2355,9 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 	The argument "coords" controls how the coordinates are interpreted. If it is
 	"cartesian", then they are assumed to be cartesian coordinates. If it is
 	"radec" or "phitheta", then the coordinates are assumed to be angles in radians,
-	which will be transformed to coordinates internally before being used. "radec"
-	is equator-based while "phitheta" is zenith-based. The default, "auto", will assume
-	"radec" if ndim == 2, and "cartesian" otherwise.
+	which will be transformed to cartesian coordinates internally before being used.
+	"radec" is equator-based while "phitheta" is zenith-based. The default, "auto",
+	will assume "radec" if ndim == 2, and "cartesian" otherwise.
 
 	It's possible that multiple objects from the catalogs are within rmax of each
 	other. The "mode" argument controls how this is handled.
@@ -2366,10 +2388,13 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 		coords = "radec" if pos1.shape[1] == 2 else "cartesian"
 	if coords == "radec":
 		trans = lambda pos: ang2rect(pos, zenith=False, axis=1)
+		reff  = ang2chord(rmax)
 	elif coords == "phitheta":
 		trans = lambda pos: ang2rect(pos, zenith=True,  axis=1)
+		reff  = ang2chord(rmax)
 	elif coords == "cartesian":
 		trans = lambda pos: pos
+		reff  = rmax
 	else:
 		raise ValueError("crossmatch: Unrecognized value for coords: %s" % (str(coords)))
 	pos1 = trans(pos1)
@@ -2378,7 +2403,7 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 	# Start by generating the full list
 	tree1   = spatial.cKDTree(pos1)
 	tree2   = spatial.cKDTree(pos2)
-	matches = tree1.query_ball_tree(tree2, r=rmax)
+	matches = tree1.query_ball_tree(tree2, r=reff)
 	pairs   = [(i1,i2) for i1, group in enumerate(matches) for i2 in group]
 
 	if mode == "all":

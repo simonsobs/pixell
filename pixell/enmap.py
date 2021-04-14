@@ -22,6 +22,10 @@ from . import utils, wcsutils, powspec, fft as enfft
 try: basestring
 except NameError: basestring = str
 
+mute = {
+	"polconv_fix": False,
+}
+
 # PyFits uses row-major ordering, i.e. C ordering, while the fits file
 # itself uses column-major ordering. So an array which is (ncomp,ny,nx)
 # will be (nx,ny,ncomp) in the file. This means that the axes in the ndmap
@@ -55,6 +59,7 @@ class ndmap(np.ndarray):
 	def box(self, npoint=10, corner=True): return box(self.shape, self.wcs, npoint=npoint, corner=corner)
 	def pixbox_of(self,oshape,owcs): return pixbox_of(self.wcs, oshape,owcs)
 	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
+	def posaxes(self, safe=True, corner=False): return posaxes(self.shape, self.wcs, safe=safe, corner=corner)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
 	def lform(self, shift=True): return lform(self, shift=shift)
@@ -238,11 +243,15 @@ def scale_geometry(shape, wcs, scale):
 def get_unit(wcs):
 	return utils.degree
 
+def npix(shape): return shape[-2]*shape[-1]
+
 class Geometry:
 	def __init__(self, shape, wcs=None):
 		try: self.shape, self.wcs = shape.shape, shape.wcs
 		except AttributeError: self.shape, self.wcs = shape, wcs
 		assert wcs is not None, "Geometry __init__ needs either a Geometry object or a shape, wcs pair"
+	@property
+	def npix(self): return shape[-2]*shape[-1]
 	# Make it behave a bit like a tuple, so we can use it interchangably with a shape, wcs pair
 	# for compatibility
 	def __len__(self): return 2
@@ -1049,7 +1058,7 @@ def lrmap(shape, wcs, oversample=1):
 	of a map with the given shape and wcs."""
 	return lmap(shape, wcs, oversample=oversample)[...,:shape[-1]//2+1]
 
-def fft(emap, omap=None, nthread=0, normalize=True):
+def fft(emap, omap=None, nthread=0, normalize=True, adjoint_ifft=False):
 	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap.
 	If normalize is "phy", "phys" or "physical", then an additional normalization
 	is applied such that the binned square of the fourier transform can
@@ -1059,30 +1068,40 @@ def fft(emap, omap=None, nthread=0, normalize=True):
 	res  = samewcs(enfft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
 	norm = 1
 	if normalize: norm /= np.prod(emap.shape[-2:])**0.5
-	if normalize in ["phy","phys","physical"]: norm *= emap.pixsize()**0.5
+	if normalize in ["phy","phys","physical"]:
+		if adjoint_ifft: norm /= emap.pixsize()**0.5
+		else:            norm *= emap.pixsize()**0.5
 	if norm != 1: res *= norm
 	return res
-def ifft(emap, omap=None, nthread=0, normalize=True):
+def ifft(emap, omap=None, nthread=0, normalize=True, adjoint_fft=False):
 	"""Performs the 2d iFFT of the complex enmap given, and returns a pixel-space enmap."""
 	res  = samewcs(enfft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
 	norm = 1
 	if normalize: norm /= np.prod(emap.shape[-2:])**0.5
-	if normalize in ["phy","phys","physical"]: norm /= emap.pixsize()**0.5
+	if normalize in ["phy","phys","physical"]:
+		if adjoint_fft: norm *= emap.pixsize()**0.5
+		else:           norm /= emap.pixsize()**0.5
 	if norm != 1: res *= norm
 	return res
+
+def fft_adjoint(emap, omap=None, nthread=0, normalize=True):
+	return ifft(emap, omap=omap, nthread=nthread, normalize=normalize, adjoint_fft=True)
+
+def ifft_adjoint(emap, omap=None, nthread=0, normalize=True):
+	return fft(emap, omap=omap, nthread=nthread, normalize=normalize, adjoint_ifft=True)
 
 # These are shortcuts for transforming from T,Q,U real-space maps to
 # T,E,B hamonic maps. They are not the most efficient way of doing this.
 # It would be better to precompute the rotation matrix and buffers, and
 # use real transforms.
-def map2harm(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
+def map2harm(emap, nthread=0, normalize=True, iau=False, spin=[0,2], adjoint_harm2map=False):
 	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap.
 	If normalize starts with "phy" (for physical), then an additional normalization
 	is applied such that the binned square of the fourier transform can
 	be directly compared to theory  (apart from mask corrections)
 	, i.e., pixel area factors are corrected for.
 	"""
-	emap = samewcs(fft(emap,nthread=nthread,normalize=normalize), emap)
+	emap = samewcs(fft(emap,nthread=nthread,normalize=normalize, adjoint_ifft=adjoint_harm2map), emap)
 	if emap.ndim > 2:
 		rot, s0 = None, None
 		for s, i1, i2 in spin_helper(spin, emap.shape[-3]):
@@ -1090,7 +1109,7 @@ def map2harm(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
 			if s != s0: s0, rot = s, queb_rotmat(emap.lmap(), iau=iau, spin=s)
 			emap[...,i1:i2,:,:] = map_mul(rot, emap[...,i1:i2,:,:])
 	return emap
-def harm2map(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
+def harm2map(emap, nthread=0, normalize=True, iau=False, spin=[0,2], keep_imag=False, adjoint_map2harm=False):
 	if emap.ndim > 2:
 		emap = emap.copy()
 		rot, s0 = None, None
@@ -1098,14 +1117,24 @@ def harm2map(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
 			if s == 0:  continue
 			if s != s0: s0, rot = s, queb_rotmat(emap.lmap(), iau=iau, spin=s, inverse=True)
 			emap[...,i1:i2,:,:] = map_mul(rot, emap[...,i1:i2,:,:])
-	return samewcs(ifft(emap,nthread=nthread,normalize=normalize), emap).real
+	res = samewcs(ifft(emap,nthread=nthread,normalize=normalize, adjoint_fft=adjoint_map2harm), emap)
+	if not keep_imag: res = res.real
+	return res
+
+def map2harm_adjoint(emap, nthread=0, normalize=True, iau=False, spin=[0,2], keep_imag=False):
+	return harm2map(emap, nthread=nthread, normalize=normalize, iau=iau, spin=spin, keep_imag=keep_imag, adjoint_map2harm=True)
+
+def harm2map_adjoint(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
+	return map2harm(emap, nthread=nthread, normalize=normalize, iau=iau, spin=spin, adjoint_harm2map=True)
 
 def queb_rotmat(lmap, inverse=False, iau=False, spin=2):
 	# atan2(x,y) instead of (y,x) because Qr points in the
 	# tangential direction, not radial. This matches flipperpol too.
 	# This corresponds to the Healpix convention. To get IAU,
 	# flip the sign of a.
-	sgn = -1 if iau else 1
+	sgn = 1 if iau else -1
+	if not mute["polconv_fix"]:
+		warnings.warn("enmap polarization convention changed. The old iau was actually healpix, and vice versa. This has been fixed now, and the enmap meaning of iau and healpix now matches that of curvedsky, and the rest of the world. If you suddenly get gibberish EE spectra, then you will need to change the value of the iau flag you pass to harm2map, map2harm, etc.. To mute this warnings, set enmapl.mute[\"polconv_fix\"] = True")
 	a    = sgn*spin*np.arctan2(-lmap[1], lmap[0])
 	c, s = np.cos(a), np.sin(a)
 	if inverse: s = -s
@@ -1777,6 +1806,9 @@ def _widen(map,n):
 	"""Helper for gard and div. Adds degenerate axes between the first
 	and the last two to give the map a total dimensionality of n."""
 	return map[(slice(None),) + (None,)*(n-3) + (slice(None),slice(None))]
+
+def laplace(m):
+	return -ifft(fft(m)*np.sum(m.lmap()**2,0)).real
 
 def apod(m, width, profile="cos", fill="zero"):
 	"""Apodize the provided map. Currently only cosine apodization is

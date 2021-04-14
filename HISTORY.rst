@@ -2,6 +2,18 @@
 History
 =======
 
+0.12.0 (2021-04-13)
+-------------------
+
+Changes relative to 0.11.2 include:
+
+* Major breaking change: the meaning of the "iau" flag has been
+  corrected and reversed. The default behaviour of map2harm and other functions
+  using this flag will be different.
+* Unified harmonic transforms module
+* postage_stamp removed in favor of thumbnails
+* Adjoint harmonic transforms
+  
 0.11.2 (2021-02-04)
 -------------------
 
