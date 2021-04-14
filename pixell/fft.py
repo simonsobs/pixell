@@ -30,7 +30,7 @@ class numpy_FFTW:
 			if not normalise_idft:
 				self.b *= np.product([self.b.shape[i] for i in self.axes])
 
-def numpy_n_byte_align_empty(shape, alignment, dtype):
+def numpy_empty_aligned(shape, dtype, n=None):
 	"""This dummy function just skips the alignment, since numpy
 	doesn't provide an easy way to get it."""
 	return np.empty(shape, dtype)
@@ -38,7 +38,7 @@ def numpy_n_byte_align_empty(shape, alignment, dtype):
 class NumpyEngine: pass
 numpy_engine = NumpyEngine()
 numpy_engine.FFTW = numpy_FFTW
-numpy_engine.n_byte_align_empty = numpy_n_byte_align_empty
+numpy_engine.empty_aligned = numpy_empty_aligned
 engines["numpy"] = numpy_engine
 engine = "numpy"
 
@@ -48,6 +48,14 @@ try:
 	engines["fftw"] = pyfftw
 	engine = "fftw"
 except ImportError: pass
+else:
+	# Is FFTW actually using intel MKL as a backend? Check if 1D FT crashes for 3D input.
+	try:
+		engines['fftw'].FFTW(np.zeros((1,1,1)), np.zeros((1,1,1), dtype=np.complex128),
+				     flags=['FFTW_ESTIMATE'], threads=1, axes=[-1])
+	except RuntimeError as e:
+		engines['intel'] = engines.pop('fftw')
+		engine = 'intel'
 try:
 	import pyfftw_intel as intel
 	engines["intel"] = intel
@@ -84,8 +92,11 @@ def fft(tod, ft=None, nthread=0, axes=[-1], flags=None):
 		otype = np.result_type(tod.dtype,0j)
 		ft  = empty(tod.shape, otype)
 		tod = tod.astype(otype, copy=False)
-	plan = engines[engine].FFTW(tod, ft, flags=flags, threads=nt, axes=axes)
-	plan()
+	if engine == 'intel':
+		ft[:] = fft_flat(tod, ft, axes=axes, nthread=nt, flags=flags)
+	else:
+		plan = engines[engine].FFTW(tod, ft, flags=flags, threads=nt, axes=axes)
+		plan()
 	return ft
 
 def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None):
@@ -102,12 +113,15 @@ def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None):
 	if ft.size == 0: return
 	nt = nthread or nthread_ifft
 	if flags is None: flags = default_flags
-	if tod is None: tod = empty(ft.shape, ft.dtype)
-	plan = engines[engine].FFTW(ft, tod, flags=flags, direction='FFTW_BACKWARD', threads=nt, axes=axes)
+	if tod is None:	tod = empty(ft.shape, ft.dtype)
+	if engine == 'intel':
+		tod[:] = ifft_flat(ft, tod, axes=axes, nthread=nt, flags=flags)
+	else:
+		plan = engines[engine].FFTW(ft, tod, flags=flags, direction='FFTW_BACKWARD',
+					    threads=nt, axes=axes)
+		plan(normalise_idft=False)
 	# I get a small, cumulative loss in amplitude when using
-	# pyfftw's normalize function.. So normalize manually instead
-	#plan(normalise_idft=normalize)
-	plan(normalise_idft=False)
+	# pyfftw's normalize function.. So normalize manually instead	
 	if normalize: tod /= np.product([tod.shape[i] for i in axes])
 	return tod
 
@@ -174,7 +188,7 @@ def asfcarray(a):
 	return np.asarray(a, np.result_type(a,0.0))
 
 def empty(shape, dtype):
-	return engines[engine].n_byte_align_empty(shape, alignment, dtype)
+	return engines[engine].empty_aligned(shape, dtype=dtype, n=alignment)
 
 def fftfreq(n, d=1.0): return np.fft.fftfreq(n, d=d)
 def rfftfreq(n, d=1.0): return np.arange(n//2+1)/(n*d)
@@ -203,5 +217,36 @@ def shift(a, shift, axes=None, nofft=False, deriv=None):
 			phase *= -2j*np.pi*freqs
 		fa   *= phase[(None,)*ax + (slice(None),) + (None,)*(a.ndim-ax-1)]
 	if not nofft: ifft(fa, ca, axes=axes, normalize=True)
-	else:         ca = fa
+	else:	      ca = fa
 	return ca if np.iscomplexobj(a) else ca.real
+
+def fft_flat(tod, ft, nthread=1, axes=[-1], flags=None):
+	"""Workaround for intel FFTW wrapper. Flattens appropriate dimensions of
+	intput and output arrays to avoid crash that otherwise happens for arrays with
+	ndim > N + 1, where N is the dimension of the transform. If 'axes' correspond
+	to the last dimensions of the arrays, the workaround is essentially free. If
+	`axes` correspond to other axes, copies are made when reshaping the arrays."""
+	shape_ft = ft.shape
+	naxes = np.atleast_1d(axes).size
+	axes_new = list(range(-1, -1 - naxes, -1))
+	ft = utils.partial_flatten(ft, axes=axes, pos=0)
+	tod = utils.partial_flatten(tod, axes=axes, pos=0)
+	plan = engines[engine].FFTW(tod, ft, flags=flags, threads=nthread,
+				    axes=axes_new)
+	plan()
+	ft = utils.partial_expand(ft, shape_ft, axes=axes, pos=0)
+	return ft
+
+def ifft_flat(ft, tod, nthread=1, axes=[-1], flags=None):
+	"""Same workaround as fft_flat but now for the inverse transform."""
+	shape_tod = tod.shape
+	naxes = np.atleast_1d(axes).size
+	axes_new = list(range(-1, -1 - naxes, -1))
+	tod = utils.partial_flatten(tod, axes=axes, pos=0)
+	ft = utils.partial_flatten(ft, axes=axes, pos=0)
+	plan = engines[engine].FFTW(ft, tod, flags=flags, direction='FFTW_BACKWARD',
+				    threads=nthread, axes=axes_new)
+	plan(normalise_idft=False)
+	tod = utils.partial_expand(tod, shape_tod, axes=axes, pos=0)
+	return tod
+
