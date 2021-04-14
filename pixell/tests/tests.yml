@@ -2,7 +2,7 @@
 seed: 10
 lmax: 1500
 lmax_pad: 500
-result_name: MM_091819
+result_name: MM_041121
 
 spectra:
   - name: white_10
@@ -47,27 +47,3 @@ extracts:
   - name: cut_span_180_2
     type: slice
     box_deg: [[-5,-175],[5,-185]]
-
-  - name: postage_center_0
-    type: postage
-    width_arcmin: 100.0
-    res_arcmin: 10.0
-    center_deg: [0,0]
-
-  # - name: postage_center_1 # THIS FAILS THE TEST (small differences in cutouts from disk)
-  #   type: postage
-  #   width_arcmin: 100.0
-  #   res_arcmin: 10.0
-  #   center_deg: [0,90]
-
-  # - name: postage_span_180_1 # THIS FAILS THE TEST (not implemented generally enough)
-  #   type: postage
-  #   width_arcmin: 100.0
-  #   res_arcmin: 10.0
-  #   center_deg: [0,180]
-
-  # - name: postage_span_180_2 # THIS FAILS THE TEST (not implemented generally enough)
-  #   type: postage
-  #   width_arcmin: 100.0
-  #   res_arcmin: 10.0
-  #   center_deg: [0,-180]

@@ -14,6 +14,7 @@ from pixell import array_ops
 from pixell import enplot
 from pixell import powspec
 from pixell import reproject
+from pixell import pointsrcs
 from pixell import wcsutils
 from pixell import utils as u
 from pixell import colors
@@ -398,6 +399,237 @@ class PixelTests(unittest.TestCase):
         self.assertIs(ainfo_out.lmax, ainfo_in.lmax)
         self.assertIs(ainfo_out.mmax, ainfo_in.mmax)
         self.assertIs(ainfo_out.nelem, ainfo_in.nelem)
+
+    def test_sharp_alm2map_roundtrip(self):
+                
+        # Test the wrapper around libsharps alm2map/map2alm.
+        lmax = 3
+        ainfo = sharp.alm_info(lmax)
+
+        nrings = lmax + 1
+        nphi = 2 * lmax + 1
+        minfo = sharp.map_info_gauss_legendre(nrings, nphi)
+
+        sht = sharp.sht(minfo, ainfo)
+
+        # Test different input shapes and dtypes.
+        # Case 1a: 1d double precision.
+        spin = 0
+        alm = np.zeros((ainfo.nelem), dtype=np.complex128)
+        alm[4] = 1. + 1.j
+
+        omap = sht.alm2map(alm, spin=spin)
+        self.assertEqual(omap.shape, (minfo.npix,))
+        self.assertEqual(omap.dtype, np.float64)
+        alm_out = sht.map2alm(omap, spin=spin)
+
+        np.testing.assert_array_almost_equal(alm_out, alm)
+
+        # Case 1b: 1d single precision.
+        spin = 0
+        alm = np.zeros((ainfo.nelem), dtype=np.complex64)
+        alm[4] = 1. + 1.j
+
+        omap = sht.alm2map(alm, spin=spin)
+        self.assertEqual(omap.shape, (minfo.npix,))
+        self.assertEqual(omap.dtype, np.float32)
+        alm_out = sht.map2alm(omap, spin=spin)
+
+        np.testing.assert_array_almost_equal(alm_out, alm)
+
+        # Case 2a: 2d double precision.
+        spin = 1
+        nspin = 2
+        alm = np.zeros((nspin, ainfo.nelem), dtype=np.complex128)
+        alm[0,4] = 1. + 1.j
+        alm[1,4] = 2. - 2.j
+
+        omap = sht.alm2map(alm, spin=spin)
+        self.assertEqual(omap.shape, (nspin, minfo.npix))
+        self.assertEqual(omap.dtype, np.float64)
+        alm_out = sht.map2alm(omap, spin=spin)
+
+        np.testing.assert_array_almost_equal(alm_out, alm)
+
+        # Case 2b: 2d single precision.
+        spin = 1
+        nspin = 2
+        alm = np.zeros((nspin, ainfo.nelem), dtype=np.complex64)
+        alm[0,4] = 1. + 1.j
+        alm[1,4] = 2. - 2.j
+
+        omap = sht.alm2map(alm, spin=spin)
+        self.assertEqual(omap.shape, (nspin, minfo.npix))
+        self.assertEqual(omap.dtype, np.float32)
+        alm_out = sht.map2alm(omap, spin=spin)
+
+        np.testing.assert_array_almost_equal(alm_out, alm)
+
+        # Case 3a: 3d double precision.
+        spin = 1
+        nspin = 2
+        ntrans = 3
+        alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=np.complex128)
+        alm[0,0,4] = 1. + 1.j
+        alm[0,1,4] = 2. - 2.j
+        alm[1,0,4] = 3. + 3.j
+        alm[1,1,4] = 4. - 4.j
+        alm[2,0,4] = 5. + 5.j
+        alm[2,1,4] = 6. - 6.j
+
+        omap = sht.alm2map(alm, spin=spin)
+        self.assertEqual(omap.shape, (ntrans, nspin, minfo.npix))
+        self.assertEqual(omap.dtype, np.float64)
+        alm_out = sht.map2alm(omap, spin=spin)
+
+        np.testing.assert_array_almost_equal(alm_out, alm)
+
+        # Case 3b: 3d single precision.
+        spin = 1
+        nspin = 2
+        ntrans = 3
+        alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=np.complex64)
+        alm[0,0,4] = 1. + 1.j
+        alm[0,1,4] = 2. - 2.j
+        alm[1,0,4] = 3. + 3.j
+        alm[1,1,4] = 4. - 4.j
+        alm[2,0,4] = 5. + 5.j
+        alm[2,1,4] = 6. - 6.j
+
+        omap = sht.alm2map(alm, spin=spin)
+        self.assertEqual(omap.shape, (ntrans, nspin, minfo.npix))
+        self.assertEqual(omap.dtype, np.float32)
+        alm_out = sht.map2alm(omap, spin=spin)
+
+        np.testing.assert_array_almost_equal(alm_out, alm)
+
+    def test_sharp_alm2map_der1(self):
+                
+        # Test the wrapper around libsharps alm2map_der1.
+        lmax = 3
+        ainfo = sharp.alm_info(lmax)
+
+        nrings = lmax + 1
+        nphi = 2 * lmax + 1
+        minfo = sharp.map_info_gauss_legendre(nrings, nphi)
+
+        sht = sharp.sht(minfo, ainfo)
+
+        # Test different input shapes and dtypes.
+        # Case 1a: 1d double precision.
+        alm = np.zeros((ainfo.nelem), dtype=np.complex128)
+        alm[4] = 1. + 1.j
+
+        omap = sht.alm2map_der1(alm)
+        # Compare to expected value by doing spin 1 transform
+        # on sqrt(ell (ell + 1)) alm.
+        alm_spin = np.zeros((2, ainfo.nelem), dtype=np.complex128)
+        alm_spin[0] = alm * np.sqrt(2)
+        omap_exp = sht.alm2map(alm_spin, spin=1)
+
+        np.testing.assert_array_almost_equal(omap, omap_exp)
+
+        # Case 1b: 1d single precision.
+        alm = np.zeros((ainfo.nelem), dtype=np.complex64)
+        alm[4] = 1. + 1.j
+
+        omap = sht.alm2map_der1(alm)
+        # Compare to expected value by doing spin 1 transform
+        # on sqrt(ell (ell + 1)) alm.
+        alm_spin = np.zeros((2, ainfo.nelem), dtype=np.complex64)
+        alm_spin[0] = alm * np.sqrt(2)
+        omap_exp = sht.alm2map(alm_spin, spin=1)
+
+        np.testing.assert_array_almost_equal(omap, omap_exp)
+
+        # Case 2a: 2d double precision.
+        ntrans = 3
+        alm = np.zeros((ntrans, ainfo.nelem), dtype=np.complex128)
+        alm[0,4] = 1. + 1.j
+        alm[1,4] = 2. + 2.j
+        alm[2,4] = 3. + 3.j
+
+        omap = sht.alm2map_der1(alm)
+        # Compare to expected value by doing spin 1 transform
+        # on sqrt(ell (ell + 1)) alm.
+        alm_spin = np.zeros((ntrans, 2, ainfo.nelem), dtype=np.complex128)
+        alm_spin[0,0] = alm[0] * np.sqrt(2)
+        alm_spin[1,0] = alm[1] * np.sqrt(2)
+        alm_spin[2,0] = alm[2] * np.sqrt(2)
+        omap_exp = sht.alm2map(alm_spin, spin=1)
+
+        np.testing.assert_array_almost_equal(omap, omap_exp)
+
+        # Case 2b: 2d single precision.
+        ntrans = 3
+        alm = np.zeros((ntrans, ainfo.nelem), dtype=np.complex64)
+        alm[0,4] = 1. + 1.j
+        alm[1,4] = 2. + 2.j
+        alm[2,4] = 3. + 3.j
+
+        omap = sht.alm2map_der1(alm)
+        # Compare to expected value by doing spin 1 transform
+        # on sqrt(ell (ell + 1)) alm.
+        alm_spin = np.zeros((ntrans, 2, ainfo.nelem), dtype=np.complex64)
+        alm_spin[0,0] = alm[0] * np.sqrt(2)
+        alm_spin[1,0] = alm[1] * np.sqrt(2)
+        alm_spin[2,0] = alm[2] * np.sqrt(2)
+        omap_exp = sht.alm2map(alm_spin, spin=1)
+
+        np.testing.assert_array_almost_equal(omap, omap_exp)
+
+    def test_thumbnails(self):
+        print("Testing thumbnails...")
+
+        # Make a geometry far away from the equator
+        dec_min = 70 * u.degree
+        dec_max = 80 * u.degree
+        res = 0.5 * u.arcmin
+        shape,wcs = enmap.band_geometry((dec_min,dec_max),res=res)
+
+        # Create a set of point source positions separated by
+        # 2 degrees but with 1 column wrapping around the RA
+        # direction
+        width = 120 * u.arcmin
+        Ny = int((dec_max-dec_min)/(width))
+        Nx = int((2*np.pi/(width)))
+        pys = np.linspace(0,shape[0],Ny)[1:-1]
+        pxs = np.linspace(0,shape[1],Nx)[:-1]
+        Ny = len(pys)
+        Nx = len(pxs)
+        xx,yy = np.meshgrid(pxs,pys)
+        xx = xx.reshape(-1)
+        yy = yy.reshape(-1)
+        ps = np.vstack((yy,xx))
+        decs,ras = enmap.pix2sky(shape,wcs,ps)
+        
+        # Simulate these sources with unit peak value and 2.5 arcmin FWHM
+        N = ps.shape[1]
+        srcs = np.zeros((N,3))
+        srcs[:,0] = decs
+        srcs[:,1] = ras
+        srcs[:,2] = ras*0 + 1
+        sigma = 2.5 * u.fwhm * u.arcmin
+        omap = pointsrcs.sim_srcs(shape,wcs,srcs,beam=sigma)
+
+        # Reproject thumbnails centered on the sources
+        # with gnomonic/tangent projection
+        proj = "tan"
+        r = 10*u.arcmin
+        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj, 
+            apod=2*u.arcmin, order=3, oversample=2,pixwin=False)
+
+        # Create a reference source at the equator to compare this against
+        ishape,iwcs = enmap.geometry(shape=ret.shape,res=res,pos=(0,0),proj=proj)
+        imodrmap = enmap.modrmap(ishape,iwcs)
+        model = np.exp(-imodrmap**2./2./sigma**2.)
+
+        # Make sure all thumbnails agree with the reference at the
+        # sub-percent level
+        for i in range(ret.shape[0]):
+            diff = ret[i] - model
+            assert np.all(np.isclose(diff,0,atol=1e-3))
+                    
 
 if __name__ == '__main__':
     unittest.main()

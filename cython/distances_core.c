@@ -642,6 +642,12 @@ void distance_from_points_cellgrid(int ny, int nx, double * ypos, double * xpos,
 	// Allow us to disable rmax by setting it to zero
 	if(rmax <= 0) rmax = 1e300;
 
+	// Fill dists and domains with unvisited values
+	for(inum i = 0; i < ny*nx; i++) {
+		dists[i] = rmax;
+		domains[i] = -1;
+	}
+
 	// Precompute cos and sin of dec
 	double * point_cos_dec = realloc(NULL, (inum)npoint*sizeof(double));
 	double * point_sin_dec = realloc(NULL, (inum)npoint*sizeof(double));

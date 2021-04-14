@@ -12,10 +12,28 @@ T_cmb = 2.72548 # +/- 0.00057
 c  = 299792458.0
 h  = 6.62606957e-34
 k  = 1.3806488e-23
+G  = 6.67430e-11
 AU = 149597870700.0
 R_earth = 6378.1e3
 day2sec = 86400.
 yr2days = 365.2422
+yr = yr2days*day2sec
+ly = c*yr
+pc = AU/arcsec
+
+# Solar system constants. Nice to have, unlikely to clash with anything, and
+# don't take up much space.
+R_sun     = 695700e3  ; M_sun     = 1.9885e30   ; r_sun     =  29e3*ly
+R_mercury = 2439.5e3  ; M_mercury = 0.330e24    ; r_mercury =  57.9e9
+R_venus   = 6052e3    ; M_venus   = 4.87e24     ; r_venus   = 108.2e9
+R_earth   = 6378.1e3  ; M_earth   = 5.9722e24   ; r_earth   = 149.6e9
+R_moon    = 1737.5e3  ; M_moon    = 0.073e24    ; r_moon    =   0.384e9
+R_mars    = 3396e3    ; M_mars    = 0.642e24    ; r_mars    = 227.9e9
+R_jupiter =71492e3    ; M_jupiter = 1898e24     ; r_jupiter = 778.6e9
+R_saturn  =60268e3    ; M_saturn  = 568e24      ; r_saturn  =1433.5e9
+R_uranus  =25559e3    ; M_uranus  = 86.8e24     ; r_uranus  =2872.5e9
+R_neptune =24764e3    ; M_neptune = 102e24      ; r_neptune =4495.1e9
+R_pluto   = 1185e3    ; M_pluto   = 0.0146e24   ; r_pluto   =5906.4e9
 
 # These are like degree, arcmin and arcsec, but turn any lists
 # they touch into arrays.
@@ -24,6 +42,13 @@ adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
 
+def D(f, eps=1e-10):
+	"""Clever derivative operator for function f(x) from Ivan Yashchuck.
+	Accurate to second order in eps. Only calls f(x) once to evaluate the
+	derivative, but f must accept complex arguments. Only works for real x.
+	Example usage: D(lambda x: x**4)(1) => 4.0"""
+	def Df(x): return f(x+eps*1j).imag / eps
+	return Df
 
 def lines(file_or_fname):
 	"""Iterates over lines in a file, which can be specified
@@ -61,6 +86,11 @@ def find(array, vals, default=None):
 		if default is None: raise ValueError("Value not found in array")
 		else: res[bad] = default
 	return res
+
+def find_any(array, vals):
+	"""Like find, but skips missing entries"""
+	res = find(array, vals, default=-1)
+	return res[res >= 0]
 
 def contains(array, vals):
 	"""Given an array[n], returns a boolean res[n], which is True
@@ -192,10 +222,13 @@ def mjd2ctime(mjd):
 	"""Converts from modified julian date to unix time"""
 	return (np.asarray(mjd)-40587.0)*86400
 
-def medmean(x, frac=0.5):
-	x = np.sort(x.reshape(-1))
-	i = int(x.size*frac)//2
-	return np.mean(x[i:-i])
+def medmean(x, axis=None, frac=0.5):
+	x = np.asarray(x)
+	if axis is None: x = x.reshape(-1)
+	else:            x = np.moveaxis(x, axis, -1)
+	x = np.sort(x, -1)
+	i = int(x.shape[-1]*frac)//2
+	return np.mean(x[...,i:-i],-1)
 
 def moveaxis(a, o, n):
 	if o < 0: o = o+a.ndim
@@ -341,6 +374,20 @@ def interpol_prefilter(a, npre=None, order=3, inplace=False):
 		for i in range(len(aflat)):
 			aflat[i] = scipy.ndimage.spline_filter(aflat[i], order=order)
 	return a
+
+def interp(x, xp, fp, left=None, right=None, period=None):
+	"""Unlike utils.interpol, this is a simple wrapper around np.interp that extends it
+	to support fp[...,n] instead of just fp[n]. It does this by looping over the other
+	dimensions in python, and calling np.interp for each entry in the pre-dimensions.
+	So this function does not save any time over doing that looping manually, but it
+	avoid typing this annoying loop over and over."""
+	x, xp, fp = [np.asanyarray(a) for a in [x, xp, fp]]
+	fp_flat   = fp.reshape(-1, fp.shape[-1])
+	f_flat    = np.empty((fp_flat.shape[0],)+x.shape, fp.dtype)
+	for f1, fp1 in zip(f_flat, fp_flat):
+		f1[:] = np.interp(x, xp, fp1, left=left, right=right, period=period)
+	f = f_flat.reshape(fp.shape[:-1]+x.shape)
+	return f
 
 def bin_multi(pix, shape, weights=None):
 	"""Simple multidimensional binning. Not very fast.
@@ -933,8 +980,8 @@ def allgather(a, comm):
 def allgatherv(a, comm, axis=0):
 	"""Perform an mpi allgatherv along the specified axis of the array
 	a, returning an array with the individual process arrays concatenated
-	along that dimension. For example gatherv([[1,2]],comm) on one task
-	and gatherv([[3,4],[5,6]],comm) on another task results in
+	along that dimension. For example allgatherv([[1,2]],comm) on one task
+	and allgatherv([[3,4],[5,6]],comm) on another task results in
 	[[1,2],[3,4],[5,6]] for both tasks."""
 	a  = np.asarray(a)
 	fa = moveaxis(a, axis, 0)
@@ -1459,7 +1506,7 @@ def split_outside(a, sep, start="([{", end=")]}"):
 	return res
 
 def find_equal_groups(a, tol=0):
-	"""Given a[nsamp,ndim], return groups[ngroup][{ind,ind,ind,...}]
+	"""Given a[nsamp,...], return groups[ngroup][{ind,ind,ind,...}]
 	of indices into a for which all the values in the second index
 	of a is the same. find_equal_groups([[0,1],[1,2],[0,1]]) -> [[0,2],[1]]."""
 	def calc_diff(a1,a2):
@@ -1488,10 +1535,74 @@ def find_equal_groups(a, tol=0):
 				done[j] = True
 	return res
 
+def find_equal_groups_fast(vals):
+	"""Group 1d array vals[n] into equal groups. Returns uvals, order, edges
+	Using these, group #i is made up of the values with index order[edges[i]:edges[i+1]],
+	and all these elements correspond to value uvals[i]. Accomplishes the same
+	basic task as find_equal_groups, but
+	1. Only works on 1d arrays
+	2. Does works with exact quality, with no support for approximate equality
+	3. Returns 3 numpy arrays instead of a list of lists.
+	"""
+	order = np.argsort(vals)
+	uvals, edges = np.unique(vals[order], return_index=True)
+	edges = np.concatenate([edges,[len(vals)]])
+	return uvals, order, edges
+
+def pathsplit(path):
+	"""Like os.path.split, but for all components, not just the last one.
+	Why did I have to write this function? It should have been in os already!"""
+	# This takes care of all OS-dependent path stuff. Afterwards we can safely split by /
+	path = os.path.normpath(path)
+	# This is to handle the common special case of a path starting with /
+	if path.startswith("/"):
+		return ["/"] + path.split("/")[1:]
+	else:
+		return path.split("/")
+
 def minmax(a, axis=None):
 	"""Shortcut for np.array([np.min(a),np.max(a)]), since I do this
 	a lot."""
 	return np.array([np.min(a, axis=axis),np.max(a, axis=axis)])
+
+def broadcast_shape(*shapes):
+	ndim   = max([len(shape) for shape in shapes])
+	oshape = []
+	for i in range(ndim):
+		olen = 1
+		for shape in shapes:
+			if len(shape) <= i: continue
+			v = shape[-1-i]
+			if olen != 1 and v != olen:
+				raise ValueError("operands could not be broadcast togehter with shapes " + " ".join([str(shape) for shape in shapes]))
+			olen = max(olen, v)
+		oshape.insert(0, olen)
+	return tuple(oshape)
+
+def broadcast_arrays(*arrays, npre=0):
+	"""Like np.broadcast_arrays, but allows arrays to be None, in which case they are
+	passed just passed through as None without affecting the rest of the broadcasting.
+	The argument npre specifies the number of dimensions at the beginning of the arrays
+	to exempt from broadcasting. This can be either an integer or a list of integers.
+	"""
+	npre    = np.broadcast_to(npre, len(arrays))
+	narr    = len(arrays)
+	arrays  = list(arrays)
+	warrs, wshapes = [], []
+	for i in range(narr):
+		if arrays[i] is None: continue
+		arrays[i] = np.asanyarray(arrays[i])
+		warrs.append(arrays[i])
+		wshapes.append(arrays[i].shape[npre[i]:])
+	# Find broadcasting shape
+	oshape = broadcast_shape(*wshapes)
+	# Broadcast and insert into output array
+	res    = [None for a in arrays]
+	for i, (n, arr) in enumerate(zip(npre, arrays)):
+		if arr is not None:
+			ninsert = n+len(oshape)-arr.ndim
+			res[i]  = np.broadcast_to(arr[(slice(None),)*n+(None,)*ninsert], arr.shape[:n]+oshape)
+	return res
 
 def point_in_polygon(points, polys):
 	"""Given a points[...,2] and a set of polys[...,nvertex,2], return
@@ -1574,6 +1685,45 @@ def block_mean_filter(a, width):
 		a[:]   = work[...,:a.shape[-1]]
 	return a
 
+def block_reduce(a, bsize, op=np.mean):
+	"""Replace each block of length bsize along the last axis of a
+	with an aggregate value given by the operation op. op must
+	accept op(array, axis), just like np.sum or np.mean. a need not
+	have a whole number of blocks. In that case, the last block will
+	have fewer than bsize samples in it."""
+	if bsize == 1: return a
+	a     = np.asarray(a)
+	nsamp = a.shape[-1]
+	nwhole= nsamp//bsize
+	blocks= a[...,:nwhole*bsize].reshape(a.shape[:-1]+(nwhole,bsize))
+	vals  = op(blocks, -1)
+	if nwhole*bsize != nsamp:
+		vals = np.concatenate([vals, op(a[...,None,nwhole*bsize:],-1)],-1)
+	return vals
+
+def block_expand(a, bsize, osize, op="nearest"):
+	nwhole = osize//bsize
+	nrest  = osize-nwhole*bsize
+	if op == "nearest":
+		bind = np.arange(osize)//bsize
+		return a[...,bind]
+	elif op == "linear":
+		# Index relative to block centers. For bsize samples in a block,
+		# the intervals have size 1/nblock, and the first sample is offset
+		# by half an interval. Hence sample #i is at ((i+1)+0.5)/nblock-0.5
+		find   = (np.arange(nwhole*bsize)+0.5)/bsize - 0.5
+		if nrest != 0:
+			find = np.concatenate([find, nwhole + (np.arange(nrest)+0.5)/nrest-0.5])
+		i1 = np.floor(find).astype(int)
+		i2 = i1+1
+		x2 = find % 1
+		x1 = 1 - x2
+		i1 = np.maximum(i1, 0)
+		i2 = np.minimum(i2, a.shape[-1]-1)
+		return a[...,i1]*x1 + a[...,i2]*x2
+	else:
+		raise ValueError("Unrecognized operation '%s'" % op)
+
 def ctime2date(timestamp, tzone=0, fmt="%Y-%m-%d"):
 	return datetime.datetime.utcfromtimestamp(timestamp+tzone*3600).strftime(fmt)
 
@@ -1616,15 +1766,21 @@ def triangle_wave(x, period=1):
 	res[m3] = x[m3]-4
 	return res
 
-def flux_factor(beam_area, freq, T0=T_cmb):
-	"""Compute the factor A that when multiplied with a linearized
-	temperature increment dT around T0 (in K) at the given frequency freq
-	in Hz and integrated over the given beam_area in steradians, produces
-	the corresponding flux = A*dT. This is useful for converting between
-	point source amplitudes and point source fluxes.
+def calc_beam_area(beam_profile):
+	"""Calculate the beam area in steradians given a beam profile[{r,b},npoint].
+	r is in radians, b should have a peak of 1.."""
+	from scipy import integrate
+	r, b = beam_profile
+	return integrate.simps(2*np.pi*r*b,r)
 
-	For uK to mJy use flux_factor(beam_area, freq)/1e3
-	"""
+def planck(f, T):
+	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
+	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
+blackbody = planck
+
+def dplanck(f, T):
+	"""The derivative of the planck spectrum with respect to temperature, evaluated
+	at frequencies f and temperature T, in units of Jy/sr/K."""
 	# A blackbody has intensity I = 2hf**3/c**2/(exp(hf/kT)-1) = V/(exp(x)-1)
 	# with V = 2hf**3/c**2, x = hf/kT.
 	# dI/dx = -V/(exp(x)-1)**2 * exp(x)
@@ -1633,26 +1789,9 @@ def flux_factor(beam_area, freq, T0=T_cmb):
 	#       = 2*h**2*f**4/c**2/k/T**2 * exp(x)/(exp(x)-1)**2
 	#       = 2*x**4 * k**3*T**2/(h**2*c**2) * exp(x)/(exp(x)-1)**2
 	#       = .... /(4*sinh(x/2)**2)
-	x     = h*freq/(k*T0)
-	dIdT  = 2*x**4 * k**3*T0**2/(h**2*c**2) / (4*np.sinh(x/2)**2)
-	dJydK = dIdT * 1e26 * beam_area
-	return dJydK
-
-def noise_flux_factor(beam_area, freq, T0=T_cmb):
-	"""Compute the factor A that converts from white noise level in K sqrt(steradian)
-	to uncertainty in Jy for the given beam area in steradians and frequency in Hz.
-	This assumes white noise and a gaussian beam, so that the area of the real-space squared beam is
-	just half that of the normal beam area.
-
-	For uK arcmin to mJy, use noise_flux_factor(beam_area, freq)*arcmin/1e3
-	"""
-	squared_beam_area = beam_area/2
-	return flux_factor(beam_area/squared_beam_area**0.5, freq, T0=T0)
-
-def planck(f, T):
-	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
-	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
-blackbody = planck
+	x     = h*f/(k*T)
+	dIdT  = 2*x**4 * k**3*T**2/(h**2*c**2) / (4*np.sinh(x/2)**2) * 1e26
+	return dIdT
 
 def graybody(f, T, beta=1):
 	"""Return a graybody spectrum at the frequency f and temperature T in Jy/sr"""
@@ -1665,6 +1804,31 @@ def tsz_spectrum(f, T=T_cmb):
 	x  = h*f/(k*T)
 	ex = np.exp(x)
 	return 2*h*f**3/c**2 * (x*ex)/(ex-1)**2 * (x*(ex+1)/(ex-1)-4) * 1e26
+
+# Helper functions for conversion from peak amplitude in cmb maps to flux
+
+def flux_factor(beam_area, freq, T0=T_cmb):
+	"""Compute the factor A that when multiplied with a linearized
+	temperature increment dT around T0 (in K) at the given frequency freq
+	in Hz and integrated over the given beam_area in steradians, produces
+	the corresponding flux = A*dT. This is useful for converting between
+	point source amplitudes and point source fluxes.
+
+	For uK to mJy use flux_factor(beam_area, freq)/1e3
+	"""
+	return dplanck(freq, T0)*beam_area
+
+def noise_flux_factor(beam_area, freq, T0=T_cmb):
+	"""Compute the factor A that converts from white noise level in K sqrt(steradian)
+	to uncertainty in Jy for the given beam area in steradians and frequency in Hz.
+	This assumes white noise and a gaussian beam, so that the area of the real-space squared beam is
+	just half that of the normal beam area.
+
+	For uK arcmin to mJy, use noise_flux_factor(beam_area, freq)*arcmin/1e3
+	"""
+	squared_beam_area = beam_area/2
+	return dplanck(freq, T0)*beam_area/squared_beam_area**0.5
+
 
 ### Binning ####
 
@@ -2175,3 +2339,93 @@ def jname(ra, dec, fmt="J%(ra_H)02d%(ra_M)02d%(ra_S)02d%(dec_d)+02d%(dec_m)02d%(
 		"ra_H" :rah[0]*rah[1], "ra_M" : rah[2], "ra_S" : rah[3],
 		"dec_d":ded[0]*ded[1], "dec_m": ded[2], "dec_s": ded[3],
 		"dec_H":deh[0]*deh[1], "dec_M": deh[2], "dec_S": deh[3]}
+
+def ang2chord(ang):
+	"""Converts from the angle between two points on a circle to the length of the chord between them"""
+	return 2*np.sin(ang/2)
+
+def chord2ang(chord):
+	"""Inverse of ang2chord."""
+	return 2*np.arcsin(chord/2)
+
+def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
+	"""Find close matches between positions given by pos1[:,ndim] and pos2[:,ndim],
+	up to a maximum distance of rmax (in the same units as the positions).
+
+	The argument "coords" controls how the coordinates are interpreted. If it is
+	"cartesian", then they are assumed to be cartesian coordinates. If it is
+	"radec" or "phitheta", then the coordinates are assumed to be angles in radians,
+	which will be transformed to cartesian coordinates internally before being used.
+	"radec" is equator-based while "phitheta" is zenith-based. The default, "auto",
+	will assume "radec" if ndim == 2, and "cartesian" otherwise.
+
+	It's possible that multiple objects from the catalogs are within rmax of each
+	other. The "mode" argument controls how this is handled.
+	mode == "all":
+	 Returns a list of pairs of indices into the two lists, one for each pair of
+	 objects that are close enough to each other, regardless of the presence of
+	 any other matches. Any given object can be mentioned multiple times in this
+	 list.
+	mode == "closest":
+	 Like "all", but only the closest time an index appears in a pair is kept, the
+	 others are discarded.
+	mode == "first":
+	 Like "all", but only the first time an index appears in a pair is kept, the
+	 others are discarted. This can be useful if some objects should be given
+	 higher priority than others. For example, one could sort pos1 and pos2 by
+	 brightness and then use mode == "first" to prefer bright objects in the match."""
+	from scipy import spatial
+	
+	pos1 = np.asarray(pos1); n1 = len(pos1)
+	pos2 = np.asarray(pos2); n2 = len(pos2)
+
+	assert pos1.ndim == 2, "crossmatch: pos1 must be [npoint,ndim], but was %s" % str(pos1.shape)
+	assert pos2.ndim == 2, "crossmatch: pos2 must be [npoint,ndim], but was %s" % str(pos2.shape)
+	assert pos1.shape[1] == pos2.shape[1], "crossmatch: pos1's shape %s is incompatible with pos2's shape %s" % (str(pos1.shape), str(pos2.shape))
+
+	# Normalize the coordinates
+	if coords == "auto":
+		coords = "radec" if pos1.shape[1] == 2 else "cartesian"
+	if coords == "radec":
+		trans = lambda pos: ang2rect(pos, zenith=False, axis=1)
+		reff  = ang2chord(rmax)
+	elif coords == "phitheta":
+		trans = lambda pos: ang2rect(pos, zenith=True,  axis=1)
+		reff  = ang2chord(rmax)
+	elif coords == "cartesian":
+		trans = lambda pos: pos
+		reff  = rmax
+	else:
+		raise ValueError("crossmatch: Unrecognized value for coords: %s" % (str(coords)))
+	pos1 = trans(pos1)
+	pos2 = trans(pos2)
+
+	# Start by generating the full list
+	tree1   = spatial.cKDTree(pos1)
+	tree2   = spatial.cKDTree(pos2)
+	matches = tree1.query_ball_tree(tree2, r=reff)
+	pairs   = [(i1,i2) for i1, group in enumerate(matches) for i2 in group]
+
+	if mode == "all":
+		return pairs
+	else:
+		if mode == "first":
+			# "first" mode only keeps the first group an object appears in. So the pairs
+			# are already in the right order.
+			pass
+		elif mode == "closest":
+			parr   = np.array(pairs)
+			d2     = np.sum((pos1[parr[:,0]]-pos2[parr[:,1]])**2,1)
+			order  = np.argsort(d2)
+			pairs  = [pairs[i] for i in order]
+		else:
+			raise ValueError("crossmatch: Unrecognized mode: %s" % (str(mode)))
+		# Filter out all but the first mention of each
+		done1 = np.zeros(n1, bool)
+		done2 = np.zeros(n2, bool)
+		opairs= []
+		for i1, i2 in pairs:
+			if done1[i1] or done2[i2]: continue
+			done1[i1] = done2[i2] = True
+			opairs.append((i1,i2))
+		return opairs

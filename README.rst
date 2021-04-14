@@ -2,8 +2,8 @@
 pixell
 =======
 
-.. image:: https://travis-ci.org/simonsobs/pixell.svg?branch=master
-           :target: https://travis-ci.org/simonsobs/pixell
+.. image:: https://github.com/simonsobs/pixell/workflows/Build/badge.svg
+           :target: https://github.com/simonsobs/pixell/actions?query=workflow%3ABuild
 
 .. image:: https://readthedocs.org/projects/pixell/badge/?version=latest
            :target: https://pixell.readthedocs.io/en/latest/?badge=latest
@@ -15,7 +15,7 @@ pixell
 .. image:: https://badge.fury.io/py/pixell.svg
 		       :target: https://badge.fury.io/py/pixell
 
-``pixell`` is a library for loading, manipulating and analyzing maps stored in rectangular pixelization. It is mainly targeted for use with maps of the sky (e.g. CMB intensity and polarization maps, stacks of 21 cm intensity maps, binned galaxy positions or shear) in cylindrical projection, but its core functionality is more general. It extends numpy's ``ndarray`` to an ``ndmap`` class that associates a World Coordinate System (WCS) with a numpy array.  It includes tools for Fourier transforms  (through numpy or pyfft) and spherical harmonic transforms (through libsharp) of such maps and tools for visualization (through the Python Image Library). 
+``pixell`` is a library for loading, manipulating and analyzing maps stored in rectangular pixelization. It is mainly targeted for use with maps of the sky (e.g. CMB intensity and polarization maps, stacks of 21 cm intensity maps, binned galaxy positions or shear) in cylindrical projection, but its core functionality is more general. It extends numpy's ``ndarray`` to an ``ndmap`` class that associates a World Coordinate System (WCS) with a numpy array.  It includes tools for Fourier transforms  (through numpy or pyfft) and spherical harmonic transforms (through libsharp2) of such maps and tools for visualization (through the Python Image Library). 
 
 
 * Free software: BSD license
@@ -27,8 +27,8 @@ Dependencies
 
 * Python>=3.6
 * gcc/gfortran or Intel compilers (clang might not work out of the box), if compiling from source
-* libsharp (downloaded and installed, if compiling from source)
-* automake (for libsharp compilation, if compiling from source)
+* libsharp2 (downloaded and installed, if compiling from source)
+* automake (for libsharp2 compilation, if compiling from source)
 * healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py, Pillow (Python Image Library)
 
 Installing
@@ -41,7 +41,7 @@ Make sure your ``pip`` tool is up-to-date. To install ``pixell``, run:
    $ pip install pixell --user
    $ test-pixell
 
-This will install a pre-compiled binary suitable for your system (only Linux and Mac OS X with Python>=3.6 are supported). If you require more control over your installation, e.g. using your own installation of ``libsharp``, using Intel compilers or enabling tuning of the ``libsharp`` installation to your CPU, please see the section below on compiling from source.  The ``test-pixell`` command will run a suite of unit tests.
+This will install a pre-compiled binary suitable for your system (only Linux and Mac OS X with Python>=3.6 are supported). If you require more control over your installation, e.g. using your own installation of ``libsharp2``, using Intel compilers or enabling tuning of the ``libsharp2`` installation to your CPU, please see the section below on compiling from source.  The ``test-pixell`` command will run a suite of unit tests.
 
 Compiling from source (advanced / development workflow)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -57,14 +57,15 @@ First, download the source distribution or ``git clone`` this repository. You ca
 Existing ``libsharp`` installation (optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``libsharp`` is installed automatically by the setup.py you will execute below. The installation script will
-attempt to automatically git clone the latest version of ``libsharp`` and compile it.  If
-instead you want to use an existing ``libsharp`` installation, you can do so by
-symlinking the ``libsharp`` directory into a directory called ``_deps`` in the
-root directory, such that ``pixell/_deps/libsharp/libsharp/sharp.h`` exists. If
-you are convinced that the libsharp library is successfully
+``libsharp2`` is installed automatically by the setup.py you will execute below. The installation script will
+attempt to automatically git clone the latest version of ``libsharp2`` and compile it.  If
+instead you want to use an existing ``libsharp2`` installation, you can do so by
+symlinking the ``libsharp2`` directory into a directory called ``_deps`` in the
+root directory, such that ``pixell/_deps/libsharp2/build/include/libsharp2/sharp.h`` and 
+``pixell/_deps/libsharp2/build/lib/libsharp2.so`` exist. If
+you are convinced that the libsharp2 library is successfully
 compiled,  add an empty file named
-``pixell/_deps/libsharp/libsharp/success.txt`` to ensure pixell's setup.py
+``pixell/_deps/libsharp2/success.txt`` to ensure pixell's setup.py
 knows of your existing installation.
 
 Run ``setup.py``

@@ -49,3 +49,34 @@ class Bunch:
 		return "Bunch(" + ", ".join([
 			"%s=%s" % (str(key),repr(self._dict[key])) for key in keys
 			])+")"
+
+# Some simple I/O routines. These can't handle everything that could
+# be in a bunch, but they cover all my most common use cases.
+
+def read(fname, fmt="auto"):
+	if fmt == "auto":
+		if fname.endswith(".hdf"): fmt = "hdf"
+		else: raise ValueError("Could not infer format for '%s'" % fname)
+	if fmt == "hdf": return read_hdf(fname)
+	else: raise ValueError("Unrecognized format '%s'" % fmt)
+
+def write(fname, bunch, fmt="auto"):
+	if fmt == "auto":
+		if fname.endswith(".hdf"): fmt = "hdf"
+		else: raise ValueError("Could not infer format for '%s'" % fname)
+	if fmt == "hdf": write_hdf(fname, bunch)
+	else: raise ValueError("Unrecognized format '%s'" % fmt)
+
+def write_hdf(fname, bunch):
+	import h5py
+	with h5py.File(fname, "w") as hfile:
+		for key in bunch:
+			hfile[key] = bunch[key]
+
+def read_hdf(fname):
+	import h5py
+	bunch = Bunch()
+	with h5py.File(fname, "r") as hfile:
+		for key in hfile:
+			bunch[key] = hfile[key][()]
+	return bunch

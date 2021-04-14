@@ -1,6 +1,6 @@
 """This module provides functions for taking into account the curvature of the
 full sky."""
-from __future__ import print_function
+from __future__ import print_function, division
 from . import sharp
 import numpy as np
 from . import enmap, powspec, wcsutils, utils
@@ -73,7 +73,7 @@ def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=
 ### Top-level wrappers ###
 ##########################
 
-def alm2map(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=False, oversample=2.0, method="auto", verbose=False):
+def alm2map(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=False, oversample=2.0, method="auto", verbose=False, map2alm_adjoint=False, rtol=None, atol=None):
 	"""Project the spherical harmonics coefficients alm[...,nalm] onto the
 	enmap map[...,ny,nx].
 
@@ -94,44 +94,80 @@ def alm2map(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=Fa
 	spin describes the spin of the transformation used for the polarization
 	components.
 
-	If deriv is True, then the resulting map will be the gradient of the input alms."""
+	If deriv is True, then the resulting map will be the gradient of the input alms.
+
+	map2alm_adjoint, rtol and atol should not be used directly. They are used
+	internally to implement map2alm_adjoint.
+	"""
 	if method == "cyl":
-		alm2map_cyl(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, direct=direct, copy=copy, verbose=verbose)
+		alm2map_cyl(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, direct=direct, copy=copy, verbose=verbose, map2alm_adjoint=map2alm_adjoint, rtol=rtol, atol=atol)
 	elif method == "pos":
 		if verbose: print("Computing pixel positions %s dtype d" % str((2,)+map.shape[-2:]))
 		pos = map.posmap()
-		res = alm2map_pos(alm, pos, ainfo=ainfo, oversample=oversample, spin=spin, deriv=deriv, verbose=verbose)
+		res = alm2map_pos(alm, pos, ainfo=ainfo, oversample=oversample, spin=spin, deriv=deriv, verbose=verbose, map2alm_adjoint=map2alm_adjoint, rtol=rtol, atol=atol)
 		map[:] = res
 	elif method == "auto":
 		# Cylindrical method if possible, else slow pos-based method
 		try:
-			alm2map_cyl(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, direct=direct, copy=copy, verbose=verbose)
+			alm2map_cyl(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, direct=direct, copy=copy, verbose=verbose, map2alm_adjoint=map2alm_adjoint, rtol=rtol, atol=atol)
 		except ShapeError as e:
 			# Wrong pixelization. Fall back on slow, general method
 			if verbose: print("Computing pixel positions %s dtype d" % str((2,)+map.shape[-2:]))
 			pos = map.posmap()
-			res = alm2map_pos(alm, pos, ainfo=ainfo, oversample=oversample, spin=spin, deriv=deriv, verbose=verbose)
+			res = alm2map_pos(alm, pos, ainfo=ainfo, oversample=oversample, spin=spin, deriv=deriv, verbose=verbose, map2alm_adjoint=map2alm_adjoint, rtol=rtol, atol=atol)
 			map[:] = res
 	else:
 		raise ValueError("Unknown alm2map method %s" % method)
 	return map
 
 def map2alm(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False, copy=False,
-		oversample=2.0, method="auto", rtol=None, atol=None):
+		oversample=2.0, method="auto", rtol=None, atol=None, alm2map_adjoint=False):
+	"""Spherical harmonics analysis of the enmap map[...,ny,nx] into the spherical harmonics
+	coefficients alm[...,nalm]. The (approximate) inverse of alm2map. To support partial
+	sky coverage and arbitrary projections, an intermediate map will be constructed
+	before the underlying SHT is performed. If map is in a cylindrical projection,
+	the intermediate map will simply be a zero-padded version of the input map, with
+	no interpolation needed. Otherwise, the input map is projected onto a cylindrical
+	projection with oversample times higher resolution. This uses more memory, and is
+	slower and less accurate then when passing in a cylindrical projection.
+	This can be controlled explicitly using the argument "method". method="pos" will
+	use the full interpolation in all cases, while method="cyl" requires zero-padding,
+	resulting in a ShapeError if the input map isn't actually in a cylindrical projection.
+
+	rtol and atol specify the relative and absolute tolerance when matching intermediate
+	map geometry to the geometries for which libsharp provides predefined quadrature weights.
+
+	If the input map has rows ordered by increasing zenith angle, columns ordered by increasing
+	RA, and covers a band around the whole sky, then the construction of the intermediate
+	map can be skipped by passing the direct=True argument.
+
+	The alm2map_adjoint argument is used internally to implement the alm2map_adjoint function."""
 	if method == "cyl":
 		alm = map2alm_cyl(map, alm, ainfo=ainfo, lmax=lmax, spin=spin, direct=direct,
-				copy=copy, rtol=rtol, atol=atol)
+				copy=copy, rtol=rtol, atol=atol, alm2map_adjoint=alm2map_adjoint)
 	elif method == "pos":
 		raise NotImplementedError("map2alm for noncylindrical layouts not implemented")
 	elif method == "auto":
 		try:
 			alm = map2alm_cyl(map, alm, ainfo=ainfo, lmax=lmax, spin=spin, direct=direct,
-					copy=copy, rtol=rtol, atol=atol)
+					copy=copy, rtol=rtol, atol=atol, alm2map_adjoint=alm2map_adjoint)
 		except ShapeError as e:
 			raise NotImplementedError("map2alm for noncylindrical layouts not implemented")
 	else:
 		raise ValueError("Unknown alm2map method %s" % method)
 	return alm
+
+# Adjoints
+
+def map2alm_adjoint(alm, map, ainfo=None, spin=[0,2], direct=False, copy=False, oversample=2.0, method="auto", verbose=False, rtol=None, atol=None):
+	"""Adjoint of map2alm"""
+	return alm2map(alm, map, ainfo=ainfo, spin=spin, direct=direct, copy=copy, oversample=oversample, method=method, verbose=verbose, map2alm_adjoint=True, rtol=rtol, atol=atol)
+
+def alm2map_adjoint(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False, copy=False,
+		oversample=2.0, method="auto", rtol=None, atol=None):
+	"""Adjoint of alm2map"""
+	return map2alm(map, alm=alm, ainfo=ainfo, lmax=lmax, spin=spin, direct=direct, copy=copy,
+		oversample=oversample, method=method, rtol=rtol, atol=atol, alm2map_adjoint=True)
 
 #################################
 ### Position-based transforms ###
@@ -139,7 +175,7 @@ def map2alm(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False, copy
 
 # These perform SHTs at arbitrary sample positions
 
-def alm2map_pos(alm, pos, ainfo=None, oversample=2.0, spin=[0,2], deriv=False, verbose=False):
+def alm2map_pos(alm, pos, ainfo=None, oversample=2.0, spin=[0,2], deriv=False, verbose=False, map2alm_adjoint=False, rtol=None, atol=None):
 	"""Projects the given alms (with layout) on the specified pixel positions.
 	alm[ncomp,nelem], pos[2,...] => res[ncomp,...]. It projects on a large
 	cylindrical grid and then interpolates to the actual pixels. This is the
@@ -155,12 +191,17 @@ def alm2map_pos(alm, pos, ainfo=None, oversample=2.0, spin=[0,2], deriv=False, v
 		ashape = ashape + (ncomp,)
 		ncomp = 2
 	tmap   = make_projectable_map_by_pos(pos, ainfo.lmax, ashape+(ncomp,), oversample, alm.real.dtype)
-	alm2map_cyl(alm, tmap, ainfo=ainfo, spin=spin, deriv=deriv, direct=True, verbose=verbose)
+	alm2map_cyl(alm, tmap, ainfo=ainfo, spin=spin, deriv=deriv, direct=True, verbose=verbose, map2alm_adjoint=map2alm_adjoint, rtol=rtol, atol=atol)
 	# Project down on our final pixels. This will result in a slight smoothing
 	res = enmap.samewcs(tmap.at(pos[:2], mode="wrap"), pos)
 	# Remove any extra dimensions we added
 	if alm.ndim == alm_full.ndim-1: res = res[0]
 	return res
+
+# Adjoints
+
+def map2alm_adjoint_pos(alm, pos, ainfo=None, oversample=2.0, spin=[0,2], deriv=False, verbose=False, rtol=None, atol=None):
+	return alm2map_pos(alm, pos, ainfo=ainfo, oversample=oversample, spin=spin, deriv=deriv, verbose=verbose, map2alm_adjoint=True, rtol=rtol, atol=atol)
 
 ##############################
 ### Cylindrical transforms ###
@@ -171,7 +212,7 @@ def alm2map_pos(alm, pos, ainfo=None, oversample=2.0, spin=[0,2], deriv=False, v
 # system is extended internally if necessary. minfo is built
 # internally automatically.
 
-def alm2map_cyl(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=False, verbose=False):
+def alm2map_cyl(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=False, verbose=False, map2alm_adjoint=False, rtol=None, atol=None):
 	"""When called as alm2map(alm, map) projects those alms onto that map.
 	alms are interpreted according to ainfo if specified.
 
@@ -197,13 +238,15 @@ def alm2map_cyl(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, cop
 	if direct: tmap, mslices, tslices = map, [(Ellipsis,)], [(Ellipsis,)]
 	else:      tmap, mslices, tslices = make_projectable_map_cyl(map, verbose=verbose)
 	if verbose: print("Performing alm2map")
-	alm2map_raw(alm, tmap, ainfo, map2minfo(tmap), spin=spin, deriv=deriv)
+	if map2alm_adjoint: minfo = match_predefined_minfo(tmap, rtol=rtol, atol=atol)
+	else:               minfo = map2minfo(tmap)
+	alm2map_raw(alm, tmap, ainfo, minfo, spin=spin, deriv=deriv, map2alm_adjoint=map2alm_adjoint)
 	for mslice, tslice in zip(mslices, tslices):
 		map[mslice] = tmap[tslice]
 	return map
 
 def alm2map_healpix(alm, healmap=None, ainfo=None, nside=None, spin=[0,2], deriv=False, copy=False,
-		theta_min=None, theta_max=None):
+		theta_min=None, theta_max=None, map2alm_adjoint=False):
 	"""Projects the given alm[...,ncomp,nalm] onto the given healpix map
 	healmap[...,ncomp,npix]."""
 	alm, ainfo = prepare_alm(alm, ainfo)
@@ -212,10 +255,10 @@ def alm2map_healpix(alm, healmap=None, ainfo=None, nside=None, spin=[0,2], deriv
 	minfo = sharp.map_info_healpix(nside)
 	minfo = apply_minfo_theta_lim(minfo, theta_min, theta_max)
 	return alm2map_raw(alm, healmap[...,None], ainfo=ainfo, minfo=minfo,
-			spin=spin, deriv=deriv, copy=copy)[...,0]
+			spin=spin, deriv=deriv, copy=copy, map2alm_adjoint=map2alm_adjoint)[...,0]
 
 def map2alm_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False,
-		copy=False, rtol=None, atol=None):
+		copy=False, rtol=None, atol=None, alm2map_adjoint=False):
 	"""When called as map2alm_cyl(map, alm) computes the alms corresponding
 	to the given map. alms will be ordered according to ainfo if specified.
 	The map must be in a cylindrical projection. If no ring weights
@@ -246,10 +289,10 @@ def map2alm_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False,
 	# We don't have ring weights for general cylindrical projections.
 	# See if our pixelization matches one with known weights.
 	minfo = match_predefined_minfo(tmap, rtol=rtol, atol=atol)
-	return map2alm_raw(tmap, alm, minfo, ainfo, spin=spin, copy=copy)
+	return map2alm_raw(tmap, alm, minfo, ainfo, spin=spin, copy=copy, alm2map_adjoint=alm2map_adjoint)
 
 def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], copy=False,
-		theta_min=None, theta_max=None):
+		theta_min=None, theta_max=None, alm2map_adjoint=False):
 	"""Projects the given alm[...,ncomp,nalm] onto the given healpix map
 	healmap[...,ncomp,npix]."""
 	alm, ainfo = prepare_alm(alm, ainfo, lmax, healmap.shape[:-1], healmap.dtype)
@@ -257,7 +300,31 @@ def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], copy=F
 	minfo = sharp.map_info_healpix(nside)
 	minfo = apply_minfo_theta_lim(minfo, theta_min, theta_max)
 	return map2alm_raw(healmap[...,None], alm, minfo=minfo, ainfo=ainfo,
-			spin=spin, copy=copy)
+			spin=spin, copy=copy, alm2map_adjoint=alm2map_adjoint)
+
+# Adjoints
+
+def map2alm_adjoint_cyl(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=False, verbose=False):
+	"""Adjoint of map2alm_cyl"""
+	return alm2map_cyl(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, direct=direct, copy=copy, verbose=verbose, map2alm_adjoint=True)
+
+def map2alm_adjoint_healpix(alm, healmap=None, ainfo=None, nside=None, spin=[0,2], deriv=False, copy=False,
+		theta_min=None, theta_max=None):
+	"""Adjoint of map2alm_healpix"""
+	return alm2map_healpix(alm, healmap=healmap, ainfo=ainfo, nside=nside, spin=spin, deriv=deriv, copy=copy,
+		theta_min=theta_min, theta_max=theta_max, map2alm_adjoint=True)
+
+def alm2map_adjoint_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False,
+		copy=False, rtol=None, atol=None):
+	"""Adjoint of alm2map_cyl"""
+	return map2alm_cyl(map, alm=alm, ainfo=ainfo, lmax=lmax, spin=spin, direct=direct,
+		copy=copy, rtol=rtol, atol=atol, alm2map_adjoint=True)
+
+def alm2map_adjoint_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], copy=False,
+		theta_min=None, theta_max=None):
+	"""Adjoint of alm2map_healpix"""
+	return map2alm_healpix(healmap, alm=alm, ainfo=ainfo, lmax=lmax, spin=spin, copy=copy,
+		theta_min=theta_min, theta_max=theta_max, alm2map_adjoint=True)
 
 ######################
 ### Raw transforms ###
@@ -270,7 +337,7 @@ def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], copy=F
 # last axis. The map does not need to be an enmap - the world coordinate
 # system is ignored as minfo handles all that.
 
-def alm2map_raw(alm, map, ainfo, minfo, spin=[0,2], deriv=False, copy=False):
+def alm2map_raw(alm, map, ainfo, minfo, spin=[0,2], deriv=False, copy=False, map2alm_adjoint=False):
 	"""Direct wrapper of libsharp's alm2map. Requires ainfo and minfo
 	to already be set up, and that the map and alm must be fully compatible
 	with these."""
@@ -292,10 +359,13 @@ def alm2map_raw(alm, map, ainfo, minfo, spin=[0,2], deriv=False, copy=False):
 		map_flat[:,0] = -map_flat[:,0]
 	else:
 		for s, i1, i2 in enmap.spin_helper(spin, map_flat.shape[1]):
-			map_flat[:,i1:i2,:] = sht.alm2map(alm_full[:,i1:i2,:], map_flat[:,i1:i2,:], spin=s)
+			if map2alm_adjoint:
+				map_flat[:,i1:i2,:] = sht.map2alm_adjoint(alm_full[:,i1:i2,:], map_flat[:,i1:i2,:], spin=s)
+			else:
+				map_flat[:,i1:i2,:] = sht.alm2map(alm_full[:,i1:i2,:], map_flat[:,i1:i2,:], spin=s)
 	return map
 
-def map2alm_raw(map, alm, minfo, ainfo, spin=[0,2], copy=False):
+def map2alm_raw(map, alm, minfo, ainfo, spin=[0,2], copy=False, alm2map_adjoint=False):
 	"""Direct wrapper of libsharp's map2alm. Requires ainfo and minfo
 	to already be set up, and that the map and alm must be fully compatible
 	with these."""
@@ -306,8 +376,73 @@ def map2alm_raw(map, alm, minfo, ainfo, spin=[0,2], copy=False):
 	map_flat = map_full.reshape(map_full.shape[:-2]+(-1,))
 	sht      = sharp.sht(minfo, ainfo)
 	for s, i1, i2 in enmap.spin_helper(spin, map_flat.shape[1]):
-		alm_full[:,i1:i2,:] = sht.map2alm(map_flat[:,i1:i2,:], alm_full[:,i1:i2,:], spin=s)
+		if alm2map_adjoint:
+			alm_full[:,i1:i2,:] = sht.alm2map_adjoint(map_flat[:,i1:i2,:], alm_full[:,i1:i2,:], spin=s)
+		else:
+			alm_full[:,i1:i2,:] = sht.map2alm(map_flat[:,i1:i2,:], alm_full[:,i1:i2,:], spin=s)
 	return alm
+
+# Adjoints
+
+def map2alm_adjoint_raw(alm, map, ainfo, minfo, spin=[0,2], deriv=False, copy=False):
+	"""Adjoint of map2alm_raw"""
+	return alm2map_raw(alm, map, ainfo, minfo, spin=spin, deriv=deriv, copy=copy, map2alm_adjoint=True)
+
+def alm2map_adjoint_raw(map, alm, minfo, ainfo, spin=[0,2], copy=False):
+	"""Adjoint of alm2map_raw"""
+	return map2alm_raw(map, alm, minfo, ainfo, spin=spin, copy=copy, alm2map_adjoint=True)
+
+#####################
+### 1d Transforms ###
+#####################
+
+def profile2harm(br, r, lmax=None, oversample=1, left=None, right=None):
+	"""This is an alternative to healpy.beam2bl. In my tests it's a bit more
+	accurate and about 3x faster, most of which is spent constructing
+	the quadrature. It does use some interpolation internally, though, so
+	there might be cases where it's less accurate. Transforms the
+	function br(r) to bl(l). br has shape [...,nr], and the output will have
+	shape [...,nl]. Implemented using sharp SHTs with one
+	pixel per row and mmax=0. r is in radians and must be in ascending order."""
+	br    = np.asarray(br)
+	r     = np.asarray(r)
+	# 1. We will implement this using a SHT. Start by setting up its parameters
+	dr    = (r[-1]-r[0])/(len(r)-1)
+	n     = utils.nint(np.pi/dr)
+	m     = int(np.ceil(r[-1]/dr))
+	minfo = sharp.map_info_clenshaw_curtis(n*oversample, nphi=1)
+	minfo = minfo.select_rows(np.arange(m))
+	if lmax is None: lmax = n//2-1
+	ainfo = sharp.alm_info(lmax=lmax, mmax=0)
+	sht   = sharp.sht(minfo, ainfo)
+	# 2. Interpolate br to the minfo geometry. Simple linear interpolation.
+	l     = np.arange(lmax+1)
+	npre  = np.prod(br.shape[:-1], dtype=int)
+	harm  = np.zeros((npre,lmax+1),br.dtype)
+	alm   = np.zeros(ainfo.nelem, np.result_type(br,0j))
+	# This is to support br[...,nr] instead of just br[nr]
+	for i, br_single in enumerate(br.reshape(npre,-1)):
+		map = np.interp(minfo.theta, r, br_single, left=left, right=right)
+		sht.map2alm(map, alm)
+		harm[i] = alm.real * (4*np.pi/(2*l+1))**0.5
+	harm = harm.reshape(br.shape[:-1] + (harm.shape[-1],))
+	return harm
+
+def harm2profile(bl, r):
+	"""The inverse of profile2beam or healpy.beam2bl. *Much* faster
+	than these (150x faster in my test case). Should be exact too."""
+	bl = np.asarray(bl)
+	r  = np.asarray(r)
+	rtype = bl.reshape(-1)[0].real.dtype
+	minfo = sharp.map_info(theta=r, nphi=1)
+	ainfo = sharp.alm_info(lmax=bl.size-1, mmax=0)
+	sht   = sharp.sht(minfo, ainfo)
+	l     = np.arange(bl.shape[-1])
+	alm   = bl * ((2*l+1)/(4*np.pi))**0.5 + 0j
+	br    = np.zeros(bl.shape[:-1]+(r.size,), rtype)
+	for a, b in zip(alm.reshape(-1, alm.shape[-1]), br.reshape(-1, br.shape[-1])):
+		sht.alm2map(a,b)
+	return br
 
 ### Helper function ###
 
@@ -521,40 +656,46 @@ def rand_alm_white(ainfo, pre=None, alm=None, seed=None, dtype=np.complex128, m_
 	if m_major: ainfo.transpose_alm(alm,alm)
 	return alm
 
-def almxfl(alm,lfunc,ainfo=None):
-	"""Filter alms isotropically by a function.
-	Returns alm * lfunc(ell)
+def almxfl(alm,lfilter=None,ainfo=None):
+	"""Filter alms isotropically. Unlike healpy (at time of writing),
+	this function allows leading dimensions in the alm, and also allows
+	the filter to be specified as a function instead of an array.
 
 	Args:
 	    alm: (...,N) ndarray of spherical harmonic alms
-	    lfunc: a function mapping multipole ell to the filtering expression
-	    ainfo: If ainfo is provided, it is an alm_info describing the layout
-	of the input alm. Otherwise it will be inferred from the alm itself.
+	    lfilter: either an array containing the 1d filter to apply starting with ell=0
+	    and separated by delta_ell=1, or a function mapping multipole ell to the 
+	    filtering expression.
+	    ainfo: If ainfo is provided, it is an alm_info describing the layout 
+	    of the input alm. Otherwise it will be inferred from the alm itself.
 
 	Returns:
-	    falm: The filtered alms alm * lfunc(ell)
+	    falm: The filtered alms a_{l,m} * lfilter(l)
 	"""
 	alm   = np.asarray(alm)
 	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
-	l = np.arange(ainfo.lmax+1.0)
-	return ainfo.lmul(alm, lfunc(l))
+	if callable(lfilter):
+		l = np.arange(ainfo.lmax+1.0)
+		lfilter = lfilter(l)
+	return ainfo.lmul(alm, lfilter)
 
-def filter(imap,lfunc,ainfo=None,lmax=None):
+def filter(imap,lfilter,ainfo=None,lmax=None):
 	"""Filter a map isotropically by a function.
-	Returns alm2map(map2alm(alm * lfunc(ell),lmax))
+	Returns alm2map(map2alm(alm * lfilt(ell),lmax))
 
 	Args:
 	    imap: (...,Ny,Nx) ndmap stack of enmaps.
 	    lmax: integer specifying maximum multipole beyond which the alms are zeroed
-	    lfunc: a function mapping multipole ell to the filtering expression
-	    ainfo: 	If ainfo is provided, it is an alm_info describing the layout 
+	    lfilter: either an array containing the 1d filter to apply starting with ell=0
+	    and separated by delta_ell=1, or a function mapping multipole ell to the 
+	    filtering expression.
+	    ainfo: If ainfo is provided, it is an alm_info describing the layout 
 	of the input alm. Otherwise it will be inferred from the alm itself.
 
 	Returns:
 	    omap: (...,Ny,Nx) ndmap stack of filtered enmaps
 	"""
-	return alm2map(almxfl(map2alm(imap,ainfo=ainfo,lmax=lmax,spin=0),lfunc=lfunc,ainfo=ainfo),enmap.empty(imap.shape,imap.wcs,dtype=imap.dtype),spin=0,ainfo=ainfo)
-	
+	return alm2map(almxfl(map2alm(imap,ainfo=ainfo,lmax=lmax,spin=0),lfilter=lfilter,ainfo=ainfo),enmap.empty(imap.shape,imap.wcs,dtype=imap.dtype),spin=0,ainfo=ainfo)
 
 
 def alm2cl(alm, alm2=None, ainfo=None):
