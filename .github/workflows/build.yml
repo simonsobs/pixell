@@ -30,7 +30,7 @@ jobs:
           python -m pip install -U pip
           python -m easy_install -U setuptools
           python -m pip install pytest-cov numpy
-          python -m pip install cibuildwheel==1.8.0
+          python -m pip install cibuildwheel
 
       - name: Test and build wheels
         run: |
