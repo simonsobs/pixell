@@ -15,7 +15,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-18.04, macos-latest]
+        os: [ubuntu-20.04, macos-10.15]
 
     steps:
       - uses: actions/checkout@v2
@@ -30,7 +30,7 @@ jobs:
           python -m pip install -U pip
           python -m easy_install -U setuptools
           python -m pip install pytest-cov numpy
-          python -m pip install cibuildwheel==1.8.0
+          python -m pip install cibuildwheel
 
       - name: Test and build wheels
         run: |
