@@ -169,6 +169,14 @@ def alm2map_adjoint(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=Fal
 	return map2alm(map, alm=alm, ainfo=ainfo, lmax=lmax, spin=spin, direct=direct, copy=copy,
 		oversample=oversample, method=method, rtol=rtol, atol=atol, alm2map_adjoint=True)
 
+# Quadrature weights
+
+def quad_weights(shape, wcs):
+	if wcsutils.is_cyl(wcs):
+		return quad_weights_cyl(shape, wcs)
+	else:
+		raise NotImplementedError("Quadrature weights only supported for cylindrical projections")
+
 #################################
 ### Position-based transforms ###
 #################################
@@ -238,7 +246,7 @@ def alm2map_cyl(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, cop
 	if direct: tmap, mslices, tslices = map, [(Ellipsis,)], [(Ellipsis,)]
 	else:      tmap, mslices, tslices = make_projectable_map_cyl(map, verbose=verbose)
 	if verbose: print("Performing alm2map")
-	if map2alm_adjoint: minfo = match_predefined_minfo(tmap, rtol=rtol, atol=atol)
+	if map2alm_adjoint: minfo = match_predefined_minfo(tmap.shape, tmap.wcs, rtol=rtol, atol=atol)
 	else:               minfo = map2minfo(tmap)
 	alm2map_raw(alm, tmap, ainfo, minfo, spin=spin, deriv=deriv, map2alm_adjoint=map2alm_adjoint)
 	for mslice, tslice in zip(mslices, tslices):
@@ -288,7 +296,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False,
 		tmap[tslice] = map[mslice]
 	# We don't have ring weights for general cylindrical projections.
 	# See if our pixelization matches one with known weights.
-	minfo = match_predefined_minfo(tmap, rtol=rtol, atol=atol)
+	minfo = match_predefined_minfo(tmap.shape, tmap.wcs, rtol=rtol, atol=atol)
 	return map2alm_raw(tmap, alm, minfo, ainfo, spin=spin, copy=copy, alm2map_adjoint=alm2map_adjoint)
 
 def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], copy=False,
@@ -325,6 +333,11 @@ def alm2map_adjoint_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2]
 	"""Adjoint of alm2map_healpix"""
 	return map2alm_healpix(healmap, alm=alm, ainfo=ainfo, lmax=lmax, spin=spin, copy=copy,
 		theta_min=theta_min, theta_max=theta_max, alm2map_adjoint=True)
+
+# Quadrature weights
+
+def quad_weights_cyl(shape, wcs):
+	return match_predefined_minfo(shape, wcs).weight
 
 ######################
 ### Raw transforms ###
@@ -529,35 +542,41 @@ def make_projectable_map_by_pos(pos, lmax, dims=(), oversample=2.0, dtype=float,
 	tmap = enmap.zeros(dims+(ny+1,nx),wcs,dtype=dtype)
 	return tmap
 
+def geo2minfo(shape, wcs):
+	"""Given an enmap geometry with constant-latitude rows and constant longitude
+	intervals, return a corresponding sharp map_info."""
+	y = np.arange(shape[-2])
+	theta  = np.pi/2 - enmap.pix2sky(shape, wcs, [y,np.zeros(y.size)])[0]
+	phi0   = enmap.pix2sky(shape, wcs, [1,0])[1]
+	nphi   = shape[-1]
+	return sharp.map_info(theta, nphi, phi0)
+
 def map2minfo(m):
 	"""Given an enmap with constant-latitude rows and constant longitude
 	intervals, return a corresponding sharp map_info."""
-	theta  = np.pi/2 - m[...,:,:1].posmap()[0,:,0]
-	# Slice to make calculation faster. Could have just queried m.wcs cirectly here
-	# instead. Offset by 1 away from bottom to avoid any pole-related problems.
-	phi0   = m[...,1:2,0:1].posmap()[1,0,0]
-	nphi   = m.shape[-1]
-	return sharp.map_info(theta, nphi, phi0)
+	# This function isn't necessary. Can just use geo2minfo.
+	return geo2minfo(m.shape, m.wcs)
 
-def match_predefined_minfo(m, rtol=None, atol=None):
+def match_predefined_minfo(shape, wcs, rtol=None, atol=None):
 	"""Given an enmap with constant-latitude rows and constant longitude
 	intervals, return the libsharp predefined minfo with ringweights that's
-	the closest match to our pixelization."""
+	the closest match to our pixelization. This function is actually
+	a bit slow, taking about 250 ms. Still subdominant to an SHT, though."""
 	if rtol is None: rtol = 1e-3*utils.arcmin
 	if atol is None: atol = 1.0*utils.arcmin
 	# Make sure the colatitude ascends
-	flipy  = m.wcs.wcs.cdelt[1] > 0
-	if flipy: m = m[...,::-1,:]
-	theta  = np.pi/2 - m[...,:,:1].posmap()[0,:,0]
-	phi0   = m[...,1:2,0:1].posmap()[1,0,0]
-	ntheta, nphi = m.shape[-2:]
+	flipy  = wcs.wcs.cdelt[1] > 0
+	if flipy: shape, wcs = enmap.slice_geometry(shape, wcs, [slice(None,None,-1)])
+	ntheta, nphi = shape[-2:]
+	theta  = np.pi/2 - enmap.pix2sky(shape, wcs, [np.arange(ntheta),np.zeros(ntheta)])[0]
+	phi0   = enmap.pix2sky(shape, wcs, [1,0])[1]
 	# First find out how many lat rings there are in the whole sky.
 	# Find the first and last pixel center inside bounds
-	y1   = int(np.round(m.sky2pix([np.pi/2,0])[0]))
-	y2   = int(np.round(m.sky2pix([-np.pi/2,0])[0]))
-	phi0 = m.pix2sky([0,0])[1]
+	y1   = int(np.round(enmap.sky2pix(shape, wcs, [np.pi/2,0])[0]))
+	y2   = int(np.round(enmap.sky2pix(shape, wcs, [-np.pi/2,0])[0]))
+	phi0 = enmap.pix2sky(shape, wcs, [0,0])[1]
 	ny   = utils.nint(y2-y1+1)
-	nx   = utils.nint(np.abs(360./m.wcs.wcs.cdelt[0]))
+	nx   = utils.nint(np.abs(360./wcs.wcs.cdelt[0]))
 	# Define our candidate pixelizations
 	minfos = []
 	for i in range(-1,2):
@@ -589,7 +608,7 @@ def match_predefined_minfo(m, rtol=None, atol=None):
 	if not aoff < atol: raise ShapeError("Could not find a map_info with predefined weights matching input map (abs offset %e >= %e)" % (aoff, atol))
 	if not roff < rtol: raise ShapeError("Could not find a map_info with predefined weights matching input map (%rel offset e >= %e)" % (aoff, atol))
 	minfo = minfos2[best]
-	# Modify the minfo to restrict it to only the rows contained in m
+	# Modify the minfo to restrict it to only the rows contained in the geometry
 	minfo_cut = sharp.map_info(
 			minfo.theta[i1:i2],  minfo.nphi[i1:i2], minfo.phi0[i1:i2],
 			minfo.offsets[i1:i2]-minfo.offsets[i1], minfo.stride[i1:i2],

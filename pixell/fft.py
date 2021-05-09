@@ -52,7 +52,7 @@ else:
 	# Is FFTW actually using intel MKL as a backend? Check if 1D FT crashes for 3D input.
 	try:
 		engines['fftw'].FFTW(np.zeros((1,1,1)), np.zeros((1,1,1), dtype=np.complex128),
-				     flags=['FFTW_ESTIMATE'], threads=1, axes=[-1])
+			flags=['FFTW_ESTIMATE'], threads=1, axes=[-1])
 	except RuntimeError as e:
 		engines['intel'] = engines.pop('fftw')
 		engine = 'intel'
@@ -118,7 +118,7 @@ def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None):
 		tod[:] = ifft_flat(ft, tod, axes=axes, nthread=nt, flags=flags)
 	else:
 		plan = engines[engine].FFTW(ft, tod, flags=flags, direction='FFTW_BACKWARD',
-					    threads=nt, axes=axes)
+			threads=nt, axes=axes)
 		plan(normalise_idft=False)
 	# I get a small, cumulative loss in amplitude when using
 	# pyfftw's normalize function.. So normalize manually instead	
@@ -231,8 +231,7 @@ def fft_flat(tod, ft, nthread=1, axes=[-1], flags=None):
 	axes_new = list(range(-1, -1 - naxes, -1))
 	ft = utils.partial_flatten(ft, axes=axes, pos=0)
 	tod = utils.partial_flatten(tod, axes=axes, pos=0)
-	plan = engines[engine].FFTW(tod, ft, flags=flags, threads=nthread,
-				    axes=axes_new)
+	plan = engines[engine].FFTW(tod, ft, flags=flags, threads=nthread, axes=axes_new)
 	plan()
 	ft = utils.partial_expand(ft, shape_ft, axes=axes, pos=0)
 	return ft
@@ -245,7 +244,7 @@ def ifft_flat(ft, tod, nthread=1, axes=[-1], flags=None):
 	tod = utils.partial_flatten(tod, axes=axes, pos=0)
 	ft = utils.partial_flatten(ft, axes=axes, pos=0)
 	plan = engines[engine].FFTW(ft, tod, flags=flags, direction='FFTW_BACKWARD',
-				    threads=nthread, axes=axes_new)
+		threads=nthread, axes=axes_new)
 	plan(normalise_idft=False)
 	tod = utils.partial_expand(tod, shape_tod, axes=axes, pos=0)
 	return tod
