@@ -2,11 +2,22 @@
 History
 =======
 
+0.12.1 (2021-04-30)
+-------------------
+
+Changes relative to 0.12.0 include:
+
+* Patch to fix numpy binary incompatibility issues
+  caused by changes to the numpy C API. We now require
+  numpy >1.20.
+
+
 0.12.0 (2021-04-13)
 -------------------
 
 Changes relative to 0.11.2 include:
 
+* We now use libsharp2 instead of libsharp, which has signficantly faster SHTs
 * Major breaking change: the meaning of the "iau" flag has been
   corrected and reversed. The default behaviour of map2harm and other functions
   using this flag will be different.

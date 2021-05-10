@@ -15,11 +15,14 @@ k  = 1.3806488e-23
 G  = 6.67430e-11
 AU = 149597870700.0
 R_earth = 6378.1e3
-day2sec = 86400.
-yr2days = 365.2422
-yr = yr2days*day2sec
-ly = c*yr
-pc = AU/arcsec
+minute = 60
+hour   = 60*minute
+day    = 24*hour
+yr     = 365.2422*day
+ly     = c*yr
+pc     = AU/arcsec
+yr2days = yr/day
+day2sec = day/1.0
 
 # Solar system constants. Nice to have, unlikely to clash with anything, and
 # don't take up much space.
@@ -96,6 +99,7 @@ def contains(array, vals):
 	"""Given an array[n], returns a boolean res[n], which is True
 	for any element in array that is also in vals, and False otherwise."""
 	array = np.asarray(array)
+	vals  = np.asarray(vals)
 	vals  = np.sort(vals)
 	inds  = np.searchsorted(vals, array)
 	# If a value would be inserted after the end, it wasn't
@@ -125,6 +129,22 @@ def union(arrs):
 	for arr in arrs[1:]:
 		res = np.union1d(res,arr)
 	return res
+
+def inverse_order(order):
+	"""If order represents a reordering of an array, such as that returned by
+	np.argsort, inverse_order(order) returns a new reordering that can be used
+	to recover the old one.
+
+	Example:
+		a = np.array([6,102,32,20,0,91,1910]])
+		order = np.argsort(a)
+		print(a[order]) => [0,6,20,32,91,102,1910]
+		invorder = inverse_order(order)
+		print(a[order][inverse_order]) => [6,102,32,20,0,91,1910] # same as a
+	"""
+	invorder = np.empty(len(order), int)
+	invorder[order] = np.arange(len(order))
+	return invorder
 
 def dict_apply_listfun(dict, function):
 	"""Applies a function that transforms one list to another
@@ -1541,7 +1561,7 @@ def find_equal_groups_fast(vals):
 	and all these elements correspond to value uvals[i]. Accomplishes the same
 	basic task as find_equal_groups, but
 	1. Only works on 1d arrays
-	2. Does works with exact quality, with no support for approximate equality
+	2. Only works with exact quality, with no support for approximate equality
 	3. Returns 3 numpy arrays instead of a list of lists.
 	"""
 	order = np.argsort(vals)

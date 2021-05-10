@@ -55,6 +55,8 @@ class ndmap(np.ndarray):
 		return ndmap(np.copy(self,order), self.wcs)
 	def sky2pix(self, coords, safe=True, corner=False): return sky2pix(self.shape, self.wcs, coords, safe, corner)
 	def pix2sky(self, pix,    safe=True, corner=False): return pix2sky(self.shape, self.wcs, pix,    safe, corner)
+	def l2pix(self, ls):  return l2pix(self.shape, self.wcs, ls)
+	def pix2l(self, pix): return pix2l(self.shape, self.wcs, pix)
 	def corners(self, npoint=10, corner=True): return corners(self.shape, self.wcs, npoint=npoint, corner=corner)
 	def box(self, npoint=10, corner=True): return box(self.shape, self.wcs, npoint=npoint, corner=corner)
 	def pixbox_of(self,oshape,owcs): return pixbox_of(self.wcs, oshape,owcs)
@@ -426,7 +428,7 @@ def pixmap(shape, wcs=None):
 	return res if wcs is None else ndmap(res,wcs)
 
 def pix2sky(shape, wcs, pix, safe=True, corner=False):
-	"""Given an array of corner-based pixel coordinates [{y,x},...],
+	"""Given an array of pixel coordinates [{y,x},...],
 	return sky coordinates in the same ordering."""
 	pix = np.asarray(pix).astype(float)
 	if corner: pix -= 0.5
@@ -463,6 +465,20 @@ def sky2pix(shape, wcs, coords, safe=True, corner=False):
 			else:
 				wpix[i] = utils.unwind(wpix[i], period=wn, ref=wrefpix[i])
 	return wpix[::-1].reshape(coords.shape)
+
+def pix2l(shape, wcs, pix):
+	"""Given an array of fourier-pixel coordinates [{y,x},...], returns
+	the 2d fourier coordinates [{ly,lx},...]."""
+	pix    = np.asanyarray(pix)
+	pshape = pixshape(shape, wcs, signed=True)
+	return enfft.ind2freq(np.array(shape[-2:]).T, pix.T, pshape.T/(2*np.pi)).T
+
+def l2pix(shape, wcs, ls):
+	"""Given an array of fourier-pixel coordinates [{y,x},...], returns
+	the 2d fourier coordinates [{ly,lx},...]."""
+	ls    = np.asanyarray(ls)
+	pshape = pixshape(shape, wcs, signed=True)
+	return enfft.freq2ind(np.array(shape[-2:]).T, ls.T, pshape.T/(2*np.pi)).T
 
 def skybox2pixbox(shape, wcs, skybox, npoint=10, corner=False, include_direction=False):
 	"""Given a coordinate box [{from,to},{dec,ra}], compute a
@@ -1152,7 +1168,7 @@ def map_mul(mat, vec):
 	the same shape as vec. Multiplication happens along the last non-pixel
 	indices."""
 	# Allow scalar product, broadcasting if necessary
-	if mat.ndim < 3: return mat*vec
+	if mat.ndim <= 3: return mat*vec
 	# Otherwise we do a matrix product along the last axes
 	ovec = samewcs(np.einsum("...abyx,...byx->...ayx", mat, vec), mat, vec)
 	return ovec
