@@ -66,6 +66,7 @@ class UHT:
 			if dist <= max_distortion: mode = "flat"
 			else:                      mode = "curved"
 		self.mode = mode
+		self.quad = None
 		if mode == "flat":
 			self.l    = enmap.modlmap(shape, wcs)
 			self.lmax = utils.nint(np.max(self.l))
@@ -107,6 +108,16 @@ class UHT:
 			rtype= np.zeros(1, harm.dtype).real.dtype
 			omap = enmap.zeros(harm.shape[:-1]+self.shape, self.wcs, rtype)
 			return curvedsky.map2alm_adjoint(harm, omap, ainfo=self.ainfo, spin=spin)
+	def quad_weights(self):
+		"""Returns the quadrature weights array W. This will broadcast correctly
+		with maps, but may not have the same dimensions due to symmetries.
+		map2harm = harm2map_adjoint * quad_weight"""
+		if self.quad is None:
+			if self.mode == "flat":
+				self.quad = enmap.pixsizemap(self.shape, self.wcs, broadcastable=True)
+			else:
+				self.quad = curvedsky.quad_weights(self.shape, self.wcs)[:,None]
+		return self.quad
 	def rprof2hprof(self, br, r):
 		"""Like map2harm, but for a 1d function of r."""
 		if self.mode == "flat":
@@ -116,7 +127,7 @@ class UHT:
 	def hprof2rprof(self, harm, r):
 		"""Inverse of hprof2rprof"""
 		if self.mode == "flat":
-			return harm2profile_flat_2d(harm, r)
+			return harm2profile_flat_2d(harm+0j, r)
 		else:
 			return curvedsky.harm2profile(harm, r)
 	def lprof2hprof(self, lprof):
@@ -132,7 +143,7 @@ class UHT:
 			return hprof.copy()
 		else:
 			mapping = self.ainfo.get_map()
-			return lprof[...,mapping[:,0]]
+			return hprof[...,mapping[:,0]]
 	def hmul(self, hprof, harm, inplace=False):
 		"""Perform the multiplication hprof*harm -> harm. See the UHT class docstring for
 		the meaning of these terms. In flat mode, hprof must be [ny,nx], [ncomp,ny,nx] or
@@ -161,6 +172,23 @@ class UHT:
 			return np.sum(hprof*self.nper,(-2,-1))
 		else:
 			return np.sum(hprof*self.nper,-1)
+	def hprof_rpow(self, hprof, power):
+		"""Raises hprof "hprof" to the power "power" in real-space.
+		Effectively map2harm(harm2map(hprof)**power), but works on
+		harmonic profiles instead of full fourier maps/alms.
+		Maybe this function is too specific to have in this class, but
+		I needed it and it wasn't trivial to get right.
+		"""
+		if self.mode == "flat":
+			norm = enmap.area(self.shape, self.wcs)**0.5
+			map  = self.harm2map(hprof/norm+0j)
+			return self.map2harm(map**power)*norm
+		else:
+			# Estimate the resolution from the beam
+			sigma = 1/max(1,np.where(hprof > np.max(hprof)*np.exp(-0.5))[0][-1])
+			r     = np.arange(0, 20*sigma, sigma/10)
+			rprof = self.hprof2rprof(hprof, r)
+			return self.rprof2hprof(rprof**power, r)
 
 ####################
 # Helper functions #
@@ -202,9 +230,12 @@ def profile2harm_flat_2d(br, r, shape, wcs):
 def harm2profile_flat_2d(harm, r=None):
 	"""Inverse of profile2harm_flat_2d. harm should be an enmap.
 	r is [:] in radians."""
-	harm = harm / harm.pixsize()
 	bmap = enmap.ifft(harm, normalize=False).real
-	wbr, wr = bmap.rbin()
+	bmap/= harm.pixsize() * harm.npix
+	cpix = np.array(harm.shape[-2:])//2-1
+	cpos = bmap.pix2sky(cpix)
+	bmap = enmap.shift(bmap, cpix, keepwcs=True)
+	wbr, wr = bmap.rbin(center=cpos)
 	if r is None: return wbr, r
 	else:         return utils.interp(r, wr, wbr, right=0)
 

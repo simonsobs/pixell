@@ -116,6 +116,39 @@ def eval_srcs_loop(posmap, poss, amps, beam, cres, nhit, cell_srcs, dtype=np.flo
 			op(model[:,y1:y2,x1:x2], cmodel, model[:,y1:y2,x1:x2])
 	return model
 
+def sim_srcs_dist_transform(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=4, rmax=None, smul=1,
+		pixwin=False, ignore_outside=False, op=np.add, verbose=False):
+	"""Simulate a point source map in the geometry given by shape, wcs
+	for the given srcs[nsrc,{dec,ra,T...}], using the beam[{r,val},npoint],
+	which must be equispaced. Unlike sim_srcs, overalpping point sources are not supported.
+	If omap is specified, the sources will be
+	added to it in place. All angles are in radians. The beam is only evaluated up to
+	the point where it reaches exp(-0.5*nsigma**2) unless rmax is specified, in which
+	case this gives the maximum radius. smul gives a factor to multiply the resulting
+	source model by. This is mostly useful in conction with omap.
+	"""
+	if omap is None: omap = enmap.zeros(shape, wcs, dtype)
+	ishape = omap.shape
+	omap   = omap.preflat
+	ncomp  = omap.shape[0]
+	# In keeping with the rest of the functions here, srcs is [nsrc,{dec,ra,T,Q,U}].
+	# The beam parameters are ignored - the beam argument is used instead
+	amps = srcs[:,2:2+ncomp]
+	poss = srcs[:,:2].copy()
+	br, bv = expand_beam(beam, nsigma, rmax).copy()
+	rmax = nsigma2rmax(beam, nsigma)
+	if ignore_outside:
+		pixs = enmap.sky2pix(shape, wcs, poss.T[:2])
+		pmax = 2*rmax/enmap.pixsize(shape, wcs)**0.5
+		bad  = np.any(pixs <  -pmax, 0) | np.any(pixs > np.array(shape[-2:])[:,None]+pmax, 0)
+		amps, poss = amps[~bad], poss[~bad]
+	r, domains = enmap.distance_from(shape, wcs, poss.T[:2], domains=True, rmax=rmax)
+	np.clip(domains, 0, amps.shape[0]-1, domains)
+	for i in range(ncomp):
+		op(omap[i], np.interp(r, br, bv, right=0) * amps[domains,i], omap[i])
+	omap = omap.reshape(ishape)
+	return omap
+
 def expand_beam(beam, nsigma=5, rmax=None, nper=400):
 	beam = np.asarray(beam)
 	if beam.ndim == 0:
