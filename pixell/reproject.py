@@ -1,6 +1,6 @@
 from __future__ import print_function
 import numpy as np
-from . import wcsutils, utils, enmap, coordinates, curvedsky, fft
+from . import wcsutils, utils, enmap, coordinates, fft
 try: from . import sharp
 except ImportError: pass
 
@@ -177,6 +177,7 @@ def healpix_from_enmap(imap, lmax, nside):
 		retmap: (Npix,) healpix map as array
 
 	"""
+	from pixell import curvedsky
 	import healpy as hp
 	alm = curvedsky.map2alm(imap, lmax=lmax, spin=0)
 	if alm.ndim > 1:
@@ -218,6 +219,7 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
 		is True
 
 	"""
+	from pixell import curvedsky
 	import healpy as hp
 
 	dtype = np.float64
