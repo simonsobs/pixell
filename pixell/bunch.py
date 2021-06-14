@@ -53,30 +53,58 @@ class Bunch:
 # Some simple I/O routines. These can't handle everything that could
 # be in a bunch, but they cover all my most common use cases.
 
-def read(fname, fmt="auto"):
+def read(fname, fmt="auto", group=None):
 	if fmt == "auto":
-		if fname.endswith(".hdf"): fmt = "hdf"
+		if is_hdf_path(fname): fmt = "hdf"
 		else: raise ValueError("Could not infer format for '%s'" % fname)
-	if fmt == "hdf": return read_hdf(fname)
+	if fmt == "hdf": return read_hdf(fname, group=group)
 	else: raise ValueError("Unrecognized format '%s'" % fmt)
 
 def write(fname, bunch, fmt="auto"):
 	if fmt == "auto":
-		if fname.endswith(".hdf"): fmt = "hdf"
+		if is_hdf_path(fname): fmt = "hdf"
 		else: raise ValueError("Could not infer format for '%s'" % fname)
-	if fmt == "hdf": write_hdf(fname, bunch)
+	if fmt == "hdf": write_hdf(fname, bunch, group=group)
 	else: raise ValueError("Unrecognized format '%s'" % fmt)
 
-def write_hdf(fname, bunch):
+def write_hdf(fname, bunch, group=None):
 	import h5py
+	fname, group = split_hdf_path(fname, group)
 	with h5py.File(fname, "w") as hfile:
+		if group: hfile = hfile.create_group(group)
 		for key in bunch:
 			hfile[key] = bunch[key]
 
-def read_hdf(fname):
+def read_hdf(fname, group=None):
 	import h5py
 	bunch = Bunch()
+	fname, group = split_hdf_path(fname, group)
 	with h5py.File(fname, "r") as hfile:
+		if group: hfile = hfile[group]
 		for key in hfile:
 			bunch[key] = hfile[key][()]
 	return bunch
+
+def is_hdf_path(fname):
+	"""Returns true if the fname would be recognized by split_hdf_path"""
+	for suf in [".hdf", ".h5"]:
+		name, _, group = fname.rpartition(suf)
+		if name and (not group or group[0] == "/"): return True
+	return False
+
+def split_hdf_path(fname, subgroup=None):
+	"""Split an hdf path of the form path.hdf/group, where the group part is
+	optional, into the path and the group parts. If subgroup is specified, then
+	it will be appended to the group informaiton. returns fname, group. The
+	fname will be a string, and the group will be a string or None. Raises
+	a ValueError if the fname is not recognized as a hdf file."""
+	for suf in [".hdf", ".h5"]:
+		name, _, group = fname.rpartition(suf)
+		if not name: continue
+		name += suf
+		if not group: return name, subgroup
+		elif group[0] == "/":
+			group = group[1:]
+			if subgroup: group += "/" + subgroup
+			return name, group
+	raise ValueError("Not an hdf path")
