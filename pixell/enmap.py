@@ -1074,37 +1074,52 @@ def lrmap(shape, wcs, oversample=1):
 	of a map with the given shape and wcs."""
 	return lmap(shape, wcs, oversample=oversample)[...,:shape[-1]//2+1]
 
-def fft(emap, omap=None, nthread=0, normalize=True, adjoint_ifft=False):
+def fft(emap, omap=None, nthread=0, normalize=True, adjoint_ifft=False, dct=False):
 	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap.
 	If normalize is "phy", "phys" or "physical", then an additional normalization
 	is applied such that the binned square of the fourier transform can
 	be directly compared to theory (apart from mask corrections)
 	, i.e., pixel area factors are corrected for.
 	"""
-	res  = samewcs(enfft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
+	if dct: res  = samewcs(enfft.dct(emap,omap,axes=[-2,-1],nthread=nthread), emap)
+	else:   res  = samewcs(enfft.fft(emap,omap,axes=[-2,-1],nthread=nthread), emap)
 	norm = 1
-	if normalize: norm /= np.prod(emap.shape[-2:])**0.5
+	if normalize:
+		if dct: norm /= np.prod(2*np.array(emap.shape[-2:])-1)**0.5
+		else:   norm /= np.prod(emap.shape[-2:])**0.5
 	if normalize in ["phy","phys","physical"]:
 		if adjoint_ifft: norm /= emap.pixsize()**0.5
 		else:            norm *= emap.pixsize()**0.5
 	if norm != 1: res *= norm
 	return res
-def ifft(emap, omap=None, nthread=0, normalize=True, adjoint_fft=False):
+def ifft(emap, omap=None, nthread=0, normalize=True, adjoint_fft=False, dct=False):
 	"""Performs the 2d iFFT of the complex enmap given, and returns a pixel-space enmap."""
-	res  = samewcs(enfft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
+	if dct: res  = samewcs(enfft.idct(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
+	else:   res  = samewcs(enfft.ifft(emap,omap,axes=[-2,-1],nthread=nthread, normalize=False), emap)
 	norm = 1
-	if normalize: norm /= np.prod(emap.shape[-2:])**0.5
+	if normalize:
+		if dct: norm /= np.prod(2*np.array(emap.shape[-2:])-1)**0.5
+		else:   norm /= np.prod(emap.shape[-2:])**0.5
 	if normalize in ["phy","phys","physical"]:
 		if adjoint_fft: norm *= emap.pixsize()**0.5
 		else:           norm /= emap.pixsize()**0.5
 	if norm != 1: res *= norm
 	return res
 
+def dct(emap, omap=None, nthread=0, normalize=True):
+	return fft(emap, omap=omap, nthread=nthread, normalize=normalize, dct=True)
+def idct(emap, omap=None, nthread=0, normalize=True):
+	return ifft(emap, omap=omap, nthread=nthread, normalize=normalize, dct=True)
+
 def fft_adjoint(emap, omap=None, nthread=0, normalize=True):
 	return ifft(emap, omap=omap, nthread=nthread, normalize=normalize, adjoint_fft=True)
-
 def ifft_adjoint(emap, omap=None, nthread=0, normalize=True):
 	return fft(emap, omap=omap, nthread=nthread, normalize=normalize, adjoint_ifft=True)
+
+def idct_adjoint(emap, omap=None, nthread=0, normalize=True):
+	return fft(emap, omap=omap, nthread=nthread, normalize=normalize, adjoint_ifft=True, dct=True)
+def dct_adjoint(emap, omap=None, nthread=0, normalize=True):
+	return ifft(emap, omap=omap, nthread=nthread, normalize=normalize, adjoint_fft=True, dct=True)
 
 # These are shortcuts for transforming from T,Q,U real-space maps to
 # T,E,B hamonic maps. They are not the most efficient way of doing this.
