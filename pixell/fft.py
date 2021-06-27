@@ -30,7 +30,7 @@ class numpy_FFTW:
 			if not normalise_idft:
 				self.b *= np.product([self.b.shape[i] for i in self.axes])
 
-def numpy_n_byte_align_empty(shape, alignment, dtype):
+def numpy_empty_aligned(shape, dtype, n=None):
 	"""This dummy function just skips the alignment, since numpy
 	doesn't provide an easy way to get it."""
 	return np.empty(shape, dtype)
@@ -38,7 +38,7 @@ def numpy_n_byte_align_empty(shape, alignment, dtype):
 class NumpyEngine: pass
 numpy_engine = NumpyEngine()
 numpy_engine.FFTW = numpy_FFTW
-numpy_engine.n_byte_align_empty = numpy_n_byte_align_empty
+numpy_engine.empty_aligned = numpy_empty_aligned
 engines["numpy"] = numpy_engine
 engine = "numpy"
 
@@ -48,6 +48,14 @@ try:
 	engines["fftw"] = pyfftw
 	engine = "fftw"
 except ImportError: pass
+else:
+	# Is FFTW actually using intel MKL as a backend? Check if 1D FT crashes for 3D input.
+	try:
+		engines['fftw'].FFTW(np.zeros((1,1,1)), np.zeros((1,1,1), dtype=np.complex128),
+			flags=['FFTW_ESTIMATE'], threads=1, axes=[-1])
+	except RuntimeError as e:
+		engines['intel'] = engines.pop('fftw')
+		engine = 'intel'
 try:
 	import pyfftw_intel as intel
 	engines["intel"] = intel
@@ -68,14 +76,14 @@ def set_engine(eng):
 	global engine
 	engine = eng
 
-def fft(tod, ft=None, nthread=0, axes=[-1], flags=None):
+def fft(tod, ft=None, nthread=0, axes=[-1], flags=None, _direction="FFTW_FORWARD"):
 	"""Compute discrete fourier transform of tod, and store it in ft. What
 	transform to do (real or complex, number of dimension etc.) is determined
-	from the size and type of tod and ft. The optional nthread argument specifies
-	the number of theads to use in the fft. The default (0) uses the value specified
-	by the OMP_NUM_THREAD environment varible if that is specified, or the total
-	number of cores on the computer otherwise. If ft is left out, a complex
-	transform is assumed."""
+	from the size and type of tod and ft. If ft is left out, a complex transform
+	is assumed. The optional nthread argument specifies the number of theads to
+	use in the fft. The default (0) uses the value specified by the
+	OMP_NUM_THREAD environment varible if that is specified, or the total number
+	of cores on the computer otherwise."""
 	tod = asfcarray(tod)
 	if tod.size == 0: return
 	nt = nthread or nthread_fft
@@ -84,8 +92,11 @@ def fft(tod, ft=None, nthread=0, axes=[-1], flags=None):
 		otype = np.result_type(tod.dtype,0j)
 		ft  = empty(tod.shape, otype)
 		tod = tod.astype(otype, copy=False)
-	plan = engines[engine].FFTW(tod, ft, flags=flags, threads=nt, axes=axes)
-	plan()
+	if engine == 'intel':
+		ft[:] = fft_flat(tod, ft, axes=axes, nthread=nt, flags=flags, _direction=_direction)
+	else:
+		plan = engines[engine].FFTW(tod, ft, flags=flags, threads=nt, axes=axes, direction=_direction)
+		plan()
 	return ft
 
 def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None):
@@ -94,7 +105,7 @@ def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None):
 	from the size and type of tod and ft. The optional nthread argument specifies
 	the number of theads to use in the fft. The default (0) uses the value specified
 	by the OMP_NUM_THREAD environment varible if that is specified, or the total
-	number of cores on the computer otherwise. By default this is not nrmalized,
+	number of cores on the computer otherwise. By default this is not normalized,
 	meaning that fft followed by ifft will multiply the data by the length of the
 	transform. By specifying the normalize argument, you can turn normalization
 	on, though the normalization step will not use paralellization."""
@@ -102,12 +113,15 @@ def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None):
 	if ft.size == 0: return
 	nt = nthread or nthread_ifft
 	if flags is None: flags = default_flags
-	if tod is None: tod = empty(ft.shape, ft.dtype)
-	plan = engines[engine].FFTW(ft, tod, flags=flags, direction='FFTW_BACKWARD', threads=nt, axes=axes)
+	if tod is None:	tod = empty(ft.shape, ft.dtype)
+	if engine == 'intel':
+		tod[:] = ifft_flat(ft, tod, axes=axes, nthread=nt, flags=flags)
+	else:
+		plan = engines[engine].FFTW(ft, tod, flags=flags, direction='FFTW_BACKWARD',
+			threads=nt, axes=axes)
+		plan(normalise_idft=False)
 	# I get a small, cumulative loss in amplitude when using
-	# pyfftw's normalize function.. So normalize manually instead
-	#plan(normalise_idft=normalize)
-	plan(normalise_idft=False)
+	# pyfftw's normalize function.. So normalize manually instead	
 	if normalize: tod /= np.product([tod.shape[i] for i in axes])
 	return tod
 
@@ -136,10 +150,87 @@ def irfft(ft, tod=None, n=None, nthread=0, normalize=False, axes=[-1], flags=Non
 		tod = empty(oshape, dtype)
 	return ifft(ft, tod, nthread, normalize, axes, flags=flags)
 
+def dct(tod, dt=None, nthread=0, normalize=False, axes=[-1], flags=None, type="DCT-I"):
+	"""Compute discrete cosine transform of tod, and store it in dt. By
+	default it will do a DCT-I trasnform, but this can be controlled with the type argument.
+	Even the much less common discrete sine transforms are avialble by passing e.g. type="DST-I".
+	Valid values are DCT-I, DCT-II, DCT-III, DCT-IV, DST-I, DST-II, DST-III and DST-IV,
+	or the raw FFTW names the correspond to (e.g. FFTW_REDFT00). If dt is not passed, it
+	will be allocated with the same shape and data type as tod.
+
+	The optional nthread argument specifies the number of theads to use in the fft. The
+	default (0) uses the value specified by the OMP_NUM_THREAD environment varible if that
+	is specified, or the total number of cores on the computer otherwise.
+
+	Note that DCTs and DSTs were only added to pyfftw in version 13.0. The function will
+	fail with an Invalid scheme error for older versions.
+	"""
+	tod = asfcarray(tod)
+	type= _dct_names[type]
+	if dt is None:
+		dt = empty(tod.shape, tod.dtype)
+	return fft(tod, dt, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes))
+
+def idct(dt, tod=None, nthread=0, normalize=False, axes=[-1], flags=None, type="DCT-I"):
+	"""Compute the inverse discrete cosine transform of dt, and store it in tod. By
+	default it will do the inverse of a DCT-I trasnform, but this can be controlled with the type argument.
+	Even the much less common discrete sine transforms are avialble by passing e.g. type="DST-I".
+	Valid values are DCT-I, DCT-II, DCT-III, DCT-IV, DST-I, DST-II, DST-III and DST-IV,
+	or the raw FFTW names the correspond to (e.g. FFTW_REDFT00). If tod is not passed, it
+	will be allocated with the same shape and data type as tod.
+
+	By the default an unnormalized transform is performed. Pass normalize=True to get an
+	actual inverse transform. This divides by a factor of 2*N+d for each axis the transform
+	is performed along, where N is the length of the axis and d is -1 for DCT-1, +1 for
+	DST-I and 0 for all the others. Usually it's faster to compute this factor once and
+	combine it with other scalar factors in your math than to let this function do it,
+	which is why it's turned off by default.
+
+	Note that this function already takes care of figuring out which transform is the
+	appropriate inverse. E.g. the inverse of b = dct(a, type="DCT-II") is
+	idct(b, type="DCT-II", normalize=True), not idct(b, type="DCT-III", normalize=True)
+	even though DCT-III is the inverse of DCT-II.
+
+	The optional nthread argument specifies the number of theads to use in the fft. The
+	default (0) uses the value specified by the OMP_NUM_THREAD environment varible if that
+	is specified, or the total number of cores on the computer otherwise.
+
+	Note that DCTs and DSTs were only added to pyfftw in version 13.0. The function will
+	fail with an Invalid scheme error for older versions."""
+	dt   = asfcarray(dt)
+	type = _dct_inverses[_dct_names[type]]
+	off  = _dct_sizes[type]
+	if tod is None:
+		tod = empty(dt.shape, dt.dtype)
+	fft(dt, tod, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes))
+	if normalize: tod /= np.product([2*(tod.shape[i]+off) for i in axes])
+	return tod
+
+_dct_names = {
+		"DCT-I":   "FFTW_REDFT00",  "FFTW_REDFT00":"FFTW_REDFT00",
+		"DCT-II":  "FFTW_REDFT10",  "FFTW_REDFT10":"FFTW_REDFT10",
+		"DCT-III": "FFTW_REDFT01",  "FFTW_REDFT01":"FFTW_REDFT01",
+		"DCT-IV":  "FFTW_REDFT11",  "FFTW_REDFT11":"FFTW_REDFT11",
+		"DST-I":   "FFTW_RODFT00",  "FFTW_RODFT00":"FFTW_RODFT00",
+		"DST-II":  "FFTW_RODFT10",  "FFTW_RODFT10":"FFTW_RODFT10",
+		"DST-III": "FFTW_RODFT01",  "FFTW_RODFT01":"FFTW_RODFT01",
+		"DST-IV":  "FFTW_RODFT11",  "FFTW_RODFT11":"FFTW_RODFT11",
+}
+_dct_inverses = {
+		"FFTW_REDFT00":"FFTW_REDFT00", "FFTW_REDFT10":"FFTW_REDFT01",
+		"FFTW_REDFT01":"FFTW_REDFT10", "FFTW_REDFT11":"FFTW_REDFT11",
+		"FFTW_RODFT00":"FFTW_RODFT00", "FFTW_RODFT10":"FFTW_RODFT01",
+		"FFTW_RODFT01":"FFTW_RODFT10", "FFTW_RODFT11":"FFTW_RODFT11",
+}
+_dct_sizes = {
+		"FFTW_REDFT00":-1, "FFTW_REDFT10":0, "FFTW_REDFT01":0, "FFTW_REDFT11":0,
+		"FFTW_RODFT00":+1, "FFTW_RODFT10":0, "FFTW_RODFT01":0, "FFTW_RODFT11":0,
+}
+
 def redft00(a, b=None, nthread=0, normalize=False, flags=None):
-	"""pyFFTW does not support the DCT yet, so this is a work-around.
-	It's not very fast, sadly - about 5 times slower than an rfft.
-	Transforms along the last axis."""
+	"""Old brute-force work-around for missing dcts in pyfftw. Can be
+	removed when newer versions of pyfftw become common. It's not very
+	fast, sadly - about 5 times slower than an rfft. Transforms along the last axis."""
 	a = asfcarray(a)
 	if b is None: b = empty(a.shape, a.dtype)
 	n = a.shape[-1]
@@ -174,10 +265,17 @@ def asfcarray(a):
 	return np.asarray(a, np.result_type(a,0.0))
 
 def empty(shape, dtype):
-	return engines[engine].n_byte_align_empty(shape, alignment, dtype)
+	return engines[engine].empty_aligned(shape, dtype=dtype, n=alignment)
 
 def fftfreq(n, d=1.0): return np.fft.fftfreq(n, d=d)
-def rfftfreq(n, d=1.0): return np.arange(n//2+1)/(1.0*n*d)
+def rfftfreq(n, d=1.0): return np.arange(n//2+1)/(n*d)
+
+def ind2freq (n, i, d=1.0): return np.where(i < n/2, i, -n+i)/(d*n)
+def int2rfreq(n, i, d=1.0): return i/(n*d)
+def freq2ind(n, f, d=1.0):
+	j = f*(d*n)
+	return np.where(j >= 0, j, n+j)
+def rfreq2ind(n, f, d=1.0): return f*(n*d)
 
 def shift(a, shift, axes=None, nofft=False, deriv=None):
 	"""Shift the array a by a (possibly fractional) number of samples "shift"
@@ -196,5 +294,35 @@ def shift(a, shift, axes=None, nofft=False, deriv=None):
 			phase *= -2j*np.pi*freqs
 		fa   *= phase[(None,)*ax + (slice(None),) + (None,)*(a.ndim-ax-1)]
 	if not nofft: ifft(fa, ca, axes=axes, normalize=True)
-	else:         ca = fa
+	else:	      ca = fa
 	return ca if np.iscomplexobj(a) else ca.real
+
+def fft_flat(tod, ft, nthread=1, axes=[-1], flags=None, _direction="FFTW_FORWARD"):
+	"""Workaround for intel FFTW wrapper. Flattens appropriate dimensions of
+	intput and output arrays to avoid crash that otherwise happens for arrays with
+	ndim > N + 1, where N is the dimension of the transform. If 'axes' correspond
+	to the last dimensions of the arrays, the workaround is essentially free. If
+	`axes` correspond to other axes, copies are made when reshaping the arrays."""
+	shape_ft = ft.shape
+	naxes = np.atleast_1d(axes).size
+	axes_new = list(range(-1, -1 - naxes, -1))
+	ft = utils.partial_flatten(ft, axes=axes, pos=0)
+	tod = utils.partial_flatten(tod, axes=axes, pos=0)
+	plan = engines[engine].FFTW(tod, ft, flags=flags, threads=nthread, axes=axes_new, direction=_direction)
+	plan()
+	ft = utils.partial_expand(ft, shape_ft, axes=axes, pos=0)
+	return ft
+
+def ifft_flat(ft, tod, nthread=1, axes=[-1], flags=None):
+	"""Same workaround as fft_flat but now for the inverse transform."""
+	shape_tod = tod.shape
+	naxes = np.atleast_1d(axes).size
+	axes_new = list(range(-1, -1 - naxes, -1))
+	tod = utils.partial_flatten(tod, axes=axes, pos=0)
+	ft = utils.partial_flatten(ft, axes=axes, pos=0)
+	plan = engines[engine].FFTW(ft, tod, flags=flags, direction='FFTW_BACKWARD',
+		threads=nthread, axes=axes_new)
+	plan(normalise_idft=False)
+	tod = utils.partial_expand(tod, shape_tod, axes=axes, pos=0)
+	return tod
+

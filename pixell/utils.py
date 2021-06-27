@@ -15,11 +15,14 @@ k  = 1.3806488e-23
 G  = 6.67430e-11
 AU = 149597870700.0
 R_earth = 6378.1e3
-day2sec = 86400.
-yr2days = 365.2422
-yr = yr2days*day2sec
-ly = c*yr
-pc = AU/arcsec
+minute = 60
+hour   = 60*minute
+day    = 24*hour
+yr     = 365.2422*day
+ly     = c*yr
+pc     = AU/arcsec
+yr2days = yr/day
+day2sec = day/1.0
 
 # Solar system constants. Nice to have, unlikely to clash with anything, and
 # don't take up much space.
@@ -42,6 +45,13 @@ adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
 
+def D(f, eps=1e-10):
+	"""Clever derivative operator for function f(x) from Ivan Yashchuck.
+	Accurate to second order in eps. Only calls f(x) once to evaluate the
+	derivative, but f must accept complex arguments. Only works for real x.
+	Example usage: D(lambda x: x**4)(1) => 4.0"""
+	def Df(x): return f(x+eps*1j).imag / eps
+	return Df
 
 def lines(file_or_fname):
 	"""Iterates over lines in a file, which can be specified
@@ -89,6 +99,7 @@ def contains(array, vals):
 	"""Given an array[n], returns a boolean res[n], which is True
 	for any element in array that is also in vals, and False otherwise."""
 	array = np.asarray(array)
+	vals  = np.asarray(vals)
 	vals  = np.sort(vals)
 	inds  = np.searchsorted(vals, array)
 	# If a value would be inserted after the end, it wasn't
@@ -118,6 +129,22 @@ def union(arrs):
 	for arr in arrs[1:]:
 		res = np.union1d(res,arr)
 	return res
+
+def inverse_order(order):
+	"""If order represents a reordering of an array, such as that returned by
+	np.argsort, inverse_order(order) returns a new reordering that can be used
+	to recover the old one.
+
+	Example:
+		a = np.array([6,102,32,20,0,91,1910]])
+		order = np.argsort(a)
+		print(a[order]) => [0,6,20,32,91,102,1910]
+		invorder = inverse_order(order)
+		print(a[order][inverse_order]) => [6,102,32,20,0,91,1910] # same as a
+	"""
+	invorder = np.empty(len(order), int)
+	invorder[order] = np.arange(len(order))
+	return invorder
 
 def dict_apply_listfun(dict, function):
 	"""Applies a function that transforms one list to another
@@ -377,9 +404,9 @@ def interp(x, xp, fp, left=None, right=None, period=None):
 	x, xp, fp = [np.asanyarray(a) for a in [x, xp, fp]]
 	fp_flat   = fp.reshape(-1, fp.shape[-1])
 	f_flat    = np.empty((fp_flat.shape[0],)+x.shape, fp.dtype)
-	for f1, fp1 in zip(fp_flat, f_flat):
+	for f1, fp1 in zip(f_flat, fp_flat):
 		f1[:] = np.interp(x, xp, fp1, left=left, right=right, period=period)
-	f = f_flat.reshape(fp.shape[:-1]+(x.hape,))
+	f = f_flat.reshape(fp.shape[:-1]+x.shape)
 	return f
 
 def bin_multi(pix, shape, weights=None):
@@ -1534,7 +1561,7 @@ def find_equal_groups_fast(vals):
 	and all these elements correspond to value uvals[i]. Accomplishes the same
 	basic task as find_equal_groups, but
 	1. Only works on 1d arrays
-	2. Does works with exact quality, with no support for approximate equality
+	2. Only works with exact quality, with no support for approximate equality
 	3. Returns 3 numpy arrays instead of a list of lists.
 	"""
 	order = np.argsort(vals)
@@ -1566,7 +1593,7 @@ def broadcast_shape(*shapes):
 		for shape in shapes:
 			if len(shape) <= i: continue
 			v = shape[-1-i]
-			if olen != 1 and v != olen:
+			if olen != 1 and v != 1 and v != olen:
 				raise ValueError("operands could not be broadcast togehter with shapes " + " ".join([str(shape) for shape in shapes]))
 			olen = max(olen, v)
 		oshape.insert(0, olen)
@@ -1766,15 +1793,14 @@ def calc_beam_area(beam_profile):
 	r, b = beam_profile
 	return integrate.simps(2*np.pi*r*b,r)
 
-def flux_factor(beam_area, freq, T0=T_cmb):
-	"""Compute the factor A that when multiplied with a linearized
-	temperature increment dT around T0 (in K) at the given frequency freq
-	in Hz and integrated over the given beam_area in steradians, produces
-	the corresponding flux = A*dT. This is useful for converting between
-	point source amplitudes and point source fluxes.
+def planck(f, T):
+	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
+	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
+blackbody = planck
 
-	For uK to mJy use flux_factor(beam_area, freq)/1e3
-	"""
+def dplanck(f, T):
+	"""The derivative of the planck spectrum with respect to temperature, evaluated
+	at frequencies f and temperature T, in units of Jy/sr/K."""
 	# A blackbody has intensity I = 2hf**3/c**2/(exp(hf/kT)-1) = V/(exp(x)-1)
 	# with V = 2hf**3/c**2, x = hf/kT.
 	# dI/dx = -V/(exp(x)-1)**2 * exp(x)
@@ -1783,26 +1809,9 @@ def flux_factor(beam_area, freq, T0=T_cmb):
 	#       = 2*h**2*f**4/c**2/k/T**2 * exp(x)/(exp(x)-1)**2
 	#       = 2*x**4 * k**3*T**2/(h**2*c**2) * exp(x)/(exp(x)-1)**2
 	#       = .... /(4*sinh(x/2)**2)
-	x     = h*freq/(k*T0)
-	dIdT  = 2*x**4 * k**3*T0**2/(h**2*c**2) / (4*np.sinh(x/2)**2)
-	dJydK = dIdT * 1e26 * beam_area
-	return dJydK
-
-def noise_flux_factor(beam_area, freq, T0=T_cmb):
-	"""Compute the factor A that converts from white noise level in K sqrt(steradian)
-	to uncertainty in Jy for the given beam area in steradians and frequency in Hz.
-	This assumes white noise and a gaussian beam, so that the area of the real-space squared beam is
-	just half that of the normal beam area.
-
-	For uK arcmin to mJy, use noise_flux_factor(beam_area, freq)*arcmin/1e3
-	"""
-	squared_beam_area = beam_area/2
-	return flux_factor(beam_area/squared_beam_area**0.5, freq, T0=T0)
-
-def planck(f, T):
-	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
-	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
-blackbody = planck
+	x     = h*f/(k*T)
+	dIdT  = 2*x**4 * k**3*T**2/(h**2*c**2) / (4*np.sinh(x/2)**2) * 1e26
+	return dIdT
 
 def graybody(f, T, beta=1):
 	"""Return a graybody spectrum at the frequency f and temperature T in Jy/sr"""
@@ -1815,6 +1824,31 @@ def tsz_spectrum(f, T=T_cmb):
 	x  = h*f/(k*T)
 	ex = np.exp(x)
 	return 2*h*f**3/c**2 * (x*ex)/(ex-1)**2 * (x*(ex+1)/(ex-1)-4) * 1e26
+
+# Helper functions for conversion from peak amplitude in cmb maps to flux
+
+def flux_factor(beam_area, freq, T0=T_cmb):
+	"""Compute the factor A that when multiplied with a linearized
+	temperature increment dT around T0 (in K) at the given frequency freq
+	in Hz and integrated over the given beam_area in steradians, produces
+	the corresponding flux = A*dT. This is useful for converting between
+	point source amplitudes and point source fluxes.
+
+	For uK to mJy use flux_factor(beam_area, freq)/1e3
+	"""
+	return dplanck(freq, T0)*beam_area
+
+def noise_flux_factor(beam_area, freq, T0=T_cmb):
+	"""Compute the factor A that converts from white noise level in K sqrt(steradian)
+	to uncertainty in Jy for the given beam area in steradians and frequency in Hz.
+	This assumes white noise and a gaussian beam, so that the area of the real-space squared beam is
+	just half that of the normal beam area.
+
+	For uK arcmin to mJy, use noise_flux_factor(beam_area, freq)*arcmin/1e3
+	"""
+	squared_beam_area = beam_area/2
+	return dplanck(freq, T0)*beam_area/squared_beam_area**0.5
+
 
 ### Binning ####
 
@@ -2341,9 +2375,9 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 	The argument "coords" controls how the coordinates are interpreted. If it is
 	"cartesian", then they are assumed to be cartesian coordinates. If it is
 	"radec" or "phitheta", then the coordinates are assumed to be angles in radians,
-	which will be transformed to coordinates internally before being used. "radec"
-	is equator-based while "phitheta" is zenith-based. The default, "auto", will assume
-	"radec" if ndim == 2, and "cartesian" otherwise.
+	which will be transformed to cartesian coordinates internally before being used.
+	"radec" is equator-based while "phitheta" is zenith-based. The default, "auto",
+	will assume "radec" if ndim == 2, and "cartesian" otherwise.
 
 	It's possible that multiple objects from the catalogs are within rmax of each
 	other. The "mode" argument controls how this is handled.
@@ -2415,3 +2449,75 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 			done1[i1] = done2[i2] = True
 			opairs.append((i1,i2))
 		return opairs
+
+# Conjugate gradients
+
+def default_M(x):     return np.copy(x)
+def default_dot(a,b): return a.dot(np.conj(b))
+
+class CG:
+	"""A simple Preconditioner Conjugate gradients solver. Solves
+	the equation system Ax=b.
+
+	This improves on the one in scipy in several ways. It allows one to specify
+	one's own dot product operator, which is necessary for handling distributed
+	degrees of freedom, where each mpi task only stores parts of the full
+	solution. It is also reentrant, meaning that one can do nested CG if necessary.
+	"""
+	def __init__(self, A, b, x0=None, M=default_M, dot=default_dot):
+		"""Initialize a solver for the system Ax=b, with a starting guess of x0 (0
+		if not provided). Vectors b and x0 must provide addition and multiplication,
+		as well as the .copy() method, such as provided by numpy arrays. The
+		preconditioner is given by M. A and M must be functors acting on vectors
+		and returning vectors. The dot product may be manually specified using the
+		dot argument. This is useful for MPI-parallelization, for example."""
+		# Init parameters
+		self.A   = A
+		self.b   = b
+		self.M   = M
+		self.dot = dot
+		if x0 is None:
+			self.x = b*0
+			self.r = b
+		else:
+			self.x  = x0.copy()
+			self.r  = b-self.A(self.x)
+		# Internal work variables
+		n = b.size
+		z = self.M(self.r)
+		self.rz  = self.dot(self.r, z)
+		self.rz0 = float(self.rz)
+		self.p   = z
+		self.i   = 0
+		self.err = np.inf
+	def step(self):
+		"""Take a single step in the iteration. Results in .x, .i
+		and .err being updated. To solve the system, call step() in
+		a loop until you are satisfied with the accuracy. The result
+		can then be read off from .x."""
+		Ap = self.A(self.p)
+		alpha = self.rz/self.dot(self.p, Ap)
+		self.x += alpha*self.p
+		self.r -= alpha*Ap
+		z       = self.M(self.r)
+		next_rz = self.dot(self.r, z)
+		self.err = next_rz/self.rz0
+		beta = next_rz/self.rz
+		self.rz = next_rz
+		self.p  = z + beta*self.p
+		self.i += 1
+	def save(self, fname):
+		"""Save the volatile internal parameters to hdf file fname. Useful
+		for later restoring cg iteration"""
+		import h5py
+		with h5py.File(fname, "w") as hfile:
+			for key in ["i","rz","rz0","x","r","p","err"]:
+				hfile[key] = getattr(self, key)
+	def load(self, fname):
+		"""Load the volatile internal parameters from the hdf file fname.
+		Useful for restoring a saved cg state, after first initializing the
+		object normally."""
+		import h5py
+		with h5py.File(fname, "r") as hfile:
+			for key in ["i","rz","rz0","x","r","p","err"]:
+				setattr(self, key, hfile[key].value)

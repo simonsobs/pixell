@@ -472,10 +472,37 @@ cdef class sht:
 			assert map.shape[-2] == 2, "Second to last dimension of map must have length 2"
 			assert alm.shape[:-1]==map.shape[:-2], "alm.shape[:-1] != map.shape[:-2]"
 		if alm.ndim == 2:
-		        # Insert spin axis to ensure dimension check in execute passes.
+			# Insert spin axis to ensure dimension check in execute passes.
 			alm = alm.reshape(alm.shape[0], 1, alm.shape[1])
 		execute(csharp.SHARP_ALM2MAP_DERIV1, self.ainfo, alm, self.minfo, map, spin=0)
 		return map
+	def map2alm_adjoint(self, alm, map=None, spin=0):
+		"""The adjoint of the map2alm operation. This operation is closely
+		related to alm2map. It reads from alm and writes to map."""
+		alm = np.asarray(alm)
+		ntrans, nspin = dim_helper(alm, "alm")
+		# Create a compatible output map
+		if map is None:
+			map = np.empty([ntrans,nspin,self.minfo.npix],dtype=alm.real.dtype)
+			map = map.reshape(alm.shape[:-1]+(map.shape[-1],))
+		else:
+			assert alm.shape[:-1]==map.shape[:-1], "all but last index of map and alm must agree"
+		execute(csharp.SHARP_WY, self.ainfo, alm, self.minfo, map, spin=spin)
+		return map
+	def alm2map_adjoint(self, map, alm=None, spin=0):
+		"""The adjoint of the alm2map operation. This operation is closely
+		related to map2alm, but is a simple sum instead of a surface integral.
+		It reads from map and writes to alm."""
+		map = np.asarray(map)
+		ntrans, nspin = dim_helper(map, "map")
+		# Create a compatible output map
+		if alm is None:
+			alm = np.empty([ntrans,nspin,self.ainfo.nelem],dtype=np.result_type(map.dtype,0j))
+			alm = alm.reshape(map.shape[:-1]+(alm.shape[-1],))
+		else:
+			assert alm.shape[:-1]==map.shape[:-1], "all but last index of map and alm must agree"
+		execute(csharp.SHARP_Yt, self.ainfo, alm, self.minfo, map, spin=spin)
+		return alm
 
 # alm and map have the formats:
 #  [nlm]:           spin=0,    ntrans=1
@@ -548,7 +575,7 @@ cpdef execute_sp(int type, int spin, alm_info ainfo, np.ndarray[np.complex64_t,n
 cdef check_cont_dp(np.ndarray[np.float64_t,ndim=1,mode="c"] map_row, np.ndarray[np.complex128_t,ndim=1,mode="c"] alm_row): pass
 cdef check_cont_sp(np.ndarray[np.float32_t,ndim=1,mode="c"] map_row, np.ndarray[np.complex64_t, ndim=1,mode="c"] alm_row): pass
 
-typemap = { "map2alm": csharp.SHARP_MAP2ALM, "alm2map": csharp.SHARP_ALM2MAP, "alm2map_der1": csharp.SHARP_ALM2MAP_DERIV1 }
+typemap = { "map2alm": csharp.SHARP_MAP2ALM, "alm2map": csharp.SHARP_ALM2MAP, "alm2map_der1": csharp.SHARP_ALM2MAP_DERIV1, "map2alm_adjoint": csharp.SHARP_WY, "alm2map_adjoint": csharp.SHARP_Yt }
 
 cdef execute_helper(int type,
 		alm_info ainfo, np.ndarray[np.uintp_t,ndim=1] alm,

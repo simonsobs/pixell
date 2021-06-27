@@ -14,9 +14,11 @@ from pixell import array_ops
 from pixell import enplot
 from pixell import powspec
 from pixell import reproject
+from pixell import pointsrcs
 from pixell import wcsutils
 from pixell import utils as u
 from pixell import colors
+from pixell import fft
 import numpy as np
 import pickle
 import os,sys
@@ -125,6 +127,114 @@ class PixelTests(unittest.TestCase):
         imap = enmap.enmap(np.random.random(shape),wcs)
         assert np.all(np.isclose(imap,enmap.ifft(enmap.fft(imap,normalize='phy'),normalize='phy').real))
         assert np.all(np.isclose(imap,enmap.ifft(enmap.fft(imap)).real))
+
+    def test_fft_input_shape(self):
+        # Tests fft for various shapes and choices of axes.
+        # 1D FFT over last axis for 3d array.
+        signal = np.ones((1, 2, 5))
+        signal[0,1,:] = 10.
+        out_exp = np.zeros((1, 2, 5), dtype=np.complex128)
+        out_exp[0,0,0] = 5
+        out_exp[0,1,0] = 50
+        out = fft.fft(signal)
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 1D FFT over middle axis for 3d array.
+        signal = np.ones((1, 5, 2))
+        signal[0,:,1] = 10.
+        out_exp = np.zeros((1, 5, 2), dtype=np.complex128)
+        out_exp[0,0,0] = 5
+        out_exp[0,0,1] = 50
+        out = fft.fft(signal, axes=[-2])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 2D FFT over last 2 axes of 4d array.
+        signal = np.ones((1, 2, 5, 10))
+        signal[0,1,:] = 10.
+        out_exp = np.zeros((1, 2, 5, 10), dtype=np.complex128)
+        out_exp[0,0,0,0] = 50
+        out_exp[0,1,0,0] = 500
+        out = fft.fft(signal, axes=[-2, -1])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 2D FFT over last 2 axes of 4d non-contiguous array.
+        signal = np.ones((1, 2, 5, 10), dtype=np.complex128)
+        signal[0,1,:] = 10
+        ft = np.zeros((5, 10, 1, 2), dtype=np.complex128).transpose(2, 3, 0, 1)
+        out_exp = np.zeros_like(ft)
+        out_exp[0,0,0,0] = 50
+        out_exp[0,1,0,0] = 500
+        out = fft.fft(signal, ft=ft, axes=[-2, -1])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(np.shares_memory(ft, out))
+        self.assertFalse(out.flags['C_CONTIGUOUS'])
+
+        # 2D FFT over middle 2 axes of 4d array.
+        signal = np.ones((1, 5, 10, 2))
+        signal[0,:,:,1] = 10.
+        out_exp = np.zeros((1, 5, 10, 2), dtype=np.complex128)
+        out_exp[0,0,0,0] = 50
+        out_exp[0,0,0,1] = 500
+        out = fft.fft(signal, axes=[-3, -2])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+    def test_ifft_input_shape(self):
+        # Tests ifft for various shapes and choices of axes.
+        # 1D IFFT over last axis for 3d array.
+        fsignal = np.ones((1, 2, 5), dtype=np.complex128)
+        fsignal[0,1,:] = 10.
+        out_exp = np.zeros((1, 2, 5))
+        out_exp[0,0,0] = 5
+        out_exp[0,1,0] = 50
+        out = fft.ifft(fsignal)
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 1D IFFT over middle axis for 3d array.
+        fsignal = np.ones((1, 5, 2), dtype=np.complex128)
+        fsignal[0,:,1] = 10.
+        out_exp = np.zeros((1, 5, 2))
+        out_exp[0,0,0] = 5
+        out_exp[0,0,1] = 50
+        out = fft.ifft(fsignal, axes=[-2])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 2D IFFT over last 2 axes of 4d array.
+        fsignal = np.ones((1, 2, 5, 10), dtype=np.complex128)
+        fsignal[0,1,:] = 10.
+        out_exp = np.zeros((1, 2, 5, 10))
+        out_exp[0,0,0,0] = 50
+        out_exp[0,1,0,0] = 500
+        out = fft.ifft(fsignal, axes=[-2, -1])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
+
+        # 2D IFFT over last 2 axes of 4d non-contiguous array.
+        fsignal = np.ones((1, 2, 5, 10), dtype=np.complex128)
+        fsignal[0,1,:] = 10.
+        tod = np.zeros((5, 10, 1, 2), dtype=np.complex128).transpose(2, 3, 0, 1)
+        out_exp = np.zeros_like(tod)
+        out_exp[0,0,0,0] = 50
+        out_exp[0,1,0,0] = 500
+        out = fft.ifft(fsignal, tod=tod, axes=[-2, -1])
+        self.assertTrue(np.shares_memory(tod, out))
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertFalse(out.flags['C_CONTIGUOUS'])
+
+        # 2D IFFT over middle 2 axes of 4d array.
+        fsignal = np.ones((1, 5, 10, 2), dtype=np.complex128)
+        fsignal[0,:,:,1] = 10.
+        out_exp = np.zeros((1, 5, 10, 2))
+        out_exp[0,0,0,0] = 50
+        out_exp[0,0,0,1] = 500
+        out = fft.ifft(fsignal, axes=[-3, -2])
+        np.testing.assert_allclose(out, out_exp, atol=1e-12)
+        self.assertTrue(out.flags['C_CONTIGUOUS'])
 
     def test_extract(self):
         # Tests that extraction is sensible
@@ -576,6 +686,59 @@ class PixelTests(unittest.TestCase):
         omap_exp = sht.alm2map(alm_spin, spin=1)
 
         np.testing.assert_array_almost_equal(omap, omap_exp)
+
+    def test_thumbnails(self):
+        print("Testing thumbnails...")
+
+        # Make a geometry far away from the equator
+        dec_min = 70 * u.degree
+        dec_max = 80 * u.degree
+        res = 0.5 * u.arcmin
+        shape,wcs = enmap.band_geometry((dec_min,dec_max),res=res)
+
+        # Create a set of point source positions separated by
+        # 2 degrees but with 1 column wrapping around the RA
+        # direction
+        width = 120 * u.arcmin
+        Ny = int((dec_max-dec_min)/(width))
+        Nx = int((2*np.pi/(width)))
+        pys = np.linspace(0,shape[0],Ny)[1:-1]
+        pxs = np.linspace(0,shape[1],Nx)[:-1]
+        Ny = len(pys)
+        Nx = len(pxs)
+        xx,yy = np.meshgrid(pxs,pys)
+        xx = xx.reshape(-1)
+        yy = yy.reshape(-1)
+        ps = np.vstack((yy,xx))
+        decs,ras = enmap.pix2sky(shape,wcs,ps)
+        
+        # Simulate these sources with unit peak value and 2.5 arcmin FWHM
+        N = ps.shape[1]
+        srcs = np.zeros((N,3))
+        srcs[:,0] = decs
+        srcs[:,1] = ras
+        srcs[:,2] = ras*0 + 1
+        sigma = 2.5 * u.fwhm * u.arcmin
+        omap = pointsrcs.sim_srcs(shape,wcs,srcs,beam=sigma)
+
+        # Reproject thumbnails centered on the sources
+        # with gnomonic/tangent projection
+        proj = "tan"
+        r = 10*u.arcmin
+        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj, 
+            apod=2*u.arcmin, order=3, oversample=2,pixwin=False)
+
+        # Create a reference source at the equator to compare this against
+        ishape,iwcs = enmap.geometry(shape=ret.shape,res=res,pos=(0,0),proj=proj)
+        imodrmap = enmap.modrmap(ishape,iwcs)
+        model = np.exp(-imodrmap**2./2./sigma**2.)
+
+        # Make sure all thumbnails agree with the reference at the
+        # sub-percent level
+        for i in range(ret.shape[0]):
+            diff = ret[i] - model
+            assert np.all(np.isclose(diff,0,atol=1e-3))
+                    
 
 if __name__ == '__main__':
     unittest.main()

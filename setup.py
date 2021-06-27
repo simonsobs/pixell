@@ -65,16 +65,16 @@ with open('README.rst') as readme_file:
 with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
-requirements =  ['numpy>=1.16',
+requirements =  ['numpy>=1.20',
                  'astropy>=2.0',
                  'setuptools>=39',
                  'h5py>=2.7<=2.10',
                  'scipy>=1.0',
                  'python_dateutil>=2.7',
                  'cython>=0.28',
+                 'healpy>=1.13',
                  'matplotlib>=2.0',
                  'pyyaml>=5.0',
-                 'healpy>=1.13',
                  'Pillow>=5.3.0',
                  'pytest-cov>=2.6',
                  'coveralls>=1.5',

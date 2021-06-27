@@ -174,12 +174,6 @@ def get_extraction_test_results(yaml_file):
                     box = np.deg2rad(np.array(e['box_deg']))
                     cutout = enmap.read_map(filename,box=box)
                     cutout_internal = imap.submap(box=box)
-                elif e['type']=='postage':
-                    dec_deg,ra_deg = e['center_deg']
-                    width_arcmin = e['width_arcmin']
-                    res_arcmin = e['res_arcmin']
-                    cutout = reproject.postage_stamp(filename,ra_deg,dec_deg,width_arcmin,res_arcmin,proj='gnomonic')
-                    cutout_internal = reproject.postage_stamp(imap,ra_deg,dec_deg,width_arcmin,res_arcmin,proj='gnomonic')
                 check_equality(cutout,cutout_internal)
                 pixels = get_reference_pixels(cutout.shape)
                 results[g][s]['refpixels'] = get_pixel_values(cutout,pixels)

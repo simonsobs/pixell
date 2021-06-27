@@ -8,7 +8,12 @@ import numpy as np, warnings
 from astropy.wcs import WCS, FITSFixedWarning
 
 # Turn off annoying warning every time a WCS object is constructed
-warnings.filterwarnings("ignore", category=FITSFixedWarning) 
+try:
+        warnings.filterwarnings("ignore", category=FITSFixedWarning)
+except AssertionError:
+        # This try/catch is a hack for readthedocs builds.
+        pass
+
 # Handle annoying python3 stuff
 try: basestring
 except: basestring = str
