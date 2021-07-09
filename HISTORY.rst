@@ -2,6 +2,17 @@
 History
 =======
 
+0.13.0 (2021-07-08)
+-------------------
+
+Changes relative to 0.12.1 include:
+
+* Matched filtering in a new analysis module
+* Conjugate gradients solver
+* Discrete cosine transforms
+* Miscellaneous bug fixes
+  
+
 0.12.1 (2021-04-30)
 -------------------
 

@@ -120,7 +120,7 @@ form vX.y.z, to the relevant commit in the master branch.  We use
 bumpversion for this, in a way that is compatible with versioneer.
 Before initiating the release, be sure to update HISTORY.rst with the
 differences since last version (not required while we're still in
-0.y.z).  Then run::
+0.y.z) and commit the changes.  Then run::
 
 $ bumpversion patch # possible: major / minor / patch
 $ git push
