@@ -2,6 +2,14 @@
 History
 =======
 
+0.13.1 (2021-07-08)
+-------------------
+
+Changes relative to 0.13.0 include:
+
+* Fixes to the MacOS wheel building
+
+
 0.13.0 (2021-07-08)
 -------------------
 
