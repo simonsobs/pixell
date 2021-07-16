@@ -42,6 +42,7 @@ jobs:
           CIBW_BUILD_VERBOSITY: 3
           CIBW_BUILD: "cp3?-*x86_64"
           CIBW_SKIP: "cp33-* cp34-* cp35-*"
+          CIBW_ARCHS_MACOS: "x86_64 arm64 universal2"
           PYTHON: "python"
           PIP: "pip"
 
