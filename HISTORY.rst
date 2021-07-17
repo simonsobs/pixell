@@ -2,6 +2,13 @@
 History
 =======
 
+0.13.2 (2021-07-16)
+-------------------
+
+Changes relative to 0.13.1 include:
+
+* Added binaries for MacOS 11 Big Sur
+
 0.13.1 (2021-07-08)
 -------------------
 
