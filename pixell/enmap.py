@@ -1183,6 +1183,7 @@ def map_mul(mat, vec):
 	the same shape as vec. Multiplication happens along the last non-pixel
 	indices."""
 	# Allow scalar product, broadcasting if necessary
+	mat = np.asanyarray(mat)
 	if mat.ndim <= 3: return mat*vec
 	# Otherwise we do a matrix product along the last axes
 	ovec = samewcs(np.einsum("...abyx,...byx->...ayx", mat, vec), mat, vec)
@@ -1509,6 +1510,60 @@ def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 	WK  = _convolute_sym(W, K)
 	res = pWK/WK
 	return res.reshape(ps.shape)
+
+def calc_ps2d(harm, harm2=None):
+	"""Compute the 2d power spectrum of the harmonic-space enmap "harm", as output by
+	map2harm. Use map2harm with norm="phys" to get physical units in this spectrum.
+	If harm2 is specified, then the cross-spectrum between harm and harm2 is computed
+	instead.
+
+	Some example usage, where the notation a[{x,y,z},n,m] specifies that the array
+	a has shape [3,n,m], and the 3 entries in the first axis should be interpreted
+	as x, y and z respectively.
+
+	1. cl[nl] = calc_ps2d(harm[ny,nx])
+	   This just computes the standard power spectrum of the given harm, resulting in
+	   a single 2d enmap.
+	2. cl[nl] = calc_ps2d(harm1[ny,nx], harm2[ny,nx])
+	   This compues the 1d cross-spectrum between the 2d enmaps harm1 and harm2.
+	3. cl[{T,E,B},{T,E,B},nl] = calc_ps2d(harm[{T,E,B},None,ny,nx], harm[None,{T,E,B},ny,nx])
+	   This computes the 3x3 polarization auto-spectrum for a 3d polarized harmonic enmap.
+	4. cl[{T,E,B},{T,E,B},nl] = calc_ps2d(harm1[{T,E,B},None,ny,nx], harm2[None,{T,E,B},ny,nx])
+	   As above, but gives the 3x3 polarization cross-spectrum between two 3d harmonic enmaps.
+
+	The output is in the shape one would expect from numpy broadcasting. For example,
+	in the last example, the TE power spectrum would be found in cl[0,1], and the
+	ET power spectrum (which is different for the cross-spectrum case) is in cl[1,0]."""
+	harm  = np.asanyarray(harm)
+	harm2 = np.asanyarray(harm2) if harm2 is not None else harm
+	# Unify dtypes
+	dtype = np.result_type(harm.real, harm2.real)
+	def getaddr(a): return a.__array_interface__["data"][0]
+	harm, harm2 = [samewcs(a, harm) for a in np.broadcast_arrays(harm, harm2)]
+	# We set the writable flags not because we intend to write, but to silience a
+	# false positive warning from numpy
+	harm.flags["WRITEABLE"] = harm2.flags["WRITEABLE"] = True
+	# I used to flatten here to make looping simple, but that caused a copy to be made
+	# when combined with np.broadcast. So instead I will use manual raveling
+	pshape = harm.shape[:-2]
+	npre   = int(np.product(pshape))
+	# A common use case is to compute TEBxTEB auto-cross spectra, where
+	# e.g. TE === ET since harm1 is the same array as harm2. To avoid duplicate
+	# calculations in this case we use a cache, which skips computing the
+	# cross-spectrum of any given pair of arrays more than once.
+	cache = {}
+	ps2d = empty(harm.shape, harm.wcs, dtype)
+	# We will loop over individual spectra
+	for i in range(npre):
+		I = np.unravel_index(i, pshape)
+		# Avoid duplicate calculation
+		key = tuple(sorted([getaddr(harm[I]), getaddr(harm2[I])]))
+		if key in cache:
+			ps2d[I] = cache[key]
+		else:
+			ps2d[I] = (harm[I]*np.conj(harm2[I])).real
+			cache[key] = ps2d[I]
+	return ps2d
 
 def _convolute_sym(a,b):
 	sa = np.concatenate([a,a[:,-2:0:-1]],-1)

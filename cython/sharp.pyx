@@ -346,8 +346,12 @@ cdef class alm_info:
 	def lmul(self, alm, lmat, out=None):
 		"""Computes res[a,lm] = lmat[a,b,l]*alm[b,lm], where lm is the position of the
 		element with (l,m) in the alm array, as defined by this class."""
+		lmat = np.asanyarray(lmat)
 		if out is None: out = alm.copy()
 		if out.ndim == 1: out = out[None]
+		if lmat.ndim == 0:
+			out *= lmat
+			return out
 		if lmat.ndim == 1:
 			lmat = np.eye(out.shape[0])[:,:,None]*lmat
 		lmat = lmat.astype(out.real.dtype, copy=False)
