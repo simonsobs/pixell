@@ -169,7 +169,7 @@ def dct(tod, dt=None, nthread=0, normalize=False, axes=[-1], flags=None, type="D
 	type= _dct_names[type]
 	if dt is None:
 		dt = empty(tod.shape, tod.dtype)
-	return fft(tod, dt, nthread=nthread, axes=axes, flags=flags, _direction=type)
+	return fft(tod, dt, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes))
 
 def idct(dt, tod=None, nthread=0, normalize=False, axes=[-1], flags=None, type="DCT-I"):
 	"""Compute the inverse discrete cosine transform of dt, and store it in tod. By
@@ -202,7 +202,7 @@ def idct(dt, tod=None, nthread=0, normalize=False, axes=[-1], flags=None, type="
 	off  = _dct_sizes[type]
 	if tod is None:
 		tod = empty(dt.shape, dt.dtype)
-	fft(dt, tod, nthread=nthread, axes=axes, flags=flags, _direction=type)
+	fft(dt, tod, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes))
 	if normalize: tod /= np.product([2*(tod.shape[i]+off) for i in axes])
 	return tod
 

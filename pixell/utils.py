@@ -1593,7 +1593,7 @@ def broadcast_shape(*shapes):
 		for shape in shapes:
 			if len(shape) <= i: continue
 			v = shape[-1-i]
-			if olen != 1 and v != olen:
+			if olen != 1 and v != 1 and v != olen:
 				raise ValueError("operands could not be broadcast togehter with shapes " + " ".join([str(shape) for shape in shapes]))
 			olen = max(olen, v)
 		oshape.insert(0, olen)

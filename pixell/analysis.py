@@ -1,5 +1,92 @@
-# This is a module for analysing sky maps: stuff like matched filtering, feature
-# detection, pixel-space likelihoods etc.
+"""This is a module for analysing sky maps: stuff like matched filtering, feature
+detection, pixel-space likelihoods etc.
+
+
+Example usage of matched filter functions:
+
+import numpy as np
+from pixell import enmap, utils, uharm, analysis, curvedsky
+
+np.random.seed(1)
+
+# 0. Set up our geometry, a 100 uK peak point source and a 1.4 arcmin beam
+pos        = [0,0]
+shape, wcs = enmap.geometry(np.array([[-2,2],[2,-2]])*utils.degree, res=0.5*utils.arcmin)
+pixarea    = enmap.pixsizemap(shape, wcs)
+bsigma     = 1.4*utils.fwhm*utils.arcmin
+signal     = 100*np.exp(-0.5*enmap.modrmap(shape, wcs, pos)**2/bsigma**2)
+uht        = uharm.UHT(shape, wcs)
+beam       = np.exp(-0.5*uht.l**2*bsigma**2)
+fconv      = utils.dplanck(150e9, utils.T_cmb)/1e3 # uK -> mJy/sr
+
+# 1. Matched filter for 10 uK' white noise
+ivar       = 10**-2*pixarea/utils.arcmin**2
+noise      = enmap.rand_gauss(shape, wcs)/ivar**0.5
+map        = signal # + noise  # uncomment to actually add noise
+# fconv is used to convert map and ivar from uK to mJy/sr. That way
+# our output flux will be in mJy instead of the weird unit uK*sr.
+rho, kappa = analysis.matched_filter_white(map*fconv, beam, ivar/fconv**2, uht)
+flux  = rho.at(pos)/kappa.at(pos)
+dflux = kappa.at(pos)**-0.5
+print("%-15s %8.3f %8.3f %8.3f" % ("white", flux, dflux, flux/dflux))
+# white              7.487    0.711   10.537
+
+# 2. same, but with a noise power spectrum instead of a noise map. 10 uK'
+# white noise has a flat noise spectrum of 10**2 * arcmin**2 = 0.46e-6
+iN = 10**-2/utils.arcmin**2
+rho, kappa = analysis.matched_filter_constcov(map*fconv, beam, iN/fconv**2, uht)
+flux  = rho.at(pos)/kappa # kappa just a number in this case
+dflux = kappa**-0.5
+print("%-15s %8.3f %8.3f %8.3f" % ("constcov white", flux, dflux, flux/dflux))
+# constcov white     7.486    0.711   10.534
+
+# 3. uniform white noise, but with support for noise spectrum and position-dependence.
+#    The noise units are only in ivar, so the noise spectrum is just a dimensionless 1.
+iN = 1
+rho, kappa = analysis.matched_filter_constcorr_lowcorr(map*fconv, beam, ivar/fconv**2, iN, uht)
+# Read of the flux in mJy
+flux  = rho.at(pos)/kappa.at(pos)
+dflux = kappa.at(pos)**-0.5
+print("%-15s %8.3f %8.3f %8.3f" % ("lowcorr white", flux, dflux, flux/dflux))
+# lowcorr white      7.487    0.711   10.537
+
+# 4. same, but with the other approximation
+rho, kappa = analysis.matched_filter_constcorr_smoothivar(map*fconv, beam, ivar/fconv**2, iN, uht)
+# Read of the flux in mJy
+flux  = rho.at(pos)/kappa.at(pos)
+dflux = kappa.at(pos)**-0.5
+print("%-15s %8.3f %8.3f %8.3f" % ("smooth white", flux, dflux, flux/dflux))
+# smooth white       7.487    0.711   10.537
+
+# 5. 1/f noise power spectrum with l_knee at 2000
+iN   =  10**-2/utils.arcmin**2 / (1 + ((uht.l+0.5)/2000)**-3)
+rho, kappa = analysis.matched_filter_constcov(map*fconv, beam, iN/fconv**2, uht)
+flux  = rho.at(pos)/kappa # kappa just a number in this case
+dflux = kappa**-0.5
+print("%-15s %8.3f %8.3f %8.3f" % ("constcov 1/f", flux, dflux, flux/dflux))
+# constcov 1/f       7.486    0.782    9.571
+
+# 6. 1/f noise and position-dependent depth with lowcorr
+ivar  = 10**-2*pixarea/utils.arcmin**2 # Base depth
+# spatial modulation with 5 arcmin wavelength horizontal sine wave
+ivar *= (1+0.9*np.sin(enmap.posmap(shape, wcs)[1]/(5*utils.arcmin)))
+# 1/f spectrum, but dimensionless since ivar handles the units
+iN   =  1 / (1 + ((uht.l+0.5)/2000)**-3)
+rho, kappa = analysis.matched_filter_constcorr_lowcorr(map*fconv, beam, ivar/fconv**2, iN, uht)
+# Read of the flux in mJy
+flux  = rho.at(pos)/kappa.at(pos)
+dflux = kappa.at(pos)**-0.5
+print("%-15s %8.3f %8.3f %8.3f" % ("lowcorr full", flux, dflux, flux/dflux))
+# lowcorr full       7.491    0.782    9.578
+
+# 7. same, but with smoothivar
+rho, kappa = analysis.matched_filter_constcorr_smoothivar(map*fconv, beam, ivar/fconv**2, iN, uht)
+# Read of the flux in mJy
+flux  = rho.at(pos)/kappa.at(pos)
+dflux = kappa.at(pos)**-0.5
+print("%-15s %8.3f %8.3f %8.3f" % ("smooth full", flux, dflux, flux/dflux))
+# smooth full        7.483    0.782    9.568
+"""
 
 import numpy as np
 from . import enmap, utils, uharm
@@ -31,10 +118,45 @@ def matched_filter_constcov(map, B, iN, uht):
 	pixarea = enmap.pixsizemap(map.shape, map.wcs, broadcastable=True)
 	rho     = uht.map2harm_adjoint(uht.hmul(B*iN,uht.map2harm(map)))/pixarea
 	kappa   = uht.sum_hprof(B**2*iN)/(4*np.pi)
-	# Equivalent to brute force unit vector bashing
-	#v       = enmap.zeros(map.shape, map.wcs, map.dtype)
-	#v[...,0,0] = 1
-	#kappa = uht.map2harm_adjoint(uht.hmul(B**2*iN,uht.map2harm(v)))[0,0]/pixarea[0,0]**2
+	return rho, kappa
+
+def matched_filter_white(map, B, ivar, uht=None, B2=None, high_acc=False):
+	"""Apply a matched filter to the given map, assuming a constant correlation
+	noise model inv(N) = ivar, where ivar = 1/pixel_variance.
+	This represents pixel-uncorrelated noise.
+
+	Arguments:
+	map:  The [...,ny,nx] enmap to be filtered
+	B:    The instrumental beam in the "hprof" format of the provided UHT
+	ivar: The inverse of the white noise power per pixel, an [...,ny,nx] enmap
+	uht:  The unified harmonic transform (UHT) to use
+	B2:   The *real-space* square of the beam in "hprof" format. Make sure that the
+	      beam is properly normalized to have a unit integral before squaring.
+	      Optional. If it is missing, the square will be performed internally.
+
+	Returns rho, kappa, which are [...,ny,nx] enmaps that can be used to construct:
+	flux  = rho/kappa
+	dflux = kappa**-0.5
+	snr   = rho/kappa**0.5
+
+	Here flux is the flux estimate in each pixel. If map is in Jy/sr, then flux
+	will be in Jy. dflux is the 1 sigma flux uncertainty. snr is a map of the
+	signal-to-noise ratio.
+	"""
+	# m = YBY"Pa + n, N" = ivar
+	# rho   = (YBY"P)'N"m = P'Y"'BY' ivar m = P'WYBY"/W ivar m. Makes sense: converts to intensive units before harmonic
+	# kappa = (YBY"P)'N"(YBY"P)
+	#       = P'(YBY")'ivar(YBY")P
+	# kappa_ii = P_ii²*sum_j (YBY")_ji ivar_jj (YBY")_ji
+	#          = P_ii²*sum_j (YBY")_ji² ivar_jj
+	#          = P_ii²*sum_j (Y"'BY')_ij² ivar_jj
+	P = 1/enmap.pixsizemap(map.shape, map.wcs, broadcastable=True)
+	# Square the beam in real space if not provided
+	if uht is None: uht = uharm.UHT(map.shape, map.wcs)
+	if B2  is None: B2  = uht.hprof_rpow(B, 2)
+	# TODO: kappa should have P**2. Figure out why P**1 is what works.
+	rho   = P*uht.map2harm_adjoint(uht.hmul(B ,uht.harm2map_adjoint(ivar*map)))
+	kappa = P*uht.map2harm_adjoint(uht.hmul(B2,uht.harm2map_adjoint(ivar)))
 	return rho, kappa
 
 def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht, B2=None, high_acc=False):
@@ -47,6 +169,9 @@ def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht, B2=None, high_acc=Fa
 	map:  The [...,ny,nx] enmap to be filtered
 	B:    The instrumental beam in the "hprof" format of the provided UHT
 	ivar: The inverse of the white noise power per pixel, an [...,ny,nx] enmap
+	iC:   The inverse power spectrum of the whitened map, map/ivar**0.5, as computed using
+	      uht. Note: This will be 1/pixsize for a white noise map, not 1, due to
+	      how the fourier space units work.
 	uht:  The unified harmonic transform (UHT) to use
 	B2:   The *real-space* square of the beam in "hprof" format. Make sure that the
 	      beam is properly normalized to have a unit integral before squaring.
@@ -87,18 +212,14 @@ def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht, B2=None, high_acc=Fa
 	# good enough.
 	iC_white = uht.sum_hprof(B**2*iC)/uht.sum_hprof(B**2)
 
-	# FIXME: The formulas below have some ad-hoc pixarea factors in them. This makes them
-	# give the right result, but is probably a symptom of using the wrong combination of
-	# adjoints etc. in the rest of the formula. Get to the bottom of this so that they can
-	# be removed.
-	rho   = uht.harm2map(uht.hmul(B,uht.harm2map_adjoint(V*uht.map2harm_adjoint(uht.hmul(iC, uht.map2harm(V*map))))))/pixarea*pixarea
-	kappa = uht.map2harm_adjoint(uht.hmul(B2,uht.harm2map_adjoint(ivar*W*iC_white[...,None,None])))/pixarea**2*pixarea
+	rho   = uht.harm2map(uht.hmul(B,uht.harm2map_adjoint(V*uht.map2harm_adjoint(uht.hmul(iC, uht.map2harm(V*map))))))/pixarea
+	kappa = uht.map2harm_adjoint(uht.hmul(B2,uht.harm2map_adjoint(ivar*W*iC_white[...,None,None])))/pixarea**2
 
 	if high_acc:
 		# Optionally find a correction factor by evaluating the exact kappa in a single pixel
 		pix  = tuple(np.array(map.shape[-2:])//2)
 		u    = map*0; u[...,pix[0],pix[1]] = 1
-		kappa_ii = (uht.harm2map(uht.hmul(B,uht.harm2map_adjoint(V*uht.map2harm_adjoint(uht.hmul(iC,uht.map2harm(V*uht.harm2map(uht.hmul(B,uht.map2harm(u/pixarea)))))))))/pixarea*pixarea)[...,pix[0],pix[1]]
+		kappa_ii = (uht.harm2map(uht.hmul(B,uht.harm2map_adjoint(V*uht.map2harm_adjoint(uht.hmul(iC,uht.map2harm(V*uht.harm2map(uht.hmul(B,uht.map2harm(u/pixarea)))))))))/pixarea)[...,pix[0],pix[1]]
 		alpha  = kappa[...,pix[0],pix[1]]/kappa_ii
 		kappa /= alpha[...,None,None]
 
@@ -114,6 +235,9 @@ def matched_filter_constcorr_smoothivar(map, B, ivar, iC, uht):
 	map:  The [...,ny,nx] enmap to be filtered
 	B:    The instrumental beam in the "hprof" format of the provided UHT
 	ivar: The inverse of the white noise power per pixel, an [...,ny,nx] enmap
+	iC:   The inverse power spectrum of the whitened map, map/ivar**0.5, as computed using
+	      uht. Note: This will be 1/pixsize for a white noise map, not 1, due to
+	      how the fourier space units work.
 	uht:  The unified harmonic transform (UHT) to use
 
 	Returns rho, kappa, which are [...,ny,nx] enmaps that can be used to construct:
@@ -131,50 +255,12 @@ def matched_filter_constcorr_smoothivar(map, B, ivar, iC, uht):
 	from pixel to pixel. It breaks down completely if there is a hole at the
 	peak of a source.
 	"""
-	# We model N = VCV, where V is diagonal and diag(V)**2 = ivar
-	# and C is diagonal in harmonic space. C can be measured by
-	# whitening n: C = V"NV" = <V"nn'V"> = <cc'>, c = V"n.
-	# Writing out the harmonic stuff, we have
-	# N = <V"Y ch ch' Y' V"> = V"Y Ch Y' V"
-	# => N" = VY'" Ch" Y" V
-	pixarea = enmap.pixsizemap(map.shape, map.wcs, broadcastable=True)
+	# See the constcov function for a bit more math details.
 	# We assume that we can commute B past V, allowing us to compute kappa directly
-	V     = ivar**0.5
-	# rho = P'VY"' B Ch" Y" V map
-	rho   = V*uht.map2harm_adjoint(uht.hmul(B*iC,uht.map2harm(V*map)))/pixarea
+	V    = ivar**0.5
+	P    = 1/enmap.pixsizemap(map.shape, map.wcs, broadcastable=True)
+	rho  = P*V*uht.map2harm_adjoint(uht.hmul(B*iC,uht.harm2map_adjoint(V*map)))
 	# kappa = P'VY"'B Ch" B Y"VP = (P'V = R)(Y"'B sqrt(CH") = A)A'R' = RAA'R'
 	# kappa_ii = R_ii² sum_l A_il
-	kappa = ivar * (uht.sum_hprof(B**2*iC)/(4*np.pi))[...,None,None]
+	kappa = ivar * (uht.sum_hprof(B**2*iC)/(4*np.pi))[...,None,None]*P
 	return rho, kappa
-
-#### Notes #####
-
-# sum_j (YBY")_ji² ivar_jj
-# = sum_j (Y_jl B_ll Y'_li W_i)² ivar_jj
-#
-# What is A_ji = Y_jl B_lm Y"_mi?
-# Let's look at some map k = Br g. K = <kk'> = Br<gg'>Br' = Br G Br'
-# What's this in harmonic space?
-# k = Y kh, g = Y gh
-# K = <kk'> = Y <kh kh'> Y' = Y KH Y' = Br<gg'>Br' = Br<Y gh gh' Y'>Br' = Br Y GH Y' Br'
-# => KH = Y" Br Y GH Y' Br' Y'" = Bh GH Bh' with
-# Bh = Y" Br Y <=> Br = Y Bh Y"
-# So B transforms as one would expect.
-#
-# That's just the B matrix, though
-# Bh_lm = Bl_l delta_lm
-# Br_0i = Y_0l Bl_l Y"_li
-# What is Y_0l? Y_0l = delta_0i Y = (Y' delta_i0)'
-# Br_0i = Y"' (Bl_l Y_0l)
-#
-# How do we go back?
-# Bl_l = Y"_li Br_0(j-i) Y_jl
-#      = Y"_li Br_0k Y_(i+k)l
-#      = Br_0k sum_i Y"_li Y_(i+k)l
-#      = Br_0k 
-#
-# A_ji = Y_jl B_lm Y"_mi = (Y Bh Y")_ji = Br_ji
-# kappa_ii = alpha*P_ii² * Br_ji² ivar_j
-#      = alpha*(P² Br2' ivar)_i
-#      = alpha*(P² (Y Br2h Y")' ivar)_i
-#      = alpha*(P² Y"' Br2h Y' ivar)_i
