@@ -2450,6 +2450,19 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 			opairs.append((i1,i2))
 		return opairs
 
+def real_dtype(dtype):
+	"""Return the closest real (non-complex) dtype for the given dtype"""
+	# A bit ugly, but actually quite fast
+	return np.zeros(1, dtype).real.dtype
+
+def complex_dtype(dtype):
+	"""Return the closest complex dtype for the given dtype"""
+	return np.result_type(dtype, 0j)
+
+def ascomplex(arr):
+	arr = np.asanyarray(arr)
+	return arr.astype(complex_dtype(arr.dtype))
+
 # Conjugate gradients
 
 def default_M(x):     return np.copy(x)
