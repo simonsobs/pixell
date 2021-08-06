@@ -61,6 +61,8 @@ class UHT:
 			max_distortion: The maximum relative scale difference across the map that's acceptable
 				before curved sky is necessary."""
 		self.shape, self.wcs = shape[-2:], wcs
+		self.area = enmap.area(self.shape, self.wcs)
+		self.fsky = self.area/(4*np.pi)
 		if mode == "auto":
 			dist = estimate_distortion(shape, wcs)
 			if dist <= max_distortion: mode = "flat"
@@ -70,9 +72,10 @@ class UHT:
 		if mode == "flat":
 			self.l    = enmap.modlmap(shape, wcs)
 			self.lmax = utils.nint(np.max(self.l))
-			# TODO: Understand why pi is necessary here.
-			self.nper = self.l[1,0]*self.l[0,1]/np.pi
-			self.ntot = self.nper*shape[-2]*shape[-1]
+			# FIXME: In the middle of debugging this. Was
+			# nper = l[0,1]*l[1,0]/pi = 1/fsky, but was inconsistent with sum_harm for curved
+			self.nper = 1/self.fsky
+			self.ntot = self.nper*self.shape[-2]*self.shape[-1]
 		elif mode == "curved":
 			if lmax is None:
 				res  = np.min(np.abs(wcs.wcs.cdelt))*utils.degree
@@ -157,21 +160,31 @@ class UHT:
 			out = harm if inplace else None
 			harm = harm.astype(np.result_type(harm,0j), copy=False)
 			return self.ainfo.lmul(harm, hprof, out=out)
-	def sum_harm(self, harm):
-		"""Return the sum over all harmonic modes sum(l) sum(m=-l:l) harm(l,m)"""
-		harm = np.asanyarray(harm)
+	def hrand(self, hprof):
+		"""Draw a random realization of the harmonic profile hprof"""
 		if self.mode == "flat":
-			return np.sum(harm*self.nper,(-2,-1))
+			noise = enmap.rand_gauss_harm(self.shape, self.wcs)
+			return enmap.map_mul(enmap.multi_pow(hprof/noise.pixsize(),0.5), noise)
 		else:
-			# Double everything, then subtract m=0 modes that should not have been doubled
-			return np.sum(harm,-1)*2 - np.sum(harm[...,self.ainfo.mstart[0]:self.ainfo.mstart[1]],-1)
+			return curvedsky.rand_alm(hprof, lmax=self.lmax)
+	def harm2powspec(self, harm, harm2=None, patch=False):
+		"""Compute the pseudo power spectrum corresponding to harm, or a cross-spectrum if harm2 is given.
+		Return an hprof. If patch == True, then the harm is assumed to have been measured from
+		map2harm, and an fsky correction will be applied in the curved-sky case."""
+		if self.mode == "flat":
+			return enmap.calc_ps2d(harm, harm2)
+		else:
+			powspec = curvedsky.alm2cl(harm, harm2)
+			if patch: powspec /= self.fsky
+			return powspec
 	def sum_hprof(self, hprof):
-		"""Like sum_harm but for representations of isotropic functions."""
+		"""Sum the total signal in a harmonic profile, typically a power spectrum"""
 		hprof = np.asanyarray(hprof)
 		if self.mode == "flat":
 			return np.sum(hprof*self.nper,(-2,-1))
 		else:
 			return np.sum(hprof*self.nper,-1)
+	def mean_hprof(self, hprof): return self.sum_hprof(hprof)/self.ntot
 	def hprof_rpow(self, hprof, power):
 		"""Raises hprof "hprof" to the power "power" in real-space.
 		Effectively map2harm(harm2map(hprof)**power), but works on

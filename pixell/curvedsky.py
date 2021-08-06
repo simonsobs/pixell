@@ -719,7 +719,7 @@ def filter(imap,lfilter,ainfo=None,lmax=None):
 
 def alm2cl(alm, alm2=None, ainfo=None):
 	"""Compute the power spectrum for alm, or if alm2 is given, the cross-spectrum
-	between alm and alm2, which must broadcast. 
+	between alm and alm2, which must broadcast.
 
 	Some example usage, where the notation a[{x,y,z},n,m] specifies that the array
 	a has shape [3,n,m], and the 3 entries in the first axis should be interpreted
