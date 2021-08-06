@@ -15,7 +15,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-10.15]
+        os: [ubuntu-20.04, macos-latest]
 
     steps:
       - uses: actions/checkout@v2
@@ -33,19 +33,16 @@ jobs:
           python -m pip install cibuildwheel
 
       - name: Test and build wheels
-        run: |
-          python setup.py build_ext -i
-          python -m pip install .
-          py.test --cov=pixell pixell/tests/ -s
-          find . -type f -iname '*.so' -print -delete
-          rm -rf _deps/
-          python -m cibuildwheel --output-dir wheelhouse
-          ls wheelhouse
+        run: bash scripts/build_wheels.sh
         env:
+          CIBW_ENVIRONMENT: OMP_NUM_THREADS=2
+                            OPENBLAS_NUM_THREADS=2
+                            MACOSX_DEPLOYMENT_TARGET=10.13          
           CIBW_BEFORE_BUILD: "python -m pip install numpy scipy cython"
           CIBW_BUILD_VERBOSITY: 3
           CIBW_BUILD: "cp3?-*x86_64"
           CIBW_SKIP: "cp33-* cp34-* cp35-*"
+          CIBW_ARCHS_MACOS: "x86_64 arm64 universal2"
           PYTHON: "python"
           PIP: "pip"
 

@@ -2,6 +2,32 @@
 History
 =======
 
+0.13.2 (2021-07-16)
+-------------------
+
+Changes relative to 0.13.1 include:
+
+* Added binaries for MacOS 11 Big Sur
+
+0.13.1 (2021-07-08)
+-------------------
+
+Changes relative to 0.13.0 include:
+
+* Fixes to the MacOS wheel building
+
+
+0.13.0 (2021-07-08)
+-------------------
+
+Changes relative to 0.12.1 include:
+
+* Matched filtering in a new analysis module
+* Conjugate gradients solver
+* Discrete cosine transforms
+* Miscellaneous bug fixes
+  
+
 0.12.1 (2021-04-30)
 -------------------
 
