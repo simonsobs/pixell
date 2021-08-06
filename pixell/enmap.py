@@ -63,6 +63,7 @@ class ndmap(np.ndarray):
 	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
 	def posaxes(self, safe=True, corner=False): return posaxes(self.shape, self.wcs, safe=safe, corner=corner)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
+	def laxes(self, oversample=1, method="auto"): return laxes(self.shape, self.wcs, oversample=oversample, method=method)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
 	def lform(self, shift=True): return lform(self, shift=shift)
 	def modlmap(self, oversample=1): return modlmap(self.shape, self.wcs, oversample=oversample)
@@ -1019,19 +1020,19 @@ def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000):
 	else:
 		return np.product(pixshapemap(shape, wcs, bsize=bsize, separable=separable),0)
 
-def lmap(shape, wcs, oversample=1):
+def lmap(shape, wcs, oversample=1, method="auto"):
 	"""Return a map of all the wavenumbers in the fourier transform
 	of a map with the given shape and wcs."""
-	ly, lx = laxes(shape, wcs, oversample=oversample)
+	ly, lx = laxes(shape, wcs, oversample=oversample, method=method)
 	data = np.empty((2,ly.size,lx.size))
 	data[0] = ly[:,None]
 	data[1] = lx[None,:]
 	return ndmap(data, wcs)
 
-def modlmap(shape, wcs, oversample=1):
+def modlmap(shape, wcs, oversample=1, method="auto"):
 	"""Return a map of all the abs wavenumbers in the fourier transform
 	of a map with the given shape and wcs."""
-	slmap = lmap(shape,wcs,oversample=oversample)
+	slmap = lmap(shape,wcs,oversample=oversample, method=method)
 	return np.sum(slmap**2,0)**0.5
 
 def center(shape,wcs):
@@ -1050,9 +1051,9 @@ def modrmap(shape, wcs, ref="center", safe=True, corner=False):
 	if wcsutils.is_plain(wcs): return np.sum((slmap-ref)**2,0)**0.5
 	return ndmap(utils.angdist(slmap[::-1],ref[::-1],zenith=False),wcs)
 
-def laxes(shape, wcs, oversample=1):
+def laxes(shape, wcs, oversample=1, method="auto"):
 	oversample = int(oversample)
-	step = extent(shape, wcs, signed=True)/shape[-2:]
+	step = extent(shape, wcs, signed=True, method=method)/shape[-2:]
 	ly = np.fft.fftfreq(shape[-2]*oversample, step[0])*2*np.pi
 	lx = np.fft.fftfreq(shape[-1]*oversample, step[1])*2*np.pi
 	if oversample > 1:
