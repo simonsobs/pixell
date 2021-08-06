@@ -23,7 +23,7 @@ try: basestring
 except NameError: basestring = str
 
 mute = {
-	"polconv_fix": False,
+	"polconv_fix": True,
 }
 
 # PyFits uses row-major ordering, i.e. C ordering, while the fits file
@@ -253,7 +253,7 @@ class Geometry:
 		except AttributeError: self.shape, self.wcs = shape, wcs
 		assert wcs is not None, "Geometry __init__ needs either a Geometry object or a shape, wcs pair"
 	@property
-	def npix(self): return shape[-2]*shape[-1]
+	def npix(self): return self.shape[-2]*self.shape[-1]
 	# Make it behave a bit like a tuple, so we can use it interchangably with a shape, wcs pair
 	# for compatibility
 	def __len__(self): return 2
@@ -264,6 +264,10 @@ class Geometry:
 		if not isinstance(sel,tuple): sel = (sel,)
 		shape, wcs = slice_geometry(self.shape, self.wcs, sel)
 		return Geometry(shape, wcs)
+	def __repr__(self):
+		return "Geometry(" + str(self.shape) + ","+str(self.wcs)+")"
+	@property
+	def nopre(self): return Geometry(self.shape[-2:], self.wcs)
 	def submap(self, box=None, pixbox=None, mode=None, wrap="auto", noflip=False):
 		if pixbox is None:
 			pixbox = subinds(self.shape, self.wcs, box, mode=mode, cap=False, noflip=noflip)

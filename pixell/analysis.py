@@ -91,7 +91,7 @@ print("%-15s %8.3f %8.3f %8.3f" % ("smooth full", flux, dflux, flux/dflux))
 import numpy as np
 from . import enmap, utils, uharm
 
-def matched_filter_constcov(map, B, iN, uht):
+def matched_filter_constcov(map, B, iN, uht=None):
 	"""Apply a matched filter to the given map, assuming a constant covariance
 	noise model. A constant covariance noise model is one where the pixel-pixel
 	covariance is independent of the position in the map, and can be represented
@@ -115,6 +115,7 @@ def matched_filter_constcov(map, B, iN, uht):
 	# Npix = < n_pix n_pix' > = < Y n_harm n_harm' Y'> = Y Nharm Y'
 	# Npix" = Y'" Nharm" Y", Y" = Y'W
 	# Npix" = WY Nharm" Y'W. Not the same as YNharm"Y"!
+	if uht is None: uht = uharm.UHT(map.shape, map.wcs)
 	pixarea = enmap.pixsizemap(map.shape, map.wcs, broadcastable=True)
 	rho     = uht.map2harm_adjoint(uht.hmul(B*iN,uht.map2harm(map)))/pixarea
 	kappa   = uht.sum_hprof(B**2*iN)/(4*np.pi)
@@ -159,7 +160,7 @@ def matched_filter_white(map, B, ivar, uht=None, B2=None, high_acc=False):
 	kappa = P*uht.map2harm_adjoint(uht.hmul(B2,uht.harm2map_adjoint(ivar)))
 	return rho, kappa
 
-def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht, B2=None, high_acc=False):
+def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht=None, B2=None, high_acc=False):
 	"""Apply a matched filter to the given map, assuming a constant correlation
 	noise model inv(N) = ivar**0.5 * iC * ivar**0.5, where ivar = 1/pixel_variance
 	and iC = 1/harmonic_power(noise*ivar**0.5). This represents correlated noise
@@ -202,6 +203,7 @@ def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht, B2=None, high_acc=Fa
 	# kappa approx alpha * P'Y"'B'Y' ivar YBY"P
 	# kappa_ii = alpha*P_ii²*sum_j (YBY")_ji² ivar_jj
 	#  = alpha * convolve(br**2, ivar)_ii
+	if uht is None: uht = uharm.UHT(map.shape, map.wcs)
 	pixarea = enmap.pixsizemap(map.shape, map.wcs, broadcastable=True)
 	V = ivar**0.5
 	W = uht.quad_weights()
@@ -225,7 +227,7 @@ def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht, B2=None, high_acc=Fa
 
 	return rho, kappa
 
-def matched_filter_constcorr_smoothivar(map, B, ivar, iC, uht):
+def matched_filter_constcorr_smoothivar(map, B, ivar, iC, uht=None):
 	"""Apply a matched filter to the given map, assuming a constant correlation
 	noise model inv(N) = ivar**0.5 * iC * ivar**0.5, where ivar = 1/pixel_variance
 	and iC = 1/harmonic_power(noise*ivar**0.5). This represents correlated noise
@@ -257,6 +259,7 @@ def matched_filter_constcorr_smoothivar(map, B, ivar, iC, uht):
 	"""
 	# See the constcov function for a bit more math details.
 	# We assume that we can commute B past V, allowing us to compute kappa directly
+	if uht is None: uht = uharm.UHT(map.shape, map.wcs)
 	V    = ivar**0.5
 	P    = 1/enmap.pixsizemap(map.shape, map.wcs, broadcastable=True)
 	rho  = P*V*uht.map2harm_adjoint(uht.hmul(B*iC,uht.harm2map_adjoint(V*map)))
