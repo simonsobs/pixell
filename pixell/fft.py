@@ -88,10 +88,10 @@ def fft(tod, ft=None, nthread=0, axes=[-1], flags=None, _direction="FFTW_FORWARD
 	if tod.size == 0: return
 	nt = nthread or nthread_fft
 	if flags is None: flags = default_flags
-	otype = np.result_type(tod.dtype,0j)
 	if ft is None:
+		otype = np.result_type(tod.dtype,0j)
 		ft  = empty(tod.shape, otype)
-	tod = tod.astype(otype, copy=False)
+		tod = tod.astype(otype, copy=False)
 	if engine == 'intel':
 		ft[:] = fft_flat(tod, ft, axes=axes, nthread=nt, flags=flags, _direction=_direction)
 	else:
