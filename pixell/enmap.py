@@ -1592,32 +1592,49 @@ def multi_pow(mat, exp, axes=[0,1]):
 	the given exponent in eigen-space."""
 	return samewcs(utils.eigpow(mat, exp, axes=axes), mat)
 
-def downgrade(emap, factor, op=np.mean):
+def get_downgrade_offset(shape, wcs, factor, ref=None):
+	"""Get the pixel offset required to keep a map downgraded by the given factor
+	aligned with the reference point."""
+	factor  = np.zeros(2, int)+factor
+	if ref is None: return np.zeros(2,int)
+	else:           return utils.nint(sky2pix(shape, wcs, ref))%factor
+
+def downgrade(emap, factor, op=np.mean, ref=None, off=None, inclusive=False):
 	"""Returns enmap "emap" downgraded by the given integer factor
 	(may be a list for each direction, or just a number) by averaging
 	inside pixels."""
-	fact = np.full(2, 1, dtype=int)
-	fact[:] = factor
-	tshape = emap.shape[-2:]//fact*fact
-	res = op(np.reshape(emap[...,:tshape[0],:tshape[1]],emap.shape[:-2]+(tshape[0]//fact[0],fact[0],tshape[1]//fact[1],fact[1])),(-3,-1))
-	try: return ndmap(res, emap[...,::fact[0],::fact[1]].wcs)
-	except AttributeError: return res
+	factor  = np.zeros(2, int)+factor
+	# Optionally apply an offset to keep different downgraded maps pixel-compatible.
+	# This can be either manually specified, or inferred from reference coordinates.
+	if off is None:  off = get_downgrade_offset(emap.shape, emap.wcs, factor, ref)
+	else:            off = np.zeros(2, int)+off
+	# Do the averaging
+	omap = utils.block_reduce(emap, factor[0], off=off[0], axis=-2, inclusive=inclusive)
+	omap = utils.block_reduce(omap, factor[1], off=off[1], axis=-1, inclusive=inclusive)
+	# Update the wcs
+	wcs  = emap[...,off[0]::factor[0],off[1]::factor[1]].wcs
+	wcs.wcs.crpix += (off[1::-1]>0)*inclusive # extra downgraded pixel in front if inclusive with offset
+	omap = ndmap(omap, wcs)
+	return omap
 
-def upgrade(emap, factor):
+def upgrade(emap, factor, off=None, oshape=None, inclusive=False):
 	"""Upgrade emap to a larger size using nearest neighbor interpolation,
 	returning the result. More advanced interpolation can be had using
 	enmap.interpolate."""
-	fact = np.full(2,1).astype(int)
-	fact[:] = factor
-	res = np.tile(emap.copy().reshape(emap.shape[:-2]+(emap.shape[-2],1,emap.shape[-1],1)),(1,fact[0],1,fact[1]))
-	res = res.reshape(res.shape[:-4]+(np.product(res.shape[-4:-2]),np.product(res.shape[-2:])))
+	factor  = np.zeros(2, int)+factor
+	off     = np.zeros(2,int)+(0 if off is None else off)
+	# If no output shape specified, guess one that had no pixels left over at the end
+	if oshape is None: oshape = (np.array(emap.shape[-2:])-(off>0)*inclusive)*factor+off
+	omap = utils.block_expand(emap, factor[0], oshape[-2], off=off[0], axis=-2, inclusive=inclusive)
+	omap = utils.block_expand(omap, factor[1], oshape[-1], off=off[1], axis=-1, inclusive=inclusive)
 	# Correct the WCS information
+	omap = ndmap(omap, emap.wcs.copy())
 	for j in range(2):
-		res.wcs.wcs.crpix[j] -= 0.5
-		res.wcs.wcs.crpix[j] *= fact[1-j]
-		res.wcs.wcs.cdelt[j] /= fact[1-j]
-		res.wcs.wcs.crpix[j] += 0.5
-	return res
+		omap.wcs.wcs.crpix[j] -= 0.5 + (off[1-j]>0)*inclusive
+		omap.wcs.wcs.crpix[j] *= factor[1-j]
+		omap.wcs.wcs.cdelt[j] /= factor[1-j]
+		omap.wcs.wcs.crpix[j] += 0.5 + off[1-j]
+	return omap
 
 def downgrade_geometry(shape, wcs, factor):
 	"""Returns the oshape, owcs corresponding to a map with geometry
@@ -1793,10 +1810,10 @@ def shrink_mask(mask, r):
 
 def pad(emap, pix, return_slice=False, wrap=False):
 	"""Pad enmap "emap", creating a larger map with zeros filled in on the sides.
-	How much to pad is controlled via pix. If pix is a scalar, it specifies the number
-	of pixels to add on all sides. If it is 1d, it specifies the number of pixels to add
-	at each end for each axis. If it is 2d, the number of pixels to add at each end
-	of an axis can be specified individually."""
+	How much to pad is controlled via pix, which har format [{from,to},{y,x}],
+	[{y,x}] or just a single number to apply on all sides. E.g. pix=5 would pad
+	by 5 on all sides, and pix=[[1,2],[3,4]] would pad by 1 on the bottom,
+	2 on the left, 3 on the top and 4 on the right."""
 	pix = np.asarray(pix,dtype=int)
 	if pix.ndim == 0:
 		pix = np.array([[pix,pix],[pix,pix]])
