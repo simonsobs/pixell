@@ -23,7 +23,7 @@ try: basestring
 except NameError: basestring = str
 
 mute = {
-	"polconv_fix": False,
+	"polconv_fix": True,
 }
 
 # PyFits uses row-major ordering, i.e. C ordering, while the fits file
@@ -249,11 +249,11 @@ def npix(shape): return shape[-2]*shape[-1]
 
 class Geometry:
 	def __init__(self, shape, wcs=None):
-		try: self.shape, self.wcs = shape.shape, shape.wcs
-		except AttributeError: self.shape, self.wcs = shape, wcs
+		try: self.shape, self.wcs = tuple(shape.shape), shape.wcs
+		except AttributeError: self.shape, self.wcs = tuple(shape), wcs
 		assert wcs is not None, "Geometry __init__ needs either a Geometry object or a shape, wcs pair"
 	@property
-	def npix(self): return shape[-2]*shape[-1]
+	def npix(self): return self.shape[-2]*self.shape[-1]
 	# Make it behave a bit like a tuple, so we can use it interchangably with a shape, wcs pair
 	# for compatibility
 	def __len__(self): return 2
@@ -264,6 +264,10 @@ class Geometry:
 		if not isinstance(sel,tuple): sel = (sel,)
 		shape, wcs = slice_geometry(self.shape, self.wcs, sel)
 		return Geometry(shape, wcs)
+	def __repr__(self):
+		return "Geometry(" + str(self.shape) + ","+str(self.wcs)+")"
+	@property
+	def nopre(self): return Geometry(self.shape[-2:], self.wcs)
 	def submap(self, box=None, pixbox=None, mode=None, wrap="auto", noflip=False):
 		if pixbox is None:
 			pixbox = subinds(self.shape, self.wcs, box, mode=mode, cap=False, noflip=noflip)
@@ -913,11 +917,11 @@ def area_contour(shape, wcs, nsamp=1000):
 	return abs(total)
 
 def pixsize(shape, wcs):
-	"""Returns the area of a single pixel, in steradians."""
+	"""Returns the average pixel area, in steradians."""
 	return area(shape, wcs)/np.product(shape[-2:])
 
 def pixshape(shape, wcs, signed=False):
-	"""Returns the height and width of a single pixel, in radians."""
+	"""Returns the average pixel height and width, in radians."""
 	return extent(shape, wcs, signed=signed)/shape[-2:]
 
 def pixshapemap(shape, wcs, bsize=1000, separable="auto", signed=False):
@@ -1018,6 +1022,16 @@ def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000):
 		return ndmap(psize, wcs)
 	else:
 		return np.product(pixshapemap(shape, wcs, bsize=bsize, separable=separable),0)
+
+def pixshapebounds(shape, wcs, separable="auto"):
+	"""Return the minimum and maximum pixel height and width for the given
+	geometry, in the form [{min,max},{y,x}]. Fast for separable geometries like
+	cylindrical ones, which it will try to recognize, but this can be forced by
+	setting separable to True (or disabled with False). Heavy in the general case."""
+	if separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
+		return utils.minmax(pixshapes_cyl(shape, wcs),1)
+	else:
+		return utils.minmax(pixshapemap(shape, wcs))
 
 def lmap(shape, wcs, oversample=1):
 	"""Return a map of all the wavenumbers in the fourier transform
@@ -1326,7 +1340,7 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
 	# the grid in bounds, from ra=180+cdelt/2 to ra=-180+cdelt/2.
 	wcs.wcs.crval = [res[0]/2/utils.degree,0]
 	wcs.wcs.cdelt = [-360./nx,180./(ny-1)]
-	wcs.wcs.crpix = [nx//2+0.5,ny//2+1]
+	wcs.wcs.crpix = [nx//2+0.5,(ny+1)/2]
 	wcs.wcs.ctype = ["RA---CAR","DEC--CAR"]
 	return dims+(ny,nx), wcs
 
@@ -1578,32 +1592,49 @@ def multi_pow(mat, exp, axes=[0,1]):
 	the given exponent in eigen-space."""
 	return samewcs(utils.eigpow(mat, exp, axes=axes), mat)
 
-def downgrade(emap, factor, op=np.mean):
+def get_downgrade_offset(shape, wcs, factor, ref=None):
+	"""Get the pixel offset required to keep a map downgraded by the given factor
+	aligned with the reference point."""
+	factor  = np.zeros(2, int)+factor
+	if ref is None: return np.zeros(2,int)
+	else:           return utils.nint(sky2pix(shape, wcs, ref))%factor
+
+def downgrade(emap, factor, op=np.mean, ref=None, off=None, inclusive=False):
 	"""Returns enmap "emap" downgraded by the given integer factor
 	(may be a list for each direction, or just a number) by averaging
 	inside pixels."""
-	fact = np.full(2, 1, dtype=int)
-	fact[:] = factor
-	tshape = emap.shape[-2:]//fact*fact
-	res = op(np.reshape(emap[...,:tshape[0],:tshape[1]],emap.shape[:-2]+(tshape[0]//fact[0],fact[0],tshape[1]//fact[1],fact[1])),(-3,-1))
-	try: return ndmap(res, emap[...,::fact[0],::fact[1]].wcs)
-	except AttributeError: return res
+	factor  = np.zeros(2, int)+factor
+	# Optionally apply an offset to keep different downgraded maps pixel-compatible.
+	# This can be either manually specified, or inferred from reference coordinates.
+	if off is None:  off = get_downgrade_offset(emap.shape, emap.wcs, factor, ref)
+	else:            off = np.zeros(2, int)+off
+	# Do the averaging
+	omap = utils.block_reduce(emap, factor[0], off=off[0], axis=-2, inclusive=inclusive)
+	omap = utils.block_reduce(omap, factor[1], off=off[1], axis=-1, inclusive=inclusive)
+	# Update the wcs
+	wcs  = emap[...,off[0]::factor[0],off[1]::factor[1]].wcs
+	wcs.wcs.crpix += (off[1::-1]>0)*inclusive # extra downgraded pixel in front if inclusive with offset
+	omap = ndmap(omap, wcs)
+	return omap
 
-def upgrade(emap, factor):
+def upgrade(emap, factor, off=None, oshape=None, inclusive=False):
 	"""Upgrade emap to a larger size using nearest neighbor interpolation,
 	returning the result. More advanced interpolation can be had using
 	enmap.interpolate."""
-	fact = np.full(2,1).astype(int)
-	fact[:] = factor
-	res = np.tile(emap.copy().reshape(emap.shape[:-2]+(emap.shape[-2],1,emap.shape[-1],1)),(1,fact[0],1,fact[1]))
-	res = res.reshape(res.shape[:-4]+(np.product(res.shape[-4:-2]),np.product(res.shape[-2:])))
+	factor  = np.zeros(2, int)+factor
+	off     = np.zeros(2,int)+(0 if off is None else off)
+	# If no output shape specified, guess one that had no pixels left over at the end
+	if oshape is None: oshape = (np.array(emap.shape[-2:])-(off>0)*inclusive)*factor+off
+	omap = utils.block_expand(emap, factor[0], oshape[-2], off=off[0], axis=-2, inclusive=inclusive)
+	omap = utils.block_expand(omap, factor[1], oshape[-1], off=off[1], axis=-1, inclusive=inclusive)
 	# Correct the WCS information
+	omap = ndmap(omap, emap.wcs.copy())
 	for j in range(2):
-		res.wcs.wcs.crpix[j] -= 0.5
-		res.wcs.wcs.crpix[j] *= fact[1-j]
-		res.wcs.wcs.cdelt[j] /= fact[1-j]
-		res.wcs.wcs.crpix[j] += 0.5
-	return res
+		omap.wcs.wcs.crpix[j] -= 0.5 + (off[1-j]>0)*inclusive
+		omap.wcs.wcs.crpix[j] *= factor[1-j]
+		omap.wcs.wcs.cdelt[j] /= factor[1-j]
+		omap.wcs.wcs.crpix[j] += 0.5 + off[1-j]
+	return omap
 
 def downgrade_geometry(shape, wcs, factor):
 	"""Returns the oshape, owcs corresponding to a map with geometry
@@ -1779,10 +1810,10 @@ def shrink_mask(mask, r):
 
 def pad(emap, pix, return_slice=False, wrap=False):
 	"""Pad enmap "emap", creating a larger map with zeros filled in on the sides.
-	How much to pad is controlled via pix. If pix is a scalar, it specifies the number
-	of pixels to add on all sides. If it is 1d, it specifies the number of pixels to add
-	at each end for each axis. If it is 2d, the number of pixels to add at each end
-	of an axis can be specified individually."""
+	How much to pad is controlled via pix, which har format [{from,to},{y,x}],
+	[{y,x}] or just a single number to apply on all sides. E.g. pix=5 would pad
+	by 5 on all sides, and pix=[[1,2],[3,4]] would pad by 1 on the bottom,
+	2 on the left, 3 on the top and 4 on the right."""
 	pix = np.asarray(pix,dtype=int)
 	if pix.ndim == 0:
 		pix = np.array([[pix,pix],[pix,pix]])
@@ -2483,38 +2514,67 @@ def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, or
 	with a different number of pixels given by oshape."""
 	# Construct the output shape and wcs
 	oshape = map.shape[:-2] + tuple(oshape)[-2:]
-	owcs   = wcsutils.scale(map.wcs, np.array(oshape[-2:],float)/map.shape[-2:], rowmajor=True, corner=corner)
-	off    = np.zeros(2)+off
-	# Apply phase shift to realign with pixel centers. This can be seen as a half pixel shift to
-	# the left in the original pixelization followed by a half pixel shift to the right in the new
-	# pixelization.
-	if not corner:
-		off -= 0.5 - 0.5*np.array(oshape[-2:],float)/map.shape[-2:] # in output units
 	if method == "fft":
-		omap  = zeros(oshape, owcs, map.dtype)
-		fimap = enfft.fft(map, axes=(-2,-1))
-		fomap = np.zeros(oshape, fimap.dtype)
-		# copy over all 4 quadrants. This would have been a single operation if the
-		# fourier center had been in the middle. This could be acieved using fftshift,
-		# but that would require two extra full-array shifts
-		cny, cnx = np.minimum(map.shape[-2:], oshape[-2:])
-		hny, hnx = cny//2, cnx//2
-		fomap[...,:hny,        :hnx       ] = fimap[...,:hny,        :hnx       ]
-		fomap[...,:hny,        -(cnx-hnx):] = fimap[...,:hny,        -(cnx-hnx):]
-		fomap[...,-(cny-hny):, :hnx       ] = fimap[...,-(cny-hny):, :hnx       ]
-		fomap[...,-(cny-hny):, -(cnx-hnx):] = fimap[...,-(cny-hny):, -(cnx-hnx):]
-		if np.any(off != 0):
-			fomap[:] = enfft.shift(fomap, off, axes=(-2,-1), nofft=True)
-		omap[:] = enfft.ifft(fomap, axes=(-2,-1)).real
-		# Normalize
-		omap /= map.shape[-2]*map.shape[-1]
+		omap  = ifft(resample_fft(fft(map, normalize=False), oshape, off=off, corner=corner, norm=1/map.npix), normalize=False).real
 	elif method == "spline":
+		owcs = wcsutils.scale(map.wcs, np.array(oshape[-2:],float)/map.shape[-2:], rowmajor=True, corner=corner)
+		off  = np.zeros(2)+off
+		if not corner:
+			off -= 0.5 - 0.5*np.array(oshape[-2:],float)/map.shape[-2:] # in output units
 		opix  = pixmap(oshape) - off[:,None,None]
 		ipix  = opix * (np.array(map.shape[-2:],float)/oshape[-2:])[:,None,None]
 		omap  = ndmap(map.at(ipix, unit="pix", mode=mode, order=order), owcs)
 	else:
 		raise ValueError("Invalid resample method '%s'" % method)
 	return omap
+
+def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=False, norm="pix", op=lambda a,b:b):
+	"""Like resample, but takes a fourier-space map as input and outputs a fourier-space map.
+	unit specifies which fourier-space unit is used. "pix" corresponds to
+	the standard enmap normalization (normalize=True in enmap.fft). "phys" corresponds
+	to physical normalization (normalize="phys"). The fourier-units matter because some
+	fourier-space units need rescaline when going from one resolution to another.
+	"""
+	# Construct the output shape and wcs
+	oshape = fimap.shape[:-2] + tuple(oshape)[-2:]
+	off    = np.zeros(2)+off
+	if not corner:
+		# Apply phase shift to realign with pixel centers. This can be seen as a half pixel shift to
+		# the left in the original pixelization followed by a half pixel shift to the right in the new
+		# pixelization.
+		off -= 0.5 - 0.5*np.array(oshape[-2:],float)/fimap.shape[-2:] # in output units
+	if fomap is None:
+		owcs  = wcsutils.scale(fimap.wcs, np.array(oshape[-2:],float)/fimap.shape[-2:], rowmajor=True, corner=corner)
+		fomap = zeros(oshape, owcs, fimap.dtype)
+	# We sadly need to care about fourier-space normalization when doing this, since
+	# different-size fourier spaces can have different units. First handle explicit normalization,
+	# where the factor to multiply is given directly.
+	try: norm = float(norm)
+	except TypeError:
+		# Then handle various normalization conventions.
+		if   norm is None:     norm = 1 # Don't do anything if None is passed. Cost free
+		elif norm == "plain":  norm = fomap.npix/fimap.npix # Corresponds to normalize=False in enmap.ifft
+		elif norm == "pix":    norm = (fomap.npix/fimap.npix)**0.5 # Corresponds to normalize=True
+		elif norm == "phys":   norm = 1 # Corresponds to normalize="phys"
+		else: raise ValueError("Unrecognized fourier unit '%s'" % str(unit))
+	# copy over all 4 quadrants. This would have been a single operation if the
+	# fourier center had been in the middle. This could be acieved using fftshift,
+	# but that would require two extra full-array shifts
+	cny, cnx = np.minimum(fimap.shape[-2:], oshape[-2:])
+	hny, hnx = cny//2, cnx//2
+	# This function is used to avoid paying the cost of multiplying by norm when it's one
+	def transfer(dest, source, norm, op):
+		if norm != 1: source = source*norm
+		dest[:] = op(dest, source)
+	transfer(fomap[...,:hny,       :hnx       ],fimap[...,:hny,       :hnx       ], norm, op)
+	transfer(fomap[...,:hny,       -(cnx-hnx):],fimap[...,:hny,       -(cnx-hnx):], norm, op)
+	transfer(fomap[...,-(cny-hny):,:hnx       ],fimap[...,-(cny-hny):,:hnx       ], norm, op)
+	transfer(fomap[...,-(cny-hny):,-(cnx-hnx):],fimap[...,-(cny-hny):,-(cnx-hnx):], norm, op)
+	if np.any(off != 0):
+		# It's fastest to do this here when downsampling, but when upsampling
+		# it's faster to do so in the fimap. And for a mix it's bad to do it both places.
+		fomap[:] = enfft.shift(fomap, off, axes=(-2,-1), nofft=True)
+	return fomap
 
 def spin_helper(spin, n):
 	spin  = np.array(spin).reshape(-1)

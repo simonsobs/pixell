@@ -415,6 +415,22 @@ cdef class alm_info:
 def nalm2lmax(nalm):
 	return int((-1+(1+8*nalm)**0.5)/2)-1
 
+def transfer_alm(iainfo, ialm, oainfo, oalm=None, op=lambda a,b:b):
+	"""Transfer alm from one layout to another."""
+	if oalm is None:
+		oalm = np.zeros(ialm.shape[:-1]+(oainfo.nelem,), ialm.dtype)
+	lmax   = min(iainfo.lmax, oainfo.lmax)
+	mmax   = min(iainfo.mmax, oainfo.mmax)
+	pshape = ialm.shape[:-1]
+	npre   = int(np.product(pshape))
+	def transfer(dest, src, op): dest[:] = op(dest, src)
+	for i in range(npre):
+		I  = np.unravel_index(i, pshape)
+		ia = ialm[I]; oa = oalm[I]
+		for m in range(0, mmax+1):
+			transfer(oa[oainfo.mstart[m]+m*oainfo.stride:oainfo.mstart[m]+(lmax+1)*oainfo.stride:oainfo.stride], ia[iainfo.mstart[m]+m*iainfo.stride:iainfo.mstart[m]+(lmax+1)*iainfo.stride:iainfo.stride], op)
+	return oalm
+
 cdef class sht:
 	cdef public map_info minfo
 	cdef public alm_info ainfo

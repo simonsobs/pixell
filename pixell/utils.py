@@ -1705,29 +1705,56 @@ def block_mean_filter(a, width):
 		a[:]   = work[...,:a.shape[-1]]
 	return a
 
-def block_reduce(a, bsize, op=np.mean):
-	"""Replace each block of length bsize along the last axis of a
+def block_reduce(a, bsize, axis=-1, off=0, op=np.mean, inclusive=True):
+	"""Replace each block of length bsize along the given axis of a
 	with an aggregate value given by the operation op. op must
 	accept op(array, axis), just like np.sum or np.mean. a need not
 	have a whole number of blocks. In that case, the last block will
-	have fewer than bsize samples in it."""
+	have fewer than bsize samples in it. If off is specified, it gives
+	an offset from the start of the array for the start of the first block;
+	anything before that will be treated as an incomplete block, just like
+	anything left over at the end. Pass the same value of off to block_expand
+	to undo this."""
 	if bsize == 1: return a
-	a     = np.asarray(a)
-	nsamp = a.shape[-1]
-	nwhole= nsamp//bsize
-	blocks= a[...,:nwhole*bsize].reshape(a.shape[:-1]+(nwhole,bsize))
-	vals  = op(blocks, -1)
-	if nwhole*bsize != nsamp:
-		vals = np.concatenate([vals, op(a[...,None,nwhole*bsize:],-1)],-1)
-	return vals
+	a      = np.asarray(a)
+	axis  %= a.ndim
+	# Split the array into the first part, the whole blocks, and the remainder
+	nwhole = (a.shape[axis]-off)//bsize
+	pre, mid, tail = np.split(a, [off,off+nwhole*bsize], axis)
+	# Average and merge these
+	parts  = []
+	if pre.size  > 0 and inclusive: parts.append(np.expand_dims(op(pre, axis),axis))
+	if mid.size  > 0: parts.append(op(mid.reshape(mid.shape[:axis]+(nwhole,bsize)+mid.shape[axis+1:]),axis+1))
+	if tail.size > 0 and inclusive: parts.append(np.expand_dims(op(tail,axis),axis))
+	return np.concatenate(parts, axis)
 
-def block_expand(a, bsize, osize, op="nearest"):
-	nwhole = osize//bsize
-	nrest  = osize-nwhole*bsize
+def block_expand(a, bsize, osize, axis=-1, off=0, op="nearest", inclusive=True):
+	"""The opposite of block_reduce. Where block_reduce averages (by default)
+	this function duplicates (by default) to recover the original shape.
+	If op="linear", then linear interpolation will be done instead of
+	duplication. NOTE: Currently axis and orr are not supported for
+	linear interpolation, which will always be done along the last axis."""
+	a      = np.asanyarray(a)
+	nwhole = (osize-off)//bsize
+	nrest  = osize-off-nwhole*bsize
+	axis  %= a.ndim
 	if op == "nearest":
-		bind = np.arange(osize)//bsize
-		return a[...,bind]
+		if inclusive:
+			pre, mid, tail = np.split(a, [off>0,(off>0)+nwhole], axis)
+			parts = []
+			if pre.size > 0: parts.append(np.repeat(pre, off,   axis))
+			if mid.size > 0: parts.append(np.repeat(mid, bsize, axis))
+			if tail.size> 0: parts.append(np.repeat(tail,nrest, axis))
+			return np.concatenate(parts, axis)
+		else:
+			parts = [
+					np.zeros(a.shape[:axis]+(off,)  +a.shape[axis+1:], a.dtype),
+					np.repeat(a, bsize, axis),
+					np.zeros(a.shape[:axis]+(nrest,)+a.shape[axis+1:], a.dtype),
+				]
+			return np.concatenate(parts, axis)
 	elif op == "linear":
+		# TODO: This part doesn't support off or axis yet.
 		# Index relative to block centers. For bsize samples in a block,
 		# the intervals have size 1/nblock, and the first sample is offset
 		# by half an interval. Hence sample #i is at ((i+1)+0.5)/nblock-0.5
@@ -2449,6 +2476,19 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 			done1[i1] = done2[i2] = True
 			opairs.append((i1,i2))
 		return opairs
+
+def real_dtype(dtype):
+	"""Return the closest real (non-complex) dtype for the given dtype"""
+	# A bit ugly, but actually quite fast
+	return np.zeros(1, dtype).real.dtype
+
+def complex_dtype(dtype):
+	"""Return the closest complex dtype for the given dtype"""
+	return np.result_type(dtype, 0j)
+
+def ascomplex(arr):
+	arr = np.asanyarray(arr)
+	return arr.astype(complex_dtype(arr.dtype))
 
 # Conjugate gradients
 
