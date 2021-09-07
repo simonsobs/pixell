@@ -250,6 +250,12 @@ def medmean(x, axis=None, frac=0.5):
 	i = int(x.shape[-1]*frac)//2
 	return np.mean(x[...,i:-i],-1)
 
+def maskmed(arr, axis=-1, maskval=0):
+	"""Median of array along the given axis, but ignoring
+	entries with the given mask value."""
+	marr = np.ma.array(arr, mask=maskval)
+	return np.ma.median(marr, axis=axis).filled(maskval)
+
 def moveaxis(a, o, n):
 	if o < 0: o = o+a.ndim
 	if n < 0: n = n+a.ndim
@@ -527,6 +533,28 @@ def find_period_exact(d, guess):
 		return np.var(d-model)
 	period,phase = scipy.optimize.fmin_powell(chisq, [guess,guess], xtol=1, disp=False)
 	return period, phase+off, chisq([period,phase])/np.var(d**2)
+
+def find_sweeps(az, tol=0.2):
+	"""Given an array "az" that sweeps up and down between approximately
+	constant minimum and maximum values, returns an array sweeps[:,{i1,i2}],
+	which gives the start and end index of each such sweep. For example, if
+	az starts at 0 at sample 0, increases to 1 at sample 1000 and then falls
+	to -1 at sample 2000, increase to 1 at sample 2500 and then falls to 0.5
+	at sample 3000 where it ends, then the function will return
+	[[0,1000],[1000,2000],[2000,2500],[2500,3000]].
+	The tol parameter determines how close to the extremum values of the array
+	it will look for turnarounds. It shouldn't normally need to be ajusted."""
+	az         = np.asarray(az)
+	# Find and label the areas near the turnarounds
+	amin, amax = minmax(az)
+	amid, aamp = (amax+amin)/2, (amax-amin)/2
+	aabs       = np.abs(az-amid)
+	labels, nlabel = scipy.ndimage.label(aabs > aamp*(1-tol))
+	# Find the extremum point in each of these
+	turns      = np.array(scipy.ndimage.maximum_position(aabs, labels, np.arange(1,nlabel+1)))[:,0]
+	turns      = np.unique(np.concatenate([[0],turns,[len(az)]]))
+	sweeps     = np.array([turns[:-1],turns[1:]]).T
+	return sweeps
 
 def equal_split(weights, nbin):
 	"""Split weights into nbin bins such that the total
@@ -967,11 +995,6 @@ def pole_wrap(pos):
 	lon[back]+= np.pi
 	return pos
 
-def parse_box(desc):
-	"""Given a string of the form from:to,from:to,from:to,... returns
-	an array [{from,to},:]"""
-	return np.array([[float(word) for word in pair.split(":")] for pair in desc.split(",")]).T
-
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result
 	rather than needing an output argument."""
@@ -1004,6 +1027,13 @@ def allgatherv(a, comm, axis=0):
 	and allgatherv([[3,4],[5,6]],comm) on another task results in
 	[[1,2],[3,4],[5,6]] for both tasks."""
 	a  = np.asarray(a)
+	# Get the dtypes of all non-empty arrays, and use this harmonize all
+	# the arrays' dtypes.
+	dtypes = [dtype for dtype in comm.allgather(a.dtype if a.size > 0 else None) if dtype is not None]
+	if len(dtypes) == 0: return a
+	dtype  = np.result_type(*dtypes)
+	a      = a.astype(dtype, copy=False)
+	# Put the axis first, as that's what Allgatherv wants
 	fa = moveaxis(a, axis, 0)
 	# mpi4py doesn't handle all types. But why not just do this
 	# for everything?
@@ -1799,6 +1829,10 @@ def parse_numbers(s, dtype=None):
 	if dtype is not None:
 		res = res.astype(dtype)
 	return res
+def parse_box(desc):
+	"""Given a string of the form from:to,from:to,from:to,... returns
+	an array [{from,to},:]"""
+	return np.array([[float(word) for word in pair.split(":")] for pair in desc.split(",")]).T
 
 def triangle_wave(x, period=1):
 	"""Return a triangle wave with amplitude 1 and the given period."""
@@ -2056,6 +2090,12 @@ def build_conditional(ps, inds, axes=[0,1]):
 def nint(a):
 	"""Return a rounded to the nearest integer, as an integer."""
 	return np.round(a).astype(int)
+def ceil(a):
+	"""Return a rounded to the next integer, as an integer."""
+	return np.ceil(a).astype(int)
+def floor(a):
+	"""Return a rounded to the previous integer, as an integer."""
+	return np.floor(a).astype(int)
 
 format_regex = r"%(\([a-zA-Z]\w*\)|\(\d+)\)?([ +0#-]*)(\d*|\*)(\.\d+|\.\*)?(ll|[lhqL])?(.)"
 def format_to_glob(format):

@@ -63,6 +63,7 @@ class ndmap(np.ndarray):
 	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
 	def posaxes(self, safe=True, corner=False): return posaxes(self.shape, self.wcs, safe=safe, corner=corner)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
+	def laxes(self, oversample=1, method="auto"): return laxes(self.shape, self.wcs, oversample=oversample, method=method)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
 	def lform(self, shift=True): return lform(self, shift=shift)
 	def modlmap(self, oversample=1): return modlmap(self.shape, self.wcs, oversample=oversample)
@@ -286,11 +287,15 @@ class Geometry:
 	def scale(self, scale):
 		shape, wcs = scale_geometry(self.shape, self.wcs, scale)
 		return Geometry(shape, wcs)
-	def downgrade(self, factor):
-		shape, wcs = downgrade_geometry(self.shape, self.wcs, factor)
+	def downgrade(self, factor, op=np.mean):
+		shape, wcs = downgrade_geometry(self.shape, self.wcs, factor, op=op)
 		return Geometry(shape, wcs)
 	def copy(self):
 		return Geometry(tuple(self.shape), self.wcs.deepcopy())
+	def sky2pix(self, coords, safe=True, corner=False): return sky2pix(self.shape, self.wcs, coords, safe, corner)
+	def pix2sky(self, pix,    safe=True, corner=False): return pix2sky(self.shape, self.wcs, pix,    safe, corner)
+	def l2pix(self, ls):  return l2pix(self.shape, self.wcs, ls)
+	def pix2l(self, pix): return pix2l(self.shape, self.wcs, pix)
 
 def corners(shape, wcs, npoint=10, corner=True):
 	"""Return the coordinates of the bottom left and top right corners of the
@@ -1033,19 +1038,19 @@ def pixshapebounds(shape, wcs, separable="auto"):
 	else:
 		return utils.minmax(pixshapemap(shape, wcs))
 
-def lmap(shape, wcs, oversample=1):
+def lmap(shape, wcs, oversample=1, method="auto"):
 	"""Return a map of all the wavenumbers in the fourier transform
 	of a map with the given shape and wcs."""
-	ly, lx = laxes(shape, wcs, oversample=oversample)
+	ly, lx = laxes(shape, wcs, oversample=oversample, method=method)
 	data = np.empty((2,ly.size,lx.size))
 	data[0] = ly[:,None]
 	data[1] = lx[None,:]
 	return ndmap(data, wcs)
 
-def modlmap(shape, wcs, oversample=1):
+def modlmap(shape, wcs, oversample=1, method="auto"):
 	"""Return a map of all the abs wavenumbers in the fourier transform
 	of a map with the given shape and wcs."""
-	slmap = lmap(shape,wcs,oversample=oversample)
+	slmap = lmap(shape,wcs,oversample=oversample, method=method)
 	return np.sum(slmap**2,0)**0.5
 
 def center(shape,wcs):
@@ -1064,9 +1069,9 @@ def modrmap(shape, wcs, ref="center", safe=True, corner=False):
 	if wcsutils.is_plain(wcs): return np.sum((slmap-ref)**2,0)**0.5
 	return ndmap(utils.angdist(slmap[::-1],ref[::-1],zenith=False),wcs)
 
-def laxes(shape, wcs, oversample=1):
+def laxes(shape, wcs, oversample=1, method="auto"):
 	oversample = int(oversample)
-	step = extent(shape, wcs, signed=True)/shape[-2:]
+	step = extent(shape, wcs, signed=True, method=method)/shape[-2:]
 	ly = np.fft.fftfreq(shape[-2]*oversample, step[0])*2*np.pi
 	lx = np.fft.fftfreq(shape[-1]*oversample, step[1])*2*np.pi
 	if oversample > 1:
@@ -2377,6 +2382,9 @@ class ndmap_proxy:
 	def __repr__(self): return "ndmap_proxy(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
 	def __getslice__(self, a, b=None, c=None): return self[slice(a,b,c)]
 	def __getitem__(self, sel): raise NotImplementedError("ndmap_proxy must be subclassed")
+	def submap(self, box, mode=None, wrap="auto"):
+		return submap(self, box, mode=mode, wrap=wrap)
+	def stamps(self, pos, shape, aslist=False): return stamps(self, pos, shape, aslist=aslist)
 
 # Copy over some methos from ndmap
 for name in ["sky2pix", "pix2sky", "box", "pixbox_of", "posmap", "pixmap", "lmap", "modlmap", "modrmap", "area", "pixsize", "pixshape",
