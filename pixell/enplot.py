@@ -349,14 +349,16 @@ def get_map(ifile, args, return_info=False, name=None):
 		if isinstance(ifile, basestring):
 			toks  = ifile.split(":")
 			ifile, slice = toks[0], ":".join(toks[1:])
-			m0    = enmap.read_map(ifile, hdu=args.hdu)
+			m0    = enmap.read_map(ifile, hdu=args.hdu, delayed=True)
 			if name is None: name = ifile
 		else:
 			m0    = ifile
 			slice = ""
 			if name is None: name = ".fits"
 		# This fills in a dummy, plain wcs if one does not exist
-		m0 = enmap.enmap(m0, copy=False)
+		try: m0.wcs
+		except AttributeError: m0 = enmap.enmap(m0[:], copy=False)
+		# Optionally fix the wcs to avoid crpix being too far away
 		if args.fix_wcs:
 			m0.wcs = wcsutils.fix_wcs(m0.wcs)
 		# Save the original map, so we can compare its wcs later
@@ -368,7 +370,7 @@ def get_map(ifile, args, return_info=False, name=None):
 			m = m.submap(sub)
 		# Perform a common autocrop across all fields
 		if args.autocrop:
-			m = enmap.autocrop(m)
+			m = enmap.autocrop(m[:])
 		# If necessary, split into stamps. If no stamp splitting occurs,
 		# a list containing only the original map is returned
 		mlist = extract_stamps(m, args)
@@ -377,11 +379,14 @@ def get_map(ifile, args, return_info=False, name=None):
 		for i, m in enumerate(mlist):
 			# Downgrade
 			downgrade = parse_list(args.downgrade, int)
-			m = enmap.downgrade(m, downgrade)
+			m = enmap.downgrade(m[:], downgrade)
 			# Slicing, either at the file name level or though the slice option
 			m = eval("m"+slice)
 			if args.slice is not None:
-				m = eval("m"+args.slice)
+				try: m = eval("m"+args.slice)
+				except AttributeError: m = eval("m[:]"+args.slice) # handle proxy case
+			# Unwrap any remaining proxy
+			m    = m[:]
 			flip = (m.wcs.wcs.cdelt*m0.wcs.wcs.cdelt)[::-1]<0
 			assert m.ndim >= 2, "Image must have at least 2 dimensions"
 			# Apply arbitrary map operations

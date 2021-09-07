@@ -283,11 +283,15 @@ class Geometry:
 	def scale(self, scale):
 		shape, wcs = scale_geometry(self.shape, self.wcs, scale)
 		return Geometry(shape, wcs)
-	def downgrade(self, factor):
-		shape, wcs = downgrade_geometry(self.shape, self.wcs, factor)
+	def downgrade(self, factor, op=np.mean):
+		shape, wcs = downgrade_geometry(self.shape, self.wcs, factor, op=op)
 		return Geometry(shape, wcs)
 	def copy(self):
 		return Geometry(tuple(self.shape), self.wcs.deepcopy())
+	def sky2pix(self, coords, safe=True, corner=False): return sky2pix(self.shape, self.wcs, coords, safe, corner)
+	def pix2sky(self, pix,    safe=True, corner=False): return pix2sky(self.shape, self.wcs, pix,    safe, corner)
+	def l2pix(self, ls):  return l2pix(self.shape, self.wcs, ls)
+	def pix2l(self, pix): return pix2l(self.shape, self.wcs, pix)
 
 def corners(shape, wcs, npoint=10, corner=True):
 	"""Return the coordinates of the bottom left and top right corners of the
@@ -2347,6 +2351,9 @@ class ndmap_proxy:
 	def __repr__(self): return "ndmap_proxy(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
 	def __getslice__(self, a, b=None, c=None): return self[slice(a,b,c)]
 	def __getitem__(self, sel): raise NotImplementedError("ndmap_proxy must be subclassed")
+	def submap(self, box, mode=None, wrap="auto"):
+		return submap(self, box, mode=mode, wrap=wrap)
+	def stamps(self, pos, shape, aslist=False): return stamps(self, pos, shape, aslist=aslist)
 
 # Copy over some methos from ndmap
 for name in ["sky2pix", "pix2sky", "box", "pixbox_of", "posmap", "pixmap", "lmap", "modlmap", "modrmap", "area", "pixsize", "pixshape",
