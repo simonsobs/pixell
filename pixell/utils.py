@@ -253,8 +253,11 @@ def medmean(x, axis=None, frac=0.5):
 def maskmed(arr, axis=-1, maskval=0):
 	"""Median of array along the given axis, but ignoring
 	entries with the given mask value."""
-	marr = np.ma.array(arr, mask=maskval)
-	return np.ma.median(marr, axis=axis).filled(maskval)
+	marr = np.ma.array(arr, mask=arr==maskval)
+	res  = np.ma.median(marr, axis=axis)
+	if isinstance(res, np.ma.MaskedArray):
+		res = res.filled(maskval)
+	return res
 
 def moveaxis(a, o, n):
 	if o < 0: o = o+a.ndim

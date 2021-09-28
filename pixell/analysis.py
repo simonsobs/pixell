@@ -86,6 +86,30 @@ flux  = rho.at(pos)/kappa.at(pos)
 dflux = kappa.at(pos)**-0.5
 print("%-15s %8.3f %8.3f %8.3f" % ("smooth full", flux, dflux, flux/dflux))
 # smooth full        7.483    0.782    9.568
+
+# 8. measuring iN from noise realizations. First build our sims
+nsim   = 100
+white  = enmap.rand_gauss((nsim,)+shape, wcs)
+noise  = uht.harm2map(uht.map2harm(white)*iN**-0.5)*ivar**-0.5
+# Measure the 2d noise power spectrum after whitening with ivar,
+# and take the mean over all our sims to reduce sample variance.
+# Multiplying by the mean pixel size is necessary to get the units right.
+iNemp  = 1/(np.mean(np.abs(uht.map2harm(noise*ivar**0.5))**2,0) / noise.pixsize())
+# If you measure iN from noise realizations that have very close to zero mean, then
+# iNemp may end up with a huge value in the [0,0] (DC) component, which can cause
+# issues. In that case you may need to set iNemp[0,0] = 0.
+del white, noise
+# Use iNemp to matched filter
+rho, kappa = analysis.matched_filter_constcorr_lowcorr(map*fconv, beam, ivar/fconv**2, iNemp, uht)
+# Read of the flux in mJy
+flux  = rho.at(pos)/kappa.at(pos)
+dflux = kappa.at(pos)**-0.5
+print("%-15s %8.3f %8.3f %8.3f" % ("lowcorr full emp", flux, dflux, flux/dflux))
+# lowcorr full emp   7.491    0.778    9.626
+
+# If you don't have a a large number of sims, you can try smoothing N before inverting
+# it to from iN, but this can be tricky if N has too much contrast, like a very small
+# region with very high values.
 """
 
 import numpy as np
