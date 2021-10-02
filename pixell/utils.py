@@ -1293,7 +1293,7 @@ def sbox_fix0(sbox):
 		tmp = np.full(sbox.shape[:-1]+(3,),1,int)
 		tmp[...,:2] = sbox
 		sbox = tmp
-	if sbox.dtype != np.int:
+	if sbox.dtype != int:
 		sbox = sbox.astype(int)
 	return sbox
 
@@ -2029,7 +2029,7 @@ def eigpow(A, e, axes=[-2,-1], rlim=None, alim=None):
 		E, V = np.linalg.eigh(A)
 		if rlim is None: rlim = np.finfo(E.dtype).resolution*100
 		if alim is None: alim = np.finfo(E.dtype).tiny*1e4
-		mask = np.full(E.shape, False, np.bool)
+		mask = np.full(E.shape, False, bool)
 		if not is_int_valued(e):
 			mask |= E < 0
 		if e < 0:
