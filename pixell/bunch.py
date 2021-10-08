@@ -60,7 +60,7 @@ def read(fname, fmt="auto", group=None):
 	if fmt == "hdf": return read_hdf(fname, group=group)
 	else: raise ValueError("Unrecognized format '%s'" % fmt)
 
-def write(fname, bunch, fmt="auto"):
+def write(fname, bunch, fmt="auto", group=None):
 	if fmt == "auto":
 		if is_hdf_path(fname): fmt = "hdf"
 		else: raise ValueError("Could not infer format for '%s'" % fname)
@@ -108,3 +108,16 @@ def split_hdf_path(fname, subgroup=None):
 			if subgroup: group += "/" + subgroup
 			return name, group
 	raise ValueError("Not an hdf path")
+
+def concatenate(bunches):
+	"""Go from a list of bunches to a bunch of arrays."""
+	import numpy as np
+	keys = bunches[0].keys()
+	res  = Bunch()
+	for key in keys: res[key] = []
+	for bunch in bunches:
+		for key in keys:
+			res[key].append(bunch[key])
+	for key in keys:
+		res[key] = np.array(res[key])
+	return res

@@ -1594,7 +1594,7 @@ def find_equal_groups_fast(vals):
 	2. Only works with exact quality, with no support for approximate equality
 	3. Returns 3 numpy arrays instead of a list of lists.
 	"""
-	order = np.argsort(vals)
+	order = np.argsort(vals, kind="stable")
 	uvals, edges = np.unique(vals[order], return_index=True)
 	edges = np.concatenate([edges,[len(vals)]])
 	return uvals, order, edges
@@ -2601,3 +2601,26 @@ class CG:
 		with h5py.File(fname, "r") as hfile:
 			for key in ["i","rz","rz0","x","r","p","err"]:
 				setattr(self, key, hfile[key].value)
+
+def nditer(shape):
+	ndim = len(shape)
+	I    = [0]*ndim
+	while True:
+		yield tuple(I)
+		for dim in range(ndim-1,-1,-1):
+			I[dim] += 1
+			if I[dim] < shape[dim]: break
+			I[dim] = 0
+		else:
+			break
+
+def first_importable(*args):
+	"""Given a list of module names, return the name of the first
+	one that can be imported."""
+	import importlib
+	for arg in args:
+		try:
+			importlib.import_module(arg)
+			return arg
+		except ModuleNotFoundError:
+			continue
