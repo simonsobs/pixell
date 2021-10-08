@@ -1326,7 +1326,7 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 		# being valid. If we always round down, we should be safe:
 		nearedge = wcsutils.nobcheck(wcs).wcs_world2pix(pos[0:1,::-1],0)[0,::-1]
 		faredge  = wcsutils.nobcheck(wcs).wcs_world2pix(pos[1:2,::-1],0)[0,::-1]
-		shape = tuple(np.round(faredge-nearedge).astype(int))
+		shape = tuple(np.round(np.abs(faredge-nearedge)).astype(int))
 	return pre+tuple(shape), wcs
 
 def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
@@ -1396,16 +1396,21 @@ def thumbnail_geometry(r=None, res=None, shape=None, dims=(), proj="tan"):
 	(even though which pixel is at the center shouldn't really matter as long as one
 	takes into account the actual coordinates of each pixel).
 	"""
-	ctype = ["RA---%s" % proj.upper(), "DEC--%s" % proj.upper()]
+	if wcsutils.is_plain(proj):
+		ctype = ["",""]
+		dirs  = [1,1]
+	else:
+		ctype = ["RA---%s" % proj.upper(), "DEC--%s" % proj.upper()]
+		dirs  = [1,-1]
 	if r is None: # res and shape given
 		assert res is not None and shape is not None, "Two of r, res and shape must be given"
-		res   = np.zeros(2)+res
+		res   = wcsutils.expand_res(res, dirs)
 		shape = utils.nint(np.zeros(2)+shape[-2:]) # Broadcast and make sure it's an integer
 		shape = shape//2*2+1                       # Force odd shape
 		wcs   = wcsutils.explicit(ctype=ctype, crval=[0,0], cdelt=res[::-1]/utils.degree, crpix=shape[::-1]//2+1)
 	elif shape is None: # res and r given
 		assert res is not None and r is not None, "Two of r, res and shape must be given"
-		res   = np.zeros(2)+res
+		res   = wcsutils.expand_res(res, dirs)
 		r     = np.zeros(2)+r
 		wcs   = wcsutils.explicit(ctype=ctype, crval=[0,0], cdelt=res[::-1]/utils.degree, crpix=[1,1])
 		rpix  = utils.nint(np.abs(wcsutils.nobcheck(wcs).wcs_world2pix(r[None,::-1]/utils.degree,0)[0,::-1]))
@@ -1418,7 +1423,7 @@ def thumbnail_geometry(r=None, res=None, shape=None, dims=(), proj="tan"):
 		r     = np.zeros(2)+r
 		wcs   = wcsutils.explicit(ctype=ctype, crval=[0,0], crpix=[1,1])
 		rpix  = np.abs(wcsutils.nobcheck(wcs).wcs_world2pix(r[None,::-1]/utils.degree,0)[0,::-1])
-		res_ratio = (shape-1)/(2*rpix)
+		res_ratio = (shape-1)/(2*rpix)*dirs
 		wcs.wcs.cdelt /= res_ratio[::-1]
 		wcs.wcs.crpix  = shape[::-1]//2+1
 	shape = tuple(shape)

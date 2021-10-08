@@ -448,7 +448,7 @@ def harm2profile(bl, r):
 	r  = np.asarray(r)
 	rtype = bl.reshape(-1)[0].real.dtype
 	minfo = sharp.map_info(theta=r, nphi=1)
-	ainfo = sharp.alm_info(lmax=bl.size-1, mmax=0)
+	ainfo = sharp.alm_info(lmax=bl.shape[-1]-1, mmax=0)
 	sht   = sharp.sht(minfo, ainfo)
 	l     = np.arange(bl.shape[-1])
 	alm   = bl * ((2*l+1)/(4*np.pi))**0.5 + 0j
