@@ -395,13 +395,17 @@ def interpol(a, inds, order=3, mode="nearest", mask_nan=False, cval=0.0, prefilt
 	if inds_orig_nd == 1: res = res[...,0]
 	return res
 
-def interpol_prefilter(a, npre=None, order=3, inplace=False):
+def interpol_prefilter(a, npre=None, order=3, inplace=False, mode="nearest"):
+	if order < 2: return a
 	a = np.asanyarray(a)
 	if not inplace: a = a.copy()
 	if npre is None: npre = max(0,a.ndim - 2)
-	with flatview(a, range(npre, a.ndim), "rw") as aflat:
-		for i in range(len(aflat)):
-			aflat[i] = scipy.ndimage.spline_filter(aflat[i], order=order)
+	if npre < 0:     npre = a.ndim-npre
+	# spline_filter was looping through the enmap pixel by pixel with getitem.
+	# Not using flatview got around it, but I don't understand why it happend
+	# in the first place.
+	for I in nditer(a.shape[:-2]):
+		a[I] = scipy.ndimage.spline_filter(a[I], order=order, mode=mode)
 	return a
 
 def interp(x, xp, fp, left=None, right=None, period=None):

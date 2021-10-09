@@ -1,6 +1,7 @@
 from __future__ import print_function
 import numpy as np
-from . import wcsutils, utils, enmap, coordinates, fft
+from scipy import spatial
+from . import wcsutils, utils, enmap, coordinates, fft, curvedsky
 try: from . import sharp
 except ImportError: pass
 
@@ -107,6 +108,319 @@ def thumbnails_ivar(imap, coords, r=5*utils.arcmin, res=None, proj="tan",
 	return thumbnails(imap, coords, r=r, res=res, proj=proj, oshape=oshape, owcs=owcs,
 			order=1, oversample=1, pol=False, extensive=extensive, verbose=verbose,
 			pixwin=False)
+
+def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, nside_mode="pow2", boundary="constant", verbose=False):
+	"""Reproject from an enmap to healpix, optionally including a rotation.
+
+	imap:  The input enmap[...,ny,nx]. Stokes along the -3rd axis if
+	       present.
+	nside: The nside of the healpix map to generate. Not used if
+	       an output map is passed. Otherwise defaults to the same
+	       resolution as the input map.
+	lmax:  The highest multipole to use in any harmonic-space
+	       operations. Defaults to the input maps' Nyquist limit.
+	out:   An optional array [...,npix] to write the output map to.
+	       The ...  part must match the input map, as must the data
+	       type.
+	rot:   An optional coordinate rotation to apply. Either a string
+	       "isys,osys", where isys is the system to transform from,
+	       and osys is the system to transform to. Currently the values
+	       "cel" and "gal" are recognized. Alternatively, a tuple of
+	       3 euler zyz euler angles can be passed, in the same convention
+	       as healpy.rotate_alm.
+	spin:  A description of the spin of the entries along the stokes
+	       axis. Defaults to [0,2], which means that the first entry
+	       is spin-0, followed by a spin-2 pair (any non-zero spin
+	       covers a pair of entries). If the axis is longer than
+	       what's covered in the description, then it is repeated as
+	       necessary. Pass spin=[0] to disable any special treatment
+	       of this axis.
+	method: How to interpolate between the input and output
+	       pixelizations. Can be "harm" (default) or "spline".
+	       "harm" maps between them using spherical harmonics
+	       transforms. This preserves the power spectrum (so no window
+	       function is introduced), and averages noise down when the
+	       output pixels are larger than the input pixels. However, it
+	       can suffer from ringing around very bright features, and an
+	       all-positive input map may end up with small negative values.
+	       "spline" instead uses spline interpolation to look up the
+	       value in the intput map corresponding to each pixel center
+	       in the output map. The spline order is controlled with the
+	       "order" argument. Overall "harm" is best suited for normal
+	       sky maps, while "spline" with order = 0 or 1 is best suited
+	       for hitcount maps and masks.
+	order: The spline order to use when method="spline".
+	       0 corresponds to nearest neighbor interpolation.
+	       1 corresponds to bilinear interpolation (default)
+	       3 corresponds to bicubic spline interpolation.
+	       0 and 1 are local and do not introduce values outside
+	       the input range, but introduce some aliasing and loss of
+	       power. 3 has less power loss, but still non-zero, and
+	       is vulnerable to ringing.
+	extensive: Whether the map represents an extensive (as opposed to
+	       intensive) quantity. Extensive quantities have values
+	       proportional to the pixel size, unlike intensive quantities.
+	       Hitcount per pixel is an extensive quantity. Hitcount per
+	       square degree is an intensive quantity, as is a temperature
+	       map. Defaults to False.
+	bsize: The spline method operates on batches of pixels to save memory.
+	       This controls the batch size, in pixels. Defaults to 100000.
+	nside_mode: Controls which restrictions apply to nside in the case where
+	       it has to be inferred automatically. Can be "pow2", "mul32" and "any".
+	       "pow2", the default, results in nside being a power of two, as
+	       required by the healpix standard.
+	       "mul32" relaxes this requirement, making a map where nside is a
+	       multiple of 32. This is compatible with most healpix operations,
+	       but not with ud_grade or the nest pixel ordering.
+	       "any" allows for any integer nside.
+	boundary: The boundary conditions assumed for the input map when
+	       method="spline". Defaults to "constant", which assumes that
+	       anything outsize the map has a constant value of 0. Another
+	       useful value is "wrap", which assumes that the right side
+	       wraps over to the left, and the top to the bottom. See
+	       scipy.ndimage.distance_transform's documentation for other,
+	       less useful values. method="harm" always assumes "constant"
+	       regardless of this setting.
+	verbose: Whether to print information about what it's doing.
+	       Defaults to False, which doesn't print anything.
+
+	Typical usage:
+	* map_healpix  = map2healpix(map,  rot="cel,gal")
+	* ivar_healpix = map2healpix(ivar, rot="cel,gal", method="spline", spin=[0], extensive=True)
+	"""
+	# Get the map's typical resolution from cdelt
+	ires = np.mean(np.abs(imap.wcs.wcs.cdelt))*utils.degree
+	lnyq = np.pi/ires
+	if out is None:
+		if nside is None:
+			nside = restrict_nside(((4*np.pi/ires**2)/12)**0.5, nside_mode)
+		out = np.zeros(imap.shape[:-2]+(12*nside**2,), imap.dtype)
+	npix     = out.shape[-1]
+	opixsize = 4*np.pi/npix
+	# Might not be safe to go all the way to the Nyquist l, but looks that way to my tests.
+	if lmax is None: lmax = lnyq
+	if extensive:
+		imap = imap * (opixsize / imap.pixsizemap(broadcastable=True)) # not /= to avoid changing original imap
+	if method in ["harm", "harmonic"]:
+		# Harmonic interpolation preserves the power spectrum, but can introduce ringing.
+		# Probably not a good choice for positive-only quantities like hitcounts.
+		# Coordinate rotation is slow.
+		alm = curvedsky.map2alm(imap, lmax=lmax, spin=spin)
+		if rot is not None:
+			curvedsky.rotate_alm(alm, *rot2euler(rot), inplace=True)
+		curvedsky.alm2map_healpix(alm, out, spin=spin)
+		del alm
+	elif method == "spline":
+		# Covers both cubic spline interpolation (order=3), linear interpolation (order=1)
+		# and nearest neighbor (order=0). Harmonic interpolation is preferable to cubic
+		# splines, but linear and nearest neighbor may be useful. Coordinate rotation may
+		# be slow.
+		import healpy
+		imap_pre = utils.interpol_prefilter(imap, npre=-2, order=order, mode=boundary)
+		# Figure out if we need to compute polarization rotations
+		pol = imap.ndim > 2 and any([s != 0 for s,c1,c2 in enmap.spin_helper(spin, imap.shape[-3])])
+		# Batch to save memory
+		for i1 in range(0, npix, bsize):
+			i2   = min(i1+bsize, npix)
+			opix = np.arange(i1,i2)
+			pos  = healpy.pix2ang(nside, opix)[::-1]
+			pos[1][:] = np.pi/2-pos[1]
+			if rot is not None:
+				# Not sure why the [::-1] is necessary here. Maybe psi,theta,phi vs. phi,theta,psi?
+				pos = coordinates.transform_euler(inv_euler(rot2euler(rot))[::-1], pos, pol=pol)
+			# The actual interpolation happens here
+			vals  = imap_pre.at(pos[1::-1], order=order, prefilter=False, mode=boundary)
+			if rot is not None and imap.ndim > 2:
+				# Update the polarization to account for the new coordinate system
+				for s, c1, c2 in enmap.spin_helper(spin, imap.shape[-3]):
+					vals = enmap.rotate_pol(vals, -pos[2], spin=s, comps=[c1,c2-1], axis=-2)
+			out[...,i1:i2] = vals
+	else:
+		raise ValueError("Map reprojection method '%s' not recognized" % str(method))
+	return out
+
+def healpix2map(iheal, shape=None, wcs=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, verbose=False):
+	"""Reproject from healpix to an enmap, optionally including a rotation.
+
+	iheal: The input healpix map [...,npix]. Stokes along the -2nd axis if
+	       present.
+	shape: The (...,ny,nx) shape of the output map. Only the last two entries
+	       are used, the rest of the dimensions are taken from iheal.
+	       Mandatory unless an output map is passed.
+	wcs  : The world woordinate system object the output map.
+	       Mandatory unless an output map is passed.
+	lmax:  The highest multipole to use in any harmonic-space
+	       operations. Defaults to 3 times the nside of iheal.
+	out:   An optional enmap [...,ny,nx] to write the output map to.
+	       The ...  part must match iheal, as must the data type.
+	rot:   An optional coordinate rotation to apply. Either a string
+	       "isys,osys", where isys is the system to transform from,
+	       and osys is the system to transform to. Currently the values
+	       "cel" and "gal" are recognized. Alternatively, a tuple of
+	       3 euler zyz euler angles can be passed, in the same convention
+	       as healpy.rotate_alm.
+	spin:  A description of the spin of the entries along the stokes
+	       axis. Defaults to [0,2], which means that the first entry
+	       is spin-0, followed by a spin-2 pair (any non-zero spin
+	       covers a pair of entries). If the axis is longer than
+	       what's covered in the description, then it is repeated as
+	       necessary. Pass spin=[0] to disable any special treatment
+	       of this axis.
+	method: How to interpolate between the input and output
+	       pixelizations. Can be "harm" (default) or "spline".
+	       "harm" maps between them using spherical harmonics
+	       transforms. This preserves the power spectrum (so no window
+	       function is introduced), and averages noise down when the
+	       output pixels are larger than the input pixels. However, it
+	       can suffer from ringing around very bright features, and an
+	       all-positive input map may end up with small negative values.
+	       "spline" instead uses spline interpolation to look up the
+	       value in the intput map corresponding to each pixel center
+	       in the output map. The spline order is controlled with the
+	       "order" argument. Overall "harm" is best suited for normal
+	       sky maps, while "spline" with order = 0 or 1 is best suited
+	       for hitcount maps and masks.
+	order: The spline order to use when method="spline".
+	       0 corresponds to nearest neighbor interpolation.
+	       1 corresponds to bilinear interpolation (default)
+	       Higher order interpolation is not supported - use
+	       method="harm" for that.
+	extensive: Whether the map represents an extensive (as opposed to
+	       intensive) quantity. Extensive quantities have values
+	       proportional to the pixel size, unlike intensive quantities.
+	       Hitcount per pixel is an extensive quantity. Hitcount per
+	       square degree is an intensive quantity, as is a temperature
+	       map. Defaults to False.
+	bsize: The spline method operates on batches of pixels to save memory.
+	       This controls the batch size, in pixels. Defaults to 100000.
+	verbose: Whether to print information about what it's doing.
+	       Defaults to False, which doesn't print anything.
+
+	Typical usage:
+	* map  = healpix2map(map_healpix,  shape, wcs, rot="gal,cel")
+	* ivar = healpix2map(ivar_healpix, shape, wcs, rot="gal,cel", method="spline", spin=[0], extensive=True)
+	"""
+	iheal    = np.asarray(iheal)
+	npix     = iheal.shape[-1]
+	nside    = curvedsky.npix2nside(npix)
+	ipixsize = 4*np.pi/npix
+	if out is None:
+		out = enmap.zeros(iheal.shape[:-1]+shape[-2:], wcs, dtype=iheal.dtype)
+	else: shape, wcs = out.geometry
+	if lmax is None: lmax = 3*nside
+	if method in ["harm", "harmonic"]:
+		# Harmonic interpolation preserves the power spectrum, but can introduce ringing.
+		# Probably not a good choice for positive-only quantities like hitcounts.
+		# Coordinate rotation is slow.
+		alm = curvedsky.map2alm_healpix(iheal, lmax=lmax, spin=spin)
+		if rot is not None:
+			curvedsky.rotate_alm(alm, *rot2euler(rot), inplace=True)
+		curvedsky.alm2map(alm, out, spin=spin)
+		del alm
+	elif method == "spline":
+		# Covers linear interpolation (order=1) and nearest neighbor (order=0).
+		# Coordinate rotation may be slow.
+		import healpy
+		if order > 1:
+			raise ValueError("Only order 0 and order 1 spline interpolation supported from healpix maps")
+		# Figure out if we need to compute polarization rotations
+		pol  = iheal.ndim > 1 and any([s != 0 for s,c1,c2 in enmap.spin_helper(spin, iheal.shape[-2])])
+		# Batch to save memory
+		brow = (bsize+out.shape[-1]-1)//out.shape[-1]
+		for i1 in range(0, out.shape[-2], brow):
+			i2   = min(i1+brow, out.shape[-2])
+			pos  = out[...,i1:i2,:].posmap().reshape(2,-1)[::-1]
+			if rot is not None:
+				# Not sure why the [::-1] is necessary here. Maybe psi,theta,phi vs. phi,theta,psi?
+				pos = coordinates.transform_euler(inv_euler(rot2euler(rot))[::-1], pos, pol=pol)
+			pos[1] = np.pi/2 - pos[1]
+			if order == 0:
+				# Nearest neighbor. Just read off from the pixels
+				vals = iheal[...,healpy.ang2pix(nside, pos[1], pos[0])]
+			else:
+				# Bilinear interpolation. healpy only supports one component at a time, so loop
+				vals = np.zeros(iheal.shape[:-1]+pos.shape[-1:], iheal.dtype)
+				for I in utils.nditer(iheal.shape[:-1]):
+					vals[I] = healpy.get_interp_val(iheal[I], pos[1], pos[0])
+			if rot is not None and iheal.ndim > 1:
+				# Update the polarization to account for the new coordinate system
+				for s, c1, c2 in enmap.spin_helper(spin, iheal.shape[-2]):
+					vals = enmap.rotate_pol(vals, -pos[2], spin=s, comps=[c1,c2-1], axis=-2)
+			out[...,i1:i2,:] = vals.reshape(vals.shape[:-1]+(i2-i1,-1))
+	else:
+		raise ValueError("Map reprojection method '%s' not recognized" % str(method))
+	if extensive:
+		out *= out.pixsizemap(broadcastable=True)/ipixsize
+	return out
+
+def rot2euler(rot):
+	"""Given a coordinate rotation description, return the [rotz,roty,rotz] euler
+	angles it corresponds to. The rotation desciption can either be those angles
+	directly, or a string of the form isys,osys"""
+	cel2gal = np.array([57.06793215,  62.87115487, -167.14056929])*utils.degree
+	if isinstance(rot, basestring):
+		try: isys, osys = rot.split(",")
+		except ValueError:
+			raise ValueError("Rotation string must be of form 'isys,osys', but got '%s'" % str(rot))
+		R = spatial.transform.Rotation.identity()
+		# Handle input system
+		if   isys in ["cel","equ"]: pass
+		elif isys == "gal": R *= spatial.transform.Rotation.from_euler("zyz", cel2gal).inv()
+		else: raise ValueError("Unrecognized system '%s'" % isys)
+		# Handle output system
+		if   osys in ["cel","equ"]: pass
+		elif osys == "gal": R *= spatial.transform.Rotation.from_euler("zyz", cel2gal)
+		else: raise ValueError("Unrecognized system '%s'" % osys)
+		return R.as_euler("zyz")
+	else:
+		rot = np.asfarray(rot)
+		return rot
+
+def inv_euler(euler): return [-euler[2], -euler[1], -euler[0]]
+
+def _rotate_spin(vals, ang, spin, comps, axis):
+	if spin == 0: return vals
+	c, s = np.cos(2*ang), np.sin(2*ang)
+	res = np.array(vals)
+	res[...,comps[0],:] = c*vals[...,comps[0],:] - s*vals[...,comps[1],:]
+	res[...,comps[1],:] = s*vals[...,comps[0],:] + c*vals[...,comps[1],:]
+	return res
+
+def restrict_nside(nside, mode="mul32", round="ceil"):
+	"""Given an arbitrary Healpix nside, return one that's restricted in
+	various ways according to the "mode" argument:
+
+	"pow2":  Restrict to a power of 2. This is required for compatibility
+	 with the rarely used "nest" pixel ordering in Healpix, and is the standard
+	 in the Healpix world.
+	"mul32": Restrict to multiple of 32, unless 12*nside**2<=1024.
+	 This is enough to make the maps writable by healpy.
+	"any":   No restriction
+
+	The "round" argument controls how any rounding is done. This can be one
+	of the strings "ceil" (default), "round" or "floor", or you can pass in
+	a custom function(nside) -> nside.
+
+	In all cases, the final nside is converted to an integer and capped to
+	1 below.
+	"""
+	if isinstance(round, basestring):
+		round = {"floor":np.floor, "round":np.round, "ceil":np.ceil}[round]
+	if   mode == "any": nside = round(nside)
+	elif mode == "mul32":
+		if 12*nside**2 > 1024:
+			nside = round(nside/32)*32
+	elif mode == "pow2":
+		nside = 2**round(np.log2(nside))
+	else:
+		raise ValueError("Unrecognized nside mode '%s'" % str(mode))
+	nside = max(1,int(nside))
+	return nside
+
+
+################################
+####### Old stuff below ########
+################################
 
 def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
 				 width=None, height=None, width_multiplier=1.,
