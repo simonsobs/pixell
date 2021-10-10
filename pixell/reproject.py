@@ -378,14 +378,6 @@ def rot2euler(rot):
 
 def inv_euler(euler): return [-euler[2], -euler[1], -euler[0]]
 
-def _rotate_spin(vals, ang, spin, comps, axis):
-	if spin == 0: return vals
-	c, s = np.cos(2*ang), np.sin(2*ang)
-	res = np.array(vals)
-	res[...,comps[0],:] = c*vals[...,comps[0],:] - s*vals[...,comps[1],:]
-	res[...,comps[1],:] = s*vals[...,comps[0],:] + c*vals[...,comps[1],:]
-	return res
-
 def restrict_nside(nside, mode="mul32", round="ceil"):
 	"""Given an arbitrary Healpix nside, return one that's restricted in
 	various ways according to the "mode" argument:
