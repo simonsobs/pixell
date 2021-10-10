@@ -2,7 +2,7 @@
 full sky."""
 from __future__ import print_function, division
 from . import sharp
-import numpy as np
+import numpy as np, os
 from . import enmap, powspec, wcsutils, utils
 
 class ShapeError(Exception): pass
@@ -743,3 +743,31 @@ def alm2cl(alm, alm2=None, ainfo=None):
 	alm = np.asarray(alm)
 	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
 	return ainfo.alm2cl(alm, alm2=alm2)
+
+def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=0, inplace=False):
+	"""Rotate the given alm[...,:] via the zyz rotations given by psi, theta and phi.
+	The underlying implementation is provided by ducc0 or healpy. This is controlled
+	with the "method" argument, which can be "ducc0", "healpy" or "auto". For "auto"
+	it uses ducc0 if available, otherwise healpy. The resulting alm is returned.
+	If inplace=True, then the input alm will be modified in place (but still returned).
+	The number of threads to use is controlled with the nthread argument. If this is
+	0 (the default), then the number of threads is given by the value of the OMP_NUM_THREADS
+	variable."""
+	if not inplace:  alm  = alm.copy()
+	if lmax is None: lmax = sharp.nalm2lmax(alm.shape[-1])
+	if method == "auto": method = utils.first_importable("ducc0", "healpy")
+	if method == "ducc0":
+		import ducc0
+		try: nthread = nthread or int(os.environ['OMP_NUM_THREADS'])
+		except (KeyError, ValueError): nthread = 0
+		for I in utils.nditer(alm.shape[:-1]):
+			alm[I] = ducc0.sht.rotate_alm(alm[I], lmax=lmax, psi=psi, theta=theta, phi=phi)
+	elif method == "healpy":
+		import healpy
+		for I in utils.nditer(alm.shape[:-1]):
+			healpy.rotate_alm(alm[I], lmax=lmax, psi=psi, theta=theta, phi=phi)
+	elif method is None:
+		raise ValueError("No rotate_alm implementations found")
+	else:
+		raise ValueError("Unrecognized rotate_alm implementation '%s'" % str(method))
+	return alm

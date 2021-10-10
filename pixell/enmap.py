@@ -1190,11 +1190,20 @@ def queb_rotmat(lmap, inverse=False, iau=False, spin=2):
 	if inverse: s = -s
 	return samewcs(np.array([[c,-s],[s,c]]),lmap)
 
-def rotate_pol(emap, angle, comps=[-2,-1]):
-	c, s = np.cos(2*angle), np.sin(2*angle)
-	res = emap.copy()
-	res[...,comps[0],:,:] = c*emap[...,comps[0],:,:] - s*emap[...,comps[1],:,:]
-	res[...,comps[1],:,:] = s*emap[...,comps[0],:,:] + c*emap[...,comps[1],:,:]
+def rotate_pol(emap, angle, comps=[-2,-1], spin=2, axis=-3):
+	"""Rotate the polarization of the given enmap "emap" by angle
+	(in radians) along the given components (the last two by default)
+	of the given axis (the 3rd-last axis by default). In standard enmaps
+	the 3rd-last axis is holds the Stokes components of the map in the order
+	T, Q, U. The spin argument controls the spin, and defaults to spin-2.
+	This function is flexible enough to work with non-enmaps too."""
+	if spin == 0: return emap
+	axis %= emap.ndim
+	c, s  = np.cos(spin*angle), np.sin(spin*angle)
+	res   = emap.copy()
+	pre   = (slice(None),)*axis
+	res[pre+(comps[0],)] = c*emap[pre+(comps[0],)] - s*emap[pre+(comps[1],)]
+	res[pre+(comps[1],)] = s*emap[pre+(comps[0],)] + c*emap[pre+(comps[1],)]
 	return res
 
 def map_mul(mat, vec):

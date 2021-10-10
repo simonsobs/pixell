@@ -395,13 +395,17 @@ def interpol(a, inds, order=3, mode="nearest", mask_nan=False, cval=0.0, prefilt
 	if inds_orig_nd == 1: res = res[...,0]
 	return res
 
-def interpol_prefilter(a, npre=None, order=3, inplace=False):
+def interpol_prefilter(a, npre=None, order=3, inplace=False, mode="nearest"):
+	if order < 2: return a
 	a = np.asanyarray(a)
 	if not inplace: a = a.copy()
 	if npre is None: npre = max(0,a.ndim - 2)
-	with flatview(a, range(npre, a.ndim), "rw") as aflat:
-		for i in range(len(aflat)):
-			aflat[i] = scipy.ndimage.spline_filter(aflat[i], order=order)
+	if npre < 0:     npre = a.ndim-npre
+	# spline_filter was looping through the enmap pixel by pixel with getitem.
+	# Not using flatview got around it, but I don't understand why it happend
+	# in the first place.
+	for I in nditer(a.shape[:-2]):
+		a[I] = scipy.ndimage.spline_filter(a[I], order=order, mode=mode)
 	return a
 
 def interp(x, xp, fp, left=None, right=None, period=None):
@@ -1597,7 +1601,7 @@ def find_equal_groups_fast(vals):
 	2. Only works with exact quality, with no support for approximate equality
 	3. Returns 3 numpy arrays instead of a list of lists.
 	"""
-	order = np.argsort(vals)
+	order = np.argsort(vals, kind="stable")
 	uvals, edges = np.unique(vals[order], return_index=True)
 	edges = np.concatenate([edges,[len(vals)]])
 	return uvals, order, edges
@@ -2604,3 +2608,26 @@ class CG:
 		with h5py.File(fname, "r") as hfile:
 			for key in ["i","rz","rz0","x","r","p","err"]:
 				setattr(self, key, hfile[key].value)
+
+def nditer(shape):
+	ndim = len(shape)
+	I    = [0]*ndim
+	while True:
+		yield tuple(I)
+		for dim in range(ndim-1,-1,-1):
+			I[dim] += 1
+			if I[dim] < shape[dim]: break
+			I[dim] = 0
+		else:
+			break
+
+def first_importable(*args):
+	"""Given a list of module names, return the name of the first
+	one that can be imported."""
+	import importlib
+	for arg in args:
+		try:
+			importlib.import_module(arg)
+			return arg
+		except ModuleNotFoundError:
+			continue
