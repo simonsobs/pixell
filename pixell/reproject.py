@@ -1,6 +1,7 @@
 from __future__ import print_function
 import numpy as np
 from scipy import spatial
+import warnings
 from . import wcsutils, utils, enmap, coordinates, fft, curvedsky
 try: from . import sharp
 except ImportError: pass
@@ -465,7 +466,7 @@ def healpix_from_enmap_interp(imap, **kwargs):
 	return imap.to_healpix(**kwargs)
 
 
-def healpix_from_enmap(imap, lmax, nside):
+def healpix_from_enmap(imap, lmax, nside, legacy=True):
 	"""Convert an ndmap to a healpix map such that the healpix map is
 	band-limited up to lmax. Only supports single component (intensity)
 	currently. The resulting map will be band-limited. Bright sources and 
@@ -483,6 +484,10 @@ def healpix_from_enmap(imap, lmax, nside):
 		retmap: (Npix,) healpix map as array
 
 	"""
+	warnings.warn("This function is deprecated and will be removed in a future release. Please use reproject.map2healpix instead.",DeprecationWarning)
+	if not(legacy):
+		return map2healpix(imap, nside=nside, lmax=lmax, out=None, rot=None, spin=[0,2], method="harm", order=None, extensive=False, bsize=100000, nside_mode="pow2", boundary="constant", verbose=False)
+	
 	from pixell import curvedsky
 	import healpy as hp
 	alm = curvedsky.map2alm(imap, lmax=lmax, spin=0)
@@ -494,7 +499,7 @@ def healpix_from_enmap(imap, lmax, nside):
 
 
 def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
-					   rot="gal,equ", first=0, is_alm=False, return_alm=False, f_ell=None):
+					   rot="gal,equ", first=0, is_alm=False, return_alm=False, f_ell=None, legacy=True):
 	"""Convert a healpix map to an ndmap using harmonic space reprojection.
 	The resulting map will be band-limited. Bright sources and sharp edges
 	could cause ringing. Use enmap_from_healpix_interp if you are worried
@@ -525,6 +530,10 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
 		is True
 
 	"""
+	warnings.warn("This function is deprecated and will be removed in a future release. Please use reproject.healpix2map instead.",DeprecationWarning)
+	if not(legacy):
+		return healpix2map(hp_map, shape=shape, wcs=wcs, lmax=None if lmax==0 else lmax, out=None, rot=rot, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, verbose=False)
+	
 	from pixell import curvedsky
 	import healpy as hp
 
@@ -587,7 +596,7 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
 
 
 def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
-							  interpolate=False):
+							  interpolate=False,legacy=True):
 	"""Project a healpix map to an enmap of chosen shape and wcs. The wcs
 	is assumed to be in equatorial (ra/dec) coordinates. No coordinate systems 
 	other than equatorial or galactic are currently supported. Only intensity 
@@ -605,6 +614,10 @@ def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
 		is done.
 
 	"""
+	warnings.warn("This function is deprecated and will be removed in a future release. Please use reproject.healpix2map instead.",DeprecationWarning)
+	if not(legacy):
+		return healpix2map(hp_map, shape=shape, wcs=wcs, lmax=None, out=None, rot=rot, spin=[0,2], method="spline", order=0 if not(interpolate) else 1, extensive=False, bsize=100000, verbose=False)
+	
 	import healpy as hp
 	from astropy.coordinates import SkyCoord
 	import astropy.units as u

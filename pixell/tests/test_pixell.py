@@ -738,7 +738,40 @@ class PixelTests(unittest.TestCase):
         for i in range(ret.shape[0]):
             diff = ret[i] - model
             assert np.all(np.isclose(diff,0,atol=1e-3))
-                    
+
+    def test_healpix2map(self):
+        print("Testing healpix2map...")
+        # We will use legacy reproject functions and compare with the new ones
+
+        ells,cltt,clee,clbb,clte = np.loadtxt(DATA_PREFIX+"cosmo2017_10K_acc3_lensedCls.dat",unpack=True)
+        _,ps_lens = powspec.read_camb_scalar(DATA_PREFIX+"test_scalCls.dat")
+        np.random.seed(100)
+        
+
+        import healpy as hp
+
+        for nside in [256]: # add higher
+            for mtype in ['cmb','lens','white']:
+                print(mtype)
+                for rot in [None,'gal,equ']:
+                    if mtype=='cmb':
+                        ps = [cltt, clee, clbb, clte]
+                    elif mtype=='lens':
+                        ps = ps_lens[0,0]
+                    elif mtype=='white':
+                        ps = np.ones(ps_lens.shape[-1])
+                    hmap = hp.synfast(ps,nside,new=True,pol=True)
+                    res = 2.0 * 2048 / nside
+                    shape,wcs = enmap.fullsky_geometry(res=res * u.arcmin)
+                    # The legacy function
+                    omap1 = reproject.enmap_from_healpix(hmap, shape, wcs, ncomp=hmap.shape[0] if hmap.ndim==2 else 1, unit=1, lmax=0,rot=rot, first=0, is_alm=False, return_alm=False, f_ell=None, legacy=True)
+                    # The new function
+                    omap2 = reproject.enmap_from_healpix(hmap, shape, wcs, ncomp=hmap.shape[0] if hmap.ndim==2 else 1, unit=1, lmax=0,rot=rot, first=0, is_alm=False, return_alm=False, f_ell=None, legacy=False)
+                    assert np.all(np.isclose(omap1,omap2))
+                    print(f"{mtype} {rot} passes")
+            
+        
+            
 
 if __name__ == '__main__':
     unittest.main()

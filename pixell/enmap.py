@@ -2087,7 +2087,7 @@ def stamps(map, pos, shape, aslist=False):
 	res = samewcs(np.array(res),res[0])
 	return res
 
-def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000, destroy_input=False):
+def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000, destroy_input=False, legacy=True):
 	"""Project the enmap "imap" onto the healpix pixelization. If omap is given,
 	the output will be written to it. Otherwise, a new healpix map will be constructed.
 	The healpix map must be in RING order. nside controls the resolution of the output map.
@@ -2097,6 +2097,11 @@ def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000, destroy_input=Fa
 	tradeoff of the function. Higher values use more memory, and might (and might not)
 	give higher speed. If destroy_input is True, then the input map will be prefiltered
 	in-place, which saves memory but modifies its values."""
+	
+	warnings.warn("This function is deprecated and will be removed in a future release. Please use reproject.map2healpix instead.",DeprecationWarning)
+	if not(legacy):
+		return map2healpix(imap, nside=nside, lmax=None, out=omap, rot=None, spin=[0,2], method="spline", order=order, extensive=False, bsize=chunk, nside_mode="pow2", boundary="constant", verbose=False)
+	
 	import healpy
 	if not destroy_input and order > 1: imap = imap.copy()
 	if order > 1:

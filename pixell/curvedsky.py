@@ -4,6 +4,7 @@ from __future__ import print_function, division
 from . import sharp
 import numpy as np, os
 from . import enmap, powspec, wcsutils, utils
+import warnings
 
 class ShapeError(Exception): pass
 
@@ -763,6 +764,7 @@ def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=0, inplac
 		for I in utils.nditer(alm.shape[:-1]):
 			alm[I] = ducc0.sht.rotate_alm(alm[I], lmax=lmax, psi=psi, theta=theta, phi=phi)
 	elif method == "healpy":
+		warnings.warn("No ducc0 found. Falling back to healpy for rotate_alm, which can be much slower.")
 		import healpy
 		for I in utils.nditer(alm.shape[:-1]):
 			healpy.rotate_alm(alm[I], lmax=lmax, psi=psi, theta=theta, phi=phi)
