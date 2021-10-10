@@ -125,7 +125,7 @@ def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], met
 	rot:   An optional coordinate rotation to apply. Either a string
 	       "isys,osys", where isys is the system to transform from,
 	       and osys is the system to transform to. Currently the values
-	       "cel" and "gal" are recognized. Alternatively, a tuple of
+	       "cel"/"equ" and "gal" are recognized. Alternatively, a tuple of
 	       3 euler zyz euler angles can be passed, in the same convention
 	       as healpy.rotate_alm.
 	spin:  A description of the spin of the entries along the stokes
@@ -256,7 +256,7 @@ def healpix2map(iheal, shape=None, wcs=None, lmax=None, out=None, rot=None, spin
 	rot:   An optional coordinate rotation to apply. Either a string
 	       "isys,osys", where isys is the system to transform from,
 	       and osys is the system to transform to. Currently the values
-	       "cel" and "gal" are recognized. Alternatively, a tuple of
+	       "cel"/"equ" and "gal" are recognized. Alternatively, a tuple of
 	       3 euler zyz euler angles can be passed, in the same convention
 	       as healpy.rotate_alm.
 	spin:  A description of the spin of the entries along the stokes
