@@ -358,7 +358,7 @@ def rot2euler(rot):
 	"""Given a coordinate rotation description, return the [rotz,roty,rotz] euler
 	angles it corresponds to. The rotation desciption can either be those angles
 	directly, or a string of the form isys,osys"""
-	cel2gal = np.array([57.06793215,  62.87115487, -167.14056929])*utils.degree
+	gal2cel = np.array([57.06793215,  62.87115487, -167.14056929])*utils.degree
 	if isinstance(rot, basestring):
 		try: isys, osys = rot.split(",")
 		except ValueError:
@@ -366,11 +366,11 @@ def rot2euler(rot):
 		R = spatial.transform.Rotation.identity()
 		# Handle input system
 		if   isys in ["cel","equ"]: pass
-		elif isys == "gal": R *= spatial.transform.Rotation.from_euler("zyz", cel2gal).inv()
+		elif isys == "gal": R *= spatial.transform.Rotation.from_euler("zyz", gal2cel)
 		else: raise ValueError("Unrecognized system '%s'" % isys)
 		# Handle output system
 		if   osys in ["cel","equ"]: pass
-		elif osys == "gal": R *= spatial.transform.Rotation.from_euler("zyz", cel2gal)
+		elif osys == "gal": R *= spatial.transform.Rotation.from_euler("zyz", gal2cel).inv()
 		else: raise ValueError("Unrecognized system '%s'" % osys)
 		return R.as_euler("zyz")
 	else:
