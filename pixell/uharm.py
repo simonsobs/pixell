@@ -135,7 +135,7 @@ class UHT:
 			return curvedsky.harm2profile(harm, r)
 	def lprof2hprof(self, lprof):
 		if self.mode == "flat":
-			return utils.interpol(lprof, self.l[None], order=1, mode="constant")
+			return enmap.enmap(utils.interpol(lprof, self.l[None], order=1, mode="constant"), self.wcs, copy=False)
 		else:
 			if lprof.shape[-1] >= self.lmax+1:
 				return lprof[...,:self.lmax+1]
