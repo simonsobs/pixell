@@ -1,4 +1,3 @@
-# Tiled map support. Will be moved to pixell or sotodlib later. Very similar to multimap
 import numpy as np, os, warnings
 from . import enmap, utils
 
@@ -27,12 +26,12 @@ class TileMap(np.ndarray):
 
 	Example: A TileMap covering a logical area with shape (3,100,100) with (10,10) tiles
 	and active tiles [7,5] will have a shape of (3,200=10*10*2) when accessed directly.
-	When accessed through the .tile view, .tile[5] will return a view of an (3,10,10) enmap,
-	as will .tile[7]. For all other indices, .tile[x] will return None. The same
-	two tiles can be accessed as .active_tile[1] and .active_tile[0] respecitvely.
+	When accessed through the .tiles view, .tiles[5] will return a view of an (3,10,10) enmap,
+	as will .tiles[7]. For all other indices, .tiles[x] will return None. The same
+	two tiles can be accessed as .active_tiles[1] and .active_tiles[0] respecitvely.
 
 	Slicing the TileMap using the [] operator works. For all but the last axis, this
-	does what you would expect. E.g. for the above example, tile_map[0].tile[5] would
+	does what you would expect. E.g. for the above example, tile_map[0].tiles[5] would
 	return a view of a (10,10) enmap (so the first axis is gone). If the last axis,
 	which represents a flattened view of the pixels and tiles, is sliced, then the
 	returned object will be a plain numpy array.
@@ -75,10 +74,10 @@ class TileMap(np.ndarray):
 	def copy(self, order='K'):
 		return TileMap(np.copy(self,order), self.geometry.copy())
 	@property
-	def tile(self):
+	def tiles(self):
 		return _TileView(self, active=False)
 	@property
-	def active_tile(self):
+	def active_tiles(self):
 		return _TileView(self, active=True)
 	def with_tiles(self, other, strict=False):
 		"""If a and b are TileMaps with the same overall tiling but different
@@ -94,15 +93,14 @@ class TileMap(np.ndarray):
 		if np.all(active == self.geometry.active):
 			return self.copy()
 		# Construct the new geometry
-		new_geom = self.geometry.copy()
-		if strict: new_geom.set_active(active)
-		else:      new_geom.add_active(active)
+		if strict: new_geom = self.geometry.copy(active    =active)
+		else:      new_geom = self.geometry.copy(add_active=active)
 		# Construct the new array
 		res = zeros(new_geom, dtype=self.dtype)
 		# Copy over data. Not optimized
 		for gi in res.geometry.active:
 			ai = self.geometry.lookup[gi]
-			if ai >= 0: res.tile[gi] = self.active_tile[ai]
+			if ai >= 0: res.tiles[gi] = self.active_tiles[ai]
 		return res
 	# Forward some properties of TileGeometry
 	@property
@@ -130,9 +128,16 @@ class _TileView:
 		entry in the slice must be an integer - general slicing in the tile axis is not
 		supported, though it could be added. The rest of the indices can be anything an
 		enmap will accept."""
-		sel1, sel2 = utils.split_slice(sel, [1,self.tile_map.ndim+2-1])
-		if len(sel1) == 0: return self.tile_map
-		i    = sel1[0]
+		if isinstance(sel, int):
+			# Optimize common use case by avoiding slice decoding.
+			# Doesn't save much time, really. 0.1 ms when combined with the
+			# sel2 check below
+			i      = sel
+			sel2   = ()
+		else:
+			sel1, sel2 = utils.split_slice(sel, [1,self.tile_map.ndim+2-1])
+			if len(sel1) == 0: return self.tile_map
+			i      = sel1[0]
 		geo  = self.tile_map.geometry
 		if self.active:
 			ai, gi = i, geo.active[i]
@@ -143,7 +148,11 @@ class _TileView:
 			if ai < 0: return None
 		if ai < 0 or ai >= self.tile_map.nactive:
 			raise IndexError("Active tile index %d (global %d) is out of bounds for TileMap with %d active tiles" % (ai, gi, self.tile_map.nactive))
-		return enmap.ndmap(self.tile_map[...,self.offs[ai]:self.offs[ai+1]].reshape(self.tile_map.pre + self.tile_map.geometry.tile[gi].shape[-2:]), self.tile_map.geometry.tile[gi].wcs)[sel2]
+		tile_info = geo.tiles[gi]
+		tile = enmap.ndmap(self.tile_map[...,self.offs[ai]:self.offs[ai+1]].reshape(self.tile_map.pre + tile_info.shape[-2:]), tile_info.wcs)
+		# Apply any slicing of the tile itself
+		if len(sel2) > 0: tile = tile[sel2]
+		return tile
 	def __setitem__(self, sel, val):
 		"""Set a single tile or subset of a tile to the given value, which can be a number
 		or a compatibly shaped array. The first entry in the slice must be an integer -
@@ -164,13 +173,24 @@ class _TileView:
 		# This assumes that the slicing and reshaping won't cause copies. This should be the case if
 		# self.tile_map is contiguous. To be robust I should detect if a copy would be made, and fall back
 		# on something slower in that case
-		enmap.ndmap(self.tile_map[...,self.offs[ai]:self.offs[ai+1]].reshape(self.tile_map.pre + self.tile_map.geometry.tile[gi].shape[-2:]), self.tile_map.geometry.tile[gi].wcs)[sel2] = val
+		tile_info = geo.tiles[gi]
+		enmap.ndmap(self.tile_map[...,self.offs[ai]:self.offs[ai+1]].reshape(self.tile_map.pre + tile_info.shape[-2:]), tile_info.wcs)[sel2] = val
+	def __iter__(self):
+		"""Iterator access. Faster than __getitem__ due to not having to resolve
+		the more complicated slicing it supports."""
+		geo = self.tile_map.geometry
+		if self.active: items = [(ai,geo.active[ai]) for ai in range(geo.nactive)]
+		else: items = [(geo.lookup[gi],gi) for gi in range(geo.ntile) if geo.lookup[gi] >= 0]
+		for ai, gi in items:
+				tile_info = geo.tiles[geo.active[ai]]
+				yield enmap.ndmap(self.tile_map[...,self.offs[ai]:self.offs[ai+1]].reshape(self.tile_map.pre + tile_info.shape[-2:]), tile_info.wcs)
 
 # Math operations. These are automatically supported by virtue of being a numpy subclass,
 # but the functions below add support for expanding the active tiles automatically when TileMaps
 # with incompatible active tiles are combined.
 def make_binop(op, is_inplace=False):
 	def binop(self, other):
+		opfun = getattr(np.ndarray, op)
 		if isinstance(other, TileMap): # could be replaced with a try statement for duck typing
 			comp = self.geometry.compatible(other.geometry)
 			if comp == 0:
@@ -187,7 +207,7 @@ def make_binop(op, is_inplace=False):
 					if opre != self.pre:
 						raise ValueError("operands could not be broadcast together with geometries %s and %s" % (str(self.geometry), str(other.geometry)))
 					for gi in other.geometry.active:
-						self.tile[gi] = getattr(np.ndarray, op)(self.tile[gi], other.tile[gi])
+						self.tiles[gi] = opfun(self.tiles[gi], other.tiles[gi])
 					return self
 				else:
 					# Not in-place, so we have more flexibility. First build the output map
@@ -198,17 +218,17 @@ def make_binop(op, is_inplace=False):
 					out  = zeros(ogeo, otype)
 					# Copy over our old values
 					for gi in self.geometry.active:
-						out.tile[gi] = self.tile[gi]
+						out.tiles[gi] = self.tiles[gi]
 					# Then update with valus from other
 					for gi in other.geometry.active:
-						out.tile[gi] = getattr(np.ndarray, op)(out.tile[gi], other.tile[gi])
+						out.tiles[gi] = opfun(out.tiles[gi], other.tiles[gi])
 					return out
 			else:
 				# Fully compatible. Handle outside
 				pass
 		# Handle fully compatible or plain array. Fast.
-		out =  getattr(np.ndarray, op)(self, other)
-		out = TileMap(out, self.geometry.with_pre(out.shape[:-1]))
+		out =  opfun(self, other)
+		out = TileMap(out, self.geometry.copy(pre=out.shape[:-1]))
 		return out
 	return binop
 
@@ -225,56 +245,44 @@ for op in ["__iadd__", "__isub__", "__imul__", "__ipow__", "__itruediv__", "__if
 ########################################
 
 def geometry(shape, wcs, tile_shape=(500,500), active=[]):
-	"""TileGeometry constructor. Equivalent to TileGeometry.__init__"""
-	return TileGeometry(shape, wcs, tile_shape=tile_shape, active=active)
+	"""TileGeometry constructor.
+	shape, wcs: The enmap geometry of the full space the tiling covers.
+	tile_shape: The (ny,nx) vertical and horizontal tile shape in pixels.
+	active:     The list of active tile indices."""
+	shape      = tuple(shape)
+	wcs        = wcs
+	tile_shape = tuple(np.zeros(2,int)+tile_shape) # broadcast to len(2)
+	# Get the grid shape by rounding up to include any partial tiles at the edge
+	grid_shape = tuple([(s+ts-1)//ts for s,ts in zip(shape[-2:], tile_shape[-2:])])
+	ntile      = grid_shape[0]*grid_shape[1]
+	# Compute all the individual tile shapes. Should maybe be done on-the-fly
+	tile_shapes= np.zeros(grid_shape + (2,), int)
+	tile_shapes[:, :] = tile_shape
+	tile_shapes[-1,:,0] = np.minimum(tile_shape[-2], (shape[-2]-1)%tile_shape[-2]+1)
+	tile_shapes[:,-1,1] = np.minimum(tile_shape[-1], (shape[-1]-1)%tile_shape[-1]+1)
+	tile_shapes = tile_shapes.reshape(-1,2)
+	# Number of pixels per tile
+	npixs       = tile_shapes[:,0]*tile_shapes[:,1]
+	# And the active tile list and reverse lookup
+	active      = np.array(active,int)
+	lookup      = np.full(ntile,-1,int)
+	lookup[active] = np.arange(len(active))
+	# Call the raw constructor
+	return TileGeometry(shape, wcs, tile_shape, grid_shape, tile_shapes, npixs, active, lookup)
 
 class TileGeometry:
-	def __init__(self, shape, wcs, tile_shape=(500,500), active=[]):
-		"""Initialize a TileGeometry that covers a logical enmap geometry given by
-		shape, wcs, which is tiled by tiles of shape tile_shape in pixels, with
-		only the tiles whose 1d index is listed in active actually stored."""
-		self.shape      = tuple(shape)
+	def __init__(self, shape, wcs, tile_shape, grid_shape, tile_shapes, npixs, active, lookup):
+		"""Raw constructor for a TileGeometry. You normally don't want to use this. Use
+		tilemap.geometry() instead."""
+		self.shape      = shape
 		self.wcs        = wcs
-		self.tile_shape = tuple(np.zeros(2,int)+tile_shape) # broadcast to len(2)
-		# Derived properties. First the grid dimensions
-		self.grid_shape = tuple([(s+ts-1)//ts for s,ts in zip(self.shape[-2:], self.tile_shape[-2:])])
+		self.tile_shape = tile_shape
+		self.grid_shape = grid_shape
 		self.ntile      = self.grid_shape[0]*self.grid_shape[1]
-		# The actual shape of each tile. Can be smaller than tile_shape at the edge
-		self.tile_shapes= np.zeros(self.grid_shape + (2,), int)
-		self.tile_shapes[:, :] = self.tile_shape
-		self.tile_shapes[-1,:,0] = np.minimum(self.tile_shape[-2], (self.shape[-2]-1)%self.tile_shape[-2]+1)
-		self.tile_shapes[:,-1,1] = np.minimum(self.tile_shape[-1], (self.shape[-1]-1)%self.tile_shape[-1]+1)
-		self.tile_shapes = self.tile_shapes.reshape(-1,2)
-		self.npixs       = self.tile_shapes[:,0]*self.tile_shapes[:,1]
-		# Set the active tiles
-		self.set_active(active)
-	# Mutating methods
-	def set_active(self, active):
-		"""Replace our the list of active indices with those provided active. Changes the
-		current object."""
-		self.active   = np.array(active,int)
-		self.lookup   = np.full(self.ntile,-1,int)
-		self.lookup[active] = np.arange(len(active))
-		return self
-	def add_active(self, active):
-		"""Add the list of active indices active to our current list. Entries already in
-		active are ignored. Changes the current object."""
-		active = np.asarray(active,int)
-		new    = active[self.lookup[active]<0]
-		if len(new) > 0:
-			self.set_active(np.concatenate([self.active, new]))
-		return self
-	# Non-mutating methods. It seems a bit excessive to have all of set/add/with/plus...
-	def with_active(self, active):
-		"""As set_active, but returns a new object, leaving the current one unchanged."""
-		return self.copy().set_active(active)
-	def plus_active(self, active):
-		"""As add_active, but returns a new object, leaving the current one unchanged."""
-		return self.copy().add_active(active)
-	def with_pre(self, pre):
-		res = self.copy()
-		res.shape = tuple(pre) + self.shape[-2:]
-		return res
+		self.tile_shapes= tile_shapes
+		self.npixs      = npixs
+		self.active     = active
+		self.lookup     = lookup
 	def grid2ind(self, ty, tx):
 		"""Get the index of the tile wiht grid coordinates ty,tx in the full tiling"""
 		return ty*self.grid_shape[1]+tx
@@ -282,15 +290,30 @@ class TileGeometry:
 		"""Get the tile grid coordinates ty, tx for tile #i in the full tiling"""
 		nx = self.grid_shape[-1]
 		return i//nx, i%nx
-	def copy(self): return TileGeometry(self.shape, self.wcs.deepcopy(), self.tile_shape, self.active)
+	def copy(self, pre=None, active=None, add_active=None):
+		if pre is not None: shape = tuple(pre) + self.shape[-2:]
+		else:               shape = self.shape
+		_active = self.active.copy()
+		lookup  = self.lookup.copy()
+		if active is not None or add_active is not None:
+			# Allow us to override these, which will require recalculation of lookup
+			if active is not None:
+				_active = np.asarray(active,int)
+				lookup  = np.full(self.ntile,-1,int)
+				lookup[_active] = np.arange(len(_active))
+			if add_active is not None:
+				add_active = np.asarray(add_active, int)
+				_active = np.concatenate([_active, add_active[lookup[add_active]<0]])
+				lookup[_active] = np.arange(len(_active))
+		return TileGeometry(shape, self.wcs, self.tile_shape, self.grid_shape, self.tile_shapes.copy(), self.npixs.copy(), _active, lookup)
 	@property
 	def pre(self): return self.shape[:-2]
 	@property
 	def nactive(self): return len(self.active)
 	@property
-	def tile(self):
+	def tiles(self):
 		"""Allow us to get the enmap geometry of tile #i by writing
-		tile_geom.tile[i]"""
+		tile_geom.tiles[i]"""
 		return _TileGeomHelper(self)
 	def __repr__(self): return "TileGeometry(%s, %s, tile_shape=%s, active=%s)" % (str(self.shape), str(self.wcs), str(self.tile_shape), str(self.active))
 	def compatible(self, other):

@@ -757,12 +757,12 @@ class PixelTests(unittest.TestCase):
         assert tuple(geo.tile_shapes[23]) == (1,2)
         assert geo.ind2grid(7) == (1,1)
         assert geo.grid2ind(1,1) == 7
-        geo.set_active([1])
+        geo = geo.copy(active=[1])
         assert geo.nactive == 1
         assert np.sum(geo.lookup>=0) == 1
         assert geo.active[0] == 1
         assert geo.lookup[1] == 0
-        geo2 = geo.with_active([0,1,2])
+        geo2 = geo.copy(active=[0,1,2])
         assert geo.nactive == 1
         assert geo2.nactive == 3
         assert geo.compatible(geo) == 2
@@ -770,31 +770,26 @@ class PixelTests(unittest.TestCase):
         geo3 = tilemap.geometry((3,)+shape, wcs, tile_shape=(2,3))
         assert geo.compatible(geo3) == 0
         del geo2, geo3
-        m1  = tilemap.zeros(geo.with_active([1,2]))
-        m2  = tilemap.zeros(geo.with_active([2,3,4]))
-        m3  = tilemap.zeros(geo.with_active([2]))
-        for a, i in enumerate(m1.geometry.active): m1.active_tile[a] = i
-        for a, i in enumerate(m2.geometry.active): m2.active_tile[a] = i*10
-        for a, i in enumerate(m3.geometry.active): m3.active_tile[a] = i*100
+        m1  = tilemap.zeros(geo.copy(active=[1,2]))
+        m2  = tilemap.zeros(geo.copy(active=[2,3,4]))
+        m3  = tilemap.zeros(geo.copy(active=[2]))
+        for a, i in enumerate(m1.geometry.active): m1.active_tiles[a] = i
+        for a, i in enumerate(m2.geometry.active): m2.active_tiles[a] = i*10
+        for a, i in enumerate(m3.geometry.active): m3.active_tiles[a] = i*100
         assert m1[0,0] == 1
-        assert np.all(m1.tile[1] == m1.active_tile[0])
+        assert np.all(m1.tiles[1] == m1.active_tiles[0])
         m12 = m1+m2
         m21 = m2+m1
         assert(m12.nactive == 4)
         assert(m21.nactive == 4)
-        assert(np.all(m12.tile[1] == 1))
-        assert(np.all(m21.tile[1] == 1))
-        assert(np.all(m12.tile[2] == 22))
-        assert(np.all(m21.tile[2] == 22))
+        assert(np.all(m12.tiles[1] == 1))
+        assert(np.all(m21.tiles[1] == 1))
+        assert(np.all(m12.tiles[2] == 22))
+        assert(np.all(m21.tiles[2] == 22))
         assert(sorted(m12.geometry.active)==sorted(m21.geometry.active))
         m1 += m3
-        assert np.all(m1.tile[2] == 202)
-        try:
-            # This should fail with a ValueError due to incompatible shapes
-            m3 += m1
-            assert False
-        except ValueError:
-            pass
+        assert np.all(m1.tiles[2] == 202)
+        with self.assertRaises(ValueError): m3 += m1
         m1[:] = 0
         m1c   = np.cos(m1)
         assert m1c.geometry.nactive == 2

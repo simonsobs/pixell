@@ -13,67 +13,67 @@ enmap - General map manipulation
 --------------------------------
 
 .. automodule:: pixell.enmap
-   :members:    
+   :members:
    :undoc-members:
 
 fft - Fourier transforms
 ------------------------
 
 .. automodule:: pixell.fft
-   :members:    
+   :members:
    :undoc-members:
 
 curvedsky - Curved-sky harmonic transforms
 ------------------------------------------
 
 .. automodule:: pixell.curvedsky
-   :members:          
+   :members:
    :undoc-members:
 
 utils - General utilities
 -------------------------
 
 .. automodule:: pixell.utils
-   :members:    
+   :members:
    :undoc-members:
-   
+
 reproject - Map reprojection
 ----------------------------
 .. automodule:: pixell.reproject
-   :members:    
+   :members:
    :undoc-members:
 
 resample - Map resampling
 -------------------------
-      
+
 .. automodule:: pixell.resample
    :members:
    :undoc-members:
-      
+
 lensing - Lensing
 -----------------
-      
+
 .. automodule:: pixell.lensing
    :members:
    :undoc-members:
 
 pointsrcs - Point Sources
 -------------------------
-      
+
 .. automodule:: pixell.pointsrcs
    :members:
    :undoc-members:
-      
+
 interpol - Interpolation
 ------------------------
-      
+
 .. automodule:: pixell.interpol
    :members:
    :undoc-members:
-      
+
 coordinates - Coordinate Transformation
 ---------------------------------------
-      
+
 .. automodule:: pixell.coordinates
    :members:
    :undoc-members:
@@ -82,20 +82,26 @@ wcsutils - World Coordinate Sytem utilities
 -------------------------------------------
 
 .. automodule:: pixell.wcsutils
-   :members:          
+   :members:
    :undoc-members:
 
 powspec - CMB power spectra utilities
 -------------------------------------
 
 .. automodule:: pixell.powspec
-   :members:          
+   :members:
    :undoc-members:
-      
+
 enplot - Producing plots from ndmaps
 ------------------------------------
 
 .. automodule:: pixell.enplot
-   :members:    
+   :members:
    :undoc-members:
 
+tilemap - Tiled maps where only some tiles are stored
+-----------------------------------------------------
+
+.. automodule:: pixell.tilemap
+   :members:
+   :undoc-members:
