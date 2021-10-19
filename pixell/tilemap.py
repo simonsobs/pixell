@@ -128,9 +128,16 @@ class _TileView:
 		entry in the slice must be an integer - general slicing in the tile axis is not
 		supported, though it could be added. The rest of the indices can be anything an
 		enmap will accept."""
-		sel1, sel2 = utils.split_slice(sel, [1,self.tile_map.ndim+2-1])
-		if len(sel1) == 0: return self.tile_map
-		i    = sel1[0]
+		if isinstance(sel, int):
+			# Optimize common use case by avoiding slice decoding.
+			# Doesn't save much time, really. 0.1 ms when combined with the
+			# sel2 check below
+			i      = sel
+			sel2   = ()
+		else:
+			sel1, sel2 = utils.split_slice(sel, [1,self.tile_map.ndim+2-1])
+			if len(sel1) == 0: return self.tile_map
+			i      = sel1[0]
 		geo  = self.tile_map.geometry
 		if self.active:
 			ai, gi = i, geo.active[i]
@@ -142,7 +149,10 @@ class _TileView:
 		if ai < 0 or ai >= self.tile_map.nactive:
 			raise IndexError("Active tile index %d (global %d) is out of bounds for TileMap with %d active tiles" % (ai, gi, self.tile_map.nactive))
 		tile_info = geo.tiles[gi]
-		return enmap.ndmap(self.tile_map[...,self.offs[ai]:self.offs[ai+1]].reshape(self.tile_map.pre + tile_info.shape[-2:]), tile_info.wcs)[sel2]
+		tile = enmap.ndmap(self.tile_map[...,self.offs[ai]:self.offs[ai+1]].reshape(self.tile_map.pre + tile_info.shape[-2:]), tile_info.wcs)
+		# Apply any slicing of the tile itself
+		if len(sel2) > 0: tile = tile[sel2]
+		return tile
 	def __setitem__(self, sel, val):
 		"""Set a single tile or subset of a tile to the given value, which can be a number
 		or a compatibly shaped array. The first entry in the slice must be an integer -
