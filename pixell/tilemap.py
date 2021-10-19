@@ -190,6 +190,7 @@ class _TileView:
 # with incompatible active tiles are combined.
 def make_binop(op, is_inplace=False):
 	def binop(self, other):
+		opfun = getattr(np.ndarray, op)
 		if isinstance(other, TileMap): # could be replaced with a try statement for duck typing
 			comp = self.geometry.compatible(other.geometry)
 			if comp == 0:
@@ -206,7 +207,7 @@ def make_binop(op, is_inplace=False):
 					if opre != self.pre:
 						raise ValueError("operands could not be broadcast together with geometries %s and %s" % (str(self.geometry), str(other.geometry)))
 					for gi in other.geometry.active:
-						self.tiles[gi] = getattr(np.ndarray, op)(self.tiles[gi], other.tiles[gi])
+						self.tiles[gi] = opfun(self.tiles[gi], other.tiles[gi])
 					return self
 				else:
 					# Not in-place, so we have more flexibility. First build the output map
@@ -220,13 +221,13 @@ def make_binop(op, is_inplace=False):
 						out.tiles[gi] = self.tiles[gi]
 					# Then update with valus from other
 					for gi in other.geometry.active:
-						out.tiles[gi] = getattr(np.ndarray, op)(out.tiles[gi], other.tiles[gi])
+						out.tiles[gi] = opfun(out.tiles[gi], other.tiles[gi])
 					return out
 			else:
 				# Fully compatible. Handle outside
 				pass
 		# Handle fully compatible or plain array. Fast.
-		out =  getattr(np.ndarray, op)(self, other)
+		out =  opfun(self, other)
 		out = TileMap(out, self.geometry.copy(pre=out.shape[:-1]))
 		return out
 	return binop
