@@ -68,7 +68,7 @@ with open('HISTORY.rst') as history_file:
 requirements =  ['numpy>=1.20',
                  'astropy>=2.0',
                  'setuptools>=39',
-                 'h5py>=2.7,<=2.10',
+                 'h5py>=2.7',
                  'scipy>=1.0',
                  'python_dateutil>=2.7',
                  'cython>=0.28',
