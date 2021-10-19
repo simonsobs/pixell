@@ -261,7 +261,7 @@ def geometry(shape, wcs, tile_shape=(500,500), active=[]):
 
 class TileGeometry:
 	def __init__(self, shape, wcs, tile_shape, grid_shape, tile_shapes, npixs, active, lookup):
-		"""Raw constructor for a ThileGeometry. You normally don't want to use this. Use
+		"""Raw constructor for a TileGeometry. You normally don't want to use this. Use
 		tilemap.geometry() instead."""
 		self.shape      = shape
 		self.wcs        = wcs
