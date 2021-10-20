@@ -1248,6 +1248,7 @@ def inpaint(map, mask, method="nearest"):
 	pix      = map.pixmap()
 	pix_good = pix[:,border].reshape(2,-1).T
 	pix_bad  = pix[:,mask].reshape(2,-1).T
+	if pix_good.size == 0: return map*0
 	omap = map.copy()
 	# Loop over each scalar component of omap
 	for m in omap.preflat:
