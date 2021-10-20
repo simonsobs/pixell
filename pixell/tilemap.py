@@ -16,6 +16,29 @@ def full(tile_geom, val, dtype=np.float64):
 	flat = np.full(tile_geom.pre + (np.sum(tile_geom.npixs[tile_geom.active]),), val, dtype)
 	return TileMap(flat, tile_geom.copy())
 
+def from_tiles(tiles, tile_geom):
+	"""Construct a TileMap from a set of a full list of tiles, both active
+	and inactive. Inactive tiles are indicated with None entries. The active
+	information in tile_geom is ignored, as is the non-pixel part of tile_geom.shape,
+	which is instead inferred from the tiles."""
+	active_tiles = []
+	active       = []
+	for gi, tile in enumerate(tiles):
+		if tile is None: continue
+		active_tiles.append(tile)
+		active.append(gi)
+	return from_active_tiles(active_tiles, tile_geom.copy(active=active))
+
+def from_active_tiles(tiles, tile_geom):
+	"""Construct a TileMap from a list of active tiles that should match the
+	active list in the provided tile geometry. The non-pixel part of tile_geom
+	is ignored, and is instead inferred from the tile shapes."""
+	if len(tiles) != tile_geom.nactive:
+		raise ValueError("Wrong number of tiles passed. Expected %d but got %d" % (tile_geom.nactive, len(tiles)))
+	if len(tiles) == 0: return zeros(tile_geom)
+	data = np.concatenate([tile.reshape(tile.shape[:-2]+(-1,)) for tile in tiles],-1)
+	return TileMap(data, tile_geom.copy(pre=data.shape[:-1]))
+
 class TileMap(np.ndarray):
 	"""Implements a sparse tiled map, as described by a TileGeometry. This is effectively
 	a large enmap that has been split into tiles, of which only a subset is stored. This
@@ -89,7 +112,7 @@ class TileMap(np.ndarray):
 		in exactly that order. Binary operations on strictly compatible arrays
 		should be considerably faster."""
 		try: active = other.geometry.active
-		except AttributeError: active = np.asarray(other, int)
+		except AttributeError: active = _parse_active(other, self.ntile)
 		if np.all(active == self.geometry.active):
 			return self.copy()
 		# Construct the new geometry
@@ -298,11 +321,11 @@ class TileGeometry:
 		if active is not None or add_active is not None:
 			# Allow us to override these, which will require recalculation of lookup
 			if active is not None:
-				_active = np.asarray(active,int)
+				_active = _parse_active(active, self.ntile)
 				lookup  = np.full(self.ntile,-1,int)
 				lookup[_active] = np.arange(len(_active))
 			if add_active is not None:
-				add_active = np.asarray(add_active, int)
+				add_active = _parse_active(add_active, self.ntile)
 				_active = np.concatenate([_active, add_active[lookup[add_active]<0]])
 				lookup[_active] = np.arange(len(_active))
 		return TileGeometry(shape, self.wcs, self.tile_shape, self.grid_shape, self.tile_shapes.copy(), self.npixs.copy(), _active, lookup)
@@ -341,3 +364,7 @@ class _TileGeomHelper:
 		y2 = min(y1+g.tile_shape[-2], g.shape[-2])
 		x2 = min(x1+g.tile_shape[-1], g.shape[-1])
 		return enmap.Geometry(g.shape, g.wcs)[...,y1:y2,x1:x2]
+
+def _parse_active(active, ntile):
+	if utils.streq(active, "all"): return np.arange(ntile,dtype=int)
+	else: return np.asarray(active,int)
