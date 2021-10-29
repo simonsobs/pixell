@@ -1,5 +1,5 @@
 import numpy as np, os, warnings
-from . import enmap, utils
+from . import enmap, utils, wcsutils
 
 def zeros(tile_geom, dtype=np.float64):
 	"""Construct a zero-initialized TileMap with the given TileGeometry and data type"""
@@ -98,10 +98,10 @@ class TileMap(np.ndarray):
 		return TileMap(np.copy(self,order), self.geometry.copy())
 	@property
 	def tiles(self):
-		return _TileView(self, active=False)
+		return TileView(self, active=False)
 	@property
 	def active_tiles(self):
-		return _TileView(self, active=True)
+		return TileView(self, active=True)
 	def with_tiles(self, other, strict=False):
 		"""If a and b are TileMaps with the same overall tiling but different
 		active tile sets, then c = a.with_tiles(b) will make c a TileMap
@@ -136,13 +136,19 @@ class TileMap(np.ndarray):
 	def ntile(self): return self.geometry.ntile
 	@property
 	def tile_shape(self): return self.geometry.tile_shape
+	# General methods
+	def insert(self, imap, op=lambda a,b:b): return insert(self, imap, op=op)
 
-class _TileView:
+class TileView:
 	"""Helper class used to implement access to the individual tiles that make up a TileMap object"""
 	def __init__(self, tile_map, active=True):
 		self.tile_map = tile_map
 		self.active   = active
 		self.offs     = utils.cumsum(tile_map.geometry.npixs[tile_map.geometry.active], endpoint=True)
+	@property
+	def ndim(self): return self.tile_map.ndim+1 # ndim of logical full map
+	@property
+	def shape(self): return self.tile_map.geometry.shape # shape of logical full map
 	def __len__(self):
 		if self.active: return len(self.tile_map.geometry.active)
 		else:           return self.tile_map.geometry.ntile
@@ -203,8 +209,11 @@ class _TileView:
 		the more complicated slicing it supports."""
 		geo = self.tile_map.geometry
 		if self.active: items = [(ai,geo.active[ai]) for ai in range(geo.nactive)]
-		else: items = [(geo.lookup[gi],gi) for gi in range(geo.ntile) if geo.lookup[gi] >= 0]
+		else:           items = [(geo.lookup[gi],gi) for gi in range(geo.ntile)]
 		for ai, gi in items:
+			if ai < 0:
+				yield None
+			else:
 				tile_info = geo.tiles[geo.active[ai]]
 				yield enmap.ndmap(self.tile_map[...,self.offs[ai]:self.offs[ai+1]].reshape(self.tile_map.pre + tile_info.shape[-2:]), tile_info.wcs)
 
@@ -212,8 +221,9 @@ class _TileView:
 # but the functions below add support for expanding the active tiles automatically when TileMaps
 # with incompatible active tiles are combined.
 def make_binop(op, is_inplace=False):
+	if isinstance(op, str):
+		op = getattr(np.ndarray, op)
 	def binop(self, other):
-		opfun = getattr(np.ndarray, op)
 		if isinstance(other, TileMap): # could be replaced with a try statement for duck typing
 			comp = self.geometry.compatible(other.geometry)
 			if comp == 0:
@@ -230,7 +240,7 @@ def make_binop(op, is_inplace=False):
 					if opre != self.pre:
 						raise ValueError("operands could not be broadcast together with geometries %s and %s" % (str(self.geometry), str(other.geometry)))
 					for gi in other.geometry.active:
-						self.tiles[gi] = opfun(self.tiles[gi], other.tiles[gi])
+						self.tiles[gi] = op(self.tiles[gi], other.tiles[gi])
 					return self
 				else:
 					# Not in-place, so we have more flexibility. First build the output map
@@ -244,13 +254,13 @@ def make_binop(op, is_inplace=False):
 						out.tiles[gi] = self.tiles[gi]
 					# Then update with valus from other
 					for gi in other.geometry.active:
-						out.tiles[gi] = opfun(out.tiles[gi], other.tiles[gi])
+						out.tiles[gi] = op(out.tiles[gi], other.tiles[gi])
 					return out
 			else:
 				# Fully compatible. Handle outside
 				pass
 		# Handle fully compatible or plain array. Fast.
-		out =  opfun(self, other)
+		out =  op(self, other)
 		out = TileMap(out, self.geometry.copy(pre=out.shape[:-1]))
 		return out
 	return binop
@@ -262,6 +272,37 @@ for op in ["__add__", "__sub__", "__mul__", "__pow__", "__truediv__", "__floordi
 for op in ["__iadd__", "__isub__", "__imul__", "__ipow__", "__itruediv__", "__ifloordiv__",
 		"__iand__", "__ior__", "__ixor__", "__ilshift__", "__irshift__"]:
 	setattr(TileMap, op, make_binop(op, is_inplace=True))
+
+def insert(omap, imap, op=lambda a,b:b):
+	"""Insert imap into omap, returning the result. Equivalent to enmap.insert, but with the
+	following important differences:
+	* omap is not modified. Use the result is returned. (enmap both modifies and returns)
+	* The maps must have the same geometry, only differing by the active tiles.
+	This may be generalized in the future."""
+	binop = make_binop(op)
+	return binop(omap, imap)
+
+def map_mul(mat, vec):
+	"""Elementwise matrix multiplication mat*vec. Result will have
+	the same shape as vec. Multiplication happens along the last non-pixel
+	indices."""
+	# Allow scalar product, broadcasting if necessary
+	mat = np.asanyarray(mat)
+	if mat.ndim <= 2: return mat*vec
+	# Otherwise we do a matrix product along the last axes
+	ovec = samegeo(np.einsum("...abi,...bi->...ai", mat, vec), mat, vec)
+	return ovec
+
+def samegeo(arr, *args):
+	"""Returns arr with the same geometry information as the first tilemap among
+	args. If no matches are found, arr is returned as is.  Will
+	reference, rather than copy, the underlying array data
+	whenever possible.
+	"""
+	for m in args:
+		try: return TileMap(arr, m.geometry.copy(pre=arr.pre))
+		except AttributeError: pass
+	return arr
 
 ########################################
 ############ Geometry stuff ############
@@ -334,6 +375,8 @@ class TileGeometry:
 	@property
 	def nactive(self): return len(self.active)
 	@property
+	def size(self): return np.product(self.pre)*np.sum(self.npixs[self.active])
+	@property
 	def tiles(self):
 		"""Allow us to get the enmap geometry of tile #i by writing
 		tile_geom.tiles[i]"""
@@ -368,3 +411,114 @@ class _TileGeomHelper:
 def _parse_active(active, ntile):
 	if utils.streq(active, "all"): return np.arange(ntile,dtype=int)
 	else: return np.asarray(active,int)
+
+def to_enmap(tile_map):
+	omap = enmap.zeros(tile_map.geometry.shape, tile_map.geometry.wcs, tile_map.dtype)
+	for ai, tile in enumerate(tile_map.active_tiles):
+		gi     = tile_map.active[ai]
+		gy, gx = tile_map.geometry.ind2grid(gi)
+		th, tw = tile_map.geometry.tile_shape
+		y1     = gy*th
+		y2     = min((gy+1)*th, omap.shape[-2])
+		x1     = gx*tw
+		x2     = min((gx+1)*tw, omap.shape[-1])
+		omap[...,y1:y2,x1:x2] = tile
+	return omap
+
+############################################
+########## Distributed TileMaps ############
+############################################
+
+# The main purpose of a TileMap is to spead the data of a huge map across many mpi tasks.
+
+def redistribute(imap, comm, active=None, omap=None):
+	"""Redistirbute the data in the mpi-distributed tiles in imap into the
+	active tiles in omap, using the given communicator. If a tile is active in
+	multiple tasks in imap, it will be reduced. If it is active in multiple tiles in
+	omap, it will be duplicated."""
+	# 1. Who owns what?
+	iactive     = np.zeros(imap.ntile,bool); iactive[imap.active]=True
+	iactive_all = utils.allgather(iactive, comm) # [ntask,ntile]
+	# 2. Who should own what? Determine automatically if not given
+	if omap is None:
+		if active is None:
+			iactive_any = np.nonzero(np.any(iactive_all,0))[0]
+			active = np.array_split(iactive_any, comm.size)[comm.rank]
+		omap = zeros(imap.geometry.copy(active=active), dtype=imap.dtype)
+	oactive     = np.zeros(omap.ntile,bool); oactive[omap.active]=True
+	oactive_all = utils.allgather(oactive, comm) # [ntask,ntile]
+	# 3. Figure out who I should send and receive each of my tiles to/from
+	omask     = oactive_all[:,imap.active] # [ntasks,iactive]
+	imask     = iactive_all[:,omap.active] # [ntasks,oactive]
+	isizes    = imap.geometry.npixs[imap.active] * np.product(imap.pre).astype(int)
+	osizes    = omap.geometry.npixs[omap.active] * np.product(omap.pre).astype(int)
+	ioffs     = utils.cumsum(isizes)
+	ooffs     = utils.cumsum(osizes)
+	# 4. Build our alltoallv send info
+	iflat     = np.ascontiguousarray(imap.T).reshape(-1)
+	send_sizes= np.sum(omask*isizes,1)
+	send_offs = utils.cumsum(send_sizes)
+	send_buf  = [iflat[ioffs[iact]:ioffs[iact]+isizes[iact]] for rank, iact in np.argwhere(omask)]
+	send_buf  = np.concatenate(send_buf, dtype=iflat.dtype) if len(send_buf) > 0 else np.zeros(0, iflat.dtype)
+	# 5. Build the alltoallv receive info
+	recv_sizes= np.sum(imask*osizes,1)
+	recv_offs = utils.cumsum(recv_sizes)
+	recv_buf  = np.zeros(np.sum(recv_sizes), omap.dtype)
+	# 6. Perform the actual communication
+	comm.Alltoallv((send_buf, (send_sizes, send_offs)), (recv_buf, (recv_sizes, recv_offs)))
+	del iflat, send_buf
+	# 7. Copy and reduce into flattened output tiles
+	oflat     = np.zeros(omap.size, omap.dtype)
+	rbuf_off  = 0
+	for rank, oact in np.argwhere(imask):
+		oflat[ooffs[oact]:ooffs[oact]+osizes[oact]] += recv_buf[rbuf_off:rbuf_off+osizes[oact]]
+		rbuf_off += osizes[oact]
+	del recv_buf
+	# 8. And move data into our actual output map
+	omap[:] = oflat.reshape(omap.shape[::-1]).T
+	return omap
+
+def tree_reduce(imap, comm, plan=None):
+	"""Given a tilemap imap that's distributed over the communicator comm,
+	and where each tile is potentially present in multiple tasks, sum the
+	duplicate tiles and assign them to a single task, such that in the end
+	each tile is present in at most one task. Exactly which tiles end up in
+	which tasks is determined automatically but deterministically based on the
+	tile ownership pattern in imap."""
+	from map_reduce import distlib
+	if plan is None:
+		plan = distlib.Logistics(imap.active, comm)
+	work = [None if tile is None else tile.copy() for tile in imap.tiles]
+	for gi, sender, receiver in plan.ops:
+		if comm.rank == sender:
+			comm.Send(work[gi], dest=receiver)
+			work[gi] = None
+		elif comm.rank == receiver:
+			tile = np.zeros_like(work[gi])
+			comm.Recv(tile, source=sender)
+			work[gi] += tile
+	omap = from_tiles(work, imap.geometry)
+	return omap
+
+def get_active_distributed(tile_map, comm):
+	# Figure out which tiles are owned by anybody
+	iactive     = np.zeros(tile_map.ntile,int); iactive[tile_map.active]=1
+	iactive     = utils.allreduce(iactive, comm)
+	return np.nonzero(iactive)[0]
+
+def reduce(tile_map, comm, root=0):
+	"""Given a distributed TileMap tile_map, collect all the tiles
+	on the task with rank root (default is rank 0), and return it.
+	Multiply owned tiles are reduced. Returns a TileMap with no
+	active tiles for other tasks than root."""
+	active_distributed = get_active_distributed(tile_map, comm)
+	active = active_distributed if comm.rank == root else []
+	return redistribute(tile_map, comm, active)
+
+def write_map(fname, tile_map, comm):
+	"""Write a distributed tile_map to disk as a single enmap.
+	Collects all the data on a single task before writing."""
+	omap = reduce(tile_map, comm)
+	if comm.rank == 0:
+		omap = to_enmap(omap)
+		enmap.write_map(fname, omap, allow_modify=True)
