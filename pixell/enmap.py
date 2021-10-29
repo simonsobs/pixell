@@ -2173,7 +2173,7 @@ def from_flipper(imap, omap=None):
 # File I/O #
 ############
 
-def write_map(fname, emap, fmt=None, extra={}):
+def write_map(fname, emap, fmt=None, extra={}, allow_modify=False):
 	"""Writes an enmap to file. If fmt is not passed,
 	the file type is inferred from the file extension, and can
 	be either fits or hdf. This can be overriden by
@@ -2184,7 +2184,7 @@ def write_map(fname, emap, fmt=None, extra={}):
 		elif fname.endswith(".fits.gz"): fmt = "fits"
 		else: fmt = "fits"
 	if fmt == "fits":
-		write_fits(fname, emap, extra=extra)
+		write_fits(fname, emap, extra=extra, allow_modify=allow_modify)
 	elif fmt == "hdf":
 		write_hdf(fname, emap, extra=extra)
 	else:
@@ -2250,11 +2250,12 @@ def write_map_geometry(fname, shape, wcs, fmt=None):
 	else:
 		raise ValueError
 
-def write_fits(fname, emap, extra={}):
+def write_fits(fname, emap, extra={}, allow_modify=False):
 	"""Write an enmap to a fits file."""
 	# The fits write routines may attempt to modify
 	# the map. So make a copy.
-	emap = enmap(emap, copy=True)
+	if not allow_modify:
+		emap = enmap(emap, copy=True)
 	# Get our basic wcs header
 	header = emap.wcs.to_header(relax=True)
 	# Add our map headers
