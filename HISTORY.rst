@@ -2,6 +2,17 @@
 History
 =======
 
+0.14.0 (2021-11-02)
+-------------------
+
+Changes relative to 0.13.2 include:
+
+* Miscellaneous bug fixes
+* ducc0 FFT support and fast rotate_alm
+* Tiled map support
+* New healpix <-> rectpix reprojection API
+
+
 0.13.2 (2021-07-16)
 -------------------
 
