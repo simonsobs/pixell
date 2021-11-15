@@ -621,7 +621,7 @@ def match_predefined_minfo(shape, wcs, rtol=None, atol=None):
 	aoff /= pixheight
 	roff /= pixheight
 	if not roff < rtol: raise ShapeError("Could not find a map_info with predefined quadrature weights matching input map (rel offset %e >= %e). Pass tweak=True to map2alm to allow it to use slightly shifted pixel positions to match a geometry for which a predefined quadrature exists. This matches the old default. The resulted slightly shifted alms can be projected back onto the original pixels by passing tweak=True to alm2map." % (aoff, atol))
-	if not aoff < atol: raise ShapeError("Could not find a map_info with predefined weights matching input map (abs offset %e >= %e). Pass tweak=True to map2alm to allow it to use slightly shifted pixel positions to match a geometry for which a predefined quadrature exists. This matches the old default. The resulted slightly shifted alms can be projected back onto the original pixels by passing tweak=True to alm2map." % (aoff, atol))
+	if not aoff < atol: raise ShapeError("Could not find a map_info with predefined quadrature weights matching input map (abs offset %e >= %e). Pass tweak=True to map2alm to allow it to use slightly shifted pixel positions to match a geometry for which a predefined quadrature exists. This matches the old default. The resulted slightly shifted alms can be projected back onto the original pixels by passing tweak=True to alm2map." % (aoff, atol))
 	minfo = minfos2[best]
 	# Modify the minfo to restrict it to only the rows contained in the geometry
 	minfo_cut = sharp.map_info(
