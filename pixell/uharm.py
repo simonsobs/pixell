@@ -87,6 +87,8 @@ class UHT:
 			self.ntot = np.sum(self.nper)
 		else:
 			raise ValueError("Unrecognized mode in UHT: '%s'" % (str(mode)))
+	@property
+	def npix(self): return self.shape[-2]*self.shape[-1]
 	def map2harm(self, map, spin=0):
 		if self.mode == "flat":
 			return enmap.map2harm(map, spin=spin, normalize="phys")
