@@ -66,7 +66,7 @@ class ndmap(np.ndarray):
 	def laxes(self, oversample=1, method="auto"): return laxes(self.shape, self.wcs, oversample=oversample, method=method)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
 	def lform(self, shift=True): return lform(self, shift=shift)
-	def modlmap(self, oversample=1): return modlmap(self.shape, self.wcs, oversample=oversample)
+	def modlmap(self, oversample=1, min=0): return modlmap(self.shape, self.wcs, oversample=oversample, min=min)
 	def modrmap(self, ref="center", safe=True, corner=False): return modrmap(self.shape, self.wcs, ref=ref, safe=safe, corner=corner)
 	def lbin(self, bsize=None, brel=1.0, return_nhit=False): return lbin(self, bsize=bsize, brel=brel, return_nhit=return_nhit)
 	def rbin(self, center=[0,0], bsize=None, brel=1.0, return_nhit=False): return rbin(self, center=center, bsize=bsize, brel=brel, return_nhit=return_nhit)
@@ -75,6 +75,8 @@ class ndmap(np.ndarray):
 	def pixshape(self, signed=False): return pixshape(self.shape, self.wcs, signed=signed)
 	def pixsizemap(self, separable="auto", broadcastable=False): return pixsizemap(self.shape, self.wcs, separable=separable, broadcastable=broadcastable)
 	def pixshapemap(self, separable="auto", signed=False): return pixshapemap(self.shape, self.wcs, separable=separable, signed=signed)
+	def lpixsize(self, signed=False, method="auto"): return lpixsize(self.shape, self.wcs, signed=signed, method=method)
+	def lpixshape(self, signed=False, method="auto"): return lpixshape(self.shape, self.wcs, signed=signed, method=method)
 	def extent(self, method="auto", signed=False): return extent(self.shape, self.wcs, method=method, signed=signed)
 	@property
 	def preflat(self):
@@ -1047,11 +1049,13 @@ def lmap(shape, wcs, oversample=1, method="auto"):
 	data[1] = lx[None,:]
 	return ndmap(data, wcs)
 
-def modlmap(shape, wcs, oversample=1, method="auto"):
+def modlmap(shape, wcs, oversample=1, method="auto", min=0):
 	"""Return a map of all the abs wavenumbers in the fourier transform
 	of a map with the given shape and wcs."""
 	slmap = lmap(shape,wcs,oversample=oversample, method=method)
-	return np.sum(slmap**2,0)**0.5
+	l = np.sum(slmap**2,0)**0.5
+	if min > 0: l = np.maximum(l, min)
+	return l
 
 def center(shape,wcs):
 	cpix = (np.array(shape[-2:])-1)/2.
@@ -1092,6 +1096,12 @@ def lrmap(shape, wcs, oversample=1):
 	"""Return a map of all the wavenumbers in the fourier transform
 	of a map with the given shape and wcs."""
 	return lmap(shape, wcs, oversample=oversample)[...,:shape[-1]//2+1]
+
+def lpixsize(shape, wcs, signed=False, method="auto"):
+	return np.product(lpixshape(shape, wcs, signed=signed, method=method))
+
+def lpixshape(shape, wcs, signed=False, method="auto"):
+	return 2*np.pi/extent(shape,wcs, signed=signed, method=method)
 
 def fft(emap, omap=None, nthread=0, normalize=True, adjoint_ifft=False, dct=False):
 	"""Performs the 2d FFT of the enmap pixels, returning a complex enmap.
