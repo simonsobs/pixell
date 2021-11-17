@@ -2574,7 +2574,7 @@ def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=False, norm="pix",
 	# different-size fourier spaces can have different units. First handle explicit normalization,
 	# where the factor to multiply is given directly.
 	try: norm = float(norm)
-	except TypeError:
+	except (TypeError, ValueError):
 		# Then handle various normalization conventions.
 		if   norm is None:     norm = 1 # Don't do anything if None is passed. Cost free
 		elif norm == "plain":  norm = fomap.npix/fimap.npix # Corresponds to normalize=False in enmap.ifft

@@ -91,7 +91,7 @@ class UHT:
 		if self.mode == "flat":
 			return enmap.map2harm(map, spin=spin, normalize="phys")
 		else:
-			return curvedsky.map2alm(map, ainfo=self.ainfo)
+			return curvedsky.map2alm(map, ainfo=self.ainfo, spin=spin)
 	def harm2map(self, harm, spin=0):
 		if self.mode == "flat":
 			return enmap.harm2map(harm, spin=spin, normalize="phys").real
