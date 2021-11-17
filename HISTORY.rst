@@ -2,11 +2,12 @@
 History
 =======
 
-0.14.0 (2021-11-02)
+0.14.1 (2021-11-16)
 -------------------
 
 Changes relative to 0.13.2 include:
 
+* A breaking change to map2alm where it no longer approximates WCS if ring weights are unavailable
 * Miscellaneous bug fixes
 * ducc0 FFT support and fast rotate_alm
 * Tiled map support
