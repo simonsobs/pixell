@@ -61,7 +61,7 @@ def describe(wcs):
 	str implementation, this function provides a relpacement."""
 	sys  = wcs.wcs.ctype[0][-3:].lower()
 	n    = wcs.naxis
-	fields = ("cdelt:["+",".join(["%.4g"]*n)+"],crval:["+",".join(["%.4g"]*n)+"],crpix:["+",".join(["%.4g"]*n)+"]") % (tuple(wcs.wcs.cdelt) + tuple(wcs.wcs.crval) + tuple(wcs.wcs.crpix))
+	fields = ("cdelt:["+",".join(["%.4g"]*n)+"],crval:["+",".join(["%.4g"]*n)+"],crpix:["+",".join(["%.1f"]*n)+"]") % (tuple(wcs.wcs.cdelt) + tuple(wcs.wcs.crval) + tuple(wcs.wcs.crpix))
 	pv = wcs.wcs.get_pv()
 	for p in pv:
 		fields += ",pv[%d,%d]=%.3g" % p
