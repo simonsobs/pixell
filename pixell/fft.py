@@ -30,6 +30,29 @@ class numpy_FFTW:
 			if not normalise_idft:
 				self.b *= np.product([self.b.shape[i] for i in self.axes])
 
+class ducc_FFTW:
+	"""Minimal wrapper of numpy in order to be able to provide it as an engine.
+	Not a full-blown interface."""
+	def __init__(self, a, b, axes=(-1,), direction='FFTW_FORWARD', threads=1, *args, **kwargs):
+		self.a, self.b = a, b
+		self.axes = axes
+		self.direction = direction
+		self.threads   = threads
+	def __call__(self, normalise_idft=False):
+		if self.direction == 'FFTW_FORWARD':
+			if self.a.shape == self.b.shape:
+				# Complex to complex
+				ducc0.fft.c2c(self.a, axes=self.axes, out=self.b, nthreads=self.threads)
+			else:
+				# Real to complex
+				ducc0.fft.r2c(self.a, axes=self.axes, out=self.b, nthreads=self.threads)
+		else:
+			if self.a.shape == self.b.shape:
+				# Complex to complex
+				ducc0.fft.c2c(self.a, axes=self.axes, out=self.b, forward=False, inorm=2 if normalise_idft else 0, nthreads=self.threads)
+			else:
+				ducc0.fft.c2r(self.a, axes=self.axes, out=self.b, lastsize=self.b.shape[self.axes[-1]], inorm=2 if normalise_idft else 0, nthreads=self.threads)
+
 def numpy_empty_aligned(shape, dtype, n=None):
 	"""This dummy function just skips the alignment, since numpy
 	doesn't provide an easy way to get it."""
@@ -61,6 +84,17 @@ try:
 	engines["intel"] = intel
 	engine = "intel"
 except ImportError: pass
+# ducc is slower than intel, but can be faster than pyfftw
+try:
+	import ducc0
+	class DuccEngine: pass
+	ducc_engine = DuccEngine()
+	ducc_engine.FFTW = ducc_FFTW
+	ducc_engine.empty_aligned = numpy_empty_aligned
+	engines["ducc"] = ducc_engine
+	if engine != "intel": engine = "ducc"
+except ImportError: pass
+
 if len(engines) == 0:
 	# This should not happen due to the numpy fallback
 	raise ImportError("Could not find any fftw implementations!")

@@ -9,10 +9,10 @@ from astropy.wcs import WCS, FITSFixedWarning
 
 # Turn off annoying warning every time a WCS object is constructed
 try:
-        warnings.filterwarnings("ignore", category=FITSFixedWarning)
+	warnings.filterwarnings("ignore", category=FITSFixedWarning)
 except AssertionError:
-        # This try/catch is a hack for readthedocs builds.
-        pass
+	# This try/catch is a hack for readthedocs builds.
+	pass
 
 # Handle annoying python3 stuff
 try: basestring
@@ -61,7 +61,7 @@ def describe(wcs):
 	str implementation, this function provides a relpacement."""
 	sys  = wcs.wcs.ctype[0][-3:].lower()
 	n    = wcs.naxis
-	fields = ("cdelt:["+",".join(["%.4g"]*n)+"],crval:["+",".join(["%.4g"]*n)+"],crpix:["+",".join(["%.4g"]*n)+"]") % (tuple(wcs.wcs.cdelt) + tuple(wcs.wcs.crval) + tuple(wcs.wcs.crpix))
+	fields = ("cdelt:["+",".join(["%.4g"]*n)+"],crval:["+",".join(["%.4g"]*n)+"],crpix:["+",".join(["%.2f"]*n)+"]") % (tuple(wcs.wcs.cdelt) + tuple(wcs.wcs.crval) + tuple(wcs.wcs.crpix))
 	pv = wcs.wcs.get_pv()
 	for p in pv:
 		fields += ",pv[%d,%d]=%.3g" % p
@@ -100,15 +100,17 @@ def is_compatible(wcs1, wcs2, tol=1e-3):
 def is_plain(wcs):
 	"""Determines whether the given wcs represents plain, non-specific,
 	non-wrapping coordinates or some angular coordiante system."""
-	return wcs.wcs.ctype[0] == ""
+	return get_proj(wcs) in ["","plain"]
 
 def is_cyl(wcs):
 	"""Returns True if the wcs represents a cylindrical coordinate system"""
-	return wcs.wcs.ctype[0].split("-")[-1] in ["CYP","CEA","CAR","MER"]
+	return get_proj(wcs) in ["cyp","cea","car","mer"]
 
 def get_proj(wcs):
-	toks = wcs.wcs.ctype[0].split("-")
-	return toks[1].lower() if len(toks) == 2 else ""
+	if isinstance(wcs, str): return wcs
+	else:
+		toks = wcs.wcs.ctype[0].split("-")
+		return toks[-1].lower() if len(toks) >= 2 else ""
 
 def scale(wcs, scale=1, rowmajor=False, corner=False):
 	"""Scales the linear pixel density of a wcs by the given factor, which can be specified
@@ -124,13 +126,21 @@ def scale(wcs, scale=1, rowmajor=False, corner=False):
 		wcs.wcs.crpix += 0.5
 	return wcs
 
+def expand_res(res, default_dirs=[1,-1]):
+	res = np.atleast_1d(res)
+	assert res.ndim == 1, "Invalid res shape"
+	if res.size == 1:
+		return np.array(default_dirs)*res
+	else:
+		return res
+
 # I need to update this to work better with full-sky stuff.
 # Should be easy to construct something that's part of a
 # clenshaw-curtis or fejer sky.
 
 def plain(pos, res=None, shape=None, rowmajor=False, ref=None):
 	"""Set up a plain coordinate system (non-cyclical)"""
-	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
+	pos, res, shape, mid = validate(pos, res, shape, rowmajor, default_dirs=[1,1])
 	w = WCS(naxis=2)
 	w.wcs.crval = mid
 	if streq(ref, "standard"): ref = None
@@ -215,7 +225,7 @@ def build(pos, res=None, shape=None, rowmajor=False, system="cea", ref=None, **k
 	are given in degrees."""
 	return systems[system.lower()](pos, res, shape, rowmajor, ref=ref, **kwargs)
 
-def validate(pos, res, shape, rowmajor=False):
+def validate(pos, res, shape, rowmajor=False, default_dirs=[1,-1]):
 	pos = np.asarray(pos)
 	if pos.shape != (2,) and pos.shape != (2,2):
 		raise ValueError("pos must be [2] or [2,2]")
@@ -224,7 +234,12 @@ def validate(pos, res, shape, rowmajor=False):
 	if res is not None:
 		res = np.atleast_1d(res)
 		if res.shape == (1,):
-			res = np.array([res[0],res[0]])
+			# If our shape has one entry, expand it to [y,x].
+			# Two cases: 1. [2,2] pos given, in which case it has responsibility for
+			# the coordinate directions, so we don't introduce a sign here, and
+			# 2. [2] pos is given, in which case it's res's responsibility.
+			if pos.shape == (2,2): res = np.zeros(2)+res
+			else:                  res = np.array(default_dirs)*res
 		elif res.shape != (2,):
 			raise ValueError("res must be num or [2]")
 	if rowmajor:

@@ -192,6 +192,27 @@ def transform_astropy(from_sys, to_sys, coords):
 		getattr(getattr(coords, names[0]),unit.name),
 		getattr(getattr(coords, names[1]),unit.name)])
 
+def transform_euler(euler, coords, pol=None, mag=None):
+	"""Like transform, but for a set of zyz euler angles instead"""
+	def rotfun(coords): return euler_rot(euler, coords)
+	fields = []
+	if pol: fields.append("ang")
+	if mag: fields.append("mag")
+	if pol is None and mag is None:
+		if len(coords) > 2: fields.append("ang")
+		if len(coords) > 3: fields.append("mag")
+	meta    = transform_meta(rotfun, coords[:2], fields=fields)
+	res     = np.zeros((2+len(fields),) + meta.ocoord.shape[1:])
+	res[:2] = meta.ocoord
+	off = 2
+	for i, f in enumerate(fields):
+		if f == "ang":
+			if len(coords) > 2: res[off+i] = coords[2] + meta.ang
+			else: res[off+i] = meta.ang
+		elif f == "mag":
+			if len(coords) > 3: res[off+i] = coords[3] * meta.mag
+			else: res[off+i] = meta.mag
+	return res
 
 def hor2cel(coord, time, site, copy=True):
 	from enlib.coordinates import pyfsla

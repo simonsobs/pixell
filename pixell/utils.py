@@ -79,7 +79,7 @@ def streq(x, s):
 
 def find(array, vals, default=None):
 	"""Return the indices of each value of vals in the given array."""
-	if len(vals) == 0: return []
+	if np.asarray(vals).size == 0: return []
 	array   = np.asarray(array)
 	order   = np.argsort(array)
 	cands   = np.minimum(np.searchsorted(array, vals, sorter=order),len(array)-1)
@@ -250,6 +250,15 @@ def medmean(x, axis=None, frac=0.5):
 	i = int(x.shape[-1]*frac)//2
 	return np.mean(x[...,i:-i],-1)
 
+def maskmed(arr, axis=-1, maskval=0):
+	"""Median of array along the given axis, but ignoring
+	entries with the given mask value."""
+	marr = np.ma.array(arr, mask=arr==maskval)
+	res  = np.ma.median(marr, axis=axis)
+	if isinstance(res, np.ma.MaskedArray):
+		res = res.filled(maskval)
+	return res
+
 def moveaxis(a, o, n):
 	if o < 0: o = o+a.ndim
 	if n < 0: n = n+a.ndim
@@ -386,13 +395,17 @@ def interpol(a, inds, order=3, mode="nearest", mask_nan=False, cval=0.0, prefilt
 	if inds_orig_nd == 1: res = res[...,0]
 	return res
 
-def interpol_prefilter(a, npre=None, order=3, inplace=False):
+def interpol_prefilter(a, npre=None, order=3, inplace=False, mode="nearest"):
+	if order < 2: return a
 	a = np.asanyarray(a)
 	if not inplace: a = a.copy()
 	if npre is None: npre = max(0,a.ndim - 2)
-	with flatview(a, range(npre, a.ndim), "rw") as aflat:
-		for i in range(len(aflat)):
-			aflat[i] = scipy.ndimage.spline_filter(aflat[i], order=order)
+	if npre < 0:     npre = a.ndim-npre
+	# spline_filter was looping through the enmap pixel by pixel with getitem.
+	# Not using flatview got around it, but I don't understand why it happend
+	# in the first place.
+	for I in nditer(a.shape[:-2]):
+		a[I] = scipy.ndimage.spline_filter(a[I], order=order, mode=mode)
 	return a
 
 def interp(x, xp, fp, left=None, right=None, period=None):
@@ -527,6 +540,28 @@ def find_period_exact(d, guess):
 		return np.var(d-model)
 	period,phase = scipy.optimize.fmin_powell(chisq, [guess,guess], xtol=1, disp=False)
 	return period, phase+off, chisq([period,phase])/np.var(d**2)
+
+def find_sweeps(az, tol=0.2):
+	"""Given an array "az" that sweeps up and down between approximately
+	constant minimum and maximum values, returns an array sweeps[:,{i1,i2}],
+	which gives the start and end index of each such sweep. For example, if
+	az starts at 0 at sample 0, increases to 1 at sample 1000 and then falls
+	to -1 at sample 2000, increase to 1 at sample 2500 and then falls to 0.5
+	at sample 3000 where it ends, then the function will return
+	[[0,1000],[1000,2000],[2000,2500],[2500,3000]].
+	The tol parameter determines how close to the extremum values of the array
+	it will look for turnarounds. It shouldn't normally need to be ajusted."""
+	az         = np.asarray(az)
+	# Find and label the areas near the turnarounds
+	amin, amax = minmax(az)
+	amid, aamp = (amax+amin)/2, (amax-amin)/2
+	aabs       = np.abs(az-amid)
+	labels, nlabel = scipy.ndimage.label(aabs > aamp*(1-tol))
+	# Find the extremum point in each of these
+	turns      = np.array(scipy.ndimage.maximum_position(aabs, labels, np.arange(1,nlabel+1)))[:,0]
+	turns      = np.unique(np.concatenate([[0],turns,[len(az)]]))
+	sweeps     = np.array([turns[:-1],turns[1:]]).T
+	return sweeps
 
 def equal_split(weights, nbin):
 	"""Split weights into nbin bins such that the total
@@ -967,11 +1002,6 @@ def pole_wrap(pos):
 	lon[back]+= np.pi
 	return pos
 
-def parse_box(desc):
-	"""Given a string of the form from:to,from:to,from:to,... returns
-	an array [{from,to},:]"""
-	return np.array([[float(word) for word in pair.split(":")] for pair in desc.split(",")]).T
-
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result
 	rather than needing an output argument."""
@@ -1004,6 +1034,13 @@ def allgatherv(a, comm, axis=0):
 	and allgatherv([[3,4],[5,6]],comm) on another task results in
 	[[1,2],[3,4],[5,6]] for both tasks."""
 	a  = np.asarray(a)
+	# Get the dtypes of all non-empty arrays, and use this harmonize all
+	# the arrays' dtypes.
+	dtypes = [dtype for dtype in comm.allgather(a.dtype if a.size > 0 else None) if dtype is not None]
+	if len(dtypes) == 0: return a
+	dtype  = np.result_type(*dtypes)
+	a      = a.astype(dtype, copy=False)
+	# Put the axis first, as that's what Allgatherv wants
 	fa = moveaxis(a, axis, 0)
 	# mpi4py doesn't handle all types. But why not just do this
 	# for everything?
@@ -1260,7 +1297,7 @@ def sbox_fix0(sbox):
 		tmp = np.full(sbox.shape[:-1]+(3,),1,int)
 		tmp[...,:2] = sbox
 		sbox = tmp
-	if sbox.dtype != np.int:
+	if sbox.dtype != int:
 		sbox = sbox.astype(int)
 	return sbox
 
@@ -1564,7 +1601,7 @@ def find_equal_groups_fast(vals):
 	2. Only works with exact quality, with no support for approximate equality
 	3. Returns 3 numpy arrays instead of a list of lists.
 	"""
-	order = np.argsort(vals)
+	order = np.argsort(vals, kind="stable")
 	uvals, edges = np.unique(vals[order], return_index=True)
 	edges = np.concatenate([edges,[len(vals)]])
 	return uvals, order, edges
@@ -1705,29 +1742,56 @@ def block_mean_filter(a, width):
 		a[:]   = work[...,:a.shape[-1]]
 	return a
 
-def block_reduce(a, bsize, op=np.mean):
-	"""Replace each block of length bsize along the last axis of a
+def block_reduce(a, bsize, axis=-1, off=0, op=np.mean, inclusive=True):
+	"""Replace each block of length bsize along the given axis of a
 	with an aggregate value given by the operation op. op must
 	accept op(array, axis), just like np.sum or np.mean. a need not
 	have a whole number of blocks. In that case, the last block will
-	have fewer than bsize samples in it."""
+	have fewer than bsize samples in it. If off is specified, it gives
+	an offset from the start of the array for the start of the first block;
+	anything before that will be treated as an incomplete block, just like
+	anything left over at the end. Pass the same value of off to block_expand
+	to undo this."""
 	if bsize == 1: return a
-	a     = np.asarray(a)
-	nsamp = a.shape[-1]
-	nwhole= nsamp//bsize
-	blocks= a[...,:nwhole*bsize].reshape(a.shape[:-1]+(nwhole,bsize))
-	vals  = op(blocks, -1)
-	if nwhole*bsize != nsamp:
-		vals = np.concatenate([vals, op(a[...,None,nwhole*bsize:],-1)],-1)
-	return vals
+	a      = np.asarray(a)
+	axis  %= a.ndim
+	# Split the array into the first part, the whole blocks, and the remainder
+	nwhole = (a.shape[axis]-off)//bsize
+	pre, mid, tail = np.split(a, [off,off+nwhole*bsize], axis)
+	# Average and merge these
+	parts  = []
+	if pre.size  > 0 and inclusive: parts.append(np.expand_dims(op(pre, axis),axis))
+	if mid.size  > 0: parts.append(op(mid.reshape(mid.shape[:axis]+(nwhole,bsize)+mid.shape[axis+1:]),axis+1))
+	if tail.size > 0 and inclusive: parts.append(np.expand_dims(op(tail,axis),axis))
+	return np.concatenate(parts, axis)
 
-def block_expand(a, bsize, osize, op="nearest"):
-	nwhole = osize//bsize
-	nrest  = osize-nwhole*bsize
+def block_expand(a, bsize, osize, axis=-1, off=0, op="nearest", inclusive=True):
+	"""The opposite of block_reduce. Where block_reduce averages (by default)
+	this function duplicates (by default) to recover the original shape.
+	If op="linear", then linear interpolation will be done instead of
+	duplication. NOTE: Currently axis and orr are not supported for
+	linear interpolation, which will always be done along the last axis."""
+	a      = np.asanyarray(a)
+	nwhole = (osize-off)//bsize
+	nrest  = osize-off-nwhole*bsize
+	axis  %= a.ndim
 	if op == "nearest":
-		bind = np.arange(osize)//bsize
-		return a[...,bind]
+		if inclusive:
+			pre, mid, tail = np.split(a, [off>0,(off>0)+nwhole], axis)
+			parts = []
+			if pre.size > 0: parts.append(np.repeat(pre, off,   axis))
+			if mid.size > 0: parts.append(np.repeat(mid, bsize, axis))
+			if tail.size> 0: parts.append(np.repeat(tail,nrest, axis))
+			return np.concatenate(parts, axis)
+		else:
+			parts = [
+					np.zeros(a.shape[:axis]+(off,)  +a.shape[axis+1:], a.dtype),
+					np.repeat(a, bsize, axis),
+					np.zeros(a.shape[:axis]+(nrest,)+a.shape[axis+1:], a.dtype),
+				]
+			return np.concatenate(parts, axis)
 	elif op == "linear":
+		# TODO: This part doesn't support off or axis yet.
 		# Index relative to block centers. For bsize samples in a block,
 		# the intervals have size 1/nblock, and the first sample is offset
 		# by half an interval. Hence sample #i is at ((i+1)+0.5)/nblock-0.5
@@ -1772,6 +1836,10 @@ def parse_numbers(s, dtype=None):
 	if dtype is not None:
 		res = res.astype(dtype)
 	return res
+def parse_box(desc):
+	"""Given a string of the form from:to,from:to,from:to,... returns
+	an array [{from,to},:]"""
+	return np.array([[float(word) for word in pair.split(":")] for pair in desc.split(",")]).T
 
 def triangle_wave(x, period=1):
 	"""Return a triangle wave with amplitude 1 and the given period."""
@@ -1965,7 +2033,7 @@ def eigpow(A, e, axes=[-2,-1], rlim=None, alim=None):
 		E, V = np.linalg.eigh(A)
 		if rlim is None: rlim = np.finfo(E.dtype).resolution*100
 		if alim is None: alim = np.finfo(E.dtype).tiny*1e4
-		mask = np.full(E.shape, False, np.bool)
+		mask = np.full(E.shape, False, bool)
 		if not is_int_valued(e):
 			mask |= E < 0
 		if e < 0:
@@ -2029,6 +2097,12 @@ def build_conditional(ps, inds, axes=[0,1]):
 def nint(a):
 	"""Return a rounded to the nearest integer, as an integer."""
 	return np.round(a).astype(int)
+def ceil(a):
+	"""Return a rounded to the next integer, as an integer."""
+	return np.ceil(a).astype(int)
+def floor(a):
+	"""Return a rounded to the previous integer, as an integer."""
+	return np.floor(a).astype(int)
 
 format_regex = r"%(\([a-zA-Z]\w*\)|\(\d+)\)?([ +0#-]*)(\d*|\*)(\.\d+|\.\*)?(ll|[lhqL])?(.)"
 def format_to_glob(format):
@@ -2450,6 +2524,19 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 			opairs.append((i1,i2))
 		return opairs
 
+def real_dtype(dtype):
+	"""Return the closest real (non-complex) dtype for the given dtype"""
+	# A bit ugly, but actually quite fast
+	return np.zeros(1, dtype).real.dtype
+
+def complex_dtype(dtype):
+	"""Return the closest complex dtype for the given dtype"""
+	return np.result_type(dtype, 0j)
+
+def ascomplex(arr):
+	arr = np.asanyarray(arr)
+	return arr.astype(complex_dtype(arr.dtype))
+
 # Conjugate gradients
 
 def default_M(x):     return np.copy(x)
@@ -2521,3 +2608,26 @@ class CG:
 		with h5py.File(fname, "r") as hfile:
 			for key in ["i","rz","rz0","x","r","p","err"]:
 				setattr(self, key, hfile[key].value)
+
+def nditer(shape):
+	ndim = len(shape)
+	I    = [0]*ndim
+	while True:
+		yield tuple(I)
+		for dim in range(ndim-1,-1,-1):
+			I[dim] += 1
+			if I[dim] < shape[dim]: break
+			I[dim] = 0
+		else:
+			break
+
+def first_importable(*args):
+	"""Given a list of module names, return the name of the first
+	one that can be imported."""
+	import importlib
+	for arg in args:
+		try:
+			importlib.import_module(arg)
+			return arg
+		except ModuleNotFoundError:
+			continue

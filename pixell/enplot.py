@@ -108,7 +108,7 @@ def plot_iterator(*arglist, **kwargs):
 	# Then process all the args
 	for arg in arglist:
 		if isinstance(arg, basestring):
-			parsed = parse_args(arg, noglob=noglob)
+			parsed = parse_args(arg, noglob=noglob, nodef=True)
 			imaps += parsed.ifiles
 			args.update(parsed)
 		else:
@@ -225,14 +225,16 @@ def write(fname, plot):
 				except AttributeError:
 					raise ValueError("Error writing plot: The plot is not a recognized type")
 
-def define_arg_parser():
+def define_arg_parser(nodefault=False):
 	argdefs = []
-	def add_argument(*args, **kwargs):
+	def add_argument(*args, default=None, **kwargs):
 		short = [arg[1:] for arg in args if len(arg) >= 2 and arg[0] == "-" and arg[1] != "-"]
 		long_ = [arg[2:] for arg in args if len(arg) >= 3 and arg[:2] == "--" and arg[2] != "-"]
 		if len(long_) > 0: name = long_[0]
 		else:              name = short[0]
 		name = name.replace("-","_")
+		if nodefault: default=argparse.SUPPRESS
+		kwargs["default"] = default
 		argdefs.append([name, [args, kwargs]])
 	add_argument("-o", "--oname", default="{dir}{pre}{base}{suf}{comp}{layer}.{ext}", help="The format to use for the output name. Default is {dir}{pre}{base}{suf}{comp}{layer}.{ext}")
 	add_argument("-c", "--color", default="planck", help="The color scheme to use, e.g. planck, wmap, gray, hotcold, etc., or a colors pecification in the form val:rrggbb,val:rrggbb,.... Se enlib.colorize for details.")
@@ -303,15 +305,17 @@ def define_arg_parser():
 	return parser, optnames
 
 arg_parser, optnames = define_arg_parser()
+arg_parser_nodef, _  = define_arg_parser(nodefault=True)
 # Hack: Update the plot docstring. I suspect that this will confuse automated tools
 help_short= "\n\t".join(arg_parser.format_help().split("positional arguments:")[0].split("\n")).rstrip()
 help_long = "\n\t".join(arg_parser.format_help().split("optional arguments:")[1].split("\n"))
 plot.__doc__ += "\n\t" + help_long
 
-def parse_args(args=sys.argv[1:], noglob=False):
+def parse_args(args=sys.argv[1:], noglob=False, nodef=False):
 	if isinstance(args, basestring):
 		args = shlex.split(args)
-	res = arg_parser.parse_args(args)
+	if nodef: res = arg_parser_nodef.parse_args(args)
+	else:     res = arg_parser      .parse_args(args)
 	res = bunch.Bunch(**res.__dict__)
 	# Glob expansion
 	if not noglob:
@@ -349,14 +353,16 @@ def get_map(ifile, args, return_info=False, name=None):
 		if isinstance(ifile, basestring):
 			toks  = ifile.split(":")
 			ifile, slice = toks[0], ":".join(toks[1:])
-			m0    = enmap.read_map(ifile, hdu=args.hdu)
+			m0    = enmap.read_map(ifile, hdu=args.hdu, delayed=True)
 			if name is None: name = ifile
 		else:
 			m0    = ifile
 			slice = ""
 			if name is None: name = ".fits"
 		# This fills in a dummy, plain wcs if one does not exist
-		m0 = enmap.enmap(m0, copy=False)
+		try: m0.wcs
+		except AttributeError: m0 = enmap.enmap(m0[:], copy=False)
+		# Optionally fix the wcs to avoid crpix being too far away
 		if args.fix_wcs:
 			m0.wcs = wcsutils.fix_wcs(m0.wcs)
 		# Save the original map, so we can compare its wcs later
@@ -368,7 +374,7 @@ def get_map(ifile, args, return_info=False, name=None):
 			m = m.submap(sub)
 		# Perform a common autocrop across all fields
 		if args.autocrop:
-			m = enmap.autocrop(m)
+			m = enmap.autocrop(m[:])
 		# If necessary, split into stamps. If no stamp splitting occurs,
 		# a list containing only the original map is returned
 		mlist = extract_stamps(m, args)
@@ -377,11 +383,14 @@ def get_map(ifile, args, return_info=False, name=None):
 		for i, m in enumerate(mlist):
 			# Downgrade
 			downgrade = parse_list(args.downgrade, int)
-			m = enmap.downgrade(m, downgrade)
+			m = enmap.downgrade(m[:], downgrade)
 			# Slicing, either at the file name level or though the slice option
 			m = eval("m"+slice)
 			if args.slice is not None:
-				m = eval("m"+args.slice)
+				try: m = eval("m"+args.slice)
+				except AttributeError: m = eval("m[:]"+args.slice) # handle proxy case
+			# Unwrap any remaining proxy
+			m    = m[:]
 			flip = (m.wcs.wcs.cdelt*m0.wcs.wcs.cdelt)[::-1]<0
 			assert m.ndim >= 2, "Image must have at least 2 dimensions"
 			# Apply arbitrary map operations

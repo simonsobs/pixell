@@ -19,6 +19,8 @@ from pixell import wcsutils
 from pixell import utils as u
 from pixell import colors
 from pixell import fft
+from pixell import tilemap
+from pixell import utils
 import numpy as np
 import pickle
 import os,sys
@@ -738,7 +740,61 @@ class PixelTests(unittest.TestCase):
         for i in range(ret.shape[0]):
             diff = ret[i] - model
             assert np.all(np.isclose(diff,0,atol=1e-3))
-                    
+
+    def test_tilemap(self):
+        shape, wcs = enmap.fullsky_geometry(30*utils.degree)
+        assert shape == (7,12)
+        geo  = tilemap.geometry((3,)+shape, wcs, tile_shape=(2,2))
+        assert len(geo.active) == 0
+        assert np.all(geo.lookup<0)
+        assert geo.ntile   == 24
+        assert geo.nactive == 0
+        assert geo.tile_shape == (2,2)
+        assert geo.grid_shape == (4,6)
+        assert tuple(geo.tile_shapes[ 0]) == (2,2)
+        assert tuple(geo.tile_shapes[ 5]) == (2,2)
+        assert tuple(geo.tile_shapes[18]) == (1,2)
+        assert tuple(geo.tile_shapes[23]) == (1,2)
+        assert geo.ind2grid(7) == (1,1)
+        assert geo.grid2ind(1,1) == 7
+        geo = geo.copy(active=[1])
+        assert geo.nactive == 1
+        assert np.sum(geo.lookup>=0) == 1
+        assert geo.active[0] == 1
+        assert geo.lookup[1] == 0
+        geo2 = geo.copy(active=[0,1,2])
+        assert geo.nactive == 1
+        assert geo2.nactive == 3
+        assert geo.compatible(geo) == 2
+        assert geo.compatible(geo2) == 1
+        geo3 = tilemap.geometry((3,)+shape, wcs, tile_shape=(2,3))
+        assert geo.compatible(geo3) == 0
+        del geo2, geo3
+        m1  = tilemap.zeros(geo.copy(active=[1,2]))
+        m2  = tilemap.zeros(geo.copy(active=[2,3,4]))
+        m3  = tilemap.zeros(geo.copy(active=[2]))
+        for a, i in enumerate(m1.geometry.active): m1.active_tiles[a] = i
+        for a, i in enumerate(m2.geometry.active): m2.active_tiles[a] = i*10
+        for a, i in enumerate(m3.geometry.active): m3.active_tiles[a] = i*100
+        assert m1[0,0] == 1
+        assert np.all(m1.tiles[1] == m1.active_tiles[0])
+        m12 = m1+m2
+        m21 = m2+m1
+        assert(m12.nactive == 4)
+        assert(m21.nactive == 4)
+        assert(np.all(m12.tiles[1] == 1))
+        assert(np.all(m21.tiles[1] == 1))
+        assert(np.all(m12.tiles[2] == 22))
+        assert(np.all(m21.tiles[2] == 22))
+        assert(sorted(m12.geometry.active)==sorted(m21.geometry.active))
+        m1 += m3
+        assert np.all(m1.tiles[2] == 202)
+        with self.assertRaises(ValueError): m3 += m1
+        m1[:] = 0
+        m1c   = np.cos(m1)
+        assert m1c.geometry.nactive == 2
+        assert np.allclose(m1c, 1)
+
 
 if __name__ == '__main__':
     unittest.main()

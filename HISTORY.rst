@@ -2,6 +2,51 @@
 History
 =======
 
+0.14.2 (2021-11-23)
+-------------------
+
+Changes relative to 0.14.1 include:
+
+* An important bugfix for enmap.downgrade when the `op` argument is passed. This bug has been present since v0.14.0 and in commits on master since Aug 12, 2021.
+
+0.14.1 (2021-11-16)
+-------------------
+
+Changes relative to 0.13.2 include:
+
+* A breaking change to map2alm where it no longer approximates WCS if ring weights are unavailable
+* Miscellaneous bug fixes
+* ducc0 FFT support and fast rotate_alm
+* Tiled map support
+* New healpix <-> rectpix reprojection API
+
+
+0.13.2 (2021-07-16)
+-------------------
+
+Changes relative to 0.13.1 include:
+
+* Added binaries for MacOS 11 Big Sur
+
+0.13.1 (2021-07-08)
+-------------------
+
+Changes relative to 0.13.0 include:
+
+* Fixes to the MacOS wheel building
+
+
+0.13.0 (2021-07-08)
+-------------------
+
+Changes relative to 0.12.1 include:
+
+* Matched filtering in a new analysis module
+* Conjugate gradients solver
+* Discrete cosine transforms
+* Miscellaneous bug fixes
+  
+
 0.12.1 (2021-04-30)
 -------------------
 
