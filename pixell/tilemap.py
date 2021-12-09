@@ -300,7 +300,7 @@ def samegeo(arr, *args):
 	whenever possible.
 	"""
 	for m in args:
-		try: return TileMap(arr, m.geometry.copy(pre=arr.pre))
+		try: return TileMap(arr, m.geometry.copy(pre=arr.shape[:-1]))
 		except AttributeError: pass
 	return arr
 

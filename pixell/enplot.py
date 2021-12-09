@@ -425,6 +425,7 @@ def get_map(ifile, args, return_info=False, name=None):
 			mf = hwstack(hwexpand(mf, nrow, ncol, args.tile_transpose))[None]
 		# Mask bad data
 		if args.mask is not None:
+			mf = mf*1.0 # Make the array floating point
 			if not np.isfinite(args.mask): mf[np.abs(mf)==args.mask] = np.nan
 			else: mf[np.abs(mf-args.mask)<=args.mask_tol] = np.nan
 		# Done
