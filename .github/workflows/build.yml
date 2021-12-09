@@ -50,11 +50,10 @@ jobs:
         with:
           path: ./wheelhouse/*.whl
       
-      - name: Coveralls GitHub Action
-        uses: coverallsapp/github-action@v1.1.2
+      - uses: codecov/codecov-action@v2
         with:
-          github-token: ${{ github.token }}
-
+          token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+          verbose: true # optional (default = false)
 
   build_sdist:
     name: Build source distribution
