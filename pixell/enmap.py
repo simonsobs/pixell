@@ -594,7 +594,8 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 def insert(omap, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
 	"""Insert imap into omap based on their world coordinate systems, which
 	must be compatible. Essentially the reverse of extract."""
-	return extract(omap, imap.shape, imap.wcs, imap, wrap="auto", op=op, cval=0, iwcs=None, reverse=True)
+	extract(omap, imap.shape, imap.wcs, imap, wrap="auto", op=op, cval=0, iwcs=None, reverse=True)
+	return omap
 
 def insert_at(omap, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
 	"""Insert imap into omap at the position given by pix. If pix is [y,x], then
@@ -603,7 +604,8 @@ def insert_at(omap, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
 	copy imap. Wrapping is handled the same way as in extract."""
 	pixbox = np.array(pix)
 	if pixbox.ndim == 1: pixbox = np.array([pixbox,pixbox+imap.shape[-2:]])
-	return extract_pixbox(omap, pixbox, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=True)
+	extract_pixbox(omap, pixbox, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=True)
+	return omap
 
 def overlap(shape, wcs, shape2_or_pixbox, wcs2=None, wrap="auto"):
 	"""Compute the overlap between the given geometry (shape, wcs) and another *compatible*
