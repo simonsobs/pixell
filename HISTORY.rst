@@ -2,6 +2,13 @@
 History
 =======
 
+0.14.2 (2021-11-23)
+-------------------
+
+Changes relative to 0.14.1 include:
+
+* An important bugfix for enmap.downgrade when the `op` argument is passed. This bug has been present since v0.14.0 and in commits on master since Aug 12, 2021.
+
 0.14.1 (2021-11-16)
 -------------------
 

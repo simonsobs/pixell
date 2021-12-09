@@ -1641,8 +1641,8 @@ def downgrade(emap, factor, op=np.mean, ref=None, off=None, inclusive=False):
 	if off is None:  off = get_downgrade_offset(emap.shape, emap.wcs, factor, ref)
 	else:            off = np.zeros(2, int)+off
 	# Do the averaging
-	omap = utils.block_reduce(emap, factor[0], off=off[0], axis=-2, inclusive=inclusive)
-	omap = utils.block_reduce(omap, factor[1], off=off[1], axis=-1, inclusive=inclusive)
+	omap = utils.block_reduce(emap, factor[0], off=off[0], axis=-2, inclusive=inclusive, op=op)
+	omap = utils.block_reduce(omap, factor[1], off=off[1], axis=-1, inclusive=inclusive, op=op)
 	# Update the wcs
 	wcs  = emap[...,off[0]::factor[0],off[1]::factor[1]].wcs
 	wcs.wcs.crpix += (off[1::-1]>0)*inclusive # extra downgraded pixel in front if inclusive with offset
