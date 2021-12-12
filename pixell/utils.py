@@ -1042,16 +1042,24 @@ def allgatherv(a, comm, axis=0):
 	a      = a.astype(dtype, copy=False)
 	# Put the axis first, as that's what Allgatherv wants
 	fa = moveaxis(a, axis, 0)
+	# Do the same for the shapes, to figure out what the non-gather dimensions should be
+	shapes = [shape[1:] for shape in comm.allgather(fa.shape) if np.product(shape) != 0]
+	# All arrays are empty, so just return what we had
+	if len(shapes) == 0: return a
+	# otherwise make sure we have the right shape
+	fa = fa.reshape((len(fa),)+shapes[0])
 	# mpi4py doesn't handle all types. But why not just do this
 	# for everything?
 	must_fix = np.issubdtype(a.dtype, np.str_) or a.dtype == bool
 	if must_fix:
 		fa = fa.view(dtype=np.uint8)
+	#print(comm.rank, "fa.shape", fa.shape)
 	ra = fa.reshape(fa.shape[0],-1) if fa.size > 0 else fa.reshape(0,np.product(fa.shape[1:],dtype=int))
 	N  = ra.shape[1]
 	n  = allgather([len(ra)],comm)
 	o  = cumsum(n)
 	rb = np.zeros((np.sum(n),N),dtype=ra.dtype)
+	#print("A", comm.rank, ra.shape, ra.dtype, rb.shape, rb.dtype, n, N)
 	comm.Allgatherv(ra, (rb, (n*N,o*N)))
 	fb = rb.reshape((rb.shape[0],)+fa.shape[1:])
 	# Restore original data type
@@ -1825,7 +1833,7 @@ def parse_floats(s): return parse_numbers(s, float)
 def parse_numbers(s, dtype=None):
 	res = []
 	for word in s.split(","):
-		toks = [float(w) for w in word.split(":")]
+		toks = [dtype(w) for w in word.split(":")]
 		if ":" not in word:
 			res.append(toks[:1])
 		else:
@@ -2508,7 +2516,7 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 			# are already in the right order.
 			pass
 		elif mode == "closest":
-			parr   = np.array(pairs)
+			parr   = np.array(pairs,int).reshape(-1,2)
 			d2     = np.sum((pos1[parr[:,0]]-pos2[parr[:,1]])**2,1)
 			order  = np.argsort(d2)
 			pairs  = [pairs[i] for i in order]
