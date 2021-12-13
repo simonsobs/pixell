@@ -2,6 +2,13 @@
 History
 =======
 
+0.14.3 (2021-12-13)
+-------------------
+
+Changes relative to 0.14.2 include:
+
+* Updates to enmap.insert, UHTs and WCS string accuracy
+
 0.14.2 (2021-11-23)
 -------------------
 
