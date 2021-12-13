@@ -9,8 +9,8 @@ pixell
            :target: https://pixell.readthedocs.io/en/latest/?badge=latest
 		   :alt: Documentation Status
 
-.. image:: https://coveralls.io/repos/github/simonsobs/pixell/badge.svg?branch=master
-		   :target: https://coveralls.io/github/simonsobs/pixell?branch=master
+.. image:: https://codecov.io/gh/simonsobs/pixell/branch/master/graph/badge.svg?token=DOIG32B6NT
+	   :target: https://codecov.io/gh/simonsobs/pixell
 
 .. image:: https://badge.fury.io/py/pixell.svg
 		       :target: https://badge.fury.io/py/pixell

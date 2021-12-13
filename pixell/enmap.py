@@ -2318,13 +2318,18 @@ def read_fits_geometry(fname, hdu=None):
 	the hdu argument to change this. The map must be stored as
 	a fits image."""
 	if hdu is None: hdu = 0
-	with utils.nowarn():
-		hdu = astropy.io.fits.open(fname)[hdu]
-	if hdu.header["NAXIS"] < 2:
-		raise ValueError("%s is not an enmap (only %d axes)" % (fname, hdu.header["NAXIS"]))
+	if hdu == 0:
+		# Read header only, without body
+		with open(fname, "rb") as ifile:
+			header = astropy.io.fits.Header.fromstring(ifile.read(2880))
+	else:
+		with utils.nowarn():
+			header = astropy.io.fits.open(fname)[hdu].header
+	if header["NAXIS"] < 2:
+		raise ValueError("%s is not an enmap (only %d axes)" % (fname, header["NAXIS"]))
 	with warnings.catch_warnings():
-		wcs = wcsutils.WCS(hdu.header).sub(2)
-	shape = tuple([hdu.header["NAXIS%d"%(i+1)] for i in range(hdu.header["NAXIS"])[::-1]])
+		wcs = wcsutils.WCS(header).sub(2)
+	shape = tuple([header["NAXIS%d"%(i+1)] for i in range(header["NAXIS"])[::-1]])
 	return shape, wcs
 
 def write_hdf(fname, emap, extra={}):
