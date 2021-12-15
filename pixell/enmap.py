@@ -2285,11 +2285,12 @@ def write_fits(fname, emap, extra={}, allow_modify=False):
 def write_fits_geometry(fname, shape, wcs):
 	"""Write just the geometry to a fits file that will only contain the header"""
 	header = wcs.to_header(relax=True)
-	header["NAXIS"] = len(shape)
+	header.insert(0, ("SIMPLE",True))
+	header.insert(1, ("BITPIX",-32))
+	header.insert(2, ("NAXIS",len(shape)))
 	for i, s in enumerate(shape[::-1]):
-		header["NAXIS%d"%(i+1)] = s
+		header.insert(3+i, ("NAXIS%d"%(i+1),s))
 	# Dummy, but must be present
-	header["BITPIX"] = -32
 	utils.mkdir(os.path.dirname(fname))
 	header.tofile(fname, overwrite=True)
 
