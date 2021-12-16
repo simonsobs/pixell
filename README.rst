@@ -25,7 +25,7 @@ pixell
 Dependencies
 ------------
 
-* Python>=3.6
+* Python>=3.7
 * gcc/gfortran or Intel compilers (clang might not work out of the box), if compiling from source
 * libsharp2 (downloaded and installed, if compiling from source)
 * automake (for libsharp2 compilation, if compiling from source)
