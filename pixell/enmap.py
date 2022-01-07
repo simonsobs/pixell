@@ -2306,7 +2306,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, w
 	hdu = astropy.io.fits.open(fname)[hdu]
 	ndim = len(hdu.shape)
 	if hdu.header["NAXIS"] < 2:
-		raise ValueError("%s is not an enmap (only %d axes)" % (fname, hdu.header["NAXIS"]))
+		raise ValueError("%s is not an enmap (only %d axes)" % (str(fname), hdu.header["NAXIS"]))
 	if wcs is None:
 		with warnings.catch_warnings():
 			wcs = wcsutils.WCS(hdu.header).sub(2)
@@ -2321,13 +2321,17 @@ def read_fits_geometry(fname, hdu=None):
 	if hdu is None: hdu = 0
 	if hdu == 0:
 		# Read header only, without body
-		with open(fname, "rb") as ifile:
-			header = astropy.io.fits.Header.fromstring(ifile.read(2880))
+		if isinstance(fname, str):
+			with open(fname, "rb") as ifile:
+				header = astropy.io.fits.Header.fromstring(ifile.read(2880))
+		else:
+			# Handle the case where the user already has a file object
+			header = astropy.io.fits.Header.fromstring(fname.read(2880))
 	else:
 		with utils.nowarn():
 			header = astropy.io.fits.open(fname)[hdu].header
 	if header["NAXIS"] < 2:
-		raise ValueError("%s is not an enmap (only %d axes)" % (fname, header["NAXIS"]))
+		raise ValueError("%s is not an enmap (only %d axes)" % (str(fname), header["NAXIS"]))
 	with warnings.catch_warnings():
 		wcs = wcsutils.WCS(header).sub(2)
 	shape = tuple([header["NAXIS%d"%(i+1)] for i in range(header["NAXIS"])[::-1]])
@@ -2413,7 +2417,7 @@ class ndmap_proxy:
 	@property
 	def npix(self): return self.shape[-2]*self.shape[-1]
 	def __str__(self): return repr(self)
-	def __repr__(self): return "ndmap_proxy(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
+	def __repr__(self): return "ndmap_proxy(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (str(self.fname), str(self.shape), str(self.wcs), str(self.dtype))
 	def __getslice__(self, a, b=None, c=None): return self[slice(a,b,c)]
 	def __getitem__(self, sel): raise NotImplementedError("ndmap_proxy must be subclassed")
 	def submap(self, box, mode=None, wrap="auto"):
@@ -2442,7 +2446,7 @@ class ndmap_proxy_fits(ndmap_proxy):
 			print("Converting index %s for Stokes axis %s from IAU to COSMO in %s" % (
 				slist(self.stokes_flips[self.stokes_flips >= 0]),
 				slist(np.where(self.stokes_flips >= 0)[0]),
-				fname))
+				str(fname)))
 		ndmap_proxy.__init__(self, hdu.shape, wcs, dtype, fname=fname, threshold=threshold)
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [len(self.shape)-2,2])
@@ -2464,7 +2468,7 @@ class ndmap_proxy_fits(ndmap_proxy):
 			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-2,2])
 			res *= signs[sel1][...,None,None]
 		return ndmap(fix_endian(res), wcs)
-	def __repr__(self): return "ndmap_proxy_fits(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
+	def __repr__(self): return "ndmap_proxy_fits(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (str(self.fname), str(self.shape), str(self.wcs), str(self.dtype))
 
 class ndmap_proxy_hdf(ndmap_proxy):
 	def __init__(self, dset, wcs, fname="<none>", threshold=1e7):
