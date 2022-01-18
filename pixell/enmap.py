@@ -103,7 +103,7 @@ class ndmap(np.ndarray):
 	def plain(self): return ndmap(self, wcsutils.WCS(naxis=2))
 	def padslice(self, box, default=np.nan): return padslice(self, box, default=default)
 	def center(self): return center(self.shape,self.wcs)
-	def downgrade(self, factor, op=np.mean): return downgrade(self, factor, op=op)
+	def downgrade(self, factor, op=np.mean, ref=None, off=None): return downgrade(self, factor, op=op, ref=ref, off=off)
 	def upgrade(self, factor): return upgrade(self, factor)
 	def fillbad(self, val=0, inplace=False): fillbad(self, val=val, inplace=inplace)
 	def to_healpix(self, nside=0, order=3, omap=None, chunk=100000, destroy_input=False):
@@ -2036,7 +2036,7 @@ def _bin_helper(map, r, bsize, return_nhit=False):
 	functions on this one."""
 	# Get the number of bins
 	n     = int(np.max(r/bsize))
-	rinds = (r/bsize).reshape(-1).astype(int)
+	rinds = utils.nint((r/bsize).reshape(-1))
 	# Ok, rebin the map. We do this using bincount, which can be a bit slow
 	mflat = map.reshape((-1,)+map.shape[-2:])
 	mout = np.zeros((len(mflat),n))
