@@ -271,6 +271,7 @@ class Geometry:
 		return "Geometry(" + str(self.shape) + ","+str(self.wcs)+")"
 	@property
 	def nopre(self): return Geometry(self.shape[-2:], self.wcs)
+	def with_pre(self, pre): return Geometry(tuple(pre) + self.shape[-2:], self.wcs)
 	def submap(self, box=None, pixbox=None, mode=None, wrap="auto", noflip=False):
 		if pixbox is None:
 			pixbox = subinds(self.shape, self.wcs, box, mode=mode, cap=False, noflip=noflip)
@@ -503,6 +504,9 @@ def skybox2pixbox(shape, wcs, skybox, npoint=10, corner=False, include_direction
 	res = pix[:,[0,-1]].T
 	if include_direction: res = np.concatenate([res,dir[None]],0)
 	return res
+
+def pixbox2skybox(shape, wcs, pixbox):
+	return pix2sky(shape, wcs, np.asanyarray(pixbox).T).T
 
 def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, prefilter=True, mask_nan=False, safe=True, bsize=1000):
 	"""Project the map into a new map given by the specified
@@ -1989,6 +1993,21 @@ def apod(m, width, profile="cos", fill="zero"):
 	if fill == "mean" or fill == "median":
 		res += offset
 	return res
+
+def apod_profile_lin(x): return x
+def apod_profile_cos(x): return 0.5*(1-np.cos(np.pi*x))
+
+def apod_mask(mask, width=1*utils.degree, edge=True, profile=apod_profile_cos):
+	"""Given an enmap mask that's 0 in bad regions and 1 in good regions, return an
+	apodization map that's still 0 in bad regions, but transitions smoothly
+	to 1 in the good region over the given width in radians. The transition
+	profile is controlled by the profile argument. Regions outside the
+	image are considered to be bad."""
+	if edge: mask = mask.copy()
+	mask[..., 0,:] = False; mask[...,:, 0] = False
+	mask[...,-1,:] = False; mask[...,:,-1] = False
+	r = mask.distance_transform(rmax=width)
+	return profile(r/width)
 
 def lform(map, shift=True):
 	"""Given an enmap, return a new enmap that has been fftshifted (unless shift=False),

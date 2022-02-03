@@ -2001,19 +2001,20 @@ def tsz_profile_los_exact(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1
 	res   = res.reshape(x.shape)
 	return res
 
-def tsz_tform(lmax=40000, scale=1, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5):
+def tsz_tform(scale=1, l=None, lmax=40000, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5):
 	"""Return the radial spherical harmonic coefficients b(l) of the tSZ profile with the
 	parameters xc, alpha, beta, gamma. Scale controls the angular size of the profile on the
 	sky. The default scale of 1 corresponds to a FWHM of about 0.12 arcmin for the default
-	parameters. lmax controls the maximum l. The return array will have a shape of [lmax+1].
+	parameters. If l (which can be multidimensional) is specified, the tsz coefficients will
+	be evaluated at these ls.  Otherwise l = np.arange(lmax+1) will be used.
 
 	The 2d-but-radially-symmetric fourier integral and cuspy nature of the tSZ profile
 	are both handled via a fast hankel transform.
 	"""
 	from scipy import interpolate
 	lvals, bvals = profile_to_tform_hankel(lambda r: tsz_profile_los(r/arcmin/scale, xc=xc, alpha=alpha, beta=beta, gamma=gamma, zmax=zmax))
-	lout = np.arange(lmax+1)
-	bout = interpolate.interp1d(np.log(lvals), bvals, "cubic")(np.log(np.maximum(lout,0.1)))
+	if l is None: l = np.arange(lmax+1)
+	bout = interpolate.interp1d(np.log(lvals), bvals, "cubic")(np.log(np.maximum(l,0.1)))
 	return bout
 
 ### Binning ####
