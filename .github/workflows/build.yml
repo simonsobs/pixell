@@ -16,7 +16,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        python: ["3.9", "3.8", "3.7"]
+        python: ["3.10", "3.9", "3.8", "3.7"]
     steps:
       - uses: actions/checkout@v1
       - uses: actions/setup-python@v1
@@ -70,7 +70,7 @@ jobs:
                             MACOSX_DEPLOYMENT_TARGET=10.13          
           CIBW_BEFORE_BUILD: "python -m pip install numpy scipy cython"
           CIBW_BUILD_VERBOSITY: 3
-          CIBW_BUILD: "cp3?-*x86_64"
+          CIBW_BUILD: "cp3*-*x86_64"
           CIBW_SKIP: "cp33-* cp34-* cp35-* *-musllinux_*"
           CIBW_ARCHS_MACOS: "x86_64 arm64 universal2"
           PYTHON: "python"

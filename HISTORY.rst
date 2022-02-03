@@ -2,6 +2,14 @@
 History
 =======
 
+0.15.1 (2022-01-23)
+-------------------
+
+Changes relative to 0.14.3 include:
+
+* More flexible enmap.read_map_geometry
+* Add Python 3.10 support, drop Python 3.6 support
+
 0.14.3 (2021-12-13)
 -------------------
 
