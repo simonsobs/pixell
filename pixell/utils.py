@@ -2639,3 +2639,11 @@ def first_importable(*args):
 			return arg
 		except ModuleNotFoundError:
 			continue
+
+def glob(desc):
+	"""Like glob.glob, but without nullglob turned on. This is useful for not
+	just silently throwing away arguments with spelling mistakes."""
+	import glob as g
+	res = g.glob(desc)
+	if len(res) == 0: return [desc]
+	else: return res

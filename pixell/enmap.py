@@ -2570,7 +2570,7 @@ def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, or
 		raise ValueError("Invalid resample method '%s'" % method)
 	return omap
 
-def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=False, norm="pix", op=lambda a,b:b):
+def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=False, norm="pix", op=lambda a,b:b, dummy=False):
 	"""Like resample, but takes a fourier-space map as input and outputs a fourier-space map.
 	unit specifies which fourier-space unit is used. "pix" corresponds to
 	the standard enmap normalization (normalize=True in enmap.fft). "phys" corresponds
@@ -2587,7 +2587,9 @@ def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=False, norm="pix",
 		off -= 0.5 - 0.5*np.array(oshape[-2:],float)/fimap.shape[-2:] # in output units
 	if fomap is None:
 		owcs  = wcsutils.scale(fimap.wcs, np.array(oshape[-2:],float)/fimap.shape[-2:], rowmajor=True, corner=corner)
+		if dummy: return oshape, owcs
 		fomap = zeros(oshape, owcs, fimap.dtype)
+	if dummy: return oshape, owcs
 	# We sadly need to care about fourier-space normalization when doing this, since
 	# different-size fourier spaces can have different units. First handle explicit normalization,
 	# where the factor to multiply is given directly.
@@ -2596,7 +2598,7 @@ def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=False, norm="pix",
 		# Then handle various normalization conventions.
 		if   norm is None:     norm = 1 # Don't do anything if None is passed. Cost free
 		elif norm == "plain":  norm = fomap.npix/fimap.npix # Corresponds to normalize=False in enmap.ifft
-		elif norm == "pix":    norm = (fomap.npix/fimap.npix)**0.5 # Corresponds to normalize=True
+		elif norm == "pix":    norm = (fomap.npix/fimap.npix)**0.5 # Corresponds to normalize=True, enmap.fft default
 		elif norm == "phys":   norm = 1 # Corresponds to normalize="phys"
 		else: raise ValueError("Unrecognized fourier unit '%s'" % str(unit))
 	# copy over all 4 quadrants. This would have been a single operation if the
