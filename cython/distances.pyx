@@ -289,10 +289,14 @@ def find_edges(mask, flat=False):
 	cdef inum n = 0
 	cdef inum * edges_raw = NULL;
 	cdef uint8_t[::1] mask_ = mask.reshape(-1)
+	cdef inum[::1] view
 	n = c.find_edges(mask.shape[0], mask.shape[1], &mask_[0], &edges_raw)
 	# Copy into numpy array
-	cdef inum[::1] view = <inum[:n]> edges_raw;
-	edges = np.array(view)
+	if n > 0:
+		view = <inum[:n]> edges_raw;
+		edges = np.array(view)
+	else:
+		edges = np.zeros(0, np.int64)
 	free(edges_raw)
 	if not flat:
 		edges = np.unravel_index(edges, mask.shape)
@@ -315,10 +319,14 @@ def find_edges_labeled(labels, flat=False):
 	cdef inum n = 0
 	cdef inum * edges_raw = NULL;
 	cdef int[::1] labels_ = labels.reshape(-1)
+	cdef inum[::1] view
 	n = c.find_edges_labeled(labels.shape[0], labels.shape[1], &labels_[0], &edges_raw)
 	# Copy into numpy array
-	cdef inum[::1] view = <inum[:n]> edges_raw;
-	edges = np.array(view)
+	if n > 0:
+		view = <inum[:n]> edges_raw;
+		edges = np.array(view)
+	else:
+		edges = np.zeros(0, np.int64)
 	free(edges_raw)
 	if not flat:
 		edges = np.unravel_index(edges, labels.shape)

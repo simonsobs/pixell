@@ -308,7 +308,10 @@ arg_parser, optnames = define_arg_parser()
 arg_parser_nodef, _  = define_arg_parser(nodefault=True)
 # Hack: Update the plot docstring. I suspect that this will confuse automated tools
 help_short= "\n\t".join(arg_parser.format_help().split("positional arguments:")[0].split("\n")).rstrip()
-help_long = "\n\t".join(arg_parser.format_help().split("optional arguments:")[1].split("\n"))
+try:
+	help_long = "\n\t".join(arg_parser.format_help().split("optional arguments:")[1].split("\n"))
+except IndexError:
+	help_long = "\n\t".join(arg_parser.format_help().split("options:")[1].split("\n"))
 plot.__doc__ += "\n\t" + help_long
 
 def parse_args(args=sys.argv[1:], noglob=False, nodef=False):

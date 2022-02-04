@@ -110,7 +110,7 @@ def split_hdf_path(fname, subgroup=None):
 	raise ValueError("Not an hdf path")
 
 def concatenate(bunches):
-	"""Go from a list of bunches to a bunch of arrays."""
+	"""Go from a list of bunches to a bunch of lists."""
 	import numpy as np
 	keys = bunches[0].keys()
 	res  = Bunch()
@@ -119,5 +119,12 @@ def concatenate(bunches):
 		for key in keys:
 			res[key].append(bunch[key])
 	for key in keys:
-		res[key] = np.array(res[key])
+		# Try to build arrays while keeping type
+		if len(res[key]) > 0:
+			first = res[key][0]
+			tmp   = np.array(res[key])
+			new   = np.empty_like(first, shape=tmp.shape)
+			new[:] = tmp
+			res[key] = new
+			del first, tmp, new
 	return res

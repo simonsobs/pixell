@@ -65,7 +65,7 @@ with open('README.rst') as readme_file:
 with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
-requirements =  ['numpy>=1.19.5',
+requirements =  ['numpy>=1.20.0',
                  'astropy>=2.0',
                  'setuptools>=39',
                  'h5py>=2.7',
@@ -89,7 +89,7 @@ test_requirements = ['pip>=9.0',
                      'coverage>=4.5',
                      'Sphinx>=1.7',
                      'twine>=1.10',
-                     'numpy>=1.16',
+                     'numpy>=1.20',
                      'astropy>=2.0',
                      'setuptools>=39.2',
                      'h5py>=2.7,<=2.10',
