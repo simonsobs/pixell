@@ -2296,7 +2296,8 @@ def write_fits(fname, emap, extra={}, allow_modify=False):
 	for key, val in extra.items():
 		header[key] = val
 	hdus   = astropy.io.fits.HDUList([astropy.io.fits.PrimaryHDU(emap, header)])
-	utils.mkdir(os.path.dirname(fname))
+	if isinstance(fname, str):
+		utils.mkdir(os.path.dirname(fname))
 	with warnings.catch_warnings():
 		warnings.filterwarnings('ignore')
 		hdus.writeto(fname, clobber=True)
