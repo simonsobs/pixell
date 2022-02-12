@@ -2,6 +2,14 @@
 History
 =======
 
+0.15.2 (2022-02-12)
+-------------------
+
+Changes relative to 0.15.1 include:
+
+* New wheels that fix numpy binary incompatibility errors
+* Tests on Python 3.6 (but no wheels)
+
 0.15.1 (2022-01-23)
 -------------------
 
