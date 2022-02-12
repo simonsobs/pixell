@@ -50,8 +50,6 @@ Compiling from source (advanced / development workflow)
 
 For compilation instructions specific to NERSC/cori, see NERSC_.
 
-For compilation instructions specific to Mac OS X, see MACOSX_ (h/t Thibaut Louis).
-
 For all other, below are general instructions.
 
 First, download the source distribution or ``git clone`` this repository. You can work from ``master`` or checkout one of the released version tags (see the Releases section on Github). Then change into the cloned/source directory.
