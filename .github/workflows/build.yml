@@ -74,7 +74,7 @@ jobs:
                             MACOSX_DEPLOYMENT_TARGET=10.13          
           CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy cython"
           CIBW_BUILD_VERBOSITY: 3
-          CIBW_BUILD: "${{ matrix.cp }}-*-*x86_64"
+          CIBW_BUILD: "${{ matrix.cp }}-*x86_64"
           CIBW_SKIP: "*-musllinux_*"
           CIBW_ARCHS_MACOS: "x86_64 arm64 universal2"
           PYTHON: "python"
