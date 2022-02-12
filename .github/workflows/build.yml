@@ -1,22 +1,14 @@
 name: Build
 
 on: [push, pull_request]
-# Alternatively, to publish when a (published) GitHub Release is created, use the following:
-# on:
-#   push:
-#   pull_request:
-#   release:
-#     types:
-#       - published
 
 jobs:
-
   test:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest]
-        python: ["3.10", "3.9", "3.8", "3.7"]
+        python: ["3.10", "3.9", "3.8", "3.7", "3.6"]
     steps:
       - uses: actions/checkout@v1
       - uses: actions/setup-python@v1
@@ -45,7 +37,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-latest]
+      os: [ubuntu-20.04, macos-latest]
+      cp: [cp36, cp37, cp38, cp39, cp310]
+      include:
+      - cp: cp36
+        numpyver: "1.16"
+      - cp: cp37
+        numpyver: "1.20"
+      - cp: cp38
+        numpyver: "1.20"
+      - cp: cp39
+        numpyver: "1.20"
+      - cp: cp310
+        numpyver: "1.22"
 
     steps:
       - uses: actions/checkout@v2
@@ -68,10 +72,10 @@ jobs:
           CIBW_ENVIRONMENT: OMP_NUM_THREADS=2
                             OPENBLAS_NUM_THREADS=2
                             MACOSX_DEPLOYMENT_TARGET=10.13          
-          CIBW_BEFORE_BUILD: "python -m pip install numpy scipy cython"
+          CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy cython"
           CIBW_BUILD_VERBOSITY: 3
-          CIBW_BUILD: "cp3*-*x86_64"
-          CIBW_SKIP: "cp33-* cp34-* cp35-* *-musllinux_*"
+          CIBW_BUILD: "${{ matrix.cp }}-*-*x86_64"
+          CIBW_SKIP: "*-musllinux_*"
           CIBW_ARCHS_MACOS: "x86_64 arm64 universal2"
           PYTHON: "python"
           PIP: "pip"
