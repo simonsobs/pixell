@@ -37,19 +37,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-      os: [ubuntu-20.04, macos-latest]
-      cp: [cp36, cp37, cp38, cp39, cp310]
-      include:
-      - cp: cp36
-        numpyver: "1.16"
-      - cp: cp37
-        numpyver: "1.20"
-      - cp: cp38
-        numpyver: "1.20"
-      - cp: cp39
-        numpyver: "1.20"
-      - cp: cp310
-        numpyver: "1.22"
+        os: [ubuntu-20.04, macos-latest]
+        cp: [cp36, cp37, cp38, cp39, cp310]
+        include:
+          - cp: cp36
+            numpyver: "1.16"
+          - cp: cp37
+            numpyver: "1.20"
+          - cp: cp38
+            numpyver: "1.20"
+          - cp: cp39
+            numpyver: "1.20"
+          - cp: cp310
+            numpyver: "1.22"
 
     steps:
       - uses: actions/checkout@v2
