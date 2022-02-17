@@ -2,7 +2,7 @@ from __future__ import print_function
 import numpy as np
 from . import utils
 
-def sym_compress(mat, which=None, n=None, scheme=None, axes=[0,1]):
+def sym_compress(mat, which=None, n=None, scheme=None, axes=[0,1], combined=False):
 	"""Extract the unique elements of a symmetric matrix, and
 	return them as a flat array. For multidimensional arrays,
 	the extra dimensions keep their shape. The optional argument
@@ -13,10 +13,13 @@ def sym_compress(mat, which=None, n=None, scheme=None, axes=[0,1]):
 	if n is None: n = mat.shape[axes[0]]*(mat.shape[axes[0]]+1)//2
 	if which==None: which = compressed_order(n, scheme)
 	m = np.rollaxis(np.rollaxis(mat, axes[1]), axes[0])
-	res = np.array([m[w[0],w[1]] for w in which])
+	if combined:
+		res = np.array([m[w[0],w[1]]+m[w[1],w[0]]*(w[1]!=w[0]) for w in which])
+	else:
+		res = np.array([m[w[0],w[1]] for w in which])
 	return np.rollaxis(res, 0, axes[0])
 
-def sym_expand(mat, which=None, ncomp=None, scheme=None, axis=0):
+def sym_expand(mat, which=None, ncomp=None, scheme=None, axis=0, combined=False):
 	"""The inverse of sym_compress. Expands a flat array of numbers
 	into a symmetric matrix with ncomp components using the given
 	mapping which (or construct one using the given scheme)."""
@@ -26,6 +29,7 @@ def sym_expand(mat, which=None, ncomp=None, scheme=None, axis=0):
 	shape = [ncomp,ncomp] + list(m.shape[1:])
 	res = np.zeros(shape,dtype=mat.dtype)
 	for i, w in enumerate(which):
+		val = m[i]/2 if combined and w[0]!=w[1] else m[i]
 		res[w[0],w[1]] = m[i]
 		if w[0] != w[1]:
 			res[w[1],w[0]] = m[i]
