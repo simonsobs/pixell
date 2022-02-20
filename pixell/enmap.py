@@ -2003,9 +2003,10 @@ def apod_mask(mask, width=1*utils.degree, edge=True, profile=apod_profile_cos):
 	to 1 in the good region over the given width in radians. The transition
 	profile is controlled by the profile argument. Regions outside the
 	image are considered to be bad."""
-	if edge: mask = mask.copy()
-	mask[..., 0,:] = False; mask[...,:, 0] = False
-	mask[...,-1,:] = False; mask[...,:,-1] = False
+	if edge:
+		mask = mask.copy()
+		mask[..., 0,:] = False; mask[...,:, 0] = False
+		mask[...,-1,:] = False; mask[...,:,-1] = False
 	r = mask.distance_transform(rmax=width)
 	return profile(r/width)
 
