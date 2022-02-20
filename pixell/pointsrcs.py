@@ -329,6 +329,67 @@ def read_fits(fname, hdu=1, fix=True):
 		d = translate_dtype_keys(d, {"RADeg":"ra","decDeg":"dec","deltaT_c":"I","err_deltaT_c":"dI"})
 	return d.view(np.recarray)
 
+# Sauron catalog formats. I really need to come up with some once-and-for-all catalog format!
+def format_sauron(cat):
+	nfield, ncomp = cat.flux.shape[-2:]
+	names  = "TQU"
+	header = "#%7s %8s %9s" % ("ra", "dec", "snr_T")
+	for i in range(1,ncomp): header += " %7s" % ("snr_"+names[i])
+	for i in range(ncomp):   header += " %8s %7s" % ("ftot_"+names[i], "dftot_"+names[i])
+	for i in range(nfield):
+		for j in range(ncomp):
+			header += " %8s %7s" % ("flux_"+names[j]+"%d"%(i+1), "dflux_"+names[j]+"%d"%(i+1))
+	header += " %2s" % "ca"
+	for i in range(nfield): header += " %6s" % ("cont_%d" % (i+1))
+	header += "\n"
+	res = ""
+	for i in range(len(cat)):
+		res += "%8.4f %8.4f" % (cat.ra[i]/utils.degree, cat.dec[i]/utils.degree)
+		snr  = cat.snr[i].reshape(-1)
+		res += " %9.2f" % snr[0] + " %6.2f"*(len(snr)-1) % tuple(snr[1:])
+		flux = cat. flux_tot[i].reshape(-1)
+		dflux= cat.dflux_tot[i].reshape(-1)
+		for j in range(len(flux)):
+			res += "  %8.2f %7.2f" % (flux[j], dflux[j])
+		flux = cat. flux[i].reshape(-1)
+		dflux= cat.dflux[i].reshape(-1)
+		for j in range(len(flux)):
+			res += "  %8.2f %7.2f" % (flux[j], dflux[j])
+		try: res += " %2d" % (cat.case[i])
+		except (KeyError, AttributeError): pass
+		try:
+			for j in range(len(cat.contam[i])):
+				res += " %6.1f" % (cat.contam[i,j])
+		except (KeyError, AttributeError): pass
+		res += "\n"
+	return header + res
+
+def write_sauron(ofile, cat):
+	if ofile.endswith(".fits"): write_sauron_fits(ofile, cat)
+	else: write_sauron_txt (ofile, cat)
+
+def read_sauron(ifile):
+	if ifile.endswith(".fits"): return read_sauron_fits(ifile)
+	else: return read_sauron_txt(ifile)
+
+def write_sauron_fits(ofile, cat):
+	from astropy.io import fits
+	ocat = cat.copy()
+	for field in ["ra","dec"]: ocat[field] /= utils.degree # angles in degrees
+	hdu = fits.hdu.table.BinTableHDU(ocat)
+	hdu.writeto(ofile, overwrite=True)
+
+def read_sauron_fits(fname):
+	from astropy.io import fits
+	hdu = fits.open(fname)[1]
+	cat = np.asarray(hdu.data).view(np.recarray)
+	for field in ["ra","dec"]: cat[field] *= utils.degree # deg -> rad
+	return cat
+
+def write_sauron_txt(ofile, cat):
+	with open(ofile, "w") as ofile:
+		ofile.write(format_sauron(cat))
+
 def translate_dtype_keys(d, translation):
 	descr = [(name if name not in translation else translation[name], char) for (name, char) in d.dtype.descr]
 	return np.asarray(d, descr)
