@@ -115,7 +115,7 @@ print("%-15s %8.3f %8.3f %8.3f" % ("lowcorr full emp", flux, dflux, flux/dflux))
 import numpy as np
 from . import enmap, utils, uharm
 
-def matched_filter_constcov(map, B, iN, uht=None):
+def matched_filter_constcov(map, B, iN, uht=None, spin=0):
 	"""Apply a matched filter to the given map, assuming a constant covariance
 	noise model. A constant covariance noise model is one where the pixel-pixel
 	covariance is independent of the position in the map, and can be represented
@@ -141,7 +141,7 @@ def matched_filter_constcov(map, B, iN, uht=None):
 	# Npix" = WY Nharm" Y'W. Not the same as YNharm"Y"!
 	if uht is None: uht = uharm.UHT(map.shape, map.wcs)
 	pixarea = enmap.pixsizemap(map.shape, map.wcs, broadcastable=True)
-	rho     = uht.map2harm_adjoint(uht.hmul(B*iN,uht.map2harm(map)))/pixarea
+	rho     = uht.map2harm_adjoint(uht.hmul(B*iN,uht.map2harm(map, spin=spin)),spin=spin)/pixarea
 	kappa   = uht.sum_hprof(B**2*iN)/(4*np.pi)
 	return rho, kappa
 

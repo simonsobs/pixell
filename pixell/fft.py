@@ -85,15 +85,15 @@ try:
 	engine = "intel"
 except ImportError: pass
 # ducc is slower than intel, but can be faster than pyfftw
-try:
-	import ducc0
-	class DuccEngine: pass
-	ducc_engine = DuccEngine()
-	ducc_engine.FFTW = ducc_FFTW
-	ducc_engine.empty_aligned = numpy_empty_aligned
-	engines["ducc"] = ducc_engine
-	if engine != "intel": engine = "ducc"
-except ImportError: pass
+#try:
+#	import ducc0
+#	class DuccEngine: pass
+#	ducc_engine = DuccEngine()
+#	ducc_engine.FFTW = ducc_FFTW
+#	ducc_engine.empty_aligned = numpy_empty_aligned
+#	engines["ducc"] = ducc_engine
+#	if engine != "intel": engine = "ducc"
+#except ImportError: pass
 
 if len(engines) == 0:
 	# This should not happen due to the numpy fallback
@@ -330,6 +330,53 @@ def shift(a, shift, axes=None, nofft=False, deriv=None):
 	if not nofft: ifft(fa, ca, axes=axes, normalize=True)
 	else:	      ca = fa
 	return ca if np.iscomplexobj(a) else ca.real
+
+def resample_fft(fa, n, out=None, axes=-1, norm=1, op=lambda a,b:b):
+	"""Given array fa[{dims}] which is the fourier transform of some array a,
+	transform it so that that it corresponds to the fourier transform of
+	a version of a with a different number of samples by padding or truncating
+	the fourier space. The argument n controls the new number of samples. By
+	default this is for the last axis, but this can be changed using the axes
+	argument. Multiple axes can be resampled at once by specifying a tuple for
+	axes and n.
+
+	The resulting array is multiplied by the argument norm. This can be used
+	for normalization purposes. If norm is 1, then the multiplication is skipped.
+
+	The argument out can be used to specify an already allocated output array.
+	If it is None (the default), then an array will be allocated automatically.
+	Normally the output array is overwritten, but this can be controlled using
+	the op argument, which should be a function (out,fa)->out"""
+	fa = np.asanyarray(fa)
+	# Support n and axes being either tuples or a single number,
+	# and broadcast n to match axes
+	try: axes = tuple(axes)
+	except TypeError: axes = (axes,)
+	n  = np.zeros(len(axes),int)+n
+	# Determine the shape of the output array
+	oshape = list(fa.shape)
+	for i, ax in enumerate(axes):
+		oshape[ax] = n[i]
+	oshape = tuple(oshape)
+	# Check or allocate output array
+	if out is None:
+		out = np.zeros(oshape, fa.dtype)
+	else:
+		if out.shape != oshape:
+			raise ValueError("out argument has wrong shape in resample. Expected %s but got %s" % (str(oshape), str(out.shape)))
+	# This function is used to avoid paying the cost of multiplying by norm when it's one
+	def transfer(dest, source, norm, op):
+		if norm != 1: source = source*norm
+		dest[:] = op(dest, source)
+	# Loop over start and end blocks for all dimensions
+	for bi, I in enumerate(utils.nditer([2]*len(axes))):
+		sel = [slice(None) for n in oshape]
+		for ai, ax in enumerate(axes):
+			c = min(fa.shape[ax], oshape[ax])
+			if I[ai] == 0: sel[ax] = slice(0,c//2)
+			else:          sel[ax] = slice(-(c-c//2),None)
+	transfer(out[sel], fa[sel], norm, op)
+	return out
 
 def fft_flat(tod, ft, nthread=1, axes=[-1], flags=None, _direction="FFTW_FORWARD"):
 	"""Workaround for intel FFTW wrapper. Flattens appropriate dimensions of

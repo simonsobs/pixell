@@ -103,7 +103,7 @@ class ndmap(np.ndarray):
 	def plain(self): return ndmap(self, wcsutils.WCS(naxis=2))
 	def padslice(self, box, default=np.nan): return padslice(self, box, default=default)
 	def center(self): return center(self.shape,self.wcs)
-	def downgrade(self, factor, op=np.mean): return downgrade(self, factor, op=op)
+	def downgrade(self, factor, op=np.mean, ref=None, off=None): return downgrade(self, factor, op=op, ref=ref, off=off)
 	def upgrade(self, factor): return upgrade(self, factor)
 	def fillbad(self, val=0, inplace=False): fillbad(self, val=val, inplace=inplace)
 	def to_healpix(self, nside=0, order=3, omap=None, chunk=100000, destroy_input=False):
@@ -274,6 +274,7 @@ class Geometry:
 		return "Geometry(" + str(self.shape) + ","+str(self.wcs)+")"
 	@property
 	def nopre(self): return Geometry(self.shape[-2:], self.wcs)
+	def with_pre(self, pre): return Geometry(tuple(pre) + self.shape[-2:], self.wcs)
 	def submap(self, box=None, pixbox=None, mode=None, wrap="auto", noflip=False):
 		if pixbox is None:
 			pixbox = subinds(self.shape, self.wcs, box, mode=mode, cap=False, noflip=noflip)
@@ -506,6 +507,9 @@ def skybox2pixbox(shape, wcs, skybox, npoint=10, corner=False, include_direction
 	res = pix[:,[0,-1]].T
 	if include_direction: res = np.concatenate([res,dir[None]],0)
 	return res
+
+def pixbox2skybox(shape, wcs, pixbox):
+	return pix2sky(shape, wcs, np.asanyarray(pixbox).T).T
 
 def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, prefilter=True, mask_nan=False, safe=True, bsize=1000):
 	"""Project the map into a new map given by the specified
@@ -1993,6 +1997,21 @@ def apod(m, width, profile="cos", fill="zero"):
 		res += offset
 	return res
 
+def apod_profile_lin(x): return x
+def apod_profile_cos(x): return 0.5*(1-np.cos(np.pi*x))
+
+def apod_mask(mask, width=1*utils.degree, edge=True, profile=apod_profile_cos):
+	"""Given an enmap mask that's 0 in bad regions and 1 in good regions, return an
+	apodization map that's still 0 in bad regions, but transitions smoothly
+	to 1 in the good region over the given width in radians. The transition
+	profile is controlled by the profile argument. Regions outside the
+	image are considered to be bad."""
+	if edge: mask = mask.copy()
+	mask[..., 0,:] = False; mask[...,:, 0] = False
+	mask[...,-1,:] = False; mask[...,:,-1] = False
+	r = mask.distance_transform(rmax=width)
+	return profile(r/width)
+
 def lform(map, shift=True):
 	"""Given an enmap, return a new enmap that has been fftshifted (unless shift=False),
 	and which has had the wcs replaced by one describing fourier space. This is mostly
@@ -2039,7 +2058,7 @@ def _bin_helper(map, r, bsize, return_nhit=False):
 	functions on this one."""
 	# Get the number of bins
 	n     = int(np.max(r/bsize))
-	rinds = (r/bsize).reshape(-1).astype(int)
+	rinds = utils.nint((r/bsize).reshape(-1))
 	# Ok, rebin the map. We do this using bincount, which can be a bit slow
 	mflat = map.reshape((-1,)+map.shape[-2:])
 	mout = np.zeros((len(mflat),n))
@@ -2288,11 +2307,12 @@ def write_fits(fname, emap, extra={}, allow_modify=False):
 def write_fits_geometry(fname, shape, wcs):
 	"""Write just the geometry to a fits file that will only contain the header"""
 	header = wcs.to_header(relax=True)
-	header["NAXIS"] = len(shape)
+	header.insert(0, ("SIMPLE",True))
+	header.insert(1, ("BITPIX",-32))
+	header.insert(2, ("NAXIS",len(shape)))
 	for i, s in enumerate(shape[::-1]):
-		header["NAXIS%d"%(i+1)] = s
+		header.insert(3+i, ("NAXIS%d"%(i+1),s))
 	# Dummy, but must be present
-	header["BITPIX"] = -32
 	utils.mkdir(os.path.dirname(fname))
 	header.tofile(fname, overwrite=True)
 
@@ -2308,7 +2328,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, w
 	hdu = astropy.io.fits.open(fname)[hdu]
 	ndim = len(hdu.shape)
 	if hdu.header["NAXIS"] < 2:
-		raise ValueError("%s is not an enmap (only %d axes)" % (fname, hdu.header["NAXIS"]))
+		raise ValueError("%s is not an enmap (only %d axes)" % (str(fname), hdu.header["NAXIS"]))
 	if wcs is None:
 		with warnings.catch_warnings():
 			wcs = wcsutils.WCS(hdu.header).sub(2)
@@ -2323,13 +2343,17 @@ def read_fits_geometry(fname, hdu=None):
 	if hdu is None: hdu = 0
 	if hdu == 0:
 		# Read header only, without body
-		with open(fname, "rb") as ifile:
-			header = astropy.io.fits.Header.fromstring(ifile.read(2880))
+		if isinstance(fname, str):
+			with open(fname, "rb") as ifile:
+				header = astropy.io.fits.Header.fromstring(ifile.read(2880))
+		else:
+			# Handle the case where the user already has a file object
+			header = astropy.io.fits.Header.fromstring(fname.read(2880))
 	else:
 		with utils.nowarn():
 			header = astropy.io.fits.open(fname)[hdu].header
 	if header["NAXIS"] < 2:
-		raise ValueError("%s is not an enmap (only %d axes)" % (fname, header["NAXIS"]))
+		raise ValueError("%s is not an enmap (only %d axes)" % (str(fname), header["NAXIS"]))
 	with warnings.catch_warnings():
 		wcs = wcsutils.WCS(header).sub(2)
 	shape = tuple([header["NAXIS%d"%(i+1)] for i in range(header["NAXIS"])[::-1]])
@@ -2415,7 +2439,7 @@ class ndmap_proxy:
 	@property
 	def npix(self): return self.shape[-2]*self.shape[-1]
 	def __str__(self): return repr(self)
-	def __repr__(self): return "ndmap_proxy(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
+	def __repr__(self): return "ndmap_proxy(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (str(self.fname), str(self.shape), str(self.wcs), str(self.dtype))
 	def __getslice__(self, a, b=None, c=None): return self[slice(a,b,c)]
 	def __getitem__(self, sel): raise NotImplementedError("ndmap_proxy must be subclassed")
 	def submap(self, box, mode=None, wrap="auto"):
@@ -2444,7 +2468,7 @@ class ndmap_proxy_fits(ndmap_proxy):
 			print("Converting index %s for Stokes axis %s from IAU to COSMO in %s" % (
 				slist(self.stokes_flips[self.stokes_flips >= 0]),
 				slist(np.where(self.stokes_flips >= 0)[0]),
-				fname))
+				str(fname)))
 		ndmap_proxy.__init__(self, hdu.shape, wcs, dtype, fname=fname, threshold=threshold)
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [len(self.shape)-2,2])
@@ -2466,7 +2490,7 @@ class ndmap_proxy_fits(ndmap_proxy):
 			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-2,2])
 			res *= signs[sel1][...,None,None]
 		return ndmap(fix_endian(res), wcs)
-	def __repr__(self): return "ndmap_proxy_fits(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
+	def __repr__(self): return "ndmap_proxy_fits(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (str(self.fname), str(self.shape), str(self.wcs), str(self.dtype))
 
 class ndmap_proxy_hdf(ndmap_proxy):
 	def __init__(self, dset, wcs, fname="<none>", threshold=1e7):

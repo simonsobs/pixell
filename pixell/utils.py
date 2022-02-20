@@ -1925,6 +1925,97 @@ def noise_flux_factor(beam_area, freq, T0=T_cmb):
 	squared_beam_area = beam_area/2
 	return dplanck(freq, T0)*beam_area/squared_beam_area**0.5
 
+# Cluster physics
+
+def gnfw(x, xc, alpha, beta, gamma):
+	return (x/xc)**gamma*(1+(x/xc)**alpha)**((beta-gamma)/alpha)
+
+def tsz_profile_raw(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3):
+	"""Dimensionless radial (3d) cluster thermal pressure profile from
+	arxiv:1109.3711. That article used a different definition of beta,
+	beta' = 4.35 such that beta=gamma-alpha*beta'. I've translated it to
+	follow the standard gnfw formula here. The numbers correspond to
+	z=0, and M200 = 1e14 solar masses. They change slightly with mass
+	and significantly with distance. But the further away they are, the
+	smaller they get and the less the shape matters, so these should be
+	good defaults.
+
+	The full dimensions are this number times
+	P0*G*M200*200*rho_cr(z)*f_b/(2*R200) where P0=18.1 at z=0 and M200=1e14.
+	To get the dimensionful electron pressure,
+	further scale by (2+2*Xh)/(3+5*Xh), where Xh=0.76 is the hydrogen fraction.
+	But if one is working in units of y, then the dimensionless version is enough."""
+	return gnfw(x, xc=xc, alpha=alpha, beta=beta, gamma=gamma)
+
+_tsz_profile_los_cache = {}
+def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, npoint=100, x1=1e-8, x2=1e4, _a=8):
+	"""Fast, highly accurate approximate version of tsz_profile_los_exact. Interpolates the exact
+	function in log-log space, and caches the interpolator. With the default settings,
+	it's accurate to better than 1e-5 up to at least x = 10000, and building the
+	interpolator takes about 25 ms. After that, each evaluation takes 50-100 ns per
+	data point. This makes it about 10000x faster than tsz_profile_los_exact."""
+	from scipy import interpolate
+	# Cache the fit parameters. 
+	global _tsz_profile_los_cache
+	key = (xc, alpha, beta, gamma, zmax, npoint, _a, x1, x2)
+	if key not in _tsz_profile_los_cache:
+		xp = np.linspace(np.log(x1),np.log(x2),npoint)
+		yp = np.log(tsz_profile_los_exact(np.exp(xp), xc=xc, alpha=alpha, beta=beta, gamma=gamma, zmax=zmax, _a=_a))
+		_tsz_profile_los_cache[key] = (interpolate.interp1d(xp, yp, "cubic"), x1, x2, yp[0], yp[-1], (yp[-2]-yp[-1])/(xp[-2]-xp[-1]))
+	spline, xmin, xmax, vleft, vright, slope = _tsz_profile_los_cache[key]
+	# Split into 3 cases: x<xmin, x inside and x > xmax.
+	x     = np.asfarray(x)
+	left  = x<xmin
+	right = x>xmax
+	inside= (~left) & (~right)
+	return np.piecewise(x, [inside, left, right], [
+		lambda x: np.exp(spline(np.log(x))),
+		lambda x: np.exp(vleft),
+		lambda x: np.exp(vright + (np.log(x)-np.log(xmax))*slope),
+	])
+
+def tsz_profile_los_exact(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, _a=8):
+	"""Line-of-sight integral of the cluster_pressure_profile. See tsz_profile_raw
+	for the meaning of the arguments. Slow due to the use
+	of quad and the manual looping this requires. Takes about 1 ms per data point.
+	The argument _a controls a change of variable used to improve the speed and
+	accuracy of the integral, and should not be necessary to change from the default
+	value of 8.
+
+	See tsz_profile_raw for the units and how to scale it to something physical.
+	Without scaling, the profile has a peak of about 0.5 and a FWHM of about
+	0.12 with the default parameters.
+
+	Instead of using this function directly, consider using
+	tsz_profile_los instead. It's 10000x faster and more than accurate enough.
+	"""
+	from scipy.integrate import quad
+	x     = np.asarray(x)
+	xflat = x.reshape(-1)
+	# We have int f(x) dx, but would be easier to integrate
+	# int y**a f(y) dy. So we want y**a dy = dx => 1/(a+1)*y**(a+1) = x
+	# => y = (x*(a+1))**(1/(a+1))
+	def yfun(x): return (x*(_a+1))**(1/(_a+1))
+	def xfun(y): return y**(_a+1)/(_a+1)
+	res    = 2*np.array([quad(lambda y: y**_a*tsz_profile_raw((xfun(y)**2+x1**2)**0.5, xc=xc, alpha=alpha, beta=beta, gamma=gamma), 0, yfun(zmax))[0] for x1 in xflat])
+	res   = res.reshape(x.shape)
+	return res
+
+def tsz_tform(scale=1, l=None, lmax=40000, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5):
+	"""Return the radial spherical harmonic coefficients b(l) of the tSZ profile with the
+	parameters xc, alpha, beta, gamma. Scale controls the angular size of the profile on the
+	sky. The default scale of 1 corresponds to a FWHM of about 0.12 arcmin for the default
+	parameters. If l (which can be multidimensional) is specified, the tsz coefficients will
+	be evaluated at these ls.  Otherwise l = np.arange(lmax+1) will be used.
+
+	The 2d-but-radially-symmetric fourier integral and cuspy nature of the tSZ profile
+	are both handled via a fast hankel transform.
+	"""
+	from scipy import interpolate
+	lvals, bvals = profile_to_tform_hankel(lambda r: tsz_profile_los(r/arcmin/scale, xc=xc, alpha=alpha, beta=beta, gamma=gamma, zmax=zmax))
+	if l is None: l = np.arange(lmax+1)
+	bout = interpolate.interp1d(np.log(lvals), bvals, "cubic")(np.log(np.maximum(l,0.1)))
+	return bout
 
 ### Binning ####
 
@@ -2338,7 +2429,7 @@ def outer_stack(arrays):
 		res[i] = array[(None,)*i + (slice(None),) + (None,)*(len(arrays)-i-1)]
 	return res
 
-def beam_transform_to_profile(bl, theta, normalize=False):
+def tform_to_profile(bl, theta, normalize=False):
 	"""Given the transform b(l) of a beam, evaluate its real space angular profile
 	at the given radii theta."""
 	bl = np.asarray(bl)
@@ -2348,6 +2439,36 @@ def beam_transform_to_profile(bl, theta, normalize=False):
 	profile = np.polynomial.legendre.legval(x,a)
 	if normalize: profile /= np.sum(a)
 	return profile
+# Compatibility
+beam_transform_to_profile = tform_to_profile
+
+def profile_to_tform_hankel(profile_fun, lmin=0.01, lmax=1e6, n=512, pad=256):
+	"""Transform a radial profile given by the function profile_fun(r) to
+	sperical harmonic coefficients b(l) using a Hankel transform. This approach
+	is good at handling cuspy distributions due to using logarithmically spaced
+	points. n points from 10**logrange[0] to 10**logrange[1] will be used.
+	Returns l, bl. l will not be equi-spaced, so you may want to interpolate
+	the results. Note that this function uses the flat sky approximation, so
+	it should only be used for profiles up to a few degrees in size."""
+	import scipy.fft
+	# Prepare the real-space and fourier-space sample points, which are
+	# logarithmically spaced
+	loglmin = np.log10(lmin)
+	loglmax = np.log10(lmax)
+	logl0   = (loglmax+loglmin)/2
+	dlogl   = (loglmax-loglmin)/n
+	dln     = dlogl*np.log(10)
+	i0      = (n+1)/2+pad
+	l       = 10**(logl0 + (np.arange(1,n+2*pad+1)-i0)*dlogl)
+	r       = 1/l[::-1]
+	# Evaluate our profile
+	rprof   = profile_fun(r)
+	lprof   = 2*np.pi*scipy.fft.fht(rprof*r, dln, 0)/l
+	# Crop off the padding
+	l       = l[pad:-pad]
+	lprof   = lprof[pad:-pad]
+	return l, lprof
+
 
 def fix_dtype_mpi4py(dtype):
 	"""Work around mpi4py bug, where it refuses to accept dtypes with endian info"""
