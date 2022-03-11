@@ -580,7 +580,6 @@ def match_predefined_minfo(shape, wcs, rtol=None, atol=None):
 	if flipy: shape, wcs = enmap.slice_geometry(shape, wcs, [slice(None,None,-1)])
 	ntheta, nphi = shape[-2:]
 	theta  = np.pi/2 - enmap.pix2sky(shape, wcs, [np.arange(ntheta),np.zeros(ntheta)])[0]
-	phi0   = enmap.pix2sky(shape, wcs, [1,0])[1]
 	# First find out how many lat rings there are in the whole sky.
 	# Find the first and last pixel center inside bounds
 	y1   = int(np.round(enmap.sky2pix(shape, wcs, [np.pi/2,0])[0]))
