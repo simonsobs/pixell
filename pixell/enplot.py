@@ -399,7 +399,7 @@ def get_map(ifile, args, return_info=False, name=None):
 			# Apply arbitrary map operations
 			m1 = m
 			if args.op is not None:
-				m = eval(args.op, {"m":m,"enmap":enmap,"utils":utils},np.__dict__)
+				m = eval(args.op, {"m":m,"enmap":enmap,"utils":utils,"np":np},np.__dict__)
 			# Scale if requested
 			scale = parse_list(args.upgrade, int)
 			if np.any(np.array(scale)>1):

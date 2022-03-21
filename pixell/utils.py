@@ -1869,12 +1869,12 @@ def calc_beam_area(beam_profile):
 	r, b = beam_profile
 	return integrate.simps(2*np.pi*r*b,r)
 
-def planck(f, T):
+def planck(f, T=T_cmb):
 	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
 	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
 blackbody = planck
 
-def dplanck(f, T):
+def dplanck(f, T=T_cmb):
 	"""The derivative of the planck spectrum with respect to temperature, evaluated
 	at frequencies f and temperature T, in units of Jy/sr/K."""
 	# A blackbody has intensity I = 2hf**3/c**2/(exp(hf/kT)-1) = V/(exp(x)-1)
@@ -1889,7 +1889,7 @@ def dplanck(f, T):
 	dIdT  = 2*x**4 * k**3*T**2/(h**2*c**2) / (4*np.sinh(x/2)**2) * 1e26
 	return dIdT
 
-def graybody(f, T, beta=1):
+def graybody(f, T=10, beta=1):
 	"""Return a graybody spectrum at the frequency f and temperature T in Jy/sr"""
 	return  2*h*f**(3+beta)/c**2/(np.exp(h*f/(k*T))-1) * 1e26
 
@@ -2406,11 +2406,13 @@ def split_slice_simple(sel, ndims):
 		raise IndexError("Too many indices")
 	return [tuple(v) for v in res]
 
+class _get_slice_class:
+	def __getitem__(self, a): return a
+get_slice = _get_slice_class()
+
 def parse_slice(desc):
-	class Foo:
-		def __getitem__(self, p): return p
-	foo = Foo()
-	return eval("foo"+desc)
+	if desc is None: return None
+	else: return eval("get_slice" + desc)
 
 def slice_downgrade(d, s, axis=-1):
 	"""Slice array d along the specified axis using the Slice s,
@@ -2776,3 +2778,9 @@ def glob(desc):
 	res = g.glob(desc)
 	if len(res) == 0: return [desc]
 	else: return res
+
+def cache_get(cache, key, op):
+	if not cache: return op()
+	if key not in cache:
+		cache[key] = op()
+	return cache[key]

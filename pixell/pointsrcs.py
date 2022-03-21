@@ -58,7 +58,7 @@ def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None,
 	ref  = np.mean(enmap.box(shape, wcs, corner=False)[:,1])
 	poss[:,1] = utils.rewind(poss[:,1], ref)
 	beam = expand_beam(beam, nsigma, rmax)
-	rmax = nsigma2rmax(beam, nsigma)
+	if not rmax: rmax = nsigma2rmax(beam, nsigma)
 	# Pad our map by rmax, so we get the contribution from sources
 	# just ourside our area. We will later split our map into cells of size cres. Let's
 	# adjust the padding so we have a whole number of cells
@@ -333,20 +333,20 @@ def read_fits(fname, hdu=1, fix=True):
 def format_sauron(cat):
 	nfield, ncomp = cat.flux.shape[-2:]
 	names  = "TQU"
-	header = "#%7s %8s %9s" % ("ra", "dec", "snr_T")
-	for i in range(1,ncomp): header += " %7s" % ("snr_"+names[i])
+	header = "#%8s %8s %9s" % ("ra", "dec", "snr_T")
+	for i in range(1,ncomp): header += " %8s" % ("snr_"+names[i])
 	for i in range(ncomp):   header += " %8s %7s" % ("ftot_"+names[i], "dftot_"+names[i])
 	for i in range(nfield):
 		for j in range(ncomp):
 			header += " %8s %7s" % ("flux_"+names[j]+"%d"%(i+1), "dflux_"+names[j]+"%d"%(i+1))
 	header += " %2s" % "ca"
-	for i in range(nfield): header += " %6s" % ("cont_%d" % (i+1))
+	for i in range(nfield): header += " %7s" % ("cont_%d" % (i+1))
 	header += "\n"
 	res = ""
 	for i in range(len(cat)):
-		res += "%8.4f %8.4f" % (cat.ra[i]/utils.degree, cat.dec[i]/utils.degree)
+		res += "%9.4f %8.4f" % (cat.ra[i]/utils.degree, cat.dec[i]/utils.degree)
 		snr  = cat.snr[i].reshape(-1)
-		res += " %9.2f" % snr[0] + " %6.2f"*(len(snr)-1) % tuple(snr[1:])
+		res += " %9.2f" % snr[0] + " %7.2f"*(len(snr)-1) % tuple(snr[1:])
 		flux = cat. flux_tot[i].reshape(-1)
 		dflux= cat.dflux_tot[i].reshape(-1)
 		for j in range(len(flux)):
@@ -359,7 +359,7 @@ def format_sauron(cat):
 		except (KeyError, AttributeError): pass
 		try:
 			for j in range(len(cat.contam[i])):
-				res += " %6.1f" % (cat.contam[i,j])
+				res += " %7.2f" % (cat.contam[i,j])
 		except (KeyError, AttributeError): pass
 		res += "\n"
 	return header + res
