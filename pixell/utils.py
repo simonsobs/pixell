@@ -2007,7 +2007,7 @@ def tsz_profile_los_exact(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1
 	res   = res.reshape(x.shape)
 	return res
 
-def tsz_tform(r200=1*utils.arcmin, l=None, lmax=40000, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5):
+def tsz_tform(r200=1*arcmin, l=None, lmax=40000, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5):
 	"""Return the radial spherical harmonic coefficients b(l) of the tSZ profile with the
 	parameters xc, alpha, beta, gamma. Scale controls the angular size of the profile on the
 	sky. r200 is the cluster's angular R200 size, in radians (default=1 arcmin).
