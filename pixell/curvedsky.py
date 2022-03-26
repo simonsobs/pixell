@@ -590,11 +590,9 @@ def match_predefined_minfo(shape, wcs, rtol=None, atol=None):
 	# Define our candidate pixelizations
 	minfos = []
 	for i in range(-1,2):
-		#minfos.append(sharp.map_info_gauss_legendre(ny+i, nx, phi0))
 		minfos.append(sharp.map_info_clenshaw_curtis(ny+i, nx, phi0))
 		minfos.append(sharp.map_info_fejer1(ny+i, nx, phi0))
 		minfos.append(sharp.map_info_fejer2(ny+i, nx, phi0))
-		minfos.append(sharp.map_info_mw(ny+i, nx, phi0))
 	# For each pixelization find the first ring in the map
 	aroffs, scores, minfos2 = [], [], []
 	for minfo in minfos:
