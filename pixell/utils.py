@@ -1869,12 +1869,12 @@ def calc_beam_area(beam_profile):
 	r, b = beam_profile
 	return integrate.simps(2*np.pi*r*b,r)
 
-def planck(f, T):
+def planck(f, T=T_cmb):
 	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
 	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
 blackbody = planck
 
-def dplanck(f, T):
+def dplanck(f, T=T_cmb):
 	"""The derivative of the planck spectrum with respect to temperature, evaluated
 	at frequencies f and temperature T, in units of Jy/sr/K."""
 	# A blackbody has intensity I = 2hf**3/c**2/(exp(hf/kT)-1) = V/(exp(x)-1)
@@ -1889,7 +1889,7 @@ def dplanck(f, T):
 	dIdT  = 2*x**4 * k**3*T**2/(h**2*c**2) / (4*np.sinh(x/2)**2) * 1e26
 	return dIdT
 
-def graybody(f, T, beta=1):
+def graybody(f, T=10, beta=1):
 	"""Return a graybody spectrum at the frequency f and temperature T in Jy/sr"""
 	return  2*h*f**(3+beta)/c**2/(np.exp(h*f/(k*T))-1) * 1e26
 
@@ -1944,7 +1944,12 @@ def tsz_profile_raw(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3):
 	P0*G*M200*200*rho_cr(z)*f_b/(2*R200) where P0=18.1 at z=0 and M200=1e14.
 	To get the dimensionful electron pressure,
 	further scale by (2+2*Xh)/(3+5*Xh), where Xh=0.76 is the hydrogen fraction.
-	But if one is working in units of y, then the dimensionless version is enough."""
+	But if one is working in units of y, then the dimensionless version is enough.
+
+	x = r/R200. That is, it is the distance from the cluster center in units
+	of the radius inside which the mean density is 200x as high as the critical
+	density rho_c.
+	"""
 	return gnfw(x, xc=xc, alpha=alpha, beta=beta, gamma=gamma)
 
 _tsz_profile_los_cache = {}
@@ -1953,7 +1958,8 @@ def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, np
 	function in log-log space, and caches the interpolator. With the default settings,
 	it's accurate to better than 1e-5 up to at least x = 10000, and building the
 	interpolator takes about 25 ms. After that, each evaluation takes 50-100 ns per
-	data point. This makes it about 10000x faster than tsz_profile_los_exact."""
+	data point. This makes it about 10000x faster than tsz_profile_los_exact.
+	See tsz_profile_raw for the units."""
 	from scipy import interpolate
 	# Cache the fit parameters. 
 	global _tsz_profile_los_cache
@@ -2001,18 +2007,19 @@ def tsz_profile_los_exact(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1
 	res   = res.reshape(x.shape)
 	return res
 
-def tsz_tform(scale=1, l=None, lmax=40000, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5):
+def tsz_tform(r200=1*arcmin, l=None, lmax=40000, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5):
 	"""Return the radial spherical harmonic coefficients b(l) of the tSZ profile with the
 	parameters xc, alpha, beta, gamma. Scale controls the angular size of the profile on the
-	sky. The default scale of 1 corresponds to a FWHM of about 0.12 arcmin for the default
-	parameters. If l (which can be multidimensional) is specified, the tsz coefficients will
+	sky. r200 is the cluster's angular R200 size, in radians (default=1 arcmin).
+
+	If l (which can be multidimensional) is specified, the tsz coefficients will
 	be evaluated at these ls.  Otherwise l = np.arange(lmax+1) will be used.
 
 	The 2d-but-radially-symmetric fourier integral and cuspy nature of the tSZ profile
 	are both handled via a fast hankel transform.
 	"""
 	from scipy import interpolate
-	lvals, bvals = profile_to_tform_hankel(lambda r: tsz_profile_los(r/arcmin/scale, xc=xc, alpha=alpha, beta=beta, gamma=gamma, zmax=zmax))
+	lvals, bvals = profile_to_tform_hankel(lambda r: tsz_profile_los(r/r200, xc=xc, alpha=alpha, beta=beta, gamma=gamma, zmax=zmax))
 	if l is None: l = np.arange(lmax+1)
 	bout = interpolate.interp1d(np.log(lvals), bvals, "cubic")(np.log(np.maximum(l,0.1)))
 	return bout
@@ -2399,11 +2406,13 @@ def split_slice_simple(sel, ndims):
 		raise IndexError("Too many indices")
 	return [tuple(v) for v in res]
 
+class _get_slice_class:
+	def __getitem__(self, a): return a
+get_slice = _get_slice_class()
+
 def parse_slice(desc):
-	class Foo:
-		def __getitem__(self, p): return p
-	foo = Foo()
-	return eval("foo"+desc)
+	if desc is None: return None
+	else: return eval("get_slice" + desc)
 
 def slice_downgrade(d, s, axis=-1):
 	"""Slice array d along the specified axis using the Slice s,
@@ -2442,33 +2451,102 @@ def tform_to_profile(bl, theta, normalize=False):
 # Compatibility
 beam_transform_to_profile = tform_to_profile
 
-def profile_to_tform_hankel(profile_fun, lmin=0.01, lmax=1e6, n=512, pad=256):
+class RadialFourierTransform:
+	def __init__(self, lrange=None, rrange=None, n=512, pad=256):
+		"""Construct an object for transforming between radially
+		symmetric profiles in real-space and fourier space using a
+		fast Hankel transform. Aside from being fast, this is also
+		good for representing both cuspy and very extended profiles
+		due to the logarithmically spaced sample points the fast
+		Hankel transform uses. A cost of this is that the user can't
+		freely choose the sample points. Instead one passes the
+		multipole range or radial range of interest as well as the
+		number of points to use.
+
+		The function currently assumes two dimensions with flat geometry.
+		That means the function is only approximate for spherical
+		geometries, and will only be accurate up to a few degrees
+		in these cases.
+
+		Arguments:
+		* lrange = [lmin, lmax]: The multipole range to use. Defaults
+		  to [0.01, 1e6] if no rrange is given.
+		* rrange = [rmin, rmax]: The radius range to use if lrange is
+			not specified, in radians. Example values: [1e-7,10].
+			Since we don't use spherical geometry r is not limited to 2 pi.
+		* n: The number of logarithmically equi-spaced points to use
+			in the given range. Default: 512. The Hankel transform usually
+			doesn't need many points for good accuracy, and can suffer if
+			too many points are used.
+		* pad: How many extra points to pad by on each side of the range.
+		  Padding is useful to get good accuracy in a Hankel transform.
+		  The transforms this function does will return padded output,
+			which can be unpadded using the unpad method. Default: 256
+		"""
+		if lrange is None and rrange is None: lrange = [0.1, 1e7]
+		if lrange is None: lrange = [1/rrange[1], 1/rrange[0]]
+		logl1, logl2 = np.log(lrange)
+		logl0        = (logl2+logl1)/2
+		self.dlog    = (logl2-logl1)/n
+		i0           = (n+1)/2+pad
+		self.l       = np.exp(logl0 + (np.arange(1,n+2*pad+1)-i0)*self.dlog)
+		self.r       = 1/self.l[::-1]
+		self.pad     = pad
+	def real2harm(self, rprof):
+		"""Perform a forward (real -> harmonic) transform, taking us from the
+		provided real-space radial profile rprof(r) to a harmonic-space profile
+		lprof(l). rprof can take two forms:
+		1. A function rprof(r) that can be called to evalute the profile at
+		   arbitrary points.
+		2. An array rprof[self.r] that provides the profile evaluated at the
+		   points given by this object's .r member.
+		The transform is done along the last axis of the profile.
+		Returns lprof[self.l]. This includes padding, which can be removed
+		using self.unpad"""
+		import scipy.fft
+		try: rprof = rprof(self.r)
+		except TypeError: pass
+		lprof = 2*np.pi*scipy.fft.fht(rprof*self.r, self.dlog, 0)/self.l
+		return lprof
+	def harm2real(self, lprof):
+		"""Perform a backward (harmonic -> real) transform, taking us from the
+		provided harmonic-space radial profile lprof(l) to a real-space profile
+		rprof(r). lprof can take two forms:
+		1. A function lprof(l) that can be called to evalute the profile at
+		   arbitrary points.
+		2. An array lprof[self.l] that provides the profile evaluated at the
+		   points given by this object's .l member.
+		The transform is done along the last axis of the profile.
+		Returns rprof[self.r]. This includes padding, which can be removed
+		using self.unpad"""
+		import scipy.fft
+		try: lprof = lprof(self.l)
+		except TypeError: pass
+		rprof = scipy.fft.ifht(lprof/(2*np.pi)*self.l, self.dlog, 0)/self.r
+		return rprof
+	def unpad(self, *arrs):
+		"""Remove the padding from arrays used by this object. The
+		values in the padded areas of the output of the transform have
+		unreliable values, but they're not cropped automatically to
+		allow for round-trip transforms. Example:
+			r = unpad(r_padded)
+			r, l, vals = unpad(r_padded, l_padded, vals_padded)"""
+		if self.pad == 0: res = arrs
+		else: res = tuple([arr[...,self.pad:-self.pad] for arr in arrs])
+		return res[0] if len(arrs) == 1 else res
+
+def profile_to_tform_hankel(profile_fun, lmin=0.1, lmax=1e7, n=512, pad=256):
 	"""Transform a radial profile given by the function profile_fun(r) to
 	sperical harmonic coefficients b(l) using a Hankel transform. This approach
 	is good at handling cuspy distributions due to using logarithmically spaced
 	points. n points from 10**logrange[0] to 10**logrange[1] will be used.
 	Returns l, bl. l will not be equi-spaced, so you may want to interpolate
-	the results. Note that this function uses the flat sky approximation, so
+	the results. Note that unlike other similar functions in this module and
+	the curvedsky module, this function uses the flat sky approximation, so
 	it should only be used for profiles up to a few degrees in size."""
-	import scipy.fft
-	# Prepare the real-space and fourier-space sample points, which are
-	# logarithmically spaced
-	loglmin = np.log10(lmin)
-	loglmax = np.log10(lmax)
-	logl0   = (loglmax+loglmin)/2
-	dlogl   = (loglmax-loglmin)/n
-	dln     = dlogl*np.log(10)
-	i0      = (n+1)/2+pad
-	l       = 10**(logl0 + (np.arange(1,n+2*pad+1)-i0)*dlogl)
-	r       = 1/l[::-1]
-	# Evaluate our profile
-	rprof   = profile_fun(r)
-	lprof   = 2*np.pi*scipy.fft.fht(rprof*r, dln, 0)/l
-	# Crop off the padding
-	l       = l[pad:-pad]
-	lprof   = lprof[pad:-pad]
-	return l, lprof
-
+	rht   = RadialFourierTransform(lrange=[lmin,lmax], n=n, pad=pad)
+	lprof = rht.real2harm(profile_fun)
+	return rht.unpad(rht.l, lprof)
 
 def fix_dtype_mpi4py(dtype):
 	"""Work around mpi4py bug, where it refuses to accept dtypes with endian info"""
@@ -2768,3 +2846,9 @@ def glob(desc):
 	res = g.glob(desc)
 	if len(res) == 0: return [desc]
 	else: return res
+
+def cache_get(cache, key, op):
+	if not cache: return op()
+	if key not in cache:
+		cache[key] = op()
+	return cache[key]
