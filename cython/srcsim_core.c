@@ -31,7 +31,94 @@
 
 // TODO: Check if restrict keyword helps
 
-enum { OP_COPY, OP_ADD, OP_MAX, OP_MIN };
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include "srcsim_core.h"
+
+// Forward declaration for all the implementation details that don't
+// belong in the header
+
+float * measure_amax(int nobj, int ncomp, float ** amps);
+float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, float ** prof_rs, float ** prof_vs, float tol);
+
+int assign_cells(
+		int nobj,         // Number of objects
+		float * obj_ras,  // Object coordinates
+		float * obj_decs, //
+		int   * obj_xs,   // Object pixel coordinates
+		int   * obj_ys,   //
+		float * rmaxs,    // Max relevant radius for each object
+		int ny, int nx,   // Map dimensions
+		float * pix_ras,  // Coordinates of map pixels
+		float * pix_decs, //
+		int csize,        // Cell size
+		int **cell_nobj,  // Output parameter. Number of objects for each cell
+		int ***cell_objs, // Output parameter. Ids of objects in each cell
+		int ***cell_boxes // Output parameter. {y1,y2,x1,x1} for each cell.
+	);
+
+void process_cell(
+		int nobj,         // Number of objects in this cell
+		int * objs,       // ids of those objects
+		int * box,        // {y1,y2,x1,x2} pixel bounding box
+		float * obj_ras,  // [nobj_tot]. Coordinates of objects
+		float * obj_decs, // [nobj_tot]
+		float ** amps,    // [ncomp][nobj_tot]
+		int * prof_ids,   // Profile id for each object id
+		int * prof_ns,    // Number of points for each profile id
+		float ** prof_rs, // [nprof][prof_n]. R values in each profile
+		float ** prof_vs, // [nprof][prof_n]. Profile values.
+		int op,           // The operation to perform when merging object signals
+		int ncomp,        // Number of components
+		float * pix_ras,  // [ny*nx]. Coordinates of objects
+		float * pix_decs, // [ny*nx]
+		float ** imap,    // [ncomp,ny*nx]. The input map
+		float ** omap     // [ncomp,ny*nx]. The output map. Can be the same as the input map
+	);
+
+float * extract_map(float ** imap, int * box, int ncomp, int iny, int inx);
+float * extract_coords(float * imap, int * box, int iny, int inx);
+void insert_map(float * imap, float ** omap, int * box, int ncomp, int ony, int onx);
+
+void paint_object(
+		float obj_ra,     // object coordinates
+		float obj_dec,    //
+		float * amps,     // [ncomp], e.g. T, Q, U.
+		int prof_n,       // number of sample points in profile
+		float * prof_rs,  // radial coordinate for each sample point
+		float * prof_vs,  // profile value for each sample point
+		int ncomp, int ny, int nx,// cell dimensions
+		float * pix_ras,  // pixel coordinates
+		float * pix_decs, //
+		float * map       // map to overwrite
+	);
+
+void merge_cell(int n, int op, float * source, float * target);
+float evaluate_profile(int n, float * rs, float * vs, float r);
+int binary_search(int n, float * rs, float r);
+
+float calc_dist(float ra1, float dec1, float ra2, float dec2);
+float calc_grad(int i, int n, int s, float * v);
+
+void calc_pix_shape(int y, int x, int ny, int nx, float * pix_ras, float * pix_decs, float * ysize, float * xsize);
+void estimate_bounding_box(
+		int   obj_x,      // object pixel coordinates
+		int   obj_y,      //
+		float rmax,       // max relevant radius for object
+		int ny, int nx,   // map dimensions
+		float * pix_ras,  // coordinates of map pixels
+		float * pix_decs, //
+		int * box         // {y1,y2,x1,x2} in pixels.
+	);
+void pixbox2cellbox(int * pixbox, int csize, int ncy, int ncx, int * cellbox);
+
+typedef struct IntList { int n, cap; int * vals; } IntList;
+IntList * intlist_new();
+void intlist_push(IntList * v, int val);
+void intlist_free(IntList * v);
+void intlist_swap(IntList ** a, IntList ** b);
+
 
 void sim_objects(
 		int nobj,         // Number of objects
@@ -52,7 +139,7 @@ void sim_objects(
 		float *  pix_decs,// [ny*nx]
 		float ** imap,    // [ncomp,ny*nx]. The input map
 		float ** omap,    // [ncomp,ny*nx]. The output map. Can be the same as the input map.
-		int csize,        // cell size. These are processed in parallel. E.g. 32 for 32x32 cells
+		int csize         // cell size. These are processed in parallel. E.g. 32 for 32x32 cells
 	) {
 	// 1. Measure the maximum radius for each source
 	float * amaxs = measure_amax(nobj, ncomp, amps);
@@ -95,6 +182,7 @@ float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, flo
 	#pragma omp parallel for
 	for(int oi = 0; oi < nobj; oi++) {
 		int pid    = prof_ids[oi];
+		int n      = prof_ns[pid];
 		float * rs = prof_rs[pid];
 		float * vs = prof_vs[pid];
 		if     (vs[0]   <  tol) rmaxs[oi] = 0;
@@ -112,10 +200,10 @@ int assign_cells(
 		int nobj,         // Number of objects
 		float * obj_ras,  // Object coordinates
 		float * obj_decs, //
-		float * obj_xs,   // Object pixel coordinates
-		float * obj_ys,   //
+		int   * obj_xs,   // Object pixel coordinates
+		int   * obj_ys,   //
 		float * rmaxs,    // Max relevant radius for each object
-		int ny, nx,       // Map dimensions
+		int ny, int nx,   // Map dimensions
 		float * pix_ras,  // Coordinates of map pixels
 		float * pix_decs, //
 		int csize,        // Cell size
@@ -129,7 +217,7 @@ int assign_cells(
 	int ncell = ncy*ncx;
 	IntList ** cell_list = calloc(ncell, sizeof(IntList*));
 	for(int ci = 0; ci < ncell; ci++)
-		cell_list[i] = intlist_new();
+		cell_list[ci] = intlist_new();
 	// 2. For each object estimate its pixel bounding box, and turn that into a
 	//    cell bounding box. We do this all at once so we can use openmp
 	int pixbox[4];
@@ -158,16 +246,16 @@ int assign_cells(
 		}
 	}
 	// 4. Transfer to output
-	*cell_nobj  = calloc(ncell, int);
-	*cell_objs  = calloc(ncell, int*);
-	*cell_boxes = calloc(ncell, int*);
+	*cell_nobj  = calloc(ncell, sizeof(int));
+	*cell_objs  = calloc(ncell, sizeof(int*));
+	*cell_boxes = calloc(ncell, sizeof(int*));
 	for(int ci = 0; ci < ncell; ci++) {
 		(*cell_nobj)[ci] = (*cell_list)[ci].n;
 		(*cell_objs)[ci] = (*cell_list)[ci].vals;
 		int cy = ci/ncx, cx = ci%ncx;
 		int y1 = cy*csize, y2 = (cy+1)*csize; if(y2>ny) y2 = ny;
 		int x1 = cx*csize, x2 = (cx+1)*csize; if(x2>nx) x2 = nx;
-		int * box = calloc(4, sizeo(int));
+		int * box = calloc(4, sizeof(int));
 		box[0] = y1; box[1] = y2; box[2] = x1; box[3] = x2;
 		(*cell_boxes)[ci] = box;
 	}
@@ -181,8 +269,24 @@ int assign_cells(
 	return ncell;
 }
 
+int mod(int a, int b) { int c = a % b; return c < 0 ? c+b : c; }
+int floor_div(int a, int b) { int c = a / b; return c*b > a ? c-1 : c; }
+
+void pixbox2cellbox(int * pixbox, int csize, int ncy, int ncx, int * cellbox) {
+	// Go from raw pixel bounds to raw cell bounds
+	int cy1 = floor_div(pixbox[0], csize), cy2 = floor_div(pixbox[1]-1, csize)+1;
+	int cx1 = floor_div(pixbox[2], csize), cx2 = floor_div(pixbox[3]-1, csize)+1;
+	// Handle wrapping
+	int ch = cy2-cy1, cw = cx2-cx1;
+	cy1 = mod(cy1, ncy); cy2 = cy1+ch;
+	cx1 = mod(cx1, ncx); cx2 = cx1+cw;
+	// Put into output
+	cellbox[0] = cy1; cellbox[1] = cy2;
+	cellbox[2] = cx1; cellbox[3] = cx2;
+}
+
 void process_cell(
-		nobj,             // Number of objects in this cell
+		int nobj,         // Number of objects in this cell
 		int * objs,       // ids of those objects
 		int * box,        // {y1,y2,x1,x2} pixel bounding box
 		float * obj_ras,  // [nobj_tot]. Coordinates of objects
@@ -196,35 +300,73 @@ void process_cell(
 		int ncomp,        // Number of components
 		float * pix_ras,  // [ny*nx]. Coordinates of objects
 		float * pix_decs, // [ny*nx]
-		float ** imap     // [ncomp,ny*nx]. The input map
+		float ** imap,    // [ncomp,ny*nx]. The input map
 		float ** omap     // [ncomp,ny*nx]. The output map. Can be the same as the input map
 	) {
 	int y1 = box[0], y2 = box[1], x1 = box[2], x2 = box[3];
 	int ny = y2-y1, nx = x2-x1, npix = ny*nx, ntot = ncomp*npix;
 	// 1. Copy out the pixels
-	float * cell_data = extract_map(imap, box, ncomp);
-	float * cell_ras  = extract_coords(pix_ras,  box);
-	float * cell_decs = extract_coords(pix_decs, box);
+	float * cell_data = extract_map(imap, box, ncomp, ny, nx);
+	float * cell_ras  = extract_coords(pix_ras,  box, ny, nx);
+	float * cell_decs = extract_coords(pix_decs, box, ny, nx);
 	float * cell_work = calloc(ncomp*ny*nx, sizeof(float));
 	float * amp = calloc(ncomp, sizeof(float));
 	// 2. Process each object
 	for(int oi = 0; oi < nobj; oi++) {
 		int obj = objs[oi];
 		for(int ci = 0; ci < ncomp; ci++)
-			amp[ci] = amps[ci,oi];
+			amp[ci] = amps[ci][oi];
 		int pid = prof_ids[obj];
 		// 3. Paint object onto work-space
-		paint_object(obj_ras[obj], obj_decs[obj], amp, prof_ns[pid], prof_rs[pid], prof_vs[pid], cell_ras, cell_decs, cell_work);
+		paint_object(obj_ras[obj], obj_decs[obj], amp, prof_ns[pid], prof_rs[pid], prof_vs[pid], ncomp, ny, nx, cell_ras, cell_decs, cell_work);
 		// 4. Merge work-space with cell data
 		merge_cell(ntot, op, cell_work, cell_data);
 	}
 	// 5. Copy back into map
-	insert_map(cell_data, omap, box, ncomp);
+	insert_map(cell_data, omap, box, ncomp, ny, nx);
 	free(amp);
 	free(cell_data);
 	free(cell_ras);
 	free(cell_decs);
 	free(cell_work);
+}
+
+// Copy out a box from imap, returning it as omap. NB: No wrapping, but
+// vales are clamped
+float * extract_map(float ** imap, int * box, int ncomp, int iny, int inx) {
+	int ny = box[1]-box[0], nx = box[3]-box[2];
+	int npix = ny*nx, ntot = npix*ncomp;
+	float * omap = calloc(ntot, sizeof(float));
+	for(int c = 0; c < ncomp; c++) {
+		float * im = imap[c];
+		float * om = omap+c*npix;
+		for(int oy = 0, iy = box[0]; oy < ny; oy++, iy++) {
+			if(iy < 0 || iy >= iny) continue;
+			for(int ox = 0, ix = box[1]; ox < nx; ox++, ix++) {
+				if(ix < 0 || ix >= inx) continue;
+				om[oy*nx+ox] = im[iy*inx+ix];
+			}
+		}
+	}
+	return omap;
+}
+
+float * extract_coords(float * imap, int * box, int iny, int inx) { return extract_map(&imap, box, 1, iny, inx); }
+
+void insert_map(float * imap, float ** omap, int * box, int ncomp, int ony, int onx) {
+	int ny = box[1]-box[0], nx = box[3]-box[2];
+	int npix = ny*nx, ntot = npix*ncomp;
+	for(int c = 0; c < ncomp; c++) {
+		float * im = imap+c*npix;
+		float * om = omap[c];
+		for(int iy = 0, oy = box[0]; iy < ny; iy++, oy++) {
+			if(oy < 0 || oy >= ony) continue;
+			for(int ix = 0, ox = box[1]; ix < nx; ix++, ox++) {
+				if(ox < 0 || ox >= onx) continue;
+				om[oy*onx+ox] = im[iy*nx+ix];
+			}
+		}
+	}
 }
 
 void paint_object(
@@ -274,7 +416,7 @@ void merge_cell(int n, int op, float * source, float * target) {
 }
 
 float evaluate_profile(int n, float * rs, float * vs, float r) {
-	int i1 = binary_search(n, rs, r)
+	int i1 = binary_search(n, rs, r);
 	if(i1 < 0) return vs[0];
 	int i2 = i1+1;
 	if(i2 >= n) return vs[n-1];
@@ -283,7 +425,7 @@ float evaluate_profile(int n, float * rs, float * vs, float r) {
 }
 
 // Returns i such that rs[i] < r <= rs[i+1]. rs must be sorted.
-int binary_search(int n, float rs, float r) {
+int binary_search(int n, float * rs, float r) {
 	if(r <= rs[0])   return -1;
 	if(r >= rs[n-1]) return  n;
 	int a = 0, b = n-1;
@@ -345,37 +487,35 @@ void estimate_bounding_box(
 		int   obj_x,      // object pixel coordinates
 		int   obj_y,      //
 		float rmax,       // max relevant radius for object
-		int ny, nx,       // map dimensions
+		int ny, int nx,   // map dimensions
 		float * pix_ras,  // coordinates of map pixels
-		float * pix decs, //
+		float * pix_decs, //
 		int * box         // {y1,y2,x1,x2} in pixels.
 	) {
 	// 1. Find the height and width of the object's pixel
 	float dy0, dx0;
-	calc_grad(obj_y, obj_x, ny, nx, pix_decs, &dy0, &dx0);
+	calc_pix_shape(obj_y, obj_x, ny, nx, pix_ras, pix_decs, &dy0, &dx0);
 	// 2. Use this to define a preliminary rectangle
-	int Dy = (int)fabsf(fminf(rmax/dy,M_PI))+1;
-	int Dx = (int)fabsf(fminf(rmax/dx,M_PI))+1;
+	int Dy = (int)fabsf(fminf(rmax/dy0,M_PI))+1;
+	int Dx = (int)fabsf(fminf(rmax/dx0,M_PI))+1;
 	// 3. and visit its four corners, measuring the smallest dy
 	//    and dx for all of them
 	float dy = dy0, dx = dx0;
 	for(int oy = -1; oy <= 1; oy += 2)
 	for(int ox = -1; ox <= 1; ox += 2) {
-		calc_grad(obj_y+Dy*oy, obj_x+Dy*ox, ny, nx, pix_decs, &dy0, &dx0);
+		calc_pix_shape(obj_y+Dy*oy, obj_x+Dx*ox, ny, nx, pix_ras, pix_decs, &dy0, &dx0);
 		if(dy0 > dy) dy = dy0;
 		if(dx0 > dx) dx = dx0;
 	}
 	// 4. Use this to define a final rectangle
-	int Dy = (int)fabsf(fminf(rmax/dy,M_PI))+1;
-	int Dx = (int)fabsf(fminf(rmax/dx,M_PI))+1;
+	Dy = (int)fabsf(fminf(rmax/dy,M_PI))+1;
+	Dx = (int)fabsf(fminf(rmax/dx,M_PI))+1;
 	box[0] = obj_y - Dy;
 	box[1] = obj_y + Dy+1;
 	box[2] = obj_x - Dx;
 	box[3] = obj_x + Dx+1;
 }
 
-
-typedef struct { int n, cap; int * vals; } IntList;
 IntList * intlist_new() {
 	IntList * v = malloc(sizeof(IntList));
 	v->n   = 0;
