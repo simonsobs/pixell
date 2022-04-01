@@ -11,4 +11,4 @@ distances.c: distances.pyx distances_wrap.pxd distances_core.h distances_core.c
 srcsim.c: srcsim.pyx srcsim_wrap.pxd srcsim_core.h srcsim_core.c
 
 clean:
-	rm -f sharp.c distances.c
+	rm -f sharp.c distances.c srcsim.c

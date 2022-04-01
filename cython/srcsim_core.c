@@ -32,9 +32,13 @@
 // TODO: Check if restrict keyword helps
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include "srcsim_core.h"
+
+// I thought this was part of math.h, but apparently it's optional
+#define M_PI 3.14159265358979323846
 
 // Forward declaration for all the implementation details that don't
 // belong in the header
@@ -71,7 +75,7 @@ void process_cell(
 		float ** prof_rs, // [nprof][prof_n]. R values in each profile
 		float ** prof_vs, // [nprof][prof_n]. Profile values.
 		int op,           // The operation to perform when merging object signals
-		int ncomp,        // Number of components
+		int ncomp, int ny, int nx, // Number of components
 		int separable,    // Are ra/dec separable?
 		float * pix_ras,  // [ny*nx]. Coordinates of objects
 		float * pix_decs, // [ny*nx]
@@ -153,10 +157,10 @@ void sim_objects(
 	int *cell_nobj, **cell_objs, **cell_boxes; // [ncell], [ncell][objs] and [ncell][{y1,y2,x1,x2}]
 	int ncell = assign_cells(nobj, obj_ras, obj_decs, obj_xs, obj_ys, rmaxs, ny, nx, separable, pix_ras, pix_decs, csize, &cell_nobj, &cell_objs, &cell_boxes);
 	// 3. Process each cell
-	#pragma omp parallel for
-	for(int ci = 0; ci < ncell; ci++)
-		if(!(op == OP_ADD && cell_nobj[ci] == 0))
-			process_cell(cell_nobj[ci], cell_objs[ci], cell_boxes[ci], obj_ras, obj_decs, amps, prof_ids, prof_ns, prof_rs, prof_vs, op, ncomp, separable, pix_ras, pix_decs, imap, omap);
+	//#pragma omp parallel for
+	for(int ci = 0; ci < ncell; ci++) {
+		process_cell(cell_nobj[ci], cell_objs[ci], cell_boxes[ci], obj_ras, obj_decs, amps, prof_ids, prof_ns, prof_rs, prof_vs, op, ncomp, ny, nx, separable, pix_ras, pix_decs, imap, omap);
+	}
 	// Clean up stuff
 	for(int ci = 0; ci < ncell; ci++) {
 		free(cell_objs[ci]);
@@ -170,7 +174,7 @@ void sim_objects(
 
 float * measure_amax(int nobj, int ncomp, float ** amps) {
 	float * amaxs = calloc(nobj, sizeof(float));
-	#pragma omp parallel for
+	//#pragma omp parallel for
 	for(int i = 0; i < nobj; i++) {
 		float amax = amps[0][i];
 		for(int c = 1; c < ncomp; c++)
@@ -183,7 +187,7 @@ float * measure_amax(int nobj, int ncomp, float ** amps) {
 
 float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, float ** prof_rs, float ** prof_vs, float tol) {
 	float * rmaxs = calloc(nobj, sizeof(float));
-	#pragma omp parallel for
+	//#pragma omp parallel for
 	for(int oi = 0; oi < nobj; oi++) {
 		int pid    = prof_ids[oi];
 		int n      = prof_ns[pid];
@@ -193,7 +197,7 @@ float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, flo
 		else if(vs[n-1] >= tol) rmaxs[oi] = rs[n-1];
 		else {
 			int i;
-			for(i = n-1; i > 0 && vs[i] < tol; i++);
+			for(i = n-1; i > 0 && vs[i] < tol; i--);
 			rmaxs[oi] = rs[i];
 		}
 	}
@@ -227,7 +231,7 @@ int assign_cells(
 	//    cell bounding box. We do this all at once so we can use openmp
 	int pixbox[4];
 	int * cellboxes = calloc(nobj*4, sizeof(int));
-	#pragma omp parallel for
+	//#pragma omp parallel for
 	for(int oi = 0; oi < nobj; oi++) {
 		estimate_bounding_box(obj_xs[oi], obj_ys[oi], rmaxs[oi], ny, nx, separable, pix_ras, pix_decs, pixbox);
 		// This also handles wrapping such that the start will always be
@@ -241,42 +245,61 @@ int assign_cells(
 	for(int oi = 0; oi < nobj; oi++) {
 		int cy1 = cellboxes[4*oi+0], cy2 = cellboxes[4*oi+1];
 		int cx1 = cellboxes[4*oi+2], cx2 = cellboxes[4*oi+3];
-		for(int cy = cy1; cy <= cy2; cy++) {
-			if(cy >= ncy) cy -= ncy;
-			for(int cx = cx1; cx <= cx2; cx++) {
-				if(cx >= ncx) cx -= ncx;
-				int ci = cy*ncx+cx;
+		int cy_wrap, cx_wrap;
+		for(int cy = cy1; cy < cy2; cy++) {
+			cy_wrap = cy >= ncy ? cy-ncy : cy;
+			for(int cx = cx1; cx < cx2; cx++) {
+				cx_wrap = cx >= ncx ? cx-ncx : cx;
+				int ci = cy_wrap*ncx+cx_wrap;
 				intlist_push(cell_list[ci], oi);
 			}
 		}
 	}
-	// 4. Transfer to output
-	*cell_nobj  = calloc(ncell, sizeof(int));
-	*cell_objs  = calloc(ncell, sizeof(int*));
-	*cell_boxes = calloc(ncell, sizeof(int*));
-	for(int ci = 0; ci < ncell; ci++) {
-		(*cell_nobj)[ci] = (*cell_list)[ci].n;
-		(*cell_objs)[ci] = (*cell_list)[ci].vals;
+	// 4. Measure the active cells
+	IntList * active   = intlist_new();
+	IntList * inactive = intlist_new();
+	for(int ci = 0; ci < ncell; ci++)
+		if(cell_list[ci]->n > 0)
+			intlist_push(active, ci);
+		else
+			intlist_push(inactive, ci);
+	int nactive = active->n;
+
+	// 5. Transfer to output
+	*cell_nobj  = calloc(nactive, sizeof(int));
+	*cell_objs  = calloc(nactive, sizeof(int*));
+	*cell_boxes = calloc(nactive, sizeof(int*));
+	for(int ai = 0; ai < nactive; ai++) {
+		int ci = active->vals[ai];
+		(*cell_nobj)[ai] = cell_list[ci]->n;
+		(*cell_objs)[ai] = cell_list[ci]->vals;
 		int cy = ci/ncx, cx = ci%ncx;
 		int y1 = cy*csize, y2 = (cy+1)*csize; if(y2>ny) y2 = ny;
 		int x1 = cx*csize, x2 = (cx+1)*csize; if(x2>nx) x2 = nx;
 		int * box = calloc(4, sizeof(int));
 		box[0] = y1; box[1] = y2; box[2] = x1; box[3] = x2;
-		(*cell_boxes)[ci] = box;
+		(*cell_boxes)[ai] = box;
 	}
-	// We don't call inlist_free here, because we've given away the
-	// vals;
-	for(int ci = 0; ci < ncell; ci++)
-		free(cell_list[ci]);
+
+	// Call intlist_free only on inactive cells, since we've given
+	// away ownership of the values ofr the active ones
+	for(int i = 0; i < inactive->n; i++)
+		intlist_free(cell_list[inactive->vals[i]]);
+	for(int i = 0; i < active->n; i++)
+		free(cell_list[active->vals[i]]);
+	intlist_free(active);
+	intlist_free(inactive);
 	free(cell_list);
 	free(cellboxes);
 	// Finally return the number of cells
-	return ncell;
+	return nactive;
 }
 
 int mod(int a, int b) { int c = a % b; return c < 0 ? c+b : c; }
 int floor_div(int a, int b) { int c = a / b; return c*b > a ? c-1 : c; }
 
+// Convert y1 y2 x1 x2 -> cy1 cy2 cx1 cx2. The ranges are
+// half-open like in python
 void pixbox2cellbox(int * pixbox, int csize, int ncy, int ncx, int * cellbox) {
 	// Go from raw pixel bounds to raw cell bounds
 	int cy1 = floor_div(pixbox[0], csize), cy2 = floor_div(pixbox[1]-1, csize)+1;
@@ -304,7 +327,7 @@ void process_cell(
 		float ** prof_rs, // [nprof][prof_n]. R values in each profile
 		float ** prof_vs, // [nprof][prof_n]. Profile values.
 		int op,           // The operation to perform when merging object signals
-		int ncomp,        // Number of components
+		int ncomp, int ny, int nx,// Map dimensions
 		int separable,    // Are ra/dec separable?
 		float * pix_ras,  // [ny] if seprable else [ny*nx]. Coordinates of objects
 		float * pix_decs, // [nx] if seprable else [ny*nx]
@@ -312,12 +335,18 @@ void process_cell(
 		float ** omap     // [ncomp,ny*nx]. The output map. Can be the same as the input map
 	) {
 	int y1 = box[0], y2 = box[1], x1 = box[2], x2 = box[3];
-	int ny = y2-y1, nx = x2-x1, npix = ny*nx, ntot = ncomp*npix;
+	int cny = y2-y1, cnx = x2-x1, npix = cny*cnx, ntot = ncomp*npix;
 	// 1. Copy out the pixels
-	float * cell_data = extract_map(imap, box, ncomp, ny, nx, 1, 1);
-	float * cell_ras  = extract_coords(pix_ras,  box, ny, nx, !separable, 1);
-	float * cell_decs = extract_coords(pix_decs, box, ny, nx, 1, !separable);
-	float * cell_work = calloc(ncomp*ny*nx, sizeof(float));
+	float * cell_data = extract_map(imap, box, ncomp, ny, nx, nx, 1);
+	float * cell_ras, * cell_decs;
+	if(separable) {
+		cell_ras  = extract_coords(pix_ras,  box, ny, nx, 0, 1);
+		cell_decs = extract_coords(pix_decs, box, ny, nx, 1, 0);
+	} else {
+		cell_ras  = extract_coords(pix_ras,  box, ny, nx, nx, 1);
+		cell_decs = extract_coords(pix_decs, box, ny, nx, nx, 1);
+	}
+	float * cell_work = calloc(ncomp*cny*cnx, sizeof(float));
 	float * amp = calloc(ncomp, sizeof(float));
 	// 2. Process each object
 	for(int oi = 0; oi < nobj; oi++) {
@@ -326,7 +355,7 @@ void process_cell(
 			amp[ci] = amps[ci][oi];
 		int pid = prof_ids[obj];
 		// 3. Paint object onto work-space
-		paint_object(obj_ras[obj], obj_decs[obj], amp, prof_ns[pid], prof_rs[pid], prof_vs[pid], ncomp, ny, nx, cell_ras, cell_decs, cell_work);
+		paint_object(obj_ras[obj], obj_decs[obj], amp, prof_ns[pid], prof_rs[pid], prof_vs[pid], ncomp, cny, cnx, cell_ras, cell_decs, cell_work);
 		// 4. Merge work-space with cell data
 		merge_cell(ntot, op, cell_work, cell_data);
 	}
@@ -350,9 +379,9 @@ float * extract_map(float ** imap, int * box, int ncomp, int iny, int inx, int y
 		float * om = omap+c*npix;
 		for(int oy = 0, iy = box[0]; oy < ny; oy++, iy++) {
 			if(iy < 0 || iy >= iny) continue;
-			for(int ox = 0, ix = box[1]; ox < nx; ox++, ix++) {
+			for(int ox = 0, ix = box[2]; ox < nx; ox++, ix++) {
 				if(ix < 0 || ix >= inx) continue;
-				om[oy*nx+ox] = im[iy*inx*ystep+ix*xstep];
+				om[oy*nx+ox] = im[iy*ystep+ix*xstep];
 			}
 		}
 	}
@@ -369,7 +398,7 @@ void insert_map(float * imap, float ** omap, int * box, int ncomp, int ony, int 
 		float * om = omap[c];
 		for(int iy = 0, oy = box[0]; iy < ny; iy++, oy++) {
 			if(oy < 0 || oy >= ony) continue;
-			for(int ix = 0, ox = box[1]; ix < nx; ix++, ox++) {
+			for(int ix = 0, ox = box[2]; ix < nx; ix++, ox++) {
 				if(ox < 0 || ox >= onx) continue;
 				om[oy*onx+ox] = im[iy*nx+ix];
 			}
@@ -494,8 +523,8 @@ void calc_pix_shape_separable(int y, int x, int ny, int nx, float * pix_ras, flo
 	float ddec_dy = calc_grad(y, ny,  1, pix_decs);
 	float dra_dx  = calc_grad(x, nx,  1, pix_ras);
 	float c       = cos(pix_decs[y]);
-	*ysize        = ddec_dy;
-	*xsize        = dra_dx*c;
+	*ysize        = fabs(ddec_dy);
+	*xsize        = fabs(dra_dx*c);
 }
 
 void calc_pix_shape(int y, int x, int ny, int nx, int separable, float * pix_ras, float * pix_decs, float * ysize, float * xsize) {
@@ -517,8 +546,8 @@ void estimate_bounding_box(
 	float dy0, dx0;
 	calc_pix_shape(obj_y, obj_x, ny, nx, separable, pix_ras, pix_decs, &dy0, &dx0);
 	// 2. Use this to define a preliminary rectangle
-	int Dy = (int)fabsf(fminf(rmax/dy0,M_PI))+1;
-	int Dx = (int)fabsf(fminf(rmax/dx0,M_PI))+1;
+	int Dy = (int)fabsf(rmax/dy0)+1;
+	int Dx = (int)fabsf(rmax/dx0)+1;
 	// 3. and visit its four corners, measuring the smallest dy
 	//    and dx for all of them
 	float dy = dy0, dx = dx0;
@@ -529,8 +558,8 @@ void estimate_bounding_box(
 		if(dx0 > dx) dx = dx0;
 	}
 	// 4. Use this to define a final rectangle
-	Dy = (int)fabsf(fminf(rmax/dy,M_PI))+1;
-	Dx = (int)fabsf(fminf(rmax/dx,M_PI))+1;
+	Dy = (int)fabsf(rmax/dy)+1;
+	Dx = (int)fabsf(rmax/dx)+1;
 	box[0] = obj_y - Dy;
 	box[1] = obj_y + Dy+1;
 	box[2] = obj_x - Dx;
@@ -540,7 +569,7 @@ void estimate_bounding_box(
 IntList * intlist_new() {
 	IntList * v = malloc(sizeof(IntList));
 	v->n   = 0;
-	v->cap = 1024;
+	v->cap = 64;
 	v->vals= malloc((long)v->cap*sizeof(int));
 	return v;
 }
