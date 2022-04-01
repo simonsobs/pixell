@@ -50,6 +50,7 @@ int assign_cells(
 		int   * obj_ys,   //
 		float * rmaxs,    // Max relevant radius for each object
 		int ny, int nx,   // Map dimensions
+		int separable,    // Are ra/dec separable?
 		float * pix_ras,  // Coordinates of map pixels
 		float * pix_decs, //
 		int csize,        // Cell size
@@ -71,14 +72,15 @@ void process_cell(
 		float ** prof_vs, // [nprof][prof_n]. Profile values.
 		int op,           // The operation to perform when merging object signals
 		int ncomp,        // Number of components
+		int separable,    // Are ra/dec separable?
 		float * pix_ras,  // [ny*nx]. Coordinates of objects
 		float * pix_decs, // [ny*nx]
 		float ** imap,    // [ncomp,ny*nx]. The input map
 		float ** omap     // [ncomp,ny*nx]. The output map. Can be the same as the input map
 	);
 
-float * extract_map(float ** imap, int * box, int ncomp, int iny, int inx);
-float * extract_coords(float * imap, int * box, int iny, int inx);
+float * extract_map(float ** imap, int * box, int ncomp, int iny, int inx, int ystep, int xstep);
+float * extract_coords(float * imap, int * box, int iny, int inx, int ystep, int xstep);
 void insert_map(float * imap, float ** omap, int * box, int ncomp, int ony, int onx);
 
 void paint_object(
@@ -101,12 +103,13 @@ int binary_search(int n, float * rs, float r);
 float calc_dist(float ra1, float dec1, float ra2, float dec2);
 float calc_grad(int i, int n, int s, float * v);
 
-void calc_pix_shape(int y, int x, int ny, int nx, float * pix_ras, float * pix_decs, float * ysize, float * xsize);
+void calc_pix_shape(int y, int x, int ny, int nx, int separable, float * pix_ras, float * pix_decs, float * ysize, float * xsize);
 void estimate_bounding_box(
 		int   obj_x,      // object pixel coordinates
 		int   obj_y,      //
 		float rmax,       // max relevant radius for object
 		int ny, int nx,   // map dimensions
+		int separable,    // Are ra/dec separable?
 		float * pix_ras,  // coordinates of map pixels
 		float * pix_decs, //
 		int * box         // {y1,y2,x1,x2} in pixels.
@@ -135,6 +138,7 @@ void sim_objects(
 		float tol,        // Lowest value to simulate, in amplitude units = map units
 		int op,           // The operation to perform when merging object signals
 		int ncomp, int ny, int nx,// Map dimensions
+		int separable,    // Are ra/dec separable?
 		float *  pix_ras, // [ny*nx]
 		float *  pix_decs,// [ny*nx]
 		float ** imap,    // [ncomp,ny*nx]. The input map
@@ -147,12 +151,12 @@ void sim_objects(
 	free(amaxs);
 	// 2. Find which objects are relevant for which cells
 	int *cell_nobj, **cell_objs, **cell_boxes; // [ncell], [ncell][objs] and [ncell][{y1,y2,x1,x2}]
-	int ncell = assign_cells(nobj, obj_ras, obj_decs, obj_xs, obj_ys, rmaxs, ny, nx, pix_ras, pix_decs, csize, &cell_nobj, &cell_objs, &cell_boxes);
+	int ncell = assign_cells(nobj, obj_ras, obj_decs, obj_xs, obj_ys, rmaxs, ny, nx, separable, pix_ras, pix_decs, csize, &cell_nobj, &cell_objs, &cell_boxes);
 	// 3. Process each cell
 	#pragma omp parallel for
 	for(int ci = 0; ci < ncell; ci++)
 		if(!(op == OP_ADD && cell_nobj[ci] == 0))
-			process_cell(cell_nobj[ci], cell_objs[ci], cell_boxes[ci], obj_ras, obj_decs, amps, prof_ids, prof_ns, prof_rs, prof_vs, op, ncomp, pix_ras, pix_decs, imap, omap);
+			process_cell(cell_nobj[ci], cell_objs[ci], cell_boxes[ci], obj_ras, obj_decs, amps, prof_ids, prof_ns, prof_rs, prof_vs, op, ncomp, separable, pix_ras, pix_decs, imap, omap);
 	// Clean up stuff
 	for(int ci = 0; ci < ncell; ci++) {
 		free(cell_objs[ci]);
@@ -204,6 +208,7 @@ int assign_cells(
 		int   * obj_ys,   //
 		float * rmaxs,    // Max relevant radius for each object
 		int ny, int nx,   // Map dimensions
+		int separable,    // Are ra/dec separable?
 		float * pix_ras,  // Coordinates of map pixels
 		float * pix_decs, //
 		int csize,        // Cell size
@@ -224,7 +229,7 @@ int assign_cells(
 	int * cellboxes = calloc(nobj*4, sizeof(int));
 	#pragma omp parallel for
 	for(int oi = 0; oi < nobj; oi++) {
-		estimate_bounding_box(obj_xs[oi], obj_ys[oi], rmaxs[oi], ny, nx, pix_ras, pix_decs, pixbox);
+		estimate_bounding_box(obj_xs[oi], obj_ys[oi], rmaxs[oi], ny, nx, separable, pix_ras, pix_decs, pixbox);
 		// This also handles wrapping such that the start will always be
 		// positive, and the end will be at most start beyond the end.
 		// This means that the sloppy wrapping we do that doesn't know about
@@ -276,8 +281,10 @@ void pixbox2cellbox(int * pixbox, int csize, int ncy, int ncx, int * cellbox) {
 	// Go from raw pixel bounds to raw cell bounds
 	int cy1 = floor_div(pixbox[0], csize), cy2 = floor_div(pixbox[1]-1, csize)+1;
 	int cx1 = floor_div(pixbox[2], csize), cx2 = floor_div(pixbox[3]-1, csize)+1;
-	// Handle wrapping
+	// Handle wrapping, and avoid overwrapping
 	int ch = cy2-cy1, cw = cx2-cx1;
+	if(ch > ncy) ch = ncy;
+	if(cw > ncx) cw = ncx;
 	cy1 = mod(cy1, ncy); cy2 = cy1+ch;
 	cx1 = mod(cx1, ncx); cx2 = cx1+cw;
 	// Put into output
@@ -298,17 +305,18 @@ void process_cell(
 		float ** prof_vs, // [nprof][prof_n]. Profile values.
 		int op,           // The operation to perform when merging object signals
 		int ncomp,        // Number of components
-		float * pix_ras,  // [ny*nx]. Coordinates of objects
-		float * pix_decs, // [ny*nx]
+		int separable,    // Are ra/dec separable?
+		float * pix_ras,  // [ny] if seprable else [ny*nx]. Coordinates of objects
+		float * pix_decs, // [nx] if seprable else [ny*nx]
 		float ** imap,    // [ncomp,ny*nx]. The input map
 		float ** omap     // [ncomp,ny*nx]. The output map. Can be the same as the input map
 	) {
 	int y1 = box[0], y2 = box[1], x1 = box[2], x2 = box[3];
 	int ny = y2-y1, nx = x2-x1, npix = ny*nx, ntot = ncomp*npix;
 	// 1. Copy out the pixels
-	float * cell_data = extract_map(imap, box, ncomp, ny, nx);
-	float * cell_ras  = extract_coords(pix_ras,  box, ny, nx);
-	float * cell_decs = extract_coords(pix_decs, box, ny, nx);
+	float * cell_data = extract_map(imap, box, ncomp, ny, nx, 1, 1);
+	float * cell_ras  = extract_coords(pix_ras,  box, ny, nx, !separable, 1);
+	float * cell_decs = extract_coords(pix_decs, box, ny, nx, 1, !separable);
 	float * cell_work = calloc(ncomp*ny*nx, sizeof(float));
 	float * amp = calloc(ncomp, sizeof(float));
 	// 2. Process each object
@@ -333,7 +341,7 @@ void process_cell(
 
 // Copy out a box from imap, returning it as omap. NB: No wrapping, but
 // vales are clamped
-float * extract_map(float ** imap, int * box, int ncomp, int iny, int inx) {
+float * extract_map(float ** imap, int * box, int ncomp, int iny, int inx, int ystep, int xstep) {
 	int ny = box[1]-box[0], nx = box[3]-box[2];
 	int npix = ny*nx, ntot = npix*ncomp;
 	float * omap = calloc(ntot, sizeof(float));
@@ -344,14 +352,14 @@ float * extract_map(float ** imap, int * box, int ncomp, int iny, int inx) {
 			if(iy < 0 || iy >= iny) continue;
 			for(int ox = 0, ix = box[1]; ox < nx; ox++, ix++) {
 				if(ix < 0 || ix >= inx) continue;
-				om[oy*nx+ox] = im[iy*inx+ix];
+				om[oy*nx+ox] = im[iy*inx*ystep+ix*xstep];
 			}
 		}
 	}
 	return omap;
 }
 
-float * extract_coords(float * imap, int * box, int iny, int inx) { return extract_map(&imap, box, 1, iny, inx); }
+float * extract_coords(float * imap, int * box, int iny, int inx, int ystep, int xstep) { return extract_map(&imap, box, 1, iny, inx, ystep, xstep); }
 
 void insert_map(float * imap, float ** omap, int * box, int ncomp, int ony, int onx) {
 	int ny = box[1]-box[0], nx = box[3]-box[2];
@@ -397,9 +405,6 @@ void paint_object(
 
 void merge_cell(int n, int op, float * source, float * target) {
 	switch(op) {
-		case OP_COPY:
-			memcpy(target, source, n*sizeof(int));
-			break;
 		case OP_ADD:
 			for(int i = 0; i < n; i++)
 				target[i] += source[i];
@@ -471,7 +476,7 @@ float calc_grad(int i, int n, int s, float * v) {
 // This function looks slow. Can be sped up by precomputing gradients.
 // A coarse grid should suffice, just make sure to include the edges of
 // the map
-void calc_pix_shape(int y, int x, int ny, int nx, float * pix_ras, float * pix_decs, float * ysize, float * xsize) {
+void calc_pix_shape_general(int y, int x, int ny, int nx, float * pix_ras, float * pix_decs, float * ysize, float * xsize) {
 	y = y < 0 ? 0 : y >= ny ? ny : y;
 	x = x < 0 ? 0 : x >= nx ? nx : x;
 	float dra_dy  = calc_grad(y, ny, nx, pix_ras+x);
@@ -483,18 +488,34 @@ void calc_pix_shape(int y, int x, int ny, int nx, float * pix_ras, float * pix_d
 	*xsize = sqrt((c*dra_dx)*(c*dra_dx)+ddec_dx*ddec_dx);
 }
 
+void calc_pix_shape_separable(int y, int x, int ny, int nx, float * pix_ras, float * pix_decs, float * ysize, float * xsize) {
+	y = y < 0 ? 0 : y >= ny ? ny : y;
+	x = x < 0 ? 0 : x >= nx ? nx : x;
+	float ddec_dy = calc_grad(y, ny,  1, pix_decs);
+	float dra_dx  = calc_grad(x, nx,  1, pix_ras);
+	float c       = cos(pix_decs[y]);
+	*ysize        = ddec_dy;
+	*xsize        = dra_dx*c;
+}
+
+void calc_pix_shape(int y, int x, int ny, int nx, int separable, float * pix_ras, float * pix_decs, float * ysize, float * xsize) {
+	if(separable) return calc_pix_shape_separable(y, x, ny, nx, pix_ras, pix_decs, ysize, xsize);
+	else          return calc_pix_shape_general  (y, x, ny, nx, pix_ras, pix_decs, ysize, xsize);
+}
+
 void estimate_bounding_box(
 		int   obj_x,      // object pixel coordinates
 		int   obj_y,      //
 		float rmax,       // max relevant radius for object
 		int ny, int nx,   // map dimensions
+		int separable,    // are ra/dec separable?
 		float * pix_ras,  // coordinates of map pixels
 		float * pix_decs, //
 		int * box         // {y1,y2,x1,x2} in pixels.
 	) {
 	// 1. Find the height and width of the object's pixel
 	float dy0, dx0;
-	calc_pix_shape(obj_y, obj_x, ny, nx, pix_ras, pix_decs, &dy0, &dx0);
+	calc_pix_shape(obj_y, obj_x, ny, nx, separable, pix_ras, pix_decs, &dy0, &dx0);
 	// 2. Use this to define a preliminary rectangle
 	int Dy = (int)fabsf(fminf(rmax/dy0,M_PI))+1;
 	int Dx = (int)fabsf(fminf(rmax/dx0,M_PI))+1;
@@ -503,7 +524,7 @@ void estimate_bounding_box(
 	float dy = dy0, dx = dx0;
 	for(int oy = -1; oy <= 1; oy += 2)
 	for(int ox = -1; ox <= 1; ox += 2) {
-		calc_pix_shape(obj_y+Dy*oy, obj_x+Dx*ox, ny, nx, pix_ras, pix_decs, &dy0, &dx0);
+		calc_pix_shape(obj_y+Dy*oy, obj_x+Dx*ox, ny, nx, separable, pix_ras, pix_decs, &dy0, &dx0);
 		if(dy0 > dy) dy = dy0;
 		if(dx0 > dx) dx = dx0;
 	}
