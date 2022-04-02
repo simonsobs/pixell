@@ -18,7 +18,7 @@ build_src = build_src.build_src
 
 compile_opts = {
     #'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-Ofast', '-fPIC'],
-    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-O0', '-fPIC'],
+    'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-Ofast', '-fPIC'],
     'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs', '-fPIC'],
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
     'extra_link_args': ['-fopenmp', '-g', '-fPIC', '-fno-lto']
@@ -105,7 +105,7 @@ test_requirements = ['pip>=9.0',
 
 fcflags = os.getenv('FCFLAGS')
 if fcflags is None or fcflags.strip() == '':
-    fcflags = ['-O0','-fPIC']
+    fcflags = ['-O3','-fPIC']
 else:
     print('User supplied fortran flags: ', fcflags)
     print('These will supersede other optimization flags.')

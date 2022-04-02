@@ -427,11 +427,11 @@ def posmap_old(shape, wcs, safe=True, corner=False):
 		pix    = np.mgrid[:shape[-2],:shape[-1]]
 		return ndmap(pix2sky(shape, wcs, pix, safe, corner), wcs)
 
-def posaxes(shape, wcs, safe=True, corner=False):
+def posaxes(shape, wcs, safe=True, corner=False, dtype=np.float64):
 	y = np.arange(shape[-2])
 	x = np.arange(shape[-1])
-	dec = pix2sky(shape, wcs, np.array([y,y*0]), safe=safe, corner=corner)[0]
-	ra  = pix2sky(shape, wcs, np.array([x*0,x]), safe=safe, corner=corner)[1]
+	dec = pix2sky(shape, wcs, np.array([y,y*0]), safe=safe, corner=corner)[0].astype(dtype, copy=False)
+	ra  = pix2sky(shape, wcs, np.array([x*0,x]), safe=safe, corner=corner)[1].astype(dtype, copy=False)
 	return dec, ra
 
 def pixmap(shape, wcs=None):
