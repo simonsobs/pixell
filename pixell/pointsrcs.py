@@ -139,14 +139,14 @@ def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None,
 	I recommend using sim_objects directly instead of relying on this wrapper in most cases.
 	"""
 	if method in ["c", "C"]:
-		assert dtype is None or dtype == np.float32, "method 'c' only supports float32"
-		assert smul == 1, "method 'c' does not support smul != 1"
+		assert dtype is None or dtype == np.float32, "method 'c' only supports float32. Use method='python' if you need others"
+		assert smul == 1, "method 'c' does not support smul != 1. Use method='python' if you need this"
 		vmin = np.exp(-0.5*nsigma**2)
 		if   op == np.add or op == np.ndarray.__iadd__ or op == "add": op_ = "add"
 		elif op == np.max or op == "max": op_ = "max"
 		elif op == np.min or op == "min": op_ = "min"
-		else: raise ValueError("method 'c' only supports op add, max or min")
-		if return_padded: raise ValueError("method 'c' does not support return_padded")
+		else: raise ValueError("method 'c' only supports op add, max or min. Use method='python' if you need more")
+		if return_padded: raise ValueError("method 'c' does not support return_padded. Use method=='python' if you need this")
 		ncomp = np.prod(shape[:-2], dtype=int)
 		nobj  = len(srcs)
 		poss  = srcs.T[:2]
