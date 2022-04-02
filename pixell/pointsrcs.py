@@ -23,7 +23,7 @@ nearby galaxies can have other shapes. In general many profiles are
 possible. Parametrizing them in a standard format may be difficult.
 """
 from __future__ import print_function, division
-import numpy as np
+import numpy as np, time
 from astropy.io import fits
 from scipy import spatial
 from . import utils, enmap, srcsim, wcsutils
@@ -33,7 +33,7 @@ from . import utils, enmap, srcsim, wcsutils
 # New version. Usually 10 or more times faster than the old one, and with less memory
 # overhead. But interface is a bit different, so it has a new name.
 def sim_objects(shape, wcs, poss, amps, profile, prof_ids=None, omap=None, vmin=None, rmax=None,
-		op="add", pixwin=False, separable="auto", cache=None):
+		op="add", pixwin=False, separable="auto", prof_equi="auto", cache=None):
 	"""Simulate radially symmetric objects with arbitrary profiles and amplitudes.
 	Arguments:
 	* shape, wcs: The geometry of the patch to simulate. Only shape[-2:]
@@ -97,6 +97,7 @@ def sim_objects(shape, wcs, poss, amps, profile, prof_ids=None, omap=None, vmin=
 	# If which profile to use isn't specified, default to the first one
 	if prof_ids is None: prof_ids = np.zeros(nobj, np.int32)
 	else: prof_ids = np.asanyarray(prof_ids, dtype=np.int32, order="C")
+	if prof_equi == "auto": prof_equi = all([is_equi(prof[0]) for prof in profile])
 	# If user hasn't specified how faint things to simulate, then set the limit a bit
 	# below the peak of the faintest object
 	if vmin is None: vmin = np.min(np.abs(amps))*1e-3
@@ -110,12 +111,17 @@ def sim_objects(shape, wcs, poss, amps, profile, prof_ids=None, omap=None, vmin=
 	assert omap_flat.dtype == dtype, "omap.dtype must be np.float32"
 	assert omap_flat.shape == (ncomp,)+shape[-2:], "omap must be [...,ny,nx], where [ny,nx] agrees with shape, and ... agrees with amps"
 	# Whew! Actually do the work
-	srcsim.sim_objects(omap_flat, obj_decs, obj_ras, obj_ys, obj_xs, amps_flat, profile, prof_ids, posmap, vmin, rmax=rmax, separable=separable)
+	srcsim.sim_objects(omap_flat, obj_decs, obj_ras, obj_ys, obj_xs, amps_flat, profile, prof_ids, posmap, vmin, rmax=rmax, separable=separable, prof_equi=prof_equi)
 	omap = omap_flat.reshape(pre+shape[-2:])
 	# NB! Since we're not padding, this fourier operation will have problems at the edges
 	if pixwin: omap = enmap.apply_window(omap)
 	return omap
 
+def is_equi(r):
+	"""Estimate whether the values r[:] = arange(n)*delta, allowing for
+	fast index calculations. This is just a heuristic, but it is hopefully
+	reliable enough."""
+	return len(r) > 1 and r[0] == 0 and np.allclose(r[-1],(len(r)-1)*r[1])
 
 def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None, smul=1,
 		return_padded=False, pixwin=False, op=np.add, wrap="auto", verbose=False, cache=None,

@@ -75,6 +75,7 @@ void process_cell(
 		int * prof_ns,    // Number of points for each profile id
 		float ** prof_rs, // [nprof][prof_n]. R values in each profile
 		float ** prof_vs, // [nprof][prof_n]. Profile values.
+		int prof_equi,    // are profiles equi-spaced?
 		int op,           // The operation to perform when merging object signals
 		int ncomp, int ny, int nx, // Number of components
 		int separable,    // Are ra/dec separable?
@@ -89,21 +90,23 @@ float * extract_coords(float * imap, int * box, int iny, int inx, int ystep, int
 void insert_map(float * imap, float ** omap, int * box, int ncomp, int ony, int onx);
 
 void paint_object(
-		float obj_dec,    // object coordinates
-		float obj_ra,     //
-		float * amps,     // [ncomp], e.g. T, Q, U.
-		int prof_n,       // number of sample points in profile
-		float * prof_rs,  // radial coordinate for each sample point
-		float * prof_vs,  // profile value for each sample point
-		int ncomp, int ny, int nx,// cell dimensions
-		float * pix_decs, // pixel coordinates
-		float * pix_ras,  //
-		float * map       // map to overwrite
+		float obj_dec,             // object coordinates
+		float obj_ra,              //
+		float * restrict amps,     // [ncomp], e.g. T, Q, U.
+		int prof_n,                // number of sample points in profile
+		float * restrict prof_rs,  // radial coordinate for each sample point
+		float * restrict prof_vs,  // profile value for each sample point
+		int prof_equi,             // are profiles equi_spaced?
+		int ncomp, int ny, int nx, // cell dimensions
+		float * restrict pix_decs, // pixel coordinates
+		float * restrict pix_ras,  //
+		float * restrict map       // map to overwrite
 	);
 
-void merge_cell(int n, int op, float * source, float * target);
-float evaluate_profile(int n, float * rs, float * vs, float r);
+void merge_cell(int n, int op, float * restrict source, float * restrict target);
+float evaluate_profile(int n, float * rs, float * vs, float r, int equi);
 int binary_search(int n, float * rs, float r);
+int equi_search(int n, float * rs, float r);
 
 float calc_dist(float dec1, float ra1, float dec2, float ra2);
 float calc_grad(int i, int n, int s, float * v);
@@ -141,6 +144,7 @@ void sim_objects(
 		int * prof_ns,    // [nprof]. Samples in each profile
 		float ** prof_rs, // [nprof][prof_n]. R values in each profile
 		float ** prof_vs, // [nprof][prof_n]. Profile values.
+		int prof_equi,    // are profiles equi-spaced?
 		float vmin,       // Lowest value to simulate, in amplitude units = map units
 		float rmax,       // Maximum radius to consider, even if vmin would want more
 		int op,           // The operation to perform when merging object signals
@@ -166,7 +170,7 @@ void sim_objects(
 	// 3. Process each cell
 	#pragma omp parallel for
 	for(int ci = 0; ci < ncell; ci++) {
-		process_cell(cell_nobj[ci], cell_objs[ci], cell_boxes[ci], obj_decs, obj_ras, amps, prof_ids, prof_ns, prof_rs, prof_vs, op, ncomp, ny, nx, separable, pix_decs, pix_ras, imap, omap);
+		process_cell(cell_nobj[ci], cell_objs[ci], cell_boxes[ci], obj_decs, obj_ras, amps, prof_ids, prof_ns, prof_rs, prof_vs, prof_equi, op, ncomp, ny, nx, separable, pix_decs, pix_ras, imap, omap);
 	}
 	double t4 = wall_time();
 	times[0] = t2-t1;
@@ -339,6 +343,7 @@ void process_cell(
 		int * prof_ns,    // Number of points for each profile id
 		float ** prof_rs, // [nprof][prof_n]. R values in each profile
 		float ** prof_vs, // [nprof][prof_n]. Profile values.
+		int prof_equi,    // are profiles equi-spaced?
 		int op,           // The operation to perform when merging object signals
 		int ncomp, int ny, int nx,// Map dimensions
 		int separable,    // Are ra/dec separable?
@@ -368,7 +373,7 @@ void process_cell(
 			amp[ci] = amps[ci][obj];
 		int pid = prof_ids[obj];
 		// 3. Paint object onto work-space
-		paint_object(obj_decs[obj], obj_ras[obj], amp, prof_ns[pid], prof_rs[pid], prof_vs[pid], ncomp, cny, cnx, cell_decs, cell_ras, cell_work);
+		paint_object(obj_decs[obj], obj_ras[obj], amp, prof_ns[pid], prof_rs[pid], prof_vs[pid], prof_equi, ncomp, cny, cnx, cell_decs, cell_ras, cell_work);
 		// 4. Merge work-space with cell data
 		merge_cell(ntot, op, cell_work, cell_data);
 	}
@@ -420,30 +425,31 @@ void insert_map(float * imap, float ** omap, int * box, int ncomp, int ony, int 
 }
 
 void paint_object(
-		float obj_dec,    // object coordinates
-		float obj_ra,     //
-		float * amps,     // [ncomp], e.g. T, Q, U.
-		int prof_n,       // number of sample points in profile
-		float * prof_rs,  // radial coordinate for each sample point
-		float * prof_vs,  // profile value for each sample point
-		int ncomp, int ny, int nx,// cell dimensions
-		float * pix_decs,  // pixel coordinates
-		float * pix_ras,  //
-		float * map       // map to overwrite
+		float obj_dec,             // object coordinates
+		float obj_ra,              //
+		float * restrict amps,     // [ncomp], e.g. T, Q, U.
+		int prof_n,                // number of sample points in profile
+		float * restrict prof_rs,  // radial coordinate for each sample point
+		float * restrict prof_vs,  // profile value for each sample point
+		int prof_equi,             // are profiles equi-spaced?
+		int ncomp, int ny, int nx, // cell dimensions
+		float * restrict pix_decs, // pixel coordinates
+		float * restrict pix_ras,  //
+		float * restrict map       // map to overwrite
 	) {
 	int npix = ny*nx;
 	for(int y = 0; y < ny; y++) {
 		for(int x = 0; x < nx; x++) {
 			int pix    = y*nx+x;
 			float r    = calc_dist(pix_decs[pix], pix_ras[pix], obj_dec, obj_ra);
-			float prof = evaluate_profile(prof_n, prof_rs, prof_vs, r);
+			float prof = evaluate_profile(prof_n, prof_rs, prof_vs, r, prof_equi);
 			for(int ci = 0; ci < ncomp; ci++)
 				map[ci*npix+pix] = amps[ci]*prof;
 		}
 	}
 }
 
-void merge_cell(int n, int op, float * source, float * target) {
+void merge_cell(int n, int op, float * restrict source, float * restrict target) {
 	switch(op) {
 		case OP_ADD:
 			for(int i = 0; i < n; i++)
@@ -460,8 +466,8 @@ void merge_cell(int n, int op, float * source, float * target) {
 	}
 }
 
-float evaluate_profile(int n, float * rs, float * vs, float r) {
-	int i1 = binary_search(n, rs, r);
+float evaluate_profile(int n, float * rs, float * vs, float r, int equi) {
+	int i1 = equi ? equi_search(n, rs, r) : binary_search(n, rs, r);
 	if(i1 < 0) return vs[0];
 	int i2 = i1+1;
 	if(i2 >= n) return 0;
@@ -470,6 +476,7 @@ float evaluate_profile(int n, float * rs, float * vs, float r) {
 }
 
 // Returns i such that rs[i] < r <= rs[i+1]. rs must be sorted.
+// This function is responsible for 46% of the total run time.
 int binary_search(int n, float * rs, float r) {
 	if(r <= rs[0])   return -1;
 	if(r >= rs[n-1]) return  n;
@@ -481,6 +488,12 @@ int binary_search(int n, float * rs, float r) {
 		else          a = c;
 	}
 	return a;
+}
+int equi_search(int n, float * rs, float r) {
+	int i = (int)(r/rs[1]);
+	if(i < 0) return -1;
+	if(r >= n) return n;
+	return i;
 }
 
 // Compute angular distance using vincenty formula. Quite heavy, but
