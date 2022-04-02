@@ -13,7 +13,7 @@ cdef class map_info:
 	offset in latitude."""
 	cdef csharp.sharp_geom_info * geom
 	cdef readonly int nrow
-	cdef readonly int npix
+	cdef readonly long npix
 	cdef readonly np.ndarray theta
 	cdef readonly np.ndarray nphi
 	cdef readonly np.ndarray phi0
