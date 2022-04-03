@@ -191,10 +191,9 @@ float * measure_amax(int nobj, int ncomp, float ** amps) {
 	float * amaxs = calloc(nobj, sizeof(float));
 	#pragma omp parallel for
 	for(int i = 0; i < nobj; i++) {
-		float amax = amps[0][i];
+		float amax = fabsf(amps[0][i]);
 		for(int c = 1; c < ncomp; c++)
-			if(amps[c][i] > amax)
-				amax = amps[c][i];
+			amax = fmaxf(amax, fabsf(amps[c][i]));
 		amaxs[i] = amax;
 	}
 	return amaxs;

@@ -1954,7 +1954,7 @@ def tsz_profile_raw(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3):
 	return gnfw(x, xc=xc, alpha=alpha, beta=beta, gamma=gamma)
 
 _tsz_profile_los_cache = {}
-def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, npoint=100, x1=1e-8, x2=1e4, _a=8):
+def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, npoint=100, x1=1e-8, x2=1e4, _a=8, cache=None):
 	"""Fast, highly accurate approximate version of tsz_profile_los_exact. Interpolates the exact
 	function in log-log space, and caches the interpolator. With the default settings,
 	it's accurate to better than 1e-5 up to at least x = 10000, and building the
@@ -1963,7 +1963,8 @@ def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, np
 	See tsz_profile_raw for the units."""
 	from scipy import interpolate
 	# Cache the fit parameters. 
-	global _tsz_profile_los_cache
+	if cache is None: global _tsz_profile_los_cache
+	else: _tsz_profile_los_cache = {}
 	key = (xc, alpha, beta, gamma, zmax, npoint, _a, x1, x2)
 	if key not in _tsz_profile_los_cache:
 		xp = np.linspace(np.log(x1),np.log(x2),npoint)
