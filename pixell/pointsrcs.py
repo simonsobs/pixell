@@ -159,6 +159,8 @@ def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None,
 		amps  = np.zeros((ncomp,nobj), np.float32)
 		amps[:srcs.shape[1]-2] = srcs.T[2:2+ncomp]
 		amps  = amps.reshape(shape[:-2]+(nobj,))
+		# Handle beam = float, in which case a gaussian beam is made
+		beam  = expand_beam(beam, nsigma, rmax)
 		return sim_objects(shape, wcs, poss, amps, beam, omap=omap, vmin=vmin, rmax=rmax, op=op, pixwin=pixwin, separable=separable, cache=cache)
 	elif method == "python":
 		return sim_srcs_python(shape, wcs, srcs, beam, omap=omap, dtype=dtype, nsigma=nsigma, rmax=rmax, smul=smul, return_padded=return_padded, pixwin=pixwin, op=op, wrap=wrap, verbose=verbose, cache=cache, separable=separable)
