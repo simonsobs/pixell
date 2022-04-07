@@ -405,7 +405,7 @@ def interpol_prefilter(a, npre=None, order=3, inplace=False, mode="nearest"):
 	# spline_filter was looping through the enmap pixel by pixel with getitem.
 	# Not using flatview got around it, but I don't understand why it happend
 	# in the first place.
-	for I in nditer(a.shape[:-2]):
+	for I in nditer(a.shape[:npre]):
 		a[I] = scipy.ndimage.spline_filter(a[I], order=order, mode=mode)
 	return a
 
