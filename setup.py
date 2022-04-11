@@ -17,10 +17,11 @@ build_src = build_src.build_src
 
 
 compile_opts = {
+    #'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-Ofast', '-fPIC'],
     'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-Ofast', '-fPIC'],
     'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs', '-fPIC'],
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
-    'extra_link_args': ['-fopenmp', '-g', '-fPIC']
+    'extra_link_args': ['-fopenmp', '-g', '-fPIC', '-fno-lto']
     }
 
 # Set compiler options
@@ -202,6 +203,11 @@ setup(
             **compile_opts),
         Extension('pixell.distances',
             sources=['cython/distances.c','cython/distances_core.c'],
+            libraries=['m'],
+            include_dirs=[np.get_include()],
+            **compile_opts),
+        Extension('pixell.srcsim',
+            sources=['cython/srcsim.c','cython/srcsim_core.c'],
             libraries=['m'],
             include_dirs=[np.get_include()],
             **compile_opts),

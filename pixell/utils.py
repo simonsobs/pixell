@@ -12,6 +12,7 @@ T_cmb = 2.72548 # +/- 0.00057
 c  = 299792458.0
 h  = 6.62606957e-34
 k  = 1.3806488e-23
+e  = 1.60217662e-19
 G  = 6.67430e-11
 AU = 149597870700.0
 R_earth = 6378.1e3
@@ -404,7 +405,7 @@ def interpol_prefilter(a, npre=None, order=3, inplace=False, mode="nearest"):
 	# spline_filter was looping through the enmap pixel by pixel with getitem.
 	# Not using flatview got around it, but I don't understand why it happend
 	# in the first place.
-	for I in nditer(a.shape[:-2]):
+	for I in nditer(a.shape[:npre]):
 		a[I] = scipy.ndimage.spline_filter(a[I], order=order, mode=mode)
 	return a
 
@@ -1953,7 +1954,7 @@ def tsz_profile_raw(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3):
 	return gnfw(x, xc=xc, alpha=alpha, beta=beta, gamma=gamma)
 
 _tsz_profile_los_cache = {}
-def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, npoint=100, x1=1e-8, x2=1e4, _a=8):
+def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, npoint=100, x1=1e-8, x2=1e4, _a=8, cache=None):
 	"""Fast, highly accurate approximate version of tsz_profile_los_exact. Interpolates the exact
 	function in log-log space, and caches the interpolator. With the default settings,
 	it's accurate to better than 1e-5 up to at least x = 10000, and building the
@@ -1962,7 +1963,8 @@ def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, np
 	See tsz_profile_raw for the units."""
 	from scipy import interpolate
 	# Cache the fit parameters. 
-	global _tsz_profile_los_cache
+	if cache is None: global _tsz_profile_los_cache
+	else: _tsz_profile_los_cache = {}
 	key = (xc, alpha, beta, gamma, zmax, npoint, _a, x1, x2)
 	if key not in _tsz_profile_los_cache:
 		xp = np.linspace(np.log(x1),np.log(x2),npoint)

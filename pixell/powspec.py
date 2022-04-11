@@ -118,16 +118,16 @@ def expand_inds(x, y):
 	res[:,x] = y
 	return res
 
-def scale_spectrum(a, direction, extra=0):
+def scale_spectrum(a, direction, l=None, extra=0):
 	a = np.array(a)
-	l = np.arange(a.shape[-1])
+	if l is None: l = np.arange(a.shape[-1])
 	a[...,1:] *= (2*np.pi/(l[1:]*(l[1:]+1))**(1+extra))**direction
 	a[...,0] = 0
 	return a
 
-def scale_camb_scalar_phi(a, direction):
+def scale_camb_scalar_phi(a, direction, l=None):
 	a = np.array(a)
-	l = np.arange(a.shape[-1])
+	if l is None: l = np.arange(a.shape[-1])
 	a[...,1:] /= (l[1:]**4*2.726e6**2)**direction
 	a[...,0] = 0
 	return a
