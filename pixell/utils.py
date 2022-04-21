@@ -25,6 +25,14 @@ pc     = AU/arcsec
 yr2days = yr/day
 day2sec = day/1.0
 
+# Particle masses
+m_e     = 9.1093837015e-31 # Electron mass, kg
+m_p     = 1.6726219237e-27 # Proton mass
+m_n     = 1.6749274980e-27 # Neutron mass
+
+# Cross sections and rates
+sigma_T = 6.6524587158e-29 # Thomson scattering cross section, m²
+
 # Solar system constants. Nice to have, unlikely to clash with anything, and
 # don't take up much space.
 R_sun     = 695700e3  ; M_sun     = 1.9885e30   ; r_sun     =  29e3*ly
@@ -2854,3 +2862,8 @@ def cache_get(cache, key, op):
 	if key not in cache:
 		cache[key] = op()
 	return cache[key]
+
+def replace(istr, ipat, repl):
+	ostr = istr.replace(ipat, repl)
+	if ostr == istr: raise KeyError("Pattern not found")
+	return ostr

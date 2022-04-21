@@ -919,14 +919,14 @@ def area_contour(shape, wcs, nsamp=1000):
 	total   = 0
 	tot_dra = 0
 	for v0, v1 in zip(vertices[:-1], vertices[1:]):
-	 line_pix = np.linspace(0, 1, nsamp)[:,None] * (v1 - v0) + v0
-	 line = wcsutils.nobcheck(wcs).wcs_pix2world(line_pix, 0)
-	 # Stay within valid dec values. Used for pixels at the poles
-	 line[:,1] = np.clip(line[:,1], -90, 90)
-	 dec      = (line[1:,1] + line[:-1,1]) / 2  # average dec
-	 dra      = line[1:,0] - line[:-1,0]        # delta RA
-	 dra      = (dra+180) % 360 - 180          # safetyize branch crossing.
-	 total   += ((1-np.sin(dec*utils.degree)) * dra).sum()*utils.degree
+		line_pix = np.linspace(0, 1, nsamp)[:,None] * (v1 - v0) + v0
+		line = wcsutils.nobcheck(wcs).wcs_pix2world(line_pix, 0)
+		# Stay within valid dec values. Used for pixels at the poles
+		line[:,1] = np.clip(line[:,1], -90, 90)
+		dec      = (line[1:,1] + line[:-1,1]) / 2  # average dec
+		dra      = line[1:,0] - line[:-1,0]        # delta RA
+		dra      = (dra+180) % 360 - 180          # safetyize branch crossing.
+		total   += ((1-np.sin(dec*utils.degree)) * dra).sum()*utils.degree
 	return abs(total)
 
 def pixsize(shape, wcs):
