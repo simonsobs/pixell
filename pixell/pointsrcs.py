@@ -527,6 +527,22 @@ def write_sauron_txt(ofile, cat):
 	with open(ofile, "w") as ofile:
 		ofile.write(format_sauron(cat))
 
+def read_sauron_txt(ifile, ncomp=3):
+	raw   = np.loadtxt(ifile)
+	nrow, ncol = raw.shape
+	nfreq = (ncol-2-ncomp-1)//(2*ncomp+1)
+	cat_dtype  = [("ra", "d"), ("dec", "d"), ("snr", "d", (ncomp,)), ("flux_tot", "d", (ncomp,)),
+			("dflux_tot", "d", (ncomp,)), ("flux", "d", (nfreq,ncomp)), ("dflux", "d", (nfreq,ncomp)),
+			("case", "i"), ("contam", "d", (nfreq,))]
+	ocat  = np.zeros(nrow, cat_dtype).view(np.recarray)
+	ocat.ra, ocat.dec, raw = raw[:,0]*utils.degree, raw[:,1]*utils.degree, raw[:,2:]
+	ocat.snr,          raw = raw[:,:ncomp], raw[:,ncomp:]
+	ocat.flux_tot, ocat.dflux_tot, raw = raw[:,0:2*ncomp:2], raw[:,1:2*ncomp:2], raw[:,2*ncomp:]
+	ocat.flux,     ocat.dflux,     raw = raw[:,0:2*ncomp*nfreq:2].reshape(-1,nfreq,ncomp), raw[:,1:2*ncomp*nfreq:2].reshape(-1,nfreq,ncomp), raw[:,2*ncomp*nfreq:]
+	ocat.case,         raw = raw[:,0], raw[:,1:]
+	ocat.contam            = raw[:,:nfreq]
+	return ocat
+
 def translate_dtype_keys(d, translation):
 	descr = [(name if name not in translation else translation[name], char) for (name, char) in d.dtype.descr]
 	return np.asarray(d, descr)
