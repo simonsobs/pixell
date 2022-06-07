@@ -226,7 +226,7 @@ def write_map(fname, mmap, extra={}):
 	utils.mkdir(os.path.dirname(fname))
 	with warnings.catch_warnings():
 		warnings.filterwarnings('ignore')
-		hdus.writeto(fname, clobber=True)
+		hdus.writeto(fname, overwrite=True)
 
 def read_map(fname, sel=None, box=None, wrap="auto", mode=None, sel_threshold=10e6, verbose=False):
 	"""Read a multimap from the file fname."""
