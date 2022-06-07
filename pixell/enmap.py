@@ -2301,10 +2301,7 @@ def write_fits(fname, emap, extra={}, allow_modify=False):
 		utils.mkdir(os.path.dirname(fname))
 	with warnings.catch_warnings():
 		warnings.filterwarnings('ignore')
-		if astropy.__version__ < '5.1':
-			hdus.writeto(fname, clobber=True)
-		else:
-			hdus.writeto(fname, overwrite=True)
+		hdus.writeto(fname, overwrite=True)
 
 def write_fits_geometry(fname, shape, wcs):
 	"""Write just the geometry to a fits file that will only contain the header"""
