@@ -33,7 +33,8 @@ from . import utils, enmap, srcsim, wcsutils
 # New version. Usually 10 or more times faster than the old one, and with less memory
 # overhead. But interface is a bit different, so it has a new name.
 def sim_objects(shape, wcs, poss, amps, profile, prof_ids=None, omap=None, vmin=None, rmax=None,
-		op="add", pixwin=False, separable="auto", prof_equi="auto", cache=None):
+		op="add", pixwin=False, separable="auto", transpose=False, prof_equi="auto", cache=None,
+		return_times=False):
 	"""Simulate radially symmetric objects with arbitrary profiles and amplitudes.
 	Arguments:
 	* shape, wcs: The geometry of the patch to simulate. Only shape[-2:]
@@ -110,12 +111,12 @@ def sim_objects(shape, wcs, poss, amps, profile, prof_ids=None, omap=None, vmin=
 	else:            omap_flat = omap.preflat
 	assert omap_flat.dtype == dtype, "omap.dtype must be np.float32"
 	assert omap_flat.shape == (ncomp,)+shape[-2:], "omap must be [...,ny,nx], where [ny,nx] agrees with shape, and ... agrees with amps"
-	# Whew! Actually do the work
-	srcsim.sim_objects(omap_flat, obj_decs, obj_ras, obj_ys, obj_xs, amps_flat, profile, prof_ids, posmap, vmin, rmax=rmax, separable=separable, prof_equi=prof_equi)
+	# Whew! Actually do the workA
+	times = srcsim.sim_objects(omap_flat, obj_decs, obj_ras, obj_ys, obj_xs, amps_flat, profile, prof_ids, posmap, vmin, rmax=rmax, separable=separable, transpose=transpose, prof_equi=prof_equi, return_times=True)[1]
 	omap = omap_flat.reshape(pre+shape[-2:])
 	# NB! Since we're not padding, this fourier operation will have problems at the edges
 	if pixwin: omap = enmap.apply_window(omap)
-	return omap
+	return (omap, times) if return_times else omap
 
 def is_equi(r):
 	"""Estimate whether the values r[:] = arange(n)*delta, allowing for
@@ -528,7 +529,7 @@ def write_sauron_txt(ofile, cat):
 		ofile.write(format_sauron(cat))
 
 def read_sauron_txt(ifile, ncomp=3):
-	raw   = np.loadtxt(ifile)
+	raw   = np.loadtxt(ifile, ndmin=2)
 	nrow, ncol = raw.shape
 	nfreq = (ncol-2-ncomp-1)//(2*ncomp+1)
 	cat_dtype  = [("ra", "d"), ("dec", "d"), ("snr", "d", (ncomp,)), ("flux_tot", "d", (ncomp,)),

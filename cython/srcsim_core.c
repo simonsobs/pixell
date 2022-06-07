@@ -36,6 +36,7 @@
 #include <string.h>
 #include <math.h>
 #include <sys/time.h>
+#include <omp.h>
 #include "srcsim_core.h"
 
 // I thought this was part of math.h, but apparently it's optional
@@ -79,6 +80,7 @@ void process_cell(
 		int op,           // The operation to perform when merging object signals
 		int ncomp, int ny, int nx, // Number of components
 		int separable,    // Are ra/dec separable?
+		int transpose,    // Whether to do the transpose operation: map -> amp
 		float * pix_decs, // [ny*nx]. Coordinates of objects
 		float * pix_ras,  // [ny*nx]
 		float ** imap,    // [ncomp,ny*nx]. The input map
@@ -98,6 +100,7 @@ void paint_object(
 		float * restrict prof_vs,  // profile value for each sample point
 		int prof_equi,             // are profiles equi_spaced?
 		int ncomp, int ny, int nx, // cell dimensions
+		int transpose,             // Whether to do the transpose operation: map -> amp
 		float * restrict pix_decs, // pixel coordinates
 		float * restrict pix_ras,  //
 		float * restrict map       // map to overwrite
@@ -130,6 +133,10 @@ void intlist_push(IntList * v, int val);
 void intlist_free(IntList * v);
 void intlist_swap(IntList ** a, IntList ** b);
 
+float *** calloc_pppf(int n1, int n2, int n3);
+void free_pppf(float *** a, int n1, int n2);
+void reduce_amps(float *** work_amps, float ** amps, int nwork, int ncomp, int nobj);
+
 double wall_time() { struct timeval tv; gettimeofday(&tv,0); return tv.tv_sec + 1e-6*tv.tv_usec; }
 
 void sim_objects(
@@ -150,6 +157,7 @@ void sim_objects(
 		int op,           // The operation to perform when merging object signals
 		int ncomp, int ny, int nx,// Map dimensions
 		int separable,    // Are ra/dec separable?
+		int transpose,    // Whether to do the transpose operation, which reads from map and writes to amps
 		float *  pix_decs,// [ny*nx]
 		float *  pix_ras, // [ny*nx]
 		float ** imap,    // [ncomp,ny*nx]. The input map
@@ -168,9 +176,22 @@ void sim_objects(
 	int ncell = assign_cells(nobj, obj_decs, obj_ras, obj_ys, obj_xs, rmaxs, ny, nx, separable, pix_decs, pix_ras, csize, &cell_nobj, &cell_objs, &cell_boxes);
 	double t3 = wall_time();
 	// 3. Process each cell
-	#pragma omp parallel for
-	for(int ci = 0; ci < ncell; ci++) {
-		process_cell(cell_nobj[ci], cell_objs[ci], cell_boxes[ci], obj_decs, obj_ras, amps, prof_ids, prof_ns, prof_rs, prof_vs, prof_equi, op, ncomp, ny, nx, separable, pix_decs, pix_ras, imap, omap);
+	if(transpose) {
+		int nthread = omp_get_max_threads();
+		float *** work_amps = calloc_pppf(nthread, ncomp, nobj);
+		#pragma omp parallel
+		{
+			int thread = omp_get_thread_num();
+			#pragma omp for
+			for(int ci = 0; ci < ncell; ci++)
+				process_cell(cell_nobj[ci], cell_objs[ci], cell_boxes[ci], obj_decs, obj_ras, work_amps[thread], prof_ids, prof_ns, prof_rs, prof_vs, prof_equi, op, ncomp, ny, nx, separable, transpose, pix_decs, pix_ras, imap, omap);
+		}
+		reduce_amps(work_amps, amps, nthread, ncomp, nobj);
+		free_pppf(work_amps, nthread, ncomp);
+	} else {
+		#pragma omp parallel for
+		for(int ci = 0; ci < ncell; ci++)
+			process_cell(cell_nobj[ci], cell_objs[ci], cell_boxes[ci], obj_decs, obj_ras, amps, prof_ids, prof_ns, prof_rs, prof_vs, prof_equi, op, ncomp, ny, nx, separable, transpose, pix_decs, pix_ras, imap, omap);
 	}
 	double t4 = wall_time();
 	times[0] = t2-t1;
@@ -346,6 +367,7 @@ void process_cell(
 		int op,           // The operation to perform when merging object signals
 		int ncomp, int ny, int nx,// Map dimensions
 		int separable,    // Are ra/dec separable?
+		int transpose,    // Whether to do the transpose operation: map -> amp
 		float * pix_decs, // [nx] if seprable else [ny*nx]. Coordinates of objects
 		float * pix_ras,  // [ny] if seprable else [ny*nx]
 		float ** imap,    // [ncomp,ny*nx]. The input map
@@ -366,18 +388,31 @@ void process_cell(
 	float * cell_work = calloc(ncomp*cny*cnx, sizeof(float));
 	float * amp = calloc(ncomp, sizeof(float));
 	// 2. Process each object
-	for(int oi = 0; oi < nobj; oi++) {
-		int obj = objs[oi];
-		for(int ci = 0; ci < ncomp; ci++)
-			amp[ci] = amps[ci][obj];
-		int pid = prof_ids[obj];
-		// 3. Paint object onto work-space
-		paint_object(obj_decs[obj], obj_ras[obj], amp, prof_ns[pid], prof_rs[pid], prof_vs[pid], prof_equi, ncomp, cny, cnx, cell_decs, cell_ras, cell_work);
-		// 4. Merge work-space with cell data
-		merge_cell(ntot, op, cell_work, cell_data);
+	if(transpose) {
+		for(int oi = 0; oi < nobj; oi++) {
+			int obj = objs[oi];
+			int pid = prof_ids[obj];
+			for(int ci = 0; ci < ncomp; ci++) amp[ci] = 0;
+			// 3. Paint object onto work-space
+			paint_object(obj_decs[obj], obj_ras[obj], amp, prof_ns[pid], prof_rs[pid], prof_vs[pid], prof_equi, ncomp, cny, cnx, transpose, cell_decs, cell_ras, cell_data);
+			// 4. Update global amps
+			for(int ci = 0; ci < ncomp; ci++)
+				amps[ci][obj] += amp[ci];
+		}
+	} else {
+		for(int oi = 0; oi < nobj; oi++) {
+			int obj = objs[oi];
+			for(int ci = 0; ci < ncomp; ci++)
+				amp[ci] = amps[ci][obj];
+			int pid = prof_ids[obj];
+			// 3. Paint object onto work-space
+			paint_object(obj_decs[obj], obj_ras[obj], amp, prof_ns[pid], prof_rs[pid], prof_vs[pid], prof_equi, ncomp, cny, cnx, transpose, cell_decs, cell_ras, cell_work);
+			// 4. Merge work-space with cell data
+			merge_cell(ntot, op, cell_work, cell_data);
+		}
+		// 5. Copy back into map
+		insert_map(cell_data, omap, box, ncomp, ny, nx);
 	}
-	// 5. Copy back into map
-	insert_map(cell_data, omap, box, ncomp, ny, nx);
 	free(amp);
 	free(cell_data);
 	free(cell_decs);
@@ -432,6 +467,7 @@ void paint_object(
 		float * restrict prof_vs,  // profile value for each sample point
 		int prof_equi,             // are profiles equi-spaced?
 		int ncomp, int ny, int nx, // cell dimensions
+		int transpose,
 		float * restrict pix_decs, // pixel coordinates
 		float * restrict pix_ras,  //
 		float * restrict map       // map to overwrite
@@ -442,11 +478,14 @@ void paint_object(
 			int pix    = y*nx+x;
 			float r    = calc_dist(pix_decs[pix], pix_ras[pix], obj_dec, obj_ra);
 			float prof = evaluate_profile(prof_n, prof_rs, prof_vs, r, prof_equi);
-			for(int ci = 0; ci < ncomp; ci++)
-				map[ci*npix+pix] = amps[ci]*prof;
+			for(int ci = 0; ci < ncomp; ci++) {
+				if(transpose) amps[ci] += map[ci*npix+pix]*prof;
+				else   map[ci*npix+pix] = amps[ci]*prof;
+			}
 		}
 	}
 }
+
 
 void merge_cell(int n, int op, float * restrict source, float * restrict target) {
 	switch(op) {
@@ -608,3 +647,34 @@ void intlist_push(IntList * v, int val) {
 }
 void intlist_free(IntList * v) { free(v->vals); free(v); }
 void intlist_swap(IntList ** a, IntList ** b) { IntList * tmp = *a; *a = *b; *b = tmp; }
+
+
+// This is surprisingly verbose...
+float *** calloc_pppf(int n1, int n2, int n3) {
+	float *** a = calloc(n1, sizeof(float**));
+	for(int i1 = 0; i1 < n1; i1++) {
+		a[i1] = calloc(n2, sizeof(float*));
+		for(int i2 = 0; i2 < n2; i2++)
+			a[i1][i2] = calloc(n3, sizeof(float));
+	}
+	return a;
+}
+
+void free_pppf(float *** a, int n1, int n2) {
+	for(int i1 = 0; i1 < n1; i1++) {
+		a[i1] = calloc(n2, sizeof(float*));
+		for(int i2 = 0; i2 < n2; i2++)
+			free(a[i1][i2]);
+		free(a[i1]);
+	}
+	free(a);
+}
+
+void reduce_amps(float *** work_amps, float ** amps, int nwork, int ncomp, int nobj) {
+	for(int w = 0; w < nwork; w++) {
+		for(int c = 0; c < ncomp; c++) {
+			for(int o = 0; o < nobj; o++)
+				amps[c][o] += work_amps[w][c][o];
+			}
+	}
+}

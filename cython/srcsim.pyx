@@ -8,7 +8,7 @@ cimport srcsim_wrap as c
 
 __version__ = 1.0
 
-def sim_objects(float[:,:,::1] map, float[::1] obj_decs, float[::1] obj_ras, int[::1] obj_ys, int[::1] obj_xs, float[:,::1] amps, profs, int[::1] prof_ids, posmap, float vmin, float rmax=0, separable=False, prof_equi=False, op="add", int csize=8, return_times=False):
+def sim_objects(float[:,:,::1] map, float[::1] obj_decs, float[::1] obj_ras, int[::1] obj_ys, int[::1] obj_xs, float[:,::1] amps, profs, int[::1] prof_ids, posmap, float vmin, float rmax=0, separable=False, transpose=False, prof_equi=False, op="add", int csize=8, return_times=False):
 	"""
 	map: array[ncomp,ny,nx]. Caller should make sure it has exactly 3 dims
 	poss:   [{ra,dec},nobj] float
@@ -79,7 +79,7 @@ def sim_objects(float[:,:,::1] map, float[::1] obj_decs, float[::1] obj_ras, int
 	times = np.zeros(3)
 	cdef double [::1] times_ = times
 	# Phew! That's a lot of wrapping!
-	c.sim_objects(nobj, &obj_decs[0], &obj_ras[0], &obj_ys[0], &obj_xs[0], &amps_[0], nprof, &prof_ids[0], &prof_ns[0], &prof_rs[0], &prof_vs[0], prof_equi, vmin, rmax, op_, ncomp, ny, nx, separable, &pix_decs_[0], &pix_ras_[0], &map_[0], &map_[0], csize, &times_[0])
+	c.sim_objects(nobj, &obj_decs[0], &obj_ras[0], &obj_ys[0], &obj_xs[0], &amps_[0], nprof, &prof_ids[0], &prof_ns[0], &prof_rs[0], &prof_vs[0], prof_equi, vmin, rmax, op_, ncomp, ny, nx, separable, transpose, &pix_decs_[0], &pix_ras_[0], &map_[0], &map_[0], csize, &times_[0])
 	free(map_)
 	free(amps_)
 	free(prof_rs)

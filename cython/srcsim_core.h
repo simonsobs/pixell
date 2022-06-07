@@ -18,6 +18,7 @@ void sim_objects(
 		int op,           // The operation to perform when merging object signals
 		int ncomp, int ny, int nx,// Map dimensions
 		int separable,    // Are ra/dec separable?
+		int transpose,    // Whether to do the transpose operation: map -> amp
 		float * pix_decs, // [ny] if separable else [ny*nx]
 		float * pix_ras,  // [nx] if separable else [ny*nx]
 		float ** imap,    // [ncomp,ny*nx]. The input map
