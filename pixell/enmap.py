@@ -318,8 +318,8 @@ def corners(shape, wcs, npoint=10, corner=True):
 	and undoing any sudden jumps in coordinates it finds. This is controlled by
 	the npoint option. The default of 10 should be more than enough.
 
-	Returns [{bottom left,top right},{dec,ra}] in radians 
-	(or equivalent for other coordinate systems). 
+	Returns [{bottom left,top right},{dec,ra}] in radians
+	(or equivalent for other coordinate systems).
 	e.g. an array of the form [[dec_min, ra_min ], [dec_max, ra_max]]."""
 	# Because of wcs's wrapping, we need to evaluate several
 	# extra pixels to make our unwinding unambiguous
@@ -2301,7 +2301,7 @@ def write_fits(fname, emap, extra={}, allow_modify=False):
 		utils.mkdir(os.path.dirname(fname))
 	with warnings.catch_warnings():
 		warnings.filterwarnings('ignore')
-		hdus.writeto(fname, clobber=True)
+		hdus.writeto(fname, overwrite=True)
 
 def write_fits_geometry(fname, shape, wcs):
 	"""Write just the geometry to a fits file that will only contain the header"""
@@ -2656,4 +2656,3 @@ def spin_helper(spin, n):
 		if i2 == n: break
 		i1 = i2
 		ci = (ci+1)%len(spin)
-
