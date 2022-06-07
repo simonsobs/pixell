@@ -2382,11 +2382,11 @@ def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wr
 	buggy wcs, which can result in 1-pixel errors."""
 	import h5py
 	with h5py.File(fname,"r") as hfile:
-		data = hfile["data"]
+		data = hfile["data"][()]
 		hwcs = hfile["wcs"]
 		header = astropy.io.fits.Header()
 		for key in hwcs:
-			header[key] = fix_python3(hwcs[key].value)
+			header[key] = fix_python3(hwcs[key][()])
 		if wcs is None:
 			wcs = wcsutils.WCS(header).sub(2)
 		proxy = ndmap_proxy_hdf(data, wcs, fname=fname, threshold=sel_threshold)
@@ -2399,7 +2399,7 @@ def read_hdf_geometry(fname):
 		hwcs = hfile["wcs"]
 		header = astropy.io.fits.Header()
 		for key in hwcs:
-			header[key] = hwcs[key].value
+			header[key] = hwcs[key][()]
 		wcs   = wcsutils.WCS(header).sub(2)
 		shape = hfile["data"].shape
 	return shape, wcs
@@ -2494,7 +2494,7 @@ class ndmap_proxy_fits(ndmap_proxy):
 class ndmap_proxy_hdf(ndmap_proxy):
 	def __init__(self, dset, wcs, fname="<none>", threshold=1e7):
 		self.dset      = dset
-		ndmap_proxy.__init__(self, dset.shape, wcs, fname=fname, threshold=threshold)
+		ndmap_proxy.__init__(self, dset.shape, wcs, dset.dtype, fname=fname, threshold=threshold)
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [self.ndim-2,2])
 		if len(psel) > 2: raise IndexError("too many indices")
@@ -2503,7 +2503,7 @@ class ndmap_proxy_hdf(ndmap_proxy):
 			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-1,1])
 			res = self.dset[sel1][(Ellipsis,)+sel2]
 		else:
-			res = self.dset.value[sel]
+			res = self.dset[sel]
 		return ndmap(fix_endian(res), wcs)
 	def __repr__(self): return "ndmap_proxy_hdf(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
 
