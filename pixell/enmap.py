@@ -1,5 +1,5 @@
 from __future__ import print_function
-import numpy as np, scipy.ndimage, warnings, astropy.io.fits, sys, time, os
+import numpy as np, scipy.ndimage, warnings, astropy.io.fits, sys, time, os, contextlib
 from . import utils, wcsutils, powspec, fft as enfft
 
 # Things that could be improved:
@@ -2205,7 +2205,7 @@ def from_flipper(imap, omap=None):
 # File I/O #
 ############
 
-def write_map(fname, emap, fmt=None, extra={}, allow_modify=False):
+def write_map(fname, emap, fmt=None, address=None, extra={}, allow_modify=False):
 	"""Writes an enmap to file. If fmt is not passed,
 	the file type is inferred from the file extension, and can
 	be either fits or hdf. This can be overriden by
@@ -2218,11 +2218,11 @@ def write_map(fname, emap, fmt=None, extra={}, allow_modify=False):
 	if fmt == "fits":
 		write_fits(fname, emap, extra=extra, allow_modify=allow_modify)
 	elif fmt == "hdf":
-		write_hdf(fname, emap, extra=extra)
+		write_hdf(fname, emap, address=address, extra=extra)
 	else:
 		raise ValueError
 
-def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False, verbose=False):
+def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False, verbose=False, address=None):
 	"""Read an enmap from file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'."""
@@ -2236,14 +2236,14 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wr
 	if fmt == "fits":
 		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu, delayed=delayed, verbose=verbose)
 	elif fmt == "hdf":
-		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed)
+		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed, hdu=hdu, address=address)
 	else:
 		raise ValueError
 	if len(toks) > 1:
 		res = eval("res"+":".join(toks[1:]))
 	return res
 
-def read_map_geometry(fname, fmt=None, hdu=None):
+def read_map_geometry(fname, fmt=None, hdu=None, address=None):
 	"""Read an enmap geometry from file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'."""
@@ -2257,7 +2257,7 @@ def read_map_geometry(fname, fmt=None, hdu=None):
 	if fmt == "fits":
 		shape, wcs = read_fits_geometry(fname, hdu=hdu)
 	elif fmt == "hdf":
-		shape, wcs = read_hdf_geometry(fname)
+		shape, wcs = read_hdf_geometry(fname, address=address)
 	else:
 		raise ValueError
 	if len(toks) > 1:
@@ -2358,13 +2358,22 @@ def read_fits_geometry(fname, hdu=None):
 	shape = tuple([header["NAXIS%d"%(i+1)] for i in range(header["NAXIS"])[::-1]])
 	return shape, wcs
 
-def write_hdf(fname, emap, extra={}):
+def write_hdf(fname, emap, address=None, extra={}):
 	"""Write an enmap as an hdf file, preserving all
 	the WCS metadata."""
 	import h5py
 	emap = enmap(emap, copy=False)
-	utils.mkdir(os.path.dirname(fname))
-	with h5py.File(fname, "w") as hfile:
+	if isinstance(fname, h5py.Group):
+		context = contextlib.nullcontext(fname)
+	else:
+		utils.mkdir(os.path.dirname(fname))
+		mode = "w" if address is None else "a"
+		context = h5py.File(fname, mode)
+	with context as hfile:
+		if address is not None:
+			if address in hfile:
+				del hfile[address]
+			hfile = hfile.create_group(address)
 		hfile["data"] = emap
 		header = emap.wcs.to_header()
 		for key in header:
@@ -2372,7 +2381,7 @@ def write_hdf(fname, emap, extra={}):
 		for key, val in extra.items():
 			hfile[key] = val
 
-def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False):
+def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None):
 	"""Read an enmap from the specified hdf file. Two formats
 	are supported. The old enmap format, which simply used
 	a bounding box to specify the coordinates, and the new
@@ -2381,7 +2390,13 @@ def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wr
 	is assumed. Note: some of the old files have a slightly
 	buggy wcs, which can result in 1-pixel errors."""
 	import h5py
-	with h5py.File(fname,"r") as hfile:
+	if isinstance(fname, h5py.Group):
+		context = contextlib.nullcontext(fname)
+	else:
+		context = h5py.File(fname, "r")
+	with context as hfile:
+		if address is not None:
+			hfile = hfile[address]
 		data = hfile["data"][()]
 		hwcs = hfile["wcs"]
 		header = astropy.io.fits.Header()
@@ -2392,10 +2407,12 @@ def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wr
 		proxy = ndmap_proxy_hdf(data, wcs, fname=fname, threshold=sel_threshold)
 		return read_helper(proxy, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, delayed=delayed)
 
-def read_hdf_geometry(fname):
+def read_hdf_geometry(fname, address=None):
 	"""Read an enmap wcs from the specified hdf file."""
 	import h5py
 	with h5py.File(fname,"r") as hfile:
+		if address is not None:
+			hfile = hfile[address]
 		hwcs = hfile["wcs"]
 		header = astropy.io.fits.Header()
 		for key in hwcs:
