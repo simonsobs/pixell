@@ -2209,7 +2209,9 @@ def write_map(fname, emap, fmt=None, address=None, extra={}, allow_modify=False)
 	"""Writes an enmap to file. If fmt is not passed,
 	the file type is inferred from the file extension, and can
 	be either fits or hdf. This can be overriden by
-	passing fmt with either 'fits' or 'hdf' as argument."""
+	passing fmt with either 'fits' or 'hdf' as argument.
+
+	The other arguments are passed to write_fits and/or write_hdf."""
 	if fmt == None:
 		if   fname.endswith(".hdf"):     fmt = "hdf"
 		elif fname.endswith(".fits"):    fmt = "fits"
@@ -2225,7 +2227,15 @@ def write_map(fname, emap, fmt=None, address=None, extra={}, allow_modify=False)
 def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False, verbose=False, address=None):
 	"""Read an enmap from file. The file type is inferred
 	from the file extension, unless fmt is passed.
-	fmt must be one of 'fits' and 'hdf'."""
+	fmt must be one of 'fits' and 'hdf'.
+
+	The sel, box, pixbox, geometry, wrap, mode, and delayed arguments
+	are all used by read_helper to (optionally) select a subregion of
+	the map or change how it is wrapped on the sky.
+
+	The hdu and verbose arguments are only used for FITS (see
+	read_fits).  The address argument is only used for HDF (see
+	read_hdf)."""
 	toks = fname.split(":")
 	fname = toks[0]
 	if fmt == None:
@@ -2359,8 +2369,22 @@ def read_fits_geometry(fname, hdu=None):
 	return shape, wcs
 
 def write_hdf(fname, emap, address=None, extra={}):
-	"""Write an enmap as an hdf file, preserving all
-	the WCS metadata."""
+	"""Write an enmap as an hdf file, preserving all the WCS
+	metadata.
+
+	Args:
+	  fname (str or h5py.Group): Filename or open h5py handle.
+	  emap (ndmap): Object to store.
+	  address (str): Group address within the HDF file to place
+	    the result.  If None, the data are written at root level
+	    after truncating the file.
+	  extra (dict): additional data to write into the output.
+
+	Notes:
+	  If address is None, the output file will be replaced if it
+	  exists.  If address is a string, and the target file exists,
+	  the file will not be reset but anything living at that
+	  address will be replaced with the encoded emap."""
 	import h5py
 	emap = enmap(emap, copy=False)
 	if isinstance(fname, h5py.Group):
@@ -2388,7 +2412,14 @@ def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wr
 	format, which uses WCS properties. The latter is used if
 	available. With the old format, plate carree projection
 	is assumed. Note: some of the old files have a slightly
-	buggy wcs, which can result in 1-pixel errors."""
+	buggy wcs, which can result in 1-pixel errors.
+
+	If address is a string, the map will be loaded from that group
+	address within fname.
+
+	Note fname can be passed in as an h5py.Group (e.g. an open
+	h5py.File) instead of a string, and the map will be read from that
+	handle."""
 	import h5py
 	if isinstance(fname, h5py.Group):
 		context = contextlib.nullcontext(fname)
