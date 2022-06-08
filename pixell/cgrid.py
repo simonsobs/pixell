@@ -68,16 +68,17 @@ def calc_gridinfo(shape, wcs, steps=[2,2], nstep=[200,200], zenith=False, unit=1
 		gridinfo.lat.append((theta/unit,calc_line_segs(pixs)))
 	return gridinfo
 
-def draw_grid(gridinfo, color="00000020", background=None):
+def draw_grid(gridinfo, color="00000020", width=1, background=None):
 	col = tuple([int(color[i:i+2],16) for i in range(0,len(color),2)])
 	grid = Image.new("RGBA", gridinfo.shape[-2:][::-1])
-	draw = ImageDraw.Draw(grid, "RGBA")
-	for cval, segs in gridinfo.lon:
-		for seg in segs:
-				draw.line([tuple(i) for i in seg], fill=col)
-	for cval, segs in gridinfo.lat:
-		for seg in segs:
-			draw.line([tuple(i) for i in seg], fill=col)
+	if width > 0:
+		draw = ImageDraw.Draw(grid, "RGBA")
+		for cval, segs in gridinfo.lon:
+			for seg in segs:
+					draw.line([tuple(i) for i in seg], fill=col, width=width)
+		for cval, segs in gridinfo.lat:
+			for seg in segs:
+				draw.line([tuple(i) for i in seg], fill=col, width=width)
 	if background is not None:
 		grid = Image.alpha_composite(background, grid)
 	return grid
