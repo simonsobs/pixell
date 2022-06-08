@@ -259,6 +259,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("--mask-tol", type=float, default=1e-14, help="The tolerance to use with --mask.")
 	add_argument("-g", "--grid", action="count", default=1, help="Toggle the coordinate grid. Disabling it can make plotting much faster when plotting many small maps.")
 	add_argument("--grid-color", type=str, default="00000020", help="The RGBA color to use for the grid.")
+	add_argument("--grid-width", type=int, default=1, help="The line width to use for the grid.")
 	add_argument("-t", "--ticks", type=str, default="1", help="The grid spacing in degrees. Either a single number to be used for both axis, or ty,tx.")
 	add_argument("--tick-unit", "--tu", type=str, default=None, help="Units for tick axis. Can be the unit size in degrees, or the word 'degree', 'arcmin' or 'arcsec' or the shorter 'd','m','s'.")
 	add_argument("--nolabels", action="store_true", help="Disable the generation of coordinate labels outside the map when using the grid.")
@@ -669,7 +670,7 @@ def calc_gridinfo(shape, wcs, args):
 def draw_grid(ginfo, args):
 	"""Return a grid based on gridinfo. args.grid_color controls the color
 	the grid will be drawn with."""
-	grid = cgrid.draw_grid(ginfo, color=args.grid_color)
+	grid = cgrid.draw_grid(ginfo, color=args.grid_color, width=args.grid_width)
 	bounds = np.array([[0,0],ginfo.shape[::-1]])
 	return grid, bounds
 

@@ -61,7 +61,7 @@ class ndmap(np.ndarray):
 	def box(self, npoint=10, corner=True): return box(self.shape, self.wcs, npoint=npoint, corner=corner)
 	def pixbox_of(self,oshape,owcs): return pixbox_of(self.wcs, oshape,owcs)
 	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
-	def posaxes(self, safe=True, corner=False): return posaxes(self.shape, self.wcs, safe=safe, corner=corner)
+	def posaxes(self, safe=True, corner=False, dtype=np.float64): return posaxes(self.shape, self.wcs, safe=safe, corner=corner, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def laxes(self, oversample=1, method="auto"): return laxes(self.shape, self.wcs, oversample=oversample, method=method)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
@@ -104,7 +104,7 @@ class ndmap(np.ndarray):
 	def padslice(self, box, default=np.nan): return padslice(self, box, default=default)
 	def center(self): return center(self.shape,self.wcs)
 	def downgrade(self, factor, op=np.mean, ref=None, off=None): return downgrade(self, factor, op=op, ref=ref, off=off)
-	def upgrade(self, factor): return upgrade(self, factor)
+	def upgrade(self, factor,  off=None, oshape=None, inclusive=False): return upgrade(self, factor, off=off, oshape=oshape, inclusive=inclusive)
 	def fillbad(self, val=0, inplace=False): fillbad(self, val=val, inplace=inplace)
 	def to_healpix(self, nside=0, order=3, omap=None, chunk=100000, destroy_input=False):
 		return to_healpix(self, nside=nside, order=order, omap=omap, chunk=chunk, destroy_input=destroy_input)
