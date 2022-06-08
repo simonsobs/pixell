@@ -124,6 +124,88 @@ def is_equi(r):
 	reliable enough."""
 	return len(r) > 1 and r[0] == 0 and np.allclose(r[-1],(len(r)-1)*r[1])
 
+def radial_sum(map, poss, bins, oprofs=None, separable="auto",
+		prof_equi="auto", cache=None, return_times=False):
+	"""Sum the signal in map into radial bins around a set of objects,
+	returning one radial sum-profile per object.
+	Arguments:
+	* map: The map to read data from. [...,ny,nx]
+	* poss: The positions of the objects. [{dec,ra},nobj] in radians.
+	* bins: The bin edges. [nbin+1]. Faster if equi-spaced with first at 0
+
+	Optional arguments:
+	* oprofs: [obj,...,nbin] array to write result to. MUST BE float32 AND C CONTIGUOUS
+	* separable: Whether the coordinate system's coordinate axes are indpendent,
+	  such that one only needs to know y in order to calculate dec, and x to
+	  calculate ra. This allows for much faster calculation of the pixel
+	  coordinates. Default "auto": True for cylindrical coordinates, False otherwise.
+	* cache: Dictionary to use for caching pixel coordinates. Can be useful
+	  if you're doing repeated simulations on the same geometry with non-separable
+	  geometry, to avoid having to recalculate the pixel coordinates all the time.
+
+	Returns the resulting profiles. If oprof was specified, then the same object will
+	be returned (after being updated of course)."""
+	dtype = np.float32 # C extension only supports this dtype
+	if separable == "auto": separable = wcsutils.is_cyl(map.wcs)
+	# Object positions
+	obj_decs = np.asanyarray(poss[0], dtype=dtype, order="C")
+	obj_ras  = np.asanyarray(poss[1], dtype=dtype, order="C")
+	obj_ys, obj_xs = utils.nint(map.sky2pix(poss)).astype(np.int32)
+	assert obj_decs.ndim == 1 and obj_ras.ndim == 1, "poss must be [{dec,ra},nobj]"
+	nobj     = len(obj_decs)
+	# map and number of components
+	pre      = map.shape[:-2]
+	map_flat = map.preflat
+	ncomp    = len(map_flat)
+	# bins
+	bins     = np.asarray(bins, dtype=dtype)
+	nbin     = len(bins)-1
+	prof_equi = is_equi(bins) if prof_equi == "auto" else prof_equi
+	# Set up the pixel coordinates
+	if separable: posmap = utils.cache_get(cache, "posmap", lambda: map.posaxes(dtype=dtype))
+	else:         posmap = utils.cache_get(cache, "posmap", lambda: map.posmap (dtype=dtype))
+	# Set up our output
+	if oprofs is None: oprofs = np.zeros((nobj,)+pre+(nbin,),dtype)
+	oprofs_flat   = oprofs.reshape(nobj,ncomp,nbin)
+	assert oprofs_flat.dtype == dtype, "oprofs.dtype must be np.float32"
+	# Whew! Actually do the work
+	times = srcsim.radial_sum(map_flat, obj_decs, obj_ras, obj_ys, obj_xs, bins, posmap, profs=oprofs_flat, separable=separable, prof_equi=prof_equi, return_times=True)[1]
+	return (oprofs, times) if return_times else oprofs
+
+def radial_bin(map, poss, bins, weights=None, separable="auto",
+		prof_equi="auto", cache=None, return_times=False):
+	"""Average the signal in map into radial bins for a set of objects, returning
+	a radial profile for each object.
+	Arguments:
+	* map: The map to read data from. [...,ny,nx]
+	* poss: The positions of the objects. [{dec,ra},nobj] in radians.
+	* bins: The bin edges. [nbin+1]. Faster if equi-spaced with first at 0
+
+	Optional arguments:
+	* oprofs: [obj,...,nbin] array to write result to. MUST BE float32 AND C CONTIGUOUS
+	* separable: Whether the coordinate system's coordinate axes are indpendent,
+	  such that one only needs to know y in order to calculate dec, and x to
+	  calculate ra. This allows for much faster calculation of the pixel
+	  coordinates. Default "auto": True for cylindrical coordinates, False otherwise.
+	* cache: Dictionary to use for caching pixel coordinates. Can be useful
+	  if you're doing repeated simulations on the same geometry with non-separable
+	  geometry, to avoid having to recalculate the pixel coordinates all the time.
+
+	Returns the resulting profiles. If oprof was specified, then the same object will
+	be returned (after being updated of course)."""
+	if weights is not None: map = map*weights
+	profs, times1 = radial_sum(map, poss, bins, separable=separable, prof_equi=prof_equi,
+			cache=cache, return_times=True)
+	if weights is None: weights = enmap.ones(map.shape[-2:], map.wcs, map.dtype)
+	div, times2 = radial_sum(weights, poss, bins, separable=separable, prof_equi=prof_equi,
+			cache=cache, return_times=True)
+	# Add dimensions to div if necessary to make them broadcast.
+	# For more complex broadcasting, prepare the shapes of map and weights manually
+	div = div.reshape(profs.shape[:1]+(1,)*(profs.ndim-div.ndim)+profs.shape[-1:])
+	profs /= div
+	times = np.concatenate([times1,times2])
+	return (profs, times) if return_times else profs
+
 def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None, smul=1,
 		return_padded=False, pixwin=False, op=np.add, wrap="auto", verbose=False, cache=None,
 		separable="auto", method="c"):

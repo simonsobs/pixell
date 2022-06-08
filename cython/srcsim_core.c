@@ -45,6 +45,14 @@
 // Forward declaration for all the implementation details that don't
 // belong in the header
 
+float sum_map(float * m, int ny, int nx) {
+	float sum = 0;
+	for(int y = 0; y < ny; y++)
+	for(int x = 0; x < nx; x++)
+		sum += m[y*nx+x];
+	return sum;
+}
+
 float * measure_amax(int nobj, int ncomp, float ** amps);
 float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, float ** prof_rs, float ** prof_vs, float vmin, float rmax);
 
@@ -126,6 +134,7 @@ void estimate_bounding_box(
 		int * box         // {y1,y2,x1,x2} in pixels.
 	);
 void pixbox2cellbox(int * pixbox, int csize, int ncy, int ncx, int * cellbox);
+void wrap_box(int * box, int ny, int nx);
 
 typedef struct IntList { int n, cap; int * vals; } IntList;
 IntList * intlist_new();
@@ -277,6 +286,7 @@ int assign_cells(
 		// the real wrapping length of the sky will not cover any tile more than
 		// once.
 		pixbox2cellbox(pixbox, csize, ncy, ncx, cellboxes+4*oi);
+		wrap_box(cellboxes+4*oi, ncy, ncx);
 	}
 	// 3. For each cell in each object's cell box, register the object in that cell.
 	for(int oi = 0; oi < nobj; oi++) {
@@ -341,15 +351,21 @@ void pixbox2cellbox(int * pixbox, int csize, int ncy, int ncx, int * cellbox) {
 	// Go from raw pixel bounds to raw cell bounds
 	int cy1 = floor_div(pixbox[0], csize), cy2 = floor_div(pixbox[1]-1, csize)+1;
 	int cx1 = floor_div(pixbox[2], csize), cx2 = floor_div(pixbox[3]-1, csize)+1;
-	// Handle wrapping, and avoid overwrapping
-	int ch = cy2-cy1, cw = cx2-cx1;
-	if(ch > ncy) ch = ncy;
-	if(cw > ncx) cw = ncx;
-	cy1 = mod(cy1, ncy); cy2 = cy1+ch;
-	cx1 = mod(cx1, ncx); cx2 = cx1+cw;
 	// Put into output
 	cellbox[0] = cy1; cellbox[1] = cy2;
 	cellbox[2] = cx1; cellbox[3] = cx2;
+}
+
+// wrap an integer box such that the start point is >= 1, and
+// the end point wraps no more than once around the sky.
+void wrap_box(int * box, int ny, int nx) {
+	int y1 = box[0], y2 = box[1], x1 = box[2], x2 = box[3];
+	int h  = y2-y1, w = x2-x1;
+	if(h > ny) h = ny;
+	if(w > nx) w = nx;
+	y1 = mod(y1, ny); y2 = y1+h;
+	x1 = mod(x1, nx); x2 = x1+w;
+	box[0] = y1; box[1] = y2; box[2] = x1; box[3] = x2;
 }
 
 void process_cell(
@@ -513,10 +529,10 @@ float evaluate_profile(int n, float * rs, float * vs, float r, int equi) {
 	return vs[i1] + (vs[i2]-vs[i1])*x;
 }
 
-// Returns i such that rs[i] < r <= rs[i+1]. rs must be sorted.
+// Returns i such that rs[i] <= r < rs[i+1]. rs must be sorted.
 // This function is responsible for 46% of the total run time.
 int binary_search(int n, float * rs, float r) {
-	if(r <= rs[0])   return -1;
+	if(r <  rs[0])   return -1;
 	if(r >= rs[n-1]) return  n;
 	int a = 0, b = n-1;
 	// will maintain r inside interval rs[a]:rs[b]
@@ -677,4 +693,61 @@ void reduce_amps(float *** work_amps, float ** amps, int nwork, int ncomp, int n
 				amps[c][o] += work_amps[w][c][o];
 			}
 	}
+}
+
+// This is equivalent to i%n, but should be faster for the common case where
+// i is either in range or just outside
+int wrap(int i, int n) {
+	while(i <  0) i += n;
+	while(i >= n) i -= n;
+	return i;
+}
+
+// Radial binning code. Has some things in common with sim_objects, but not enough to
+// be part of that function
+void radial_sum(
+		int nobj,         // Number of objects
+		float * obj_decs, // [nobj]. Coordinates of objects
+		float * obj_ras,  // [nobj]
+		int   * obj_ys,   // [nobj]. Pixel coordinates of objects. Theoretically redundant,
+		int   * obj_xs,   // [nobj], but useful in practice since we don't have the wcs here.
+		int     nbin,     // Number of radial bins
+		float * rs,       // [nbin+1]. The bin edges. Minimum length 2. First must be 0 in equi
+		int   equi,       // are bins equi-spaced?
+		int ncomp, int ny, int nx,// Map dimensions
+		int separable,    // Are ra/dec separable?
+		float *  pix_decs,// [ny*nx]
+		float *  pix_ras, // [ny*nx]
+		float ** imap,    // [ncomp,ny*nx]. The input map
+		float *** bins,   // [nobj,ncomp,nbin]. The values in each bin (output)
+		double * times    // Time taken in the different steps
+	) {
+	// 1. Figure out how far away we need to consider each object
+	float rmax    = rs[nbin-1];
+	// 2. Loop over each object
+	double t1     = wall_time();
+	#pragma omp parallel for
+	for(int oi = 0; oi < nobj; oi++) {
+		// 3. Figure out which pixels are relevant
+		int pixbox[4];
+		estimate_bounding_box(obj_ys[oi], obj_xs[oi], rmax, ny, nx, separable, pix_decs, pix_ras, pixbox);
+		wrap_box(pixbox, ny, nx);
+		for(int y_ = pixbox[0]; y_ < pixbox[1]; y_++) {
+			// We only need to handle upper wrapping due to wrap_box
+			int y = y_ >= ny ? y_-ny : y_;
+			for(int x_ = pixbox[2]; x_ < pixbox[3]; x_++) {
+				int x = x_ >= nx ? x_-nx : x_;
+				float ra, dec;
+				if(separable) { dec = pix_decs[y];      ra = pix_ras[x];      }
+				else          { dec = pix_decs[y*nx+x]; ra = pix_ras[y*nx+x]; }
+				float r = calc_dist(dec, ra, obj_decs[oi], obj_ras[oi]);
+				int i   = equi ? equi_search(nbin, rs, r) : binary_search(nbin, rs, r);
+				if(i < 0 || i >= nbin) continue;
+				for(int ci = 0; ci < ncomp; ci++)
+					bins[oi][ci][i] += imap[ci][y*nx+x];
+			}
+		}
+	}
+	double t2 = wall_time();
+	times[0] = t2-t1;
 }
