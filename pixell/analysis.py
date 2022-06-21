@@ -116,6 +116,11 @@ import numpy as np, time
 from scipy import ndimage
 from . import enmap, utils, uharm, wavelets, bunch
 
+# TODO: Figure out the proper way to handle fourier-space
+# linear operators. Currently I have a mess of map2harm, harm2map
+# map2harm_adjoint, harm2map_adjoint, pixarea and quad_weights.
+# It works to the percent level, but it should be better than that.
+
 def matched_filter_constcov(map, B, iN, uht=None, spin=0):
 	"""Apply a matched filter to the given map, assuming a constant covariance
 	noise model. A constant covariance noise model is one where the pixel-pixel
@@ -185,7 +190,8 @@ def matched_filter_white(map, B, ivar, uht=None, B2=None, high_acc=False):
 	kappa = P*uht.map2harm_adjoint(uht.hmul(B2,uht.harm2map_adjoint(ivar)))
 	return rho, kappa
 
-def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht=None, B2=None, high_acc=False):
+def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht=None, B2=None, high_acc=False,
+		S=None, iS=None):
 	"""Apply a matched filter to the given map, assuming a constant correlation
 	noise model inv(N) = ivar**0.5 * iC * ivar**0.5, where ivar = 1/pixel_variance
 	and iC = 1/harmonic_power(noise*ivar**0.5). This represents correlated noise
@@ -234,12 +240,16 @@ def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht=None, B2=None, high_a
 	W = uht.quad_weights()
 	# Square the beam in real space if not provided
 	if B2 is None: B2 = uht.hprof_rpow(B, 2)
+	# Optional skew-like transformation of covariance. Only applies to rho
+	# under the lowcorr approximation
+	if S  is None: S  = lambda x: x
+	if iS is None: iS = lambda x: x
 	# Find a white approximation for iC. A B²-weighted average is accurate to
 	# about 1% for lknee = 4000, worsening to about 3% by lknee = 7000. Probably
 	# good enough.
 	iC_white = uht.sum_hprof(B**2*iC)/uht.sum_hprof(B**2)
 
-	rho   = uht.harm2map(uht.hmul(B,uht.harm2map_adjoint(V*uht.map2harm_adjoint(uht.hmul(iC, uht.map2harm(V*map))))))/pixarea
+	rho   = uht.harm2map(uht.hmul(B,uht.harm2map_adjoint(V*iS(uht.map2harm_adjoint(uht.hmul(iC, uht.map2harm(S(V*map))))))))/pixarea
 	kappa = uht.map2harm_adjoint(uht.hmul(B2,uht.harm2map_adjoint(ivar*W*iC_white[...,None,None])))/pixarea**2
 
 	if high_acc:
@@ -288,12 +298,58 @@ def matched_filter_constcorr_smoothivar(map, B, ivar, iC, uht=None):
 	V    = ivar**0.5
 	P    = 1/enmap.pixsizemap(map.shape, map.wcs, broadcastable=True)
 	rho  = P*V*uht.map2harm_adjoint(uht.hmul(B*iC,uht.harm2map_adjoint(V*map)))
-	# kappa = P'VY"'B Ch" B Y"VP = (P'V = R)(Y"'B sqrt(CH") = A)A'R' = RAA'R'
+	# kappa = P'VY"'B C" B Y"VP = (P'V = R)(Y"'B sqrt(CH") = A)A'R' = RAA'R'
 	# kappa_ii = R_ii² sum_l A_il
 	kappa = ivar * (uht.sum_hprof(B**2*iC)/(4*np.pi))[...,None,None]*P
 	return rho, kappa
 
+def matched_filter_constcorr_dual(map, B, ivar, iC, uht=None, S=None, iS=None):
+	"""Apply a matched filter to the given map, assuming a dual constant correlation
+	noise model inv(N) = iC**0.5 * ivar * iC**0.5, where ivar = 1/pixel_variance
+	and iC = 1/harmonic_power(noise*ivar**0.5). This represents correlated noise
+	described by iC that's modulated spatially by ivar, but does so differently
+	from the standard constcorr method. This may be worse at handling sharp edges,
+	but should avoid the problem where hitcount-variations induce large-scale signal
+	in the filterd maps.
 
+	Arguments:
+	map:  The [...,ny,nx] enmap to be filtered
+	B:    The instrumental beam in the "hprof" format of the provided UHT
+	ivar: The inverse of the white noise power per pixel, an [...,ny,nx] enmap
+	iC:   The inverse power spectrum of the whitened map, map/ivar**0.5, as computed using
+	      uht. Note: This will be 1/pixsize for a white noise map, not 1, due to
+	      how the fourier space units work.
+	uht:  The unified harmonic transform (UHT) to use
+
+	Returns rho, kappa, which are [...,ny,nx] enmaps that can be used to construct:
+	flux  = rho/kappa
+	dflux = kappa**-0.5
+	snr   = rho/kappa**0.5
+
+	Here flux is the flux estimate in each pixel. If map is in Jy/sr, then flux
+	will be in Jy. dflux is the 1 sigma flux uncertainty. snr is a map of the
+	signal-to-noise ratio.
+	"""
+	if uht is None: uht = uharm.UHT(map.shape, map.wcs)
+	pixarea = enmap.pixsizemap(map.shape, map.wcs, broadcastable=True)
+	V = ivar**0.5
+	W = uht.quad_weights()
+	# Square root of iC. This does not handle [ncomp,ncomp,...]-type
+	# iCs, which would need something like eigpow
+	hC = iC**0.5
+	# Real-space square of B*iC**0.5
+	BC2 = uht.hprof_rpow(uht.hmul(B,hC), 2)
+	# Optional skew-like transformation of covariance. Only applies to rho
+	# since we can't handle it in kappa, but it should be a pretty good approximation
+	if S  is None: S  = lambda x: x
+	if iS is None: iS = lambda x: x
+	# fc = fC**0.5 r
+	# c  = harm2map fc = harm2map fC**0.5 r
+	# C  = <cc'> = harm2map fC**0.5 I fC**0.5 harm2map' = harm2map fC harm2map'
+	# C**2 = harm2map fC harm2map' harm2map fC harm2map' != map2harm fC**2 map2harm'
+	rho   = uht.harm2map(uht.hmul(B,uht.harm2map_adjoint(iS(uht.harm2map(uht.hmul(hC,uht.harm2map_adjoint(S(ivar*iS(uht.harm2map(uht.hmul(hC,uht.harm2map_adjoint(S(map)))))))))))))*pixarea**2
+	kappa = uht.map2harm_adjoint(uht.hmul(BC2,uht.harm2map_adjoint(ivar*W)))/pixarea**2
+	return rho, kappa
 
 # These functions and classes represent a modular approach to
 # object detection in maps. At the lowest level are Nmat objects,
@@ -981,7 +1037,7 @@ class ModellerMulti(Modeller):
 			res[order[edges[i]:edges[i+1]]] = self.modellers[ca].amplitudes(subcat)
 		return res
 
-# Helper functions .Should maybe be moved to utils
+# Helper functions. Should maybe be moved to utils
 
 def sanitize_kappa(kappa, tol=1e-4, inplace=False):
 	if not inplace: kappa = kappa.copy()

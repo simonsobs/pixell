@@ -245,7 +245,9 @@ def djd2mjd(djd): return np.asarray(djd) - 2400000.5 + 2415020
 def mjd2jd(mjd): return np.asarray(mjd) + 2400000.5
 def jd2mjd(jd): return np.asarray(jd) - 2400000.5
 def ctime2djd(ctime): return mjd2djd(ctime2mjd(ctime))
-def djd2ctime(djd):    return mjd2ctime(djd2mjd(djd))
+def djd2ctime(djd):   return mjd2ctime(djd2mjd(djd))
+def ctime2jd(ctime):  return mjd2jd(ctime2mjd(ctime))
+def jd2ctime(jd):     return mjd2ctime(jd2mjd(jd))
 
 def mjd2ctime(mjd):
 	"""Converts from modified julian date to unix time"""
@@ -441,6 +443,15 @@ def bin_multi(pix, shape, weights=None):
 	size = np.product(shape)
 	if weights is not None: weights = inds*0+weights
 	return np.bincount(inds, weights=weights, minlength=size).reshape(shape)
+
+def bincount(pix, weights=None, minlength=0):
+	"""Like numpy.bincount, but allows pre-dimensions, which must broadcast"""
+	pix, weights = broadcast_arrays(pix, weights)
+	n   = max(np.max(pix)+1,minlength)
+	res = np.zeros(pix.shape[:-1]+(n,), np.float64 if weights is None else weights.dtype)
+	for I in nditer(pix.shape[:-1]):
+		res[I] = np.bincount(pix[I], weights=None if weights is None else weights[I], minlength=n)
+	return res
 
 def grid(box, shape, endpoint=True, axis=0, flat=False):
 	"""Given a bounding box[{from,to},ndim] and shape[ndim] in each

@@ -2561,6 +2561,13 @@ def shift(map, off, inplace=False, keepwcs=False):
 		map.wcs.wcs.crval -= map.wcs.wcs.cdelt*off[::-1]
 	return map
 
+def fractional_shift(map, off, keepwcs=False, nofft=False):
+	"""Shift map cyclically by a non-integer amount off [{y_off,x_off}]"""
+	omap = samewcs(enfft.shift(map, off, nofft=nofft), map)
+	if not keepwcs:
+		omap.wcs.wcs.crval -= omap.wcs.wcs.cdelt*off[::-1]
+	return omap
+
 def fftshift(map, inplace=False):
 	if not inplace: map = map.copy()
 	map[:] = np.fft.fftshift(map, axes=[-2,-1])
