@@ -288,7 +288,7 @@ def matched_filter_constcorr_smoothivar(map, B, ivar, iC, uht=None):
 	V    = ivar**0.5
 	P    = 1/enmap.pixsizemap(map.shape, map.wcs, broadcastable=True)
 	rho  = P*V*uht.map2harm_adjoint(uht.hmul(B*iC,uht.harm2map_adjoint(V*map)))
-	# kappa = P'VY"'B Ch" B Y"VP = (P'V = R)(Y"'B sqrt(CH") = A)A'R' = RAA'R'
+	# kappa = P'VY"'B C" B Y"VP = (P'V = R)(Y"'B sqrt(CH") = A)A'R' = RAA'R'
 	# kappa_ii = R_ii² sum_l A_il
 	kappa = ivar * (uht.sum_hprof(B**2*iC)/(4*np.pi))[...,None,None]*P
 	return rho, kappa
@@ -981,7 +981,7 @@ class ModellerMulti(Modeller):
 			res[order[edges[i]:edges[i+1]]] = self.modellers[ca].amplitudes(subcat)
 		return res
 
-# Helper functions .Should maybe be moved to utils
+# Helper functions. Should maybe be moved to utils
 
 def sanitize_kappa(kappa, tol=1e-4, inplace=False):
 	if not inplace: kappa = kappa.copy()

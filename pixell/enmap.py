@@ -2301,7 +2301,7 @@ def write_fits(fname, emap, extra={}, allow_modify=False):
 		utils.mkdir(os.path.dirname(fname))
 	with warnings.catch_warnings():
 		warnings.filterwarnings('ignore')
-		hdus.writeto(fname, clobber=True)
+		hdus.writeto(fname, overwrite=True)
 
 def write_fits_geometry(fname, shape, wcs):
 	"""Write just the geometry to a fits file that will only contain the header"""
@@ -2560,6 +2560,13 @@ def shift(map, off, inplace=False, keepwcs=False):
 	if not keepwcs:
 		map.wcs.wcs.crval -= map.wcs.wcs.cdelt*off[::-1]
 	return map
+
+def fractional_shift(map, off, keepwcs=False, nofft=False):
+	"""Shift map cyclically by a non-integer amount off [{y_off,x_off}]"""
+	omap = samewcs(enfft.shift(map, off, nofft=nofft), map)
+	if not keepwcs:
+		omap.wcs.wcs.crval -= omap.wcs.wcs.cdelt*off[::-1]
+	return omap
 
 def fftshift(map, inplace=False):
 	if not inplace: map = map.copy()
