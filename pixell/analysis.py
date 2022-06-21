@@ -185,7 +185,8 @@ def matched_filter_white(map, B, ivar, uht=None, B2=None, high_acc=False):
 	kappa = P*uht.map2harm_adjoint(uht.hmul(B2,uht.harm2map_adjoint(ivar)))
 	return rho, kappa
 
-def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht=None, B2=None, high_acc=False):
+def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht=None, B2=None, high_acc=False,
+		S=None, iS=None):
 	"""Apply a matched filter to the given map, assuming a constant correlation
 	noise model inv(N) = ivar**0.5 * iC * ivar**0.5, where ivar = 1/pixel_variance
 	and iC = 1/harmonic_power(noise*ivar**0.5). This represents correlated noise
@@ -234,12 +235,16 @@ def matched_filter_constcorr_lowcorr(map, B, ivar, iC, uht=None, B2=None, high_a
 	W = uht.quad_weights()
 	# Square the beam in real space if not provided
 	if B2 is None: B2 = uht.hprof_rpow(B, 2)
+	# Optional skew-like transformation of covariance. Only applies to rho
+	# under the lowcorr approximation
+	if S  is None: S  = lambda x: x
+	if iS is None: iS = lambda x: x
 	# Find a white approximation for iC. A B²-weighted average is accurate to
 	# about 1% for lknee = 4000, worsening to about 3% by lknee = 7000. Probably
 	# good enough.
 	iC_white = uht.sum_hprof(B**2*iC)/uht.sum_hprof(B**2)
 
-	rho   = uht.harm2map(uht.hmul(B,uht.harm2map_adjoint(V*uht.map2harm_adjoint(uht.hmul(iC, uht.map2harm(V*map))))))/pixarea
+	rho   = uht.harm2map(uht.hmul(B,uht.harm2map_adjoint(V*iS(uht.map2harm_adjoint(uht.hmul(iC, uht.map2harm(S(V*map))))))))/pixarea
 	kappa = uht.map2harm_adjoint(uht.hmul(B2,uht.harm2map_adjoint(ivar*W*iC_white[...,None,None])))/pixarea**2
 
 	if high_acc:
