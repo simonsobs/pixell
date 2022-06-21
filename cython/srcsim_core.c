@@ -36,6 +36,7 @@
 #include <string.h>
 #include <math.h>
 #include <sys/time.h>
+#include <omp.h>
 #include "srcsim_core.h"
 
 // I thought this was part of math.h, but apparently it's optional
@@ -43,6 +44,14 @@
 
 // Forward declaration for all the implementation details that don't
 // belong in the header
+
+float sum_map(float * m, int ny, int nx) {
+	float sum = 0;
+	for(int y = 0; y < ny; y++)
+	for(int x = 0; x < nx; x++)
+		sum += m[y*nx+x];
+	return sum;
+}
 
 float * measure_amax(int nobj, int ncomp, float ** amps);
 float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, float ** prof_rs, float ** prof_vs, float vmin, float rmax);
@@ -79,6 +88,7 @@ void process_cell(
 		int op,           // The operation to perform when merging object signals
 		int ncomp, int ny, int nx, // Number of components
 		int separable,    // Are ra/dec separable?
+		int transpose,    // Whether to do the transpose operation: map -> amp
 		float * pix_decs, // [ny*nx]. Coordinates of objects
 		float * pix_ras,  // [ny*nx]
 		float ** imap,    // [ncomp,ny*nx]. The input map
@@ -98,6 +108,7 @@ void paint_object(
 		float * restrict prof_vs,  // profile value for each sample point
 		int prof_equi,             // are profiles equi_spaced?
 		int ncomp, int ny, int nx, // cell dimensions
+		int transpose,             // Whether to do the transpose operation: map -> amp
 		float * restrict pix_decs, // pixel coordinates
 		float * restrict pix_ras,  //
 		float * restrict map       // map to overwrite
@@ -123,12 +134,17 @@ void estimate_bounding_box(
 		int * box         // {y1,y2,x1,x2} in pixels.
 	);
 void pixbox2cellbox(int * pixbox, int csize, int ncy, int ncx, int * cellbox);
+void wrap_box(int * box, int ny, int nx);
 
 typedef struct IntList { int n, cap; int * vals; } IntList;
 IntList * intlist_new();
 void intlist_push(IntList * v, int val);
 void intlist_free(IntList * v);
 void intlist_swap(IntList ** a, IntList ** b);
+
+float *** calloc_pppf(int n1, int n2, int n3);
+void free_pppf(float *** a, int n1, int n2);
+void reduce_amps(float *** work_amps, float ** amps, int nwork, int ncomp, int nobj);
 
 double wall_time() { struct timeval tv; gettimeofday(&tv,0); return tv.tv_sec + 1e-6*tv.tv_usec; }
 
@@ -150,6 +166,7 @@ void sim_objects(
 		int op,           // The operation to perform when merging object signals
 		int ncomp, int ny, int nx,// Map dimensions
 		int separable,    // Are ra/dec separable?
+		int transpose,    // Whether to do the transpose operation, which reads from map and writes to amps
 		float *  pix_decs,// [ny*nx]
 		float *  pix_ras, // [ny*nx]
 		float ** imap,    // [ncomp,ny*nx]. The input map
@@ -168,9 +185,22 @@ void sim_objects(
 	int ncell = assign_cells(nobj, obj_decs, obj_ras, obj_ys, obj_xs, rmaxs, ny, nx, separable, pix_decs, pix_ras, csize, &cell_nobj, &cell_objs, &cell_boxes);
 	double t3 = wall_time();
 	// 3. Process each cell
-	#pragma omp parallel for
-	for(int ci = 0; ci < ncell; ci++) {
-		process_cell(cell_nobj[ci], cell_objs[ci], cell_boxes[ci], obj_decs, obj_ras, amps, prof_ids, prof_ns, prof_rs, prof_vs, prof_equi, op, ncomp, ny, nx, separable, pix_decs, pix_ras, imap, omap);
+	if(transpose) {
+		int nthread = omp_get_max_threads();
+		float *** work_amps = calloc_pppf(nthread, ncomp, nobj);
+		#pragma omp parallel
+		{
+			int thread = omp_get_thread_num();
+			#pragma omp for
+			for(int ci = 0; ci < ncell; ci++)
+				process_cell(cell_nobj[ci], cell_objs[ci], cell_boxes[ci], obj_decs, obj_ras, work_amps[thread], prof_ids, prof_ns, prof_rs, prof_vs, prof_equi, op, ncomp, ny, nx, separable, transpose, pix_decs, pix_ras, imap, omap);
+		}
+		reduce_amps(work_amps, amps, nthread, ncomp, nobj);
+		free_pppf(work_amps, nthread, ncomp);
+	} else {
+		#pragma omp parallel for
+		for(int ci = 0; ci < ncell; ci++)
+			process_cell(cell_nobj[ci], cell_objs[ci], cell_boxes[ci], obj_decs, obj_ras, amps, prof_ids, prof_ns, prof_rs, prof_vs, prof_equi, op, ncomp, ny, nx, separable, transpose, pix_decs, pix_ras, imap, omap);
 	}
 	double t4 = wall_time();
 	times[0] = t2-t1;
@@ -256,6 +286,7 @@ int assign_cells(
 		// the real wrapping length of the sky will not cover any tile more than
 		// once.
 		pixbox2cellbox(pixbox, csize, ncy, ncx, cellboxes+4*oi);
+		wrap_box(cellboxes+4*oi, ncy, ncx);
 	}
 	// 3. For each cell in each object's cell box, register the object in that cell.
 	for(int oi = 0; oi < nobj; oi++) {
@@ -320,15 +351,21 @@ void pixbox2cellbox(int * pixbox, int csize, int ncy, int ncx, int * cellbox) {
 	// Go from raw pixel bounds to raw cell bounds
 	int cy1 = floor_div(pixbox[0], csize), cy2 = floor_div(pixbox[1]-1, csize)+1;
 	int cx1 = floor_div(pixbox[2], csize), cx2 = floor_div(pixbox[3]-1, csize)+1;
-	// Handle wrapping, and avoid overwrapping
-	int ch = cy2-cy1, cw = cx2-cx1;
-	if(ch > ncy) ch = ncy;
-	if(cw > ncx) cw = ncx;
-	cy1 = mod(cy1, ncy); cy2 = cy1+ch;
-	cx1 = mod(cx1, ncx); cx2 = cx1+cw;
 	// Put into output
 	cellbox[0] = cy1; cellbox[1] = cy2;
 	cellbox[2] = cx1; cellbox[3] = cx2;
+}
+
+// wrap an integer box such that the start point is >= 1, and
+// the end point wraps no more than once around the sky.
+void wrap_box(int * box, int ny, int nx) {
+	int y1 = box[0], y2 = box[1], x1 = box[2], x2 = box[3];
+	int h  = y2-y1, w = x2-x1;
+	if(h > ny) h = ny;
+	if(w > nx) w = nx;
+	y1 = mod(y1, ny); y2 = y1+h;
+	x1 = mod(x1, nx); x2 = x1+w;
+	box[0] = y1; box[1] = y2; box[2] = x1; box[3] = x2;
 }
 
 void process_cell(
@@ -346,6 +383,7 @@ void process_cell(
 		int op,           // The operation to perform when merging object signals
 		int ncomp, int ny, int nx,// Map dimensions
 		int separable,    // Are ra/dec separable?
+		int transpose,    // Whether to do the transpose operation: map -> amp
 		float * pix_decs, // [nx] if seprable else [ny*nx]. Coordinates of objects
 		float * pix_ras,  // [ny] if seprable else [ny*nx]
 		float ** imap,    // [ncomp,ny*nx]. The input map
@@ -366,18 +404,31 @@ void process_cell(
 	float * cell_work = calloc(ncomp*cny*cnx, sizeof(float));
 	float * amp = calloc(ncomp, sizeof(float));
 	// 2. Process each object
-	for(int oi = 0; oi < nobj; oi++) {
-		int obj = objs[oi];
-		for(int ci = 0; ci < ncomp; ci++)
-			amp[ci] = amps[ci][obj];
-		int pid = prof_ids[obj];
-		// 3. Paint object onto work-space
-		paint_object(obj_decs[obj], obj_ras[obj], amp, prof_ns[pid], prof_rs[pid], prof_vs[pid], prof_equi, ncomp, cny, cnx, cell_decs, cell_ras, cell_work);
-		// 4. Merge work-space with cell data
-		merge_cell(ntot, op, cell_work, cell_data);
+	if(transpose) {
+		for(int oi = 0; oi < nobj; oi++) {
+			int obj = objs[oi];
+			int pid = prof_ids[obj];
+			for(int ci = 0; ci < ncomp; ci++) amp[ci] = 0;
+			// 3. Paint object onto work-space
+			paint_object(obj_decs[obj], obj_ras[obj], amp, prof_ns[pid], prof_rs[pid], prof_vs[pid], prof_equi, ncomp, cny, cnx, transpose, cell_decs, cell_ras, cell_data);
+			// 4. Update global amps
+			for(int ci = 0; ci < ncomp; ci++)
+				amps[ci][obj] += amp[ci];
+		}
+	} else {
+		for(int oi = 0; oi < nobj; oi++) {
+			int obj = objs[oi];
+			for(int ci = 0; ci < ncomp; ci++)
+				amp[ci] = amps[ci][obj];
+			int pid = prof_ids[obj];
+			// 3. Paint object onto work-space
+			paint_object(obj_decs[obj], obj_ras[obj], amp, prof_ns[pid], prof_rs[pid], prof_vs[pid], prof_equi, ncomp, cny, cnx, transpose, cell_decs, cell_ras, cell_work);
+			// 4. Merge work-space with cell data
+			merge_cell(ntot, op, cell_work, cell_data);
+		}
+		// 5. Copy back into map
+		insert_map(cell_data, omap, box, ncomp, ny, nx);
 	}
-	// 5. Copy back into map
-	insert_map(cell_data, omap, box, ncomp, ny, nx);
 	free(amp);
 	free(cell_data);
 	free(cell_decs);
@@ -432,6 +483,7 @@ void paint_object(
 		float * restrict prof_vs,  // profile value for each sample point
 		int prof_equi,             // are profiles equi-spaced?
 		int ncomp, int ny, int nx, // cell dimensions
+		int transpose,
 		float * restrict pix_decs, // pixel coordinates
 		float * restrict pix_ras,  //
 		float * restrict map       // map to overwrite
@@ -442,11 +494,14 @@ void paint_object(
 			int pix    = y*nx+x;
 			float r    = calc_dist(pix_decs[pix], pix_ras[pix], obj_dec, obj_ra);
 			float prof = evaluate_profile(prof_n, prof_rs, prof_vs, r, prof_equi);
-			for(int ci = 0; ci < ncomp; ci++)
-				map[ci*npix+pix] = amps[ci]*prof;
+			for(int ci = 0; ci < ncomp; ci++) {
+				if(transpose) amps[ci] += map[ci*npix+pix]*prof;
+				else   map[ci*npix+pix] = amps[ci]*prof;
+			}
 		}
 	}
 }
+
 
 void merge_cell(int n, int op, float * restrict source, float * restrict target) {
 	switch(op) {
@@ -474,10 +529,10 @@ float evaluate_profile(int n, float * rs, float * vs, float r, int equi) {
 	return vs[i1] + (vs[i2]-vs[i1])*x;
 }
 
-// Returns i such that rs[i] < r <= rs[i+1]. rs must be sorted.
+// Returns i such that rs[i] <= r < rs[i+1]. rs must be sorted.
 // This function is responsible for 46% of the total run time.
 int binary_search(int n, float * rs, float r) {
-	if(r <= rs[0])   return -1;
+	if(r <  rs[0])   return -1;
 	if(r >= rs[n-1]) return  n;
 	int a = 0, b = n-1;
 	// will maintain r inside interval rs[a]:rs[b]
@@ -608,3 +663,91 @@ void intlist_push(IntList * v, int val) {
 }
 void intlist_free(IntList * v) { free(v->vals); free(v); }
 void intlist_swap(IntList ** a, IntList ** b) { IntList * tmp = *a; *a = *b; *b = tmp; }
+
+
+// This is surprisingly verbose...
+float *** calloc_pppf(int n1, int n2, int n3) {
+	float *** a = calloc(n1, sizeof(float**));
+	for(int i1 = 0; i1 < n1; i1++) {
+		a[i1] = calloc(n2, sizeof(float*));
+		for(int i2 = 0; i2 < n2; i2++)
+			a[i1][i2] = calloc(n3, sizeof(float));
+	}
+	return a;
+}
+
+void free_pppf(float *** a, int n1, int n2) {
+	for(int i1 = 0; i1 < n1; i1++) {
+		a[i1] = calloc(n2, sizeof(float*));
+		for(int i2 = 0; i2 < n2; i2++)
+			free(a[i1][i2]);
+		free(a[i1]);
+	}
+	free(a);
+}
+
+void reduce_amps(float *** work_amps, float ** amps, int nwork, int ncomp, int nobj) {
+	for(int w = 0; w < nwork; w++) {
+		for(int c = 0; c < ncomp; c++) {
+			for(int o = 0; o < nobj; o++)
+				amps[c][o] += work_amps[w][c][o];
+			}
+	}
+}
+
+// This is equivalent to i%n, but should be faster for the common case where
+// i is either in range or just outside
+int wrap(int i, int n) {
+	while(i <  0) i += n;
+	while(i >= n) i -= n;
+	return i;
+}
+
+// Radial binning code. Has some things in common with sim_objects, but not enough to
+// be part of that function
+void radial_sum(
+		int nobj,         // Number of objects
+		float * obj_decs, // [nobj]. Coordinates of objects
+		float * obj_ras,  // [nobj]
+		int   * obj_ys,   // [nobj]. Pixel coordinates of objects. Theoretically redundant,
+		int   * obj_xs,   // [nobj], but useful in practice since we don't have the wcs here.
+		int     nbin,     // Number of radial bins
+		float * rs,       // [nbin+1]. The bin edges. Minimum length 2. First must be 0 in equi
+		int   equi,       // are bins equi-spaced?
+		int ncomp, int ny, int nx,// Map dimensions
+		int separable,    // Are ra/dec separable?
+		float *  pix_decs,// [ny*nx]
+		float *  pix_ras, // [ny*nx]
+		float ** imap,    // [ncomp,ny*nx]. The input map
+		float *** bins,   // [nobj,ncomp,nbin]. The values in each bin (output)
+		double * times    // Time taken in the different steps
+	) {
+	// 1. Figure out how far away we need to consider each object
+	float rmax    = rs[nbin-1];
+	// 2. Loop over each object
+	double t1     = wall_time();
+	#pragma omp parallel for
+	for(int oi = 0; oi < nobj; oi++) {
+		// 3. Figure out which pixels are relevant
+		int pixbox[4];
+		estimate_bounding_box(obj_ys[oi], obj_xs[oi], rmax, ny, nx, separable, pix_decs, pix_ras, pixbox);
+		wrap_box(pixbox, ny, nx);
+		for(int y_ = pixbox[0]; y_ < pixbox[1]; y_++) {
+			// We only need to handle upper wrapping due to wrap_box
+			int y = y_ >= ny ? y_-ny : y_;
+			for(int x_ = pixbox[2]; x_ < pixbox[3]; x_++) {
+				int x = x_ >= nx ? x_-nx : x_;
+				float ra, dec;
+				if(separable) { dec = pix_decs[y];      ra = pix_ras[x];      }
+				else          { dec = pix_decs[y*nx+x]; ra = pix_ras[y*nx+x]; }
+				float r = calc_dist(dec, ra, obj_decs[oi], obj_ras[oi]);
+				int i   = equi ? equi_search(nbin, rs, r) : binary_search(nbin, rs, r);
+				if(i < 0 || i >= nbin) continue;
+				for(int ci = 0; ci < ncomp; ci++)
+					bins[oi][ci][i] += imap[ci][y*nx+x];
+			}
+		}
+	}
+	double t2 = wall_time();
+	times[0] = t2-t1;
+}

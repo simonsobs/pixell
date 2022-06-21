@@ -2042,7 +2042,7 @@ def tsz_tform(r200=1*arcmin, l=None, lmax=40000, xc=0.497, alpha=1.0, beta=-4.65
 	from scipy import interpolate
 	lvals, bvals = profile_to_tform_hankel(lambda r: tsz_profile_los(r/r200, xc=xc, alpha=alpha, beta=beta, gamma=gamma, zmax=zmax))
 	if l is None: l = np.arange(lmax+1)
-	bout = interpolate.interp1d(np.log(lvals), bvals, "cubic")(np.log(np.maximum(l,0.1)))
+	bout = interpolate.interp1d(np.log(lvals), bvals, "cubic")(np.log(np.maximum(l,np.min(lvals))))
 	return bout
 
 ### Binning ####

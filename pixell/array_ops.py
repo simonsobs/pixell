@@ -16,6 +16,14 @@ def find_contours(imap, vals, omap=None):
 	core.find_contours(imap.T, vals, omap.T)
 	return omap
 
+def roll_rows(imap, offsets, omap=None):
+	if omap is None: omap = np.zeros_like(imap)
+	# Loop over outer dimensions, since fortran implementation
+	# doesn't support those. This should be cheap
+	for I in utils.nditer(imap.shape[:-2]):
+		get_core(imap.dtype).roll_rows(imap[I].T, offsets, omap[I].T)
+	return omap
+
 def ang2rect(a):
 	core = get_core(a.dtype)
 	res = np.zeros([len(a),3],dtype=a.dtype)

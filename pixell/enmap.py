@@ -61,7 +61,7 @@ class ndmap(np.ndarray):
 	def box(self, npoint=10, corner=True): return box(self.shape, self.wcs, npoint=npoint, corner=corner)
 	def pixbox_of(self,oshape,owcs): return pixbox_of(self.wcs, oshape,owcs)
 	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
-	def posaxes(self, safe=True, corner=False): return posaxes(self.shape, self.wcs, safe=safe, corner=corner)
+	def posaxes(self, safe=True, corner=False, dtype=np.float64): return posaxes(self.shape, self.wcs, safe=safe, corner=corner, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def laxes(self, oversample=1, method="auto"): return laxes(self.shape, self.wcs, oversample=oversample, method=method)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
@@ -318,8 +318,8 @@ def corners(shape, wcs, npoint=10, corner=True):
 	and undoing any sudden jumps in coordinates it finds. This is controlled by
 	the npoint option. The default of 10 should be more than enough.
 
-	Returns [{bottom left,top right},{dec,ra}] in radians 
-	(or equivalent for other coordinate systems). 
+	Returns [{bottom left,top right},{dec,ra}] in radians
+	(or equivalent for other coordinate systems).
 	e.g. an array of the form [[dec_min, ra_min ], [dec_max, ra_max]]."""
 	# Because of wcs's wrapping, we need to evaluate several
 	# extra pixels to make our unwinding unambiguous
@@ -2663,4 +2663,3 @@ def spin_helper(spin, n):
 		if i2 == n: break
 		i1 = i2
 		ci = (ci+1)%len(spin)
-

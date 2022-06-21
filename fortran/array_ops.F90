@@ -108,4 +108,27 @@ subroutine find_contours(imap, vals, omap)
 	end do
 end subroutine
 
+subroutine roll_rows(imap, offsets, omap)
+	implicit none
+	real(_), intent(in)    :: imap(:,:)
+	integer, intent(in)    :: offsets(:)
+	real(_), intent(inout) :: omap(:,:)
+	integer :: ny, nx, y, ix, ox
+	nx   = size(imap,1)
+	ny   = size(imap,2)
+	!$omp parallel do private(ix,ox)
+	do y = 1, ny
+		do ix = 1, nx
+			ox = ix + offsets(y)
+			if    (ox < 1 ) then
+				ox = ox + nx
+			elseif(ox > nx) then
+				ox = ox - nx
+			end if
+			omap(ox,y) = imap(ix,y)
+		end do
+	end do
+end subroutine
+
+
 end module
