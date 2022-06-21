@@ -2572,9 +2572,7 @@ def ifftshift(map, inplace=False):
 	return map
 
 def fillbad(map, val=0, inplace=False):
-	if not inplace: map = map.copy()
-	map[~np.isfinite(map)] = val
-	return map
+	return np.nan_to_num(map, copy=not inplace, nan=val, posinf=val, neginf=val)
 
 def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3):
 	"""Resample the input map such that it covers the same area of the sky
