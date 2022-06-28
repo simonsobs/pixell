@@ -165,9 +165,9 @@ def alm2map_adjoint(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=Fal
 
 # Quadrature weights
 
-def quad_weights(shape, wcs):
+def quad_weights(shape, wcs, tweak=False):
 	if wcsutils.is_cyl(wcs):
-		return quad_weights_cyl(shape, wcs)
+		return quad_weights_cyl(shape, wcs, tweak=tweak)
 	else:
 		raise NotImplementedError("Quadrature weights only supported for cylindrical projections")
 
