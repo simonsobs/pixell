@@ -2878,3 +2878,14 @@ def replace(istr, ipat, repl):
 	ostr = istr.replace(ipat, repl)
 	if ostr == istr: raise KeyError("Pattern not found")
 	return ostr
+
+# I used to do stuff like a[~np.isfinite(a)] = 0, but this should be
+# lower overhad and faster
+def remove_nan(a):
+	"""Sets nans and infs to 0 in an array in-place. Should have no memory overhead.
+	Also returns the array for convenience."""
+	return np.nan_to_num(a, copy=False, nan=0, posinf=0, neginf=0)
+def without_nan(a):
+	"""Returns a copy of a with nans and infs set to 0. The original
+	array is not modified."""
+	return np.nan_to_num(a, copy=True, nan=0, posinf=0, neginf=0)
