@@ -351,6 +351,8 @@ def matched_filter_constcorr_dual(map, B, ivar, iC, uht=None, S=None, iS=None):
 	kappa = uht.map2harm_adjoint(uht.hmul(BC2,uht.harm2map_adjoint(ivar*W)))/pixarea**2
 	return rho, kappa
 
+
+
 # These functions and classes represent a modular approach to
 # object detection in maps. At the lowest level are Nmat objects,
 # which provide matched filtering through a unified interface.

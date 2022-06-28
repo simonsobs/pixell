@@ -57,6 +57,7 @@ class ndmap(np.ndarray):
 	def pix2sky(self, pix,    safe=True, corner=False): return pix2sky(self.shape, self.wcs, pix,    safe, corner)
 	def l2pix(self, ls):  return l2pix(self.shape, self.wcs, ls)
 	def pix2l(self, pix): return pix2l(self.shape, self.wcs, pix)
+	def contains(self, pos, unit="coord"): return contains(self.shape, self.wcs, pos, unit=unit)
 	def corners(self, npoint=10, corner=True): return corners(self.shape, self.wcs, npoint=npoint, corner=corner)
 	def box(self, npoint=10, corner=True): return box(self.shape, self.wcs, npoint=npoint, corner=corner)
 	def pixbox_of(self,oshape,owcs): return pixbox_of(self.wcs, oshape,owcs)
@@ -507,6 +508,13 @@ def skybox2pixbox(shape, wcs, skybox, npoint=10, corner=False, include_direction
 
 def pixbox2skybox(shape, wcs, pixbox):
 	return pix2sky(shape, wcs, np.asanyarray(pixbox).T).T
+
+def contains(shape, wcs, pos, unit="coord"):
+	"""For the points with coordinates pos[{dec,ra},...] return whether
+	each is inside the geometry given by shape, wcs"""
+	if unit == "coord": pix = sky2pix(shape, wcs, pos)
+	else:               pix = pos
+	return np.all((pix>=0)&(pix.T<shape[-2:]).T,0)
 
 def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, prefilter=True, mask_nan=False, safe=True, bsize=1000):
 	"""Project the map into a new map given by the specified
@@ -1255,7 +1263,10 @@ def inpaint(map, mask, method="nearest"):
 	continuous signal with the right order of magnitude, for example to allow fourier
 	operations of masked data with large values near the edge of the mask (e.g. a
 	galactic mask). Its goal is not to inpaint with something realistic-looking. For
-	that heavier methods are needed."""
+	that heavier methods are needed.
+
+	FIXME: This function is slow and not very good. Fix or remove.
+	"""
 	from scipy import interpolate
 	# Find innermost good pixels at border of mask. These are the pixels the interpolation
 	# will actually be based on, so isolating them makes things much faster than just sending
