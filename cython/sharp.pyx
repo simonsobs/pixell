@@ -348,10 +348,16 @@ cdef class alm_info:
 		element with (l,m) in the alm array, as defined by this class."""
 		lmat = np.asanyarray(lmat)
 		if out is None: out = alm.copy()
-		if out.ndim == 1: out = out[None]
+		# The low-level implementation assumes that we have lmax[:,:,nl] and alm[:,nalm],
+		# so we must first handle special cases.
+		# 1. lmat is just a scalar. In that case we can just multiply directly
 		if lmat.ndim == 0:
 			out *= lmat
 			return out
+		# 2. If out is [nalm] make it [1,nalm]
+		if out.ndim == 1: out = out[None]
+		# 3. If lmat is [nalm] make it [opre,opre,nalm].
+		# We don't currently handle the case where lmat is [opre,nalm]
 		if lmat.ndim == 1:
 			lmat = np.eye(out.shape[0])[:,:,None]*lmat
 		lmat = lmat.astype(out.real.dtype, copy=False)

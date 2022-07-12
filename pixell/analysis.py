@@ -332,13 +332,12 @@ def matched_filter_constcorr_dual(map, B, ivar, iC, uht=None, S=None, iS=None):
 	"""
 	if uht is None: uht = uharm.UHT(map.shape, map.wcs)
 	pixarea = enmap.pixsizemap(map.shape, map.wcs, broadcastable=True)
-	V = ivar**0.5
 	W = uht.quad_weights()
 	# Square root of iC. This does not handle [ncomp,ncomp,...]-type
 	# iCs, which would need something like eigpow
 	hC = iC**0.5
 	# Real-space square of B*iC**0.5
-	BC2 = uht.hprof_rpow(uht.hmul(B,hC), 2)
+	BC2 = uht.hprof_rpow(B*hC, 2)
 	# Optional skew-like transformation of covariance. Only applies to rho
 	# since we can't handle it in kappa, but it should be a pretty good approximation
 	if S  is None: S  = lambda x: x
@@ -347,10 +346,13 @@ def matched_filter_constcorr_dual(map, B, ivar, iC, uht=None, S=None, iS=None):
 	# c  = harm2map fc = harm2map fC**0.5 r
 	# C  = <cc'> = harm2map fC**0.5 I fC**0.5 harm2map' = harm2map fC harm2map'
 	# C**2 = harm2map fC harm2map' harm2map fC harm2map' != map2harm fC**2 map2harm'
-	rho   = uht.harm2map(uht.hmul(B,uht.harm2map_adjoint(iS(uht.harm2map(uht.hmul(hC,uht.harm2map_adjoint(S(ivar*iS(uht.harm2map(uht.hmul(hC,uht.harm2map_adjoint(S(map)))))))))))))*pixarea**2
+	# I tried deriving the right mix of normal vs. adjoint operations here, but what
+	# gives the smallest bias in practice is the straightforward below.
+	# curved doesn't really care, while flat goes from 30% bias in 50-60 el patch
+	# to 6% bias.
+	rho   = uht.harm2map(uht.hmul(B,uht.map2harm(iS(uht.harm2map(uht.hmul(hC,uht.map2harm(S(ivar*iS(uht.harm2map(uht.hmul(hC,uht.map2harm(S(map)))))))))))))*pixarea**-1
 	kappa = uht.map2harm_adjoint(uht.hmul(BC2,uht.harm2map_adjoint(ivar*W)))/pixarea**2
 	return rho, kappa
-
 
 
 # These functions and classes represent a modular approach to
