@@ -2,6 +2,18 @@
 History
 =======
 
+0.16.0 (2022-06-08)
+-------------------
+
+Changes relative to 0.15.3 include:
+
+* Wavelet analysis
+* Fast C-based source simulation
+* Fast vectorized radial profile binning
+* Fixes and improvements to HDF5 I/O
+* Fixes to OSX support
+
+
 0.15.3 (2022-02-12)
 -------------------
 

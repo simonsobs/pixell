@@ -1,5 +1,7 @@
 #include "sharp_utils.h"
+#if 0
 #include <immintrin.h>
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
