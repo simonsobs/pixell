@@ -156,8 +156,8 @@ class UHT:
 		[ncomp,ncomp,ny,nx].  In curved mode, hprof must be [nl], [ncomp,nl] or [ncomp,ncomp,nl]."""
 		harm = np.asanyarray(harm)
 		if self.mode == "flat":
-			if not inplace: harm = harm.copy()
-			harm[:] = enmap.map_mul(hprof, harm)
+			if inplace: harm[:] = enmap.map_mul(hprof, harm)
+			else:       harm    = enmap.map_mul(hprof, harm)
 			return harm
 		else:
 			out = harm if inplace else None

@@ -245,7 +245,9 @@ def djd2mjd(djd): return np.asarray(djd) - 2400000.5 + 2415020
 def mjd2jd(mjd): return np.asarray(mjd) + 2400000.5
 def jd2mjd(jd): return np.asarray(jd) - 2400000.5
 def ctime2djd(ctime): return mjd2djd(ctime2mjd(ctime))
-def djd2ctime(djd):    return mjd2ctime(djd2mjd(djd))
+def djd2ctime(djd):   return mjd2ctime(djd2mjd(djd))
+def ctime2jd(ctime):  return mjd2jd(ctime2mjd(ctime))
+def jd2ctime(jd):     return mjd2ctime(jd2mjd(jd))
 
 def mjd2ctime(mjd):
 	"""Converts from modified julian date to unix time"""
@@ -441,6 +443,15 @@ def bin_multi(pix, shape, weights=None):
 	size = np.product(shape)
 	if weights is not None: weights = inds*0+weights
 	return np.bincount(inds, weights=weights, minlength=size).reshape(shape)
+
+def bincount(pix, weights=None, minlength=0):
+	"""Like numpy.bincount, but allows pre-dimensions, which must broadcast"""
+	pix, weights = broadcast_arrays(pix, weights)
+	n   = max(np.max(pix)+1,minlength)
+	res = np.zeros(pix.shape[:-1]+(n,), np.float64 if weights is None else weights.dtype)
+	for I in nditer(pix.shape[:-1]):
+		res[I] = np.bincount(pix[I], weights=None if weights is None else weights[I], minlength=n)
+	return res
 
 def grid(box, shape, endpoint=True, axis=0, flat=False):
 	"""Given a bounding box[{from,to},ndim] and shape[ndim] in each
@@ -2867,3 +2878,14 @@ def replace(istr, ipat, repl):
 	ostr = istr.replace(ipat, repl)
 	if ostr == istr: raise KeyError("Pattern not found")
 	return ostr
+
+# I used to do stuff like a[~np.isfinite(a)] = 0, but this should be
+# lower overhad and faster
+def remove_nan(a):
+	"""Sets nans and infs to 0 in an array in-place. Should have no memory overhead.
+	Also returns the array for convenience."""
+	return np.nan_to_num(a, copy=False, nan=0, posinf=0, neginf=0)
+def without_nan(a):
+	"""Returns a copy of a with nans and infs set to 0. The original
+	array is not modified."""
+	return np.nan_to_num(a, copy=True, nan=0, posinf=0, neginf=0)
