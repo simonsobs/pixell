@@ -17,10 +17,11 @@ build_src = build_src.build_src
 
 
 compile_opts = {
+    #'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-O0', '-fPIC'],
     'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-Ofast', '-fPIC'],
     'extra_f90_compile_args': ['-fopenmp', '-Wno-conversion', '-Wno-tabs', '-fPIC'],
     'f2py_options': ['skip:', 'map_border', 'calc_weights', ':'],
-    'extra_link_args': ['-fopenmp', '-g', '-fPIC']
+    'extra_link_args': ['-fopenmp', '-g', '-fPIC', '-fno-lto']
     }
 
 # Set compiler options
@@ -34,7 +35,12 @@ elif sys.platform == 'darwin':
         sp.check_call('scripts/osx.sh', shell=True)
     except sp.CalledProcessError:
         raise DistutilsError('Failed to prepare Mac OS X properly. See earlier errors.')
+    # Try to find gcc in /usr/local/bin/ (which is where it's installed by homebrew on
+    # Intel) or, if that fails, /opt/homebrew/bin/ (which is where it's installed by
+    # homebrew on Silicon)
     gccpath = glob.glob('/usr/local/bin/gcc-*')
+    if not gccpath:
+        gccpath = glob.glob('/opt/homebrew/bin/gcc-*')
     if gccpath:
         # Use newest gcc found
         sint = lambda x: int(x) if x.isdigit() else 0
@@ -105,6 +111,7 @@ test_requirements = ['pip>=9.0',
 fcflags = os.getenv('FCFLAGS')
 if fcflags is None or fcflags.strip() == '':
     fcflags = ['-O3','-fPIC']
+    #fcflags = ['-O0','-fPIC']
 else:
     print('User supplied fortran flags: ', fcflags)
     print('These will supersede other optimization flags.')
@@ -205,6 +212,11 @@ setup(
             libraries=['m'],
             include_dirs=[np.get_include()],
             **compile_opts),
+        Extension('pixell.srcsim',
+            sources=['cython/srcsim.c','cython/srcsim_core.c'],
+            libraries=['m'],
+            include_dirs=[np.get_include()],
+            **compile_opts),
         Extension('pixell._interpol_32',
             sources=['fortran/interpol_32.f90'],
             **compile_opts),
@@ -243,4 +255,3 @@ setup(
 )
 
 print('\n[setup.py request was successful.]')
-

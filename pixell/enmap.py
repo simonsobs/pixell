@@ -1,5 +1,5 @@
 from __future__ import print_function
-import numpy as np, scipy.ndimage, warnings, astropy.io.fits, sys, time, os
+import numpy as np, scipy.ndimage, warnings, astropy.io.fits, sys, time, os, contextlib
 from . import utils, wcsutils, powspec, fft as enfft
 
 # Things that could be improved:
@@ -57,11 +57,12 @@ class ndmap(np.ndarray):
 	def pix2sky(self, pix,    safe=True, corner=False): return pix2sky(self.shape, self.wcs, pix,    safe, corner)
 	def l2pix(self, ls):  return l2pix(self.shape, self.wcs, ls)
 	def pix2l(self, pix): return pix2l(self.shape, self.wcs, pix)
+	def contains(self, pos, unit="coord"): return contains(self.shape, self.wcs, pos, unit=unit)
 	def corners(self, npoint=10, corner=True): return corners(self.shape, self.wcs, npoint=npoint, corner=corner)
 	def box(self, npoint=10, corner=True): return box(self.shape, self.wcs, npoint=npoint, corner=corner)
 	def pixbox_of(self,oshape,owcs): return pixbox_of(self.wcs, oshape,owcs)
 	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
-	def posaxes(self, safe=True, corner=False): return posaxes(self.shape, self.wcs, safe=safe, corner=corner)
+	def posaxes(self, safe=True, corner=False, dtype=np.float64): return posaxes(self.shape, self.wcs, safe=safe, corner=corner, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def laxes(self, oversample=1, method="auto"): return laxes(self.shape, self.wcs, oversample=oversample, method=method)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
@@ -104,7 +105,7 @@ class ndmap(np.ndarray):
 	def padslice(self, box, default=np.nan): return padslice(self, box, default=default)
 	def center(self): return center(self.shape,self.wcs)
 	def downgrade(self, factor, op=np.mean, ref=None, off=None): return downgrade(self, factor, op=op, ref=ref, off=off)
-	def upgrade(self, factor): return upgrade(self, factor)
+	def upgrade(self, factor,  off=None, oshape=None, inclusive=False): return upgrade(self, factor, off=off, oshape=oshape, inclusive=inclusive)
 	def fillbad(self, val=0, inplace=False): fillbad(self, val=val, inplace=inplace)
 	def to_healpix(self, nside=0, order=3, omap=None, chunk=100000, destroy_input=False):
 		return to_healpix(self, nside=nside, order=order, omap=omap, chunk=chunk, destroy_input=destroy_input)
@@ -321,8 +322,8 @@ def corners(shape, wcs, npoint=10, corner=True):
 	and undoing any sudden jumps in coordinates it finds. This is controlled by
 	the npoint option. The default of 10 should be more than enough.
 
-	Returns [{bottom left,top right},{dec,ra}] in radians 
-	(or equivalent for other coordinate systems). 
+	Returns [{bottom left,top right},{dec,ra}] in radians
+	(or equivalent for other coordinate systems).
 	e.g. an array of the form [[dec_min, ra_min ], [dec_max, ra_max]]."""
 	# Because of wcs's wrapping, we need to evaluate several
 	# extra pixels to make our unwinding unambiguous
@@ -430,11 +431,11 @@ def posmap_old(shape, wcs, safe=True, corner=False):
 		pix    = np.mgrid[:shape[-2],:shape[-1]]
 		return ndmap(pix2sky(shape, wcs, pix, safe, corner), wcs)
 
-def posaxes(shape, wcs, safe=True, corner=False):
+def posaxes(shape, wcs, safe=True, corner=False, dtype=np.float64):
 	y = np.arange(shape[-2])
 	x = np.arange(shape[-1])
-	dec = pix2sky(shape, wcs, np.array([y,y*0]), safe=safe, corner=corner)[0]
-	ra  = pix2sky(shape, wcs, np.array([x*0,x]), safe=safe, corner=corner)[1]
+	dec = pix2sky(shape, wcs, np.array([y,y*0]), safe=safe, corner=corner)[0].astype(dtype, copy=False)
+	ra  = pix2sky(shape, wcs, np.array([x*0,x]), safe=safe, corner=corner)[1].astype(dtype, copy=False)
 	return dec, ra
 
 def pixmap(shape, wcs=None):
@@ -510,6 +511,13 @@ def skybox2pixbox(shape, wcs, skybox, npoint=10, corner=False, include_direction
 
 def pixbox2skybox(shape, wcs, pixbox):
 	return pix2sky(shape, wcs, np.asanyarray(pixbox).T).T
+
+def contains(shape, wcs, pos, unit="coord"):
+	"""For the points with coordinates pos[{dec,ra},...] return whether
+	each is inside the geometry given by shape, wcs"""
+	if unit == "coord": pix = sky2pix(shape, wcs, pos)
+	else:               pix = pos
+	return np.all((pix>=0)&(pix.T<shape[-2:]).T,0)
 
 def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, prefilter=True, mask_nan=False, safe=True, bsize=1000):
 	"""Project the map into a new map given by the specified
@@ -922,14 +930,14 @@ def area_contour(shape, wcs, nsamp=1000):
 	total   = 0
 	tot_dra = 0
 	for v0, v1 in zip(vertices[:-1], vertices[1:]):
-	 line_pix = np.linspace(0, 1, nsamp)[:,None] * (v1 - v0) + v0
-	 line = wcsutils.nobcheck(wcs).wcs_pix2world(line_pix, 0)
-	 # Stay within valid dec values. Used for pixels at the poles
-	 line[:,1] = np.clip(line[:,1], -90, 90)
-	 dec      = (line[1:,1] + line[:-1,1]) / 2  # average dec
-	 dra      = line[1:,0] - line[:-1,0]        # delta RA
-	 dra      = (dra+180) % 360 - 180          # safetyize branch crossing.
-	 total   += ((1-np.sin(dec*utils.degree)) * dra).sum()*utils.degree
+		line_pix = np.linspace(0, 1, nsamp)[:,None] * (v1 - v0) + v0
+		line = wcsutils.nobcheck(wcs).wcs_pix2world(line_pix, 0)
+		# Stay within valid dec values. Used for pixels at the poles
+		line[:,1] = np.clip(line[:,1], -90, 90)
+		dec      = (line[1:,1] + line[:-1,1]) / 2  # average dec
+		dra      = line[1:,0] - line[:-1,0]        # delta RA
+		dra      = (dra+180) % 360 - 180          # safetyize branch crossing.
+		total   += ((1-np.sin(dec*utils.degree)) * dra).sum()*utils.degree
 	return abs(total)
 
 def pixsize(shape, wcs):
@@ -1258,7 +1266,10 @@ def inpaint(map, mask, method="nearest"):
 	continuous signal with the right order of magnitude, for example to allow fourier
 	operations of masked data with large values near the edge of the mask (e.g. a
 	galactic mask). Its goal is not to inpaint with something realistic-looking. For
-	that heavier methods are needed."""
+	that heavier methods are needed.
+
+	FIXME: This function is slow and not very good. Fix or remove.
+	"""
 	from scipy import interpolate
 	# Find innermost good pixels at border of mask. These are the pixels the interpolation
 	# will actually be based on, so isolating them makes things much faster than just sending
@@ -2208,11 +2219,13 @@ def from_flipper(imap, omap=None):
 # File I/O #
 ############
 
-def write_map(fname, emap, fmt=None, extra={}, allow_modify=False):
+def write_map(fname, emap, fmt=None, address=None, extra={}, allow_modify=False):
 	"""Writes an enmap to file. If fmt is not passed,
 	the file type is inferred from the file extension, and can
 	be either fits or hdf. This can be overriden by
-	passing fmt with either 'fits' or 'hdf' as argument."""
+	passing fmt with either 'fits' or 'hdf' as argument.
+
+	The other arguments are passed to write_fits and/or write_hdf."""
 	if fmt == None:
 		if   fname.endswith(".hdf"):     fmt = "hdf"
 		elif fname.endswith(".fits"):    fmt = "fits"
@@ -2221,14 +2234,22 @@ def write_map(fname, emap, fmt=None, extra={}, allow_modify=False):
 	if fmt == "fits":
 		write_fits(fname, emap, extra=extra, allow_modify=allow_modify)
 	elif fmt == "hdf":
-		write_hdf(fname, emap, extra=extra)
+		write_hdf(fname, emap, address=address, extra=extra)
 	else:
 		raise ValueError
 
-def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False, verbose=False):
+def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False, verbose=False, address=None):
 	"""Read an enmap from file. The file type is inferred
 	from the file extension, unless fmt is passed.
-	fmt must be one of 'fits' and 'hdf'."""
+	fmt must be one of 'fits' and 'hdf'.
+
+	The sel, box, pixbox, geometry, wrap, mode, and delayed arguments
+	are all used by read_helper to (optionally) select a subregion of
+	the map or change how it is wrapped on the sky.
+
+	The hdu and verbose arguments are only used for FITS (see
+	read_fits).  The address argument is only used for HDF (see
+	read_hdf)."""
 	toks = fname.split(":")
 	fname = toks[0]
 	if fmt == None:
@@ -2239,14 +2260,14 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wr
 	if fmt == "fits":
 		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu, delayed=delayed, verbose=verbose)
 	elif fmt == "hdf":
-		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed)
+		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed, hdu=hdu, address=address)
 	else:
 		raise ValueError
 	if len(toks) > 1:
 		res = eval("res"+":".join(toks[1:]))
 	return res
 
-def read_map_geometry(fname, fmt=None, hdu=None):
+def read_map_geometry(fname, fmt=None, hdu=None, address=None):
 	"""Read an enmap geometry from file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'."""
@@ -2260,7 +2281,7 @@ def read_map_geometry(fname, fmt=None, hdu=None):
 	if fmt == "fits":
 		shape, wcs = read_fits_geometry(fname, hdu=hdu)
 	elif fmt == "hdf":
-		shape, wcs = read_hdf_geometry(fname)
+		shape, wcs = read_hdf_geometry(fname, address=address)
 	else:
 		raise ValueError
 	if len(toks) > 1:
@@ -2304,7 +2325,7 @@ def write_fits(fname, emap, extra={}, allow_modify=False):
 		utils.mkdir(os.path.dirname(fname))
 	with warnings.catch_warnings():
 		warnings.filterwarnings('ignore')
-		hdus.writeto(fname, clobber=True)
+		hdus.writeto(fname, overwrite=True)
 
 def write_fits_geometry(fname, shape, wcs):
 	"""Write just the geometry to a fits file that will only contain the header"""
@@ -2361,13 +2382,36 @@ def read_fits_geometry(fname, hdu=None):
 	shape = tuple([header["NAXIS%d"%(i+1)] for i in range(header["NAXIS"])[::-1]])
 	return shape, wcs
 
-def write_hdf(fname, emap, extra={}):
-	"""Write an enmap as an hdf file, preserving all
-	the WCS metadata."""
+def write_hdf(fname, emap, address=None, extra={}):
+	"""Write an enmap as an hdf file, preserving all the WCS
+	metadata.
+
+	Args:
+	  fname (str or h5py.Group): Filename or open h5py handle.
+	  emap (ndmap): Object to store.
+	  address (str): Group address within the HDF file to place
+	    the result.  If None, the data are written at root level
+	    after truncating the file.
+	  extra (dict): additional data to write into the output.
+
+	Notes:
+	  If address is None, the output file will be replaced if it
+	  exists.  If address is a string, and the target file exists,
+	  the file will not be reset but anything living at that
+	  address will be replaced with the encoded emap."""
 	import h5py
 	emap = enmap(emap, copy=False)
-	utils.mkdir(os.path.dirname(fname))
-	with h5py.File(fname, "w") as hfile:
+	if isinstance(fname, h5py.Group):
+		context = contextlib.nullcontext(fname)
+	else:
+		utils.mkdir(os.path.dirname(fname))
+		mode = "w" if address is None else "a"
+		context = h5py.File(fname, mode)
+	with context as hfile:
+		if address is not None:
+			if address in hfile:
+				del hfile[address]
+			hfile = hfile.create_group(address)
 		hfile["data"] = emap
 		header = emap.wcs.to_header()
 		for key in header:
@@ -2375,34 +2419,49 @@ def write_hdf(fname, emap, extra={}):
 		for key, val in extra.items():
 			hfile[key] = val
 
-def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False):
+def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None):
 	"""Read an enmap from the specified hdf file. Two formats
 	are supported. The old enmap format, which simply used
 	a bounding box to specify the coordinates, and the new
 	format, which uses WCS properties. The latter is used if
 	available. With the old format, plate carree projection
 	is assumed. Note: some of the old files have a slightly
-	buggy wcs, which can result in 1-pixel errors."""
+	buggy wcs, which can result in 1-pixel errors.
+
+	If address is a string, the map will be loaded from that group
+	address within fname.
+
+	Note fname can be passed in as an h5py.Group (e.g. an open
+	h5py.File) instead of a string, and the map will be read from that
+	handle."""
 	import h5py
-	with h5py.File(fname,"r") as hfile:
-		data = hfile["data"]
+	if isinstance(fname, h5py.Group):
+		context = contextlib.nullcontext(fname)
+	else:
+		context = h5py.File(fname, "r")
+	with context as hfile:
+		if address is not None:
+			hfile = hfile[address]
+		data = hfile["data"][()]
 		hwcs = hfile["wcs"]
 		header = astropy.io.fits.Header()
 		for key in hwcs:
-			header[key] = fix_python3(hwcs[key].value)
+			header[key] = fix_python3(hwcs[key][()])
 		if wcs is None:
 			wcs = wcsutils.WCS(header).sub(2)
 		proxy = ndmap_proxy_hdf(data, wcs, fname=fname, threshold=sel_threshold)
 		return read_helper(proxy, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, delayed=delayed)
 
-def read_hdf_geometry(fname):
+def read_hdf_geometry(fname, address=None):
 	"""Read an enmap wcs from the specified hdf file."""
 	import h5py
 	with h5py.File(fname,"r") as hfile:
+		if address is not None:
+			hfile = hfile[address]
 		hwcs = hfile["wcs"]
 		header = astropy.io.fits.Header()
 		for key in hwcs:
-			header[key] = hwcs[key].value
+			header[key] = hwcs[key][()]
 		wcs   = wcsutils.WCS(header).sub(2)
 		shape = hfile["data"].shape
 	return shape, wcs
@@ -2497,7 +2556,7 @@ class ndmap_proxy_fits(ndmap_proxy):
 class ndmap_proxy_hdf(ndmap_proxy):
 	def __init__(self, dset, wcs, fname="<none>", threshold=1e7):
 		self.dset      = dset
-		ndmap_proxy.__init__(self, dset.shape, wcs, fname=fname, threshold=threshold)
+		ndmap_proxy.__init__(self, dset.shape, wcs, dset.dtype, fname=fname, threshold=threshold)
 	def __getitem__(self, sel):
 		_, psel = utils.split_slice(sel, [self.ndim-2,2])
 		if len(psel) > 2: raise IndexError("too many indices")
@@ -2506,7 +2565,7 @@ class ndmap_proxy_hdf(ndmap_proxy):
 			sel1, sel2 = utils.split_slice(sel, [len(self.shape)-1,1])
 			res = self.dset[sel1][(Ellipsis,)+sel2]
 		else:
-			res = self.dset.value[sel]
+			res = self.dset[sel]
 		return ndmap(fix_endian(res), wcs)
 	def __repr__(self): return "ndmap_proxy_hdf(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (self.fname, str(self.shape), str(self.wcs), str(self.dtype))
 
@@ -2564,6 +2623,13 @@ def shift(map, off, inplace=False, keepwcs=False):
 		map.wcs.wcs.crval -= map.wcs.wcs.cdelt*off[::-1]
 	return map
 
+def fractional_shift(map, off, keepwcs=False, nofft=False):
+	"""Shift map cyclically by a non-integer amount off [{y_off,x_off}]"""
+	omap = samewcs(enfft.shift(map, off, nofft=nofft), map)
+	if not keepwcs:
+		omap.wcs.wcs.crval -= omap.wcs.wcs.cdelt*off[::-1]
+	return omap
+
 def fftshift(map, inplace=False):
 	if not inplace: map = map.copy()
 	map[:] = np.fft.fftshift(map, axes=[-2,-1])
@@ -2575,9 +2641,7 @@ def ifftshift(map, inplace=False):
 	return map
 
 def fillbad(map, val=0, inplace=False):
-	if not inplace: map = map.copy()
-	map[~np.isfinite(map)] = val
-	return map
+	return np.nan_to_num(map, copy=not inplace, nan=val, posinf=val, neginf=val)
 
 def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3):
 	"""Resample the input map such that it covers the same area of the sky
@@ -2659,4 +2723,3 @@ def spin_helper(spin, n):
 		if i2 == n: break
 		i1 = i2
 		ci = (ci+1)%len(spin)
-

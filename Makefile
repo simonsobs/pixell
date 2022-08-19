@@ -32,7 +32,7 @@ python = python
 # Main targets:
 
 develop:
-	$(python) setup.py build_ext --inplace $(build_opts)
+	OPT="" $(python) setup.py build_ext --inplace $(build_opts)
 
 help:
 	@$(python) -c "$$PRINT_HELP_PYSCRIPT" < $(MAKEFILE_LIST)

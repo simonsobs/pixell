@@ -12,6 +12,7 @@ T_cmb = 2.72548 # +/- 0.00057
 c  = 299792458.0
 h  = 6.62606957e-34
 k  = 1.3806488e-23
+e  = 1.60217662e-19
 G  = 6.67430e-11
 AU = 149597870700.0
 R_earth = 6378.1e3
@@ -23,6 +24,14 @@ ly     = c*yr
 pc     = AU/arcsec
 yr2days = yr/day
 day2sec = day/1.0
+
+# Particle masses
+m_e     = 9.1093837015e-31 # Electron mass, kg
+m_p     = 1.6726219237e-27 # Proton mass
+m_n     = 1.6749274980e-27 # Neutron mass
+
+# Cross sections and rates
+sigma_T = 6.6524587158e-29 # Thomson scattering cross section, m²
 
 # Solar system constants. Nice to have, unlikely to clash with anything, and
 # don't take up much space.
@@ -236,7 +245,9 @@ def djd2mjd(djd): return np.asarray(djd) - 2400000.5 + 2415020
 def mjd2jd(mjd): return np.asarray(mjd) + 2400000.5
 def jd2mjd(jd): return np.asarray(jd) - 2400000.5
 def ctime2djd(ctime): return mjd2djd(ctime2mjd(ctime))
-def djd2ctime(djd):    return mjd2ctime(djd2mjd(djd))
+def djd2ctime(djd):   return mjd2ctime(djd2mjd(djd))
+def ctime2jd(ctime):  return mjd2jd(ctime2mjd(ctime))
+def jd2ctime(jd):     return mjd2ctime(jd2mjd(jd))
 
 def mjd2ctime(mjd):
 	"""Converts from modified julian date to unix time"""
@@ -404,7 +415,7 @@ def interpol_prefilter(a, npre=None, order=3, inplace=False, mode="nearest"):
 	# spline_filter was looping through the enmap pixel by pixel with getitem.
 	# Not using flatview got around it, but I don't understand why it happend
 	# in the first place.
-	for I in nditer(a.shape[:-2]):
+	for I in nditer(a.shape[:npre]):
 		a[I] = scipy.ndimage.spline_filter(a[I], order=order, mode=mode)
 	return a
 
@@ -432,6 +443,15 @@ def bin_multi(pix, shape, weights=None):
 	size = np.product(shape)
 	if weights is not None: weights = inds*0+weights
 	return np.bincount(inds, weights=weights, minlength=size).reshape(shape)
+
+def bincount(pix, weights=None, minlength=0):
+	"""Like numpy.bincount, but allows pre-dimensions, which must broadcast"""
+	pix, weights = broadcast_arrays(pix, weights)
+	n   = max(np.max(pix)+1,minlength)
+	res = np.zeros(pix.shape[:-1]+(n,), np.float64 if weights is None else weights.dtype)
+	for I in nditer(pix.shape[:-1]):
+		res[I] = np.bincount(pix[I], weights=None if weights is None else weights[I], minlength=n)
+	return res
 
 def grid(box, shape, endpoint=True, axis=0, flat=False):
 	"""Given a bounding box[{from,to},ndim] and shape[ndim] in each
@@ -1953,7 +1973,7 @@ def tsz_profile_raw(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3):
 	return gnfw(x, xc=xc, alpha=alpha, beta=beta, gamma=gamma)
 
 _tsz_profile_los_cache = {}
-def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, npoint=100, x1=1e-8, x2=1e4, _a=8):
+def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, npoint=100, x1=1e-8, x2=1e4, _a=8, cache=None):
 	"""Fast, highly accurate approximate version of tsz_profile_los_exact. Interpolates the exact
 	function in log-log space, and caches the interpolator. With the default settings,
 	it's accurate to better than 1e-5 up to at least x = 10000, and building the
@@ -1962,7 +1982,8 @@ def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, np
 	See tsz_profile_raw for the units."""
 	from scipy import interpolate
 	# Cache the fit parameters. 
-	global _tsz_profile_los_cache
+	if cache is None: global _tsz_profile_los_cache
+	else: _tsz_profile_los_cache = {}
 	key = (xc, alpha, beta, gamma, zmax, npoint, _a, x1, x2)
 	if key not in _tsz_profile_los_cache:
 		xp = np.linspace(np.log(x1),np.log(x2),npoint)
@@ -2021,7 +2042,7 @@ def tsz_tform(r200=1*arcmin, l=None, lmax=40000, xc=0.497, alpha=1.0, beta=-4.65
 	from scipy import interpolate
 	lvals, bvals = profile_to_tform_hankel(lambda r: tsz_profile_los(r/r200, xc=xc, alpha=alpha, beta=beta, gamma=gamma, zmax=zmax))
 	if l is None: l = np.arange(lmax+1)
-	bout = interpolate.interp1d(np.log(lvals), bvals, "cubic")(np.log(np.maximum(l,0.1)))
+	bout = interpolate.interp1d(np.log(lvals), bvals, "cubic")(np.log(np.maximum(l,np.min(lvals))))
 	return bout
 
 ### Binning ####
@@ -2814,7 +2835,7 @@ class CG:
 		import h5py
 		with h5py.File(fname, "r") as hfile:
 			for key in ["i","rz","rz0","x","r","p","err"]:
-				setattr(self, key, hfile[key].value)
+				setattr(self, key, hfile[key][()])
 
 def nditer(shape):
 	ndim = len(shape)
@@ -2852,3 +2873,19 @@ def cache_get(cache, key, op):
 	if key not in cache:
 		cache[key] = op()
 	return cache[key]
+
+def replace(istr, ipat, repl):
+	ostr = istr.replace(ipat, repl)
+	if ostr == istr: raise KeyError("Pattern not found")
+	return ostr
+
+# I used to do stuff like a[~np.isfinite(a)] = 0, but this should be
+# lower overhad and faster
+def remove_nan(a):
+	"""Sets nans and infs to 0 in an array in-place. Should have no memory overhead.
+	Also returns the array for convenience."""
+	return np.nan_to_num(a, copy=False, nan=0, posinf=0, neginf=0)
+def without_nan(a):
+	"""Returns a copy of a with nans and infs set to 0. The original
+	array is not modified."""
+	return np.nan_to_num(a, copy=True, nan=0, posinf=0, neginf=0)
