@@ -14,6 +14,7 @@ h  = 6.62606957e-34
 k  = 1.3806488e-23
 e  = 1.60217662e-19
 G  = 6.67430e-11
+sb = 5.670374419e-8
 AU = 149597870700.0
 R_earth = 6378.1e3
 minute = 60
@@ -35,7 +36,7 @@ sigma_T = 6.6524587158e-29 # Thomson scattering cross section, m²
 
 # Solar system constants. Nice to have, unlikely to clash with anything, and
 # don't take up much space.
-R_sun     = 695700e3  ; M_sun     = 1.9885e30   ; r_sun     =  29e3*ly
+R_sun     = 695700e3  ; M_sun     = 1.9885e30   ; r_sun     =  29e3*ly; L_sun = 3.827e26
 R_mercury = 2439.5e3  ; M_mercury = 0.330e24    ; r_mercury =  57.9e9
 R_venus   = 6052e3    ; M_venus   = 4.87e24     ; r_venus   = 108.2e9
 R_earth   = 6378.1e3  ; M_earth   = 5.9722e24   ; r_earth   = 149.6e9
@@ -270,37 +271,37 @@ def maskmed(arr, axis=-1, maskval=0):
 		res = res.filled(maskval)
 	return res
 
-def moveaxis(a, o, n):
-	if o < 0: o = o+a.ndim
-	if n < 0: n = n+a.ndim
-	if n <= o: return np.rollaxis(a, o, n)
-	else: return np.rollaxis(a, o, n+1)
+def moveaxis(a, o, n): return np.moveaxis(a, o, n)
+#	if o < 0: o = o+a.ndim
+#	if n < 0: n = n+a.ndim
+#	if n <= o: return np.rollaxis(a, o, n)
+#	else: return np.rollaxis(a, o, n+1)
 
-def moveaxes(a, old, new):
-	"""Move the axes listed in old to the positions given
-	by new. This is like repeated calls to numpy rollaxis
-	while taking into account the effect of previous rolls.
-
-	This version is slow but simple and safe. It moves
-	all axes to be moved to the end, and then moves them
-	one by one to the target location."""
-	# The final moves will happen in left-to-right order.
-	# Hence, the first moves must be in the reverse of
-	# this order.
-	n = len(old)
-	old   = np.asarray(old)
-	order = np.argsort(new)
-	rold  = old[order[::-1]]
-	for i in range(n):
-		a = moveaxis(a, rold[i], -1)
-		# This may have moved some of the olds we're going to
-		# move next, so update these
-		for j in range(i+1,n):
-			if rold[j] > rold[i]: rold[j] -= 1
-	# Then do the final moves
-	for i in range(n):
-		a = moveaxis(a, -1, new[order[i]])
-	return a
+def moveaxes(a, old, new): return np.moveaxis(a, old, new)
+#	"""Move the axes listed in old to the positions given
+#	by new. This is like repeated calls to numpy rollaxis
+#	while taking into account the effect of previous rolls.
+#
+#	This version is slow but simple and safe. It moves
+#	all axes to be moved to the end, and then moves them
+#	one by one to the target location."""
+#	# The final moves will happen in left-to-right order.
+#	# Hence, the first moves must be in the reverse of
+#	# this order.
+#	n = len(old)
+#	old   = np.asarray(old)
+#	order = np.argsort(new)
+#	rold  = old[order[::-1]]
+#	for i in range(n):
+#		a = moveaxis(a, rold[i], -1)
+#		# This may have moved some of the olds we're going to
+#		# move next, so update these
+#		for j in range(i+1,n):
+#			if rold[j] > rold[i]: rold[j] -= 1
+#	# Then do the final moves
+#	for i in range(n):
+#		a = moveaxis(a, -1, new[order[i]])
+#	return a
 
 def partial_flatten(a, axes=[-1], pos=0):
 	"""Flatten all dimensions of a except those mentioned
@@ -1496,20 +1497,35 @@ def vec_angdist(v1, v2, axis=0):
 	ang= 2*np.arctan(((((a-b)+c)*mu)/((a+(b+c))*((a-c)+b)))**0.5)
 	return ang
 
-def rotmatrix(ang, raxis, axis=0):
+def rotmatrix(ang, raxis, axis=-1, dtype=None):
 	"""Construct a 3d rotation matrix representing a rotation of
 	ang degrees around the specified rotation axis raxis, which can be "x", "y", "z"
 	or 0, 1, 2. If ang is a scalar, the result will be [3,3]. Otherwise,
-	it will be ang.shape + (3,3)."""
-	ang  = np.asarray(ang)
-	raxis = raxis.lower()
-	c, s = np.cos(ang), np.sin(ang)
-	R = np.zeros(ang.shape + (3,3))
-	if   raxis == 0 or raxis == "x": R[...,0,0]=1;R[...,1,1]= c;R[...,1,2]=-s;R[...,2,1]= s;R[...,2,2]=c
-	elif raxis == 1 or raxis == "y": R[...,0,0]=c;R[...,0,2]= s;R[...,1,1]= 1;R[...,2,0]=-s;R[...,2,2]=c
-	elif raxis == 2 or raxis == "z": R[...,0,0]=c;R[...,0,1]=-s;R[...,1,0]= s;R[...,1,1]= c;R[...,2,2]=1
+	it will be ang.shape[:axis] + (3,3) + ang.shape[axis:]. Negative axis is interpreted
+	as ang.ndim+1+axis, such that the (3,3) part ends at the end for axis=-1"""
+	ang   = np.asarray(ang)
+	c, s  = np.cos(ang), np.sin(ang)
+	if axis < 0: axis = ang.ndim+1+axis
+	if dtype is None: dtype = np.float64
+	R  = np.zeros(ang.shape[:axis] + (3,3) + ang.shape[axis:], dtype)
+	# Slice tuples to let us assign things directly into the position of the
+	# output matrix we want
+	a  = (slice(None),)*axis
+	b  = (slice(None),)*(ang.ndim-axis)
+	if   raxis == 0 or raxis == "x" or raxis == "X":
+		R[a+(0,0)+b]= 1
+		R[a+(1,1)+b]= c; R[a+(1,2)+b]=-s
+		R[a+(2,1)+b]= s; R[a+(2,2)+b]= c
+	elif raxis == 1 or raxis == "y" or raxis == "Y":
+		R[a+(0,0)+b]= c; R[a+(0,2)+b]= s
+		R[a+(1,1)+b]= 1
+		R[a+(2,0)+b]=-s; R[a+(2,2)+b]= c
+	elif raxis == 2 or raxis == "z" or raxis == "Z":
+		R[a+(0,0)+b]= c; R[a+(0,1)+b]=-s
+		R[a+(1,0)+b]= s; R[a+(1,1)+b]= c
+		R[a+(2,2)+b]=1
 	else: raise ValueError("Rotation axis %s not recognized" % raxis)
-	return moveaxis(R, 0, axis)
+	return R
 
 def label_unique(a, axes=(), rtol=1e-5, atol=1e-8):
 	"""Given an array of values, return an array of
@@ -1633,6 +1649,24 @@ def find_equal_groups_fast(vals):
 	uvals, edges = np.unique(vals[order], return_index=True)
 	edges = np.concatenate([edges,[len(vals)]])
 	return uvals, order, edges
+
+def label_multi(valss):
+	"""Given the argument valss[:][n], which is a list of 1d arrays of the same
+	length n but potentially different data types, return a single 1d array
+	labels[n] of integers such that unique lables correspond to unique valss[:].
+	More precisely, valss[:][labels[i]] == valss[:][labels[j]] only if
+	labels[i] == labels[j]. The purpose of this is to go from having a heterogenous
+	label like (1, "foo", 1.24) to having a single integer as the label.
+
+	Example: label_multi([0,0,1,1,2],["a","b","b","b","b"]) → [0,1,2,2,3]"""
+	oinds = 0
+	nprev = 1
+	for vals in valss:
+		# remap arbitrary values in vals to integers in inds
+		uvals, inds = np.unique(vals, return_inverse=True)
+		oinds = oinds*nprev + inds
+		nprev = len(uvals)
+	return oinds
 
 def pathsplit(path):
 	"""Like os.path.split, but for all components, not just the last one.

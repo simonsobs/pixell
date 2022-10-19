@@ -273,6 +273,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("--mpl-dpi", type=float, default=75, help="The resolution to use for the mpl driver.")
 	add_argument("--mpl-pad", type=float, default=1.6, help="The padding to use for the mpl driver.")
 	add_argument("--rgb", action="store_true", help="Enable RGB mode. The input maps must have 3 components, which will be interpreted as red, green and blue channels of a single image instead of 3 separate images as would be the case without this option. The color scheme is overriden in this case.")
+	add_argument("--rgb-mode", type=str, default="direct_colorcap", help="The rgb mode to use. Can be direct or direct_colorcap. These only differ in whether colors are preserved when too high or low colors are capped. direct_colorcap preserves colors, at the cost of noise from one noisy component leaking into others during capping.")
 	add_argument("--reverse-color",  action="store_true", help="Reverse the color scale. For example, a black-to-white scale will become a white-to-black sacle.")
 	add_argument("-a", "--autocrop", action="store_true", help="Automatically crop the image by removing expanses of uniform color around the edges. This is done jointly for all components in a map, making them directly comparable, but is done independently for each input file.")
 	add_argument("-A", "--autocrop-each", action="store_true", help="As --autocrop, but done individually for each component in each map.")
@@ -292,6 +293,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("--stamps", type=str, default=None, help="Plot stamps instead of the whole map. Format is srcfile:size:nmax, where the last two are optional. srcfile is a file with [ra dec] in degrees, size is the size in pixels of each stamp, and nmax is the max number of stamps to produce.")
 	add_argument("--tile",  type=str, default=None, help="Stack components vertically and horizontally. --tile 5,4 stacks into 5 rows and 4 columns. --tile 5 or --tile 5,-1 stacks into 5 rows and however many columns are needed. --tile -1,5 stacks into 5 columns and as many rows are needed. --tile -1 allocates both rows and columns to make the result as square as possible. The result is treated as a single enmap, so the wcs will only be right for one of the tiles.")
 	add_argument("--tile-transpose", action="store_true", help="Transpose the ordering of the fields when tacking. Normally row-major stacking is used. This sets column-major order instead.")
+	add_argument("--tile-dims", type=str, default=None)
 	add_argument("-S", "--symmetric", action="store_true", help="Treat the non-pixel axes as being asymmetric matrix, and only plot a non-redundant triangle of this matrix.")
 	add_argument("-z", "--zenith",    action="store_true", help="Plot the zenith angle instead of the declination.")
 	add_argument("-F", "--fix-wcs",   action="store_true", help="Fix the wcs for maps in cylindrical projections where the reference point was placed too far away from the map center.")
@@ -420,14 +422,16 @@ def get_map(ifile, args, return_info=False, name=None):
 		m = enmap.samewcs(np.asarray(mlist),mlist[0])
 		if args.stamps is None:
 			m, wcslist = m[0], None
-		# Flatten pre-dimensions
-		mf = m.reshape((-1,)+m.shape[-2:])
 		# Stack
 		if args.tile is not None:
 			toks = parse_list(args.tile, int)
 			nrow = toks[0] if len(toks) > 0 else -1
 			ncol = toks[1] if len(toks) > 1 else -1
-			mf = hwstack(hwexpand(mf, nrow, ncol, args.tile_transpose))[None]
+			dims = (parse_list(args.tile_dims, int) or None) if args.tile_dims else None
+			if dims is None and args.rgb: dims = list(range(m.ndim-3))
+			m = hwstack(hwexpand(m, nrow, ncol, args.tile_transpose, dims=dims))[None]
+		# Flatten pre-dimensions
+		mf = m.reshape((-1,)+m.shape[-2:])
 		# Mask bad data
 		if args.mask is not None:
 			mf = mf*1.0 # Make the array floating point
@@ -653,7 +657,7 @@ def map_to_color(map, crange, args):
 	of the input map will be used. Otherwise 3 will be used."""
 	map = ((map.T-crange[0])/(crange[1]-crange[0])).T # .T ensures broadcasting for rgb case
 	if args.reverse_color: map = 1-map
-	if args.rgb: m_color = colorize.colorize(map,    desc=args.color, driver=args.method, mode="direct")
+	if args.rgb: m_color = colorize.colorize(map,    desc=args.color, driver=args.method, mode=args.rgb_mode)
 	else:        m_color = colorize.colorize(map[0], desc=args.color, driver=args.method)
 	m_color = enmap.samewcs(np.rollaxis(m_color,2), map)
 	return m_color
@@ -899,25 +903,33 @@ def draw_ellipse(image, bounds, width=1, outline='white', antialias=1):
 	# paste outline color to input image through the mask
 	image.paste(outline, tuple(bounds[:2]-width), mask=mask)
 
-def hwexpand(mflat, nrow=-1, ncol=-1, transpose=False):
+def hwexpand(m, nrow=-1, ncol=-1, transpose=False, dims=None):
 	"""Stack the maps in mflat[n,ny,nx] into a single flat map mflat[nrow,ncol,ny,nx]"""
-	n, ny, nx = mflat.shape
+	# Move tilable axes to just before the pixels
+	if dims is None: dims = list(range(m.ndim-2))
+	nflat = len(dims)
+	npre  = m.ndim-nflat-2
+	mflat = np.moveaxis(m, dims, [npre+i for i in range(nflat)])
+	preshape = mflat.shape[:npre]
+	# Flatten tilable axes
+	mflat = mflat.reshape(preshape+(-1,)+mflat.shape[-2:])
+	n, ny, nx = mflat.shape[-3:]
 	if nrow < 0 and ncol < 0:
 		ncol = int(np.ceil(n**0.5))
 	if nrow < 0: nrow = (n+ncol-1)//ncol
 	if ncol < 0: ncol = (n+nrow-1)//nrow
 	if not transpose:
-		omap = enmap.zeros([nrow,ncol,ny,nx],mflat.wcs,mflat.dtype)
-		omap.reshape(-1,ny,nx)[:n] = mflat
+		omap = enmap.zeros(preshape+(nrow,ncol,ny,nx),mflat.wcs,mflat.dtype)
+		omap.reshape(preshape+(-1,ny,nx))[...,:n,:,:] = mflat
 	else:
-		omap = enmap.zeros([ncol,nrow,ny,nx],mflat.wcs,mflat.dtype)
-		omap.reshape(-1,ny,nx)[:n] = mflat
-		omap = np.transpose(omap,(1,0,2,3))
+		omap = enmap.zeros(preshape+(ncol,nrow,ny,nx),mflat.wcs,mflat.dtype)
+		omap.reshape(preshape+(-1,ny,nx))[...,:n,:,:] = mflat
+		omap = np.moveaxis(omap,(-4,-3),(-3,-4))
 	return omap
 
 def hwstack(mexp):
-	nr,nc,ny,nx = mexp.shape
-	return np.transpose(mexp,(0,2,1,3)).reshape(nr*ny,nc*nx)
+	nr,nc,ny,nx = mexp.shape[-4:]
+	return np.moveaxis(mexp,-3,-2).reshape(mexp.shape[:-4]+(nr*ny,nc*nx))
 
 class BackendError(BaseException): pass
 

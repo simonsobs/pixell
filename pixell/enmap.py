@@ -1742,6 +1742,7 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 	if omap is None: omap = empty(shape[-2:], wcs)
 	if domains and odomains is None: odomains = empty(shape[-2:], wcs, np.int32)
 	points = np.asarray(points)
+	assert points.ndim == 2 and len(points) == 2, "points must be [{dec,ra},npoint]"
 	# Handle case where no points are specified
 	if points.size == 0:
 		if rmax is None: rmax = np.inf
@@ -2251,6 +2252,7 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wr
 	fname = toks[0]
 	if fmt == None:
 		if   fname.endswith(".hdf"):     fmt = "hdf"
+		elif fname.endswith(".npy"):     fmt = "npy"
 		elif fname.endswith(".fits"):    fmt = "fits"
 		elif fname.endswith(".fits.gz"): fmt = "fits"
 		else: fmt = "fits"
@@ -2258,6 +2260,8 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wr
 		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu, delayed=delayed, verbose=verbose)
 	elif fmt == "hdf":
 		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed, hdu=hdu, address=address)
+	elif fmt == "npy":
+		res = read_npy(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed, hdu=hdu, address=address)
 	else:
 		raise ValueError
 	if len(toks) > 1:
@@ -2462,6 +2466,11 @@ def read_hdf_geometry(fname, address=None):
 		wcs   = wcsutils.WCS(header).sub(2)
 		shape = hfile["data"].shape
 	return shape, wcs
+
+def read_npy(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None):
+	"""Read an enmap from the specified npy file. Only minimal support.
+	No wcs information."""
+	return enmap(np.load(fname), wcs)
 
 def fix_python3(s):
 	"""Convert "bytes" to string in python3, while leaving other types unmolested.
