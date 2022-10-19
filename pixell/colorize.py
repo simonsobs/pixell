@@ -88,6 +88,12 @@ def colorize(arr, desc="planck", mode="scalar", driver="auto"):
 			elif driver == "fortran": res = colorize_direct_fortran(a, desc)
 			else: raise ValueError("Invalid colorize driver '%s' for type '%s'" % (driver, type))
 			return res.reshape(arr.shape[1:] + (4,))
+		elif mode == "direct_colorcap":
+			a = arr.reshape(arr.shape[0],-1)
+			if   driver == "python":  raise NotImplementedError("direct_colorcap not implemented in python")
+			elif driver == "fortran": res = colorize_direct_colorcap_fortran(a, desc)
+			else: raise ValueError("Invalid colorize driver '%s' for type '%s'" % (driver, type))
+			return res.reshape(arr.shape[1:] + (4,))
 
 schemes["gray"]    = Colorscheme("0:000000,1:ffffff")
 schemes["wmap"]    = Colorscheme("0:000080,0.15:0000ff,0.4:00ffff,0.7:ffff00,0.9:ff5500,1:800000")
@@ -141,6 +147,11 @@ def colorize_direct_python(a, desc):
 def colorize_direct_fortran(a, desc):
 	res = np.empty((a.shape[1],4),dtype=np.uint16)
 	_colorize.direct(a.T, res.T)
+	return res.astype(np.uint8)
+
+def colorize_direct_colorcap_fortran(a, desc):
+	res = np.empty((a.shape[1],4),dtype=np.uint16)
+	_colorize.direct_colorcap(a.T, res.T)
 	return res.astype(np.uint8)
 
 def to_mpl_colormap(name, data=None):
