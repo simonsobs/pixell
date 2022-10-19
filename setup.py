@@ -35,7 +35,12 @@ elif sys.platform == 'darwin':
         sp.check_call('scripts/osx.sh', shell=True)
     except sp.CalledProcessError:
         raise DistutilsError('Failed to prepare Mac OS X properly. See earlier errors.')
+    # Try to find gcc in /usr/local/bin/ (which is where it's installed by homebrew on
+    # Intel) or, if that fails, /opt/homebrew/bin/ (which is where it's installed by
+    # homebrew on Silicon)
     gccpath = glob.glob('/usr/local/bin/gcc-*')
+    if not gccpath:
+        gccpath = glob.glob('/opt/homebrew/bin/gcc-*')
     if gccpath:
         # Use newest gcc found
         sint = lambda x: int(x) if x.isdigit() else 0
@@ -250,4 +255,3 @@ setup(
 )
 
 print('\n[setup.py request was successful.]')
-

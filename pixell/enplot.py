@@ -286,7 +286,8 @@ def define_arg_parser(nodefault=False):
 		c[ircle] lat lon dy dx [rad [width [color]]]
 		t[ext]   lat lon dy dx text [size [color]]
 		l[ine]   lat lon dy dx lat lon dy dx [width [color]]
-	dy and dx are pixel-unit offsets from the specified lat/lon.""")
+	dy and dx are pixel-unit offsets from the specified lat/lon.
+	Alternatively, from python one can pass in a list of lists containig the same information, e.g. [["circle", 5.10,222.3,0,0,32,3,"black"]]""")
 	add_argument("--annotate-maxrad", type=int, default=0, help="Assume that annotations do not extend further than this from their center, in pixels. This is used to prune which annotations to attempt to draw, as they can be a bit slow. The special value 0 disables this.")
 	add_argument("--stamps", type=str, default=None, help="Plot stamps instead of the whole map. Format is srcfile:size:nmax, where the last two are optional. srcfile is a file with [ra dec] in degrees, size is the size in pixels of each stamp, and nmax is the max number of stamps to produce.")
 	add_argument("--tile",  type=str, default=None, help="Stack components vertically and horizontally. --tile 5,4 stacks into 5 rows and 4 columns. --tile 5 or --tile 5,-1 stacks into 5 rows and however many columns are needed. --tile -1,5 stacks into 5 columns and as many rows are needed. --tile -1 allocates both rows and columns to make the result as square as possible. The result is treated as a single enmap, so the wcs will only be right for one of the tiles.")
@@ -744,8 +745,10 @@ def draw_contours(map, contours, args):
 	return PIL.Image.fromarray(color).convert('RGBA')
 
 def parse_annotations(afile):
-	with open(afile,"r") as f:
-		return [shlex.split(line) for line in f]
+	try:
+		with open(afile,"r") as f:
+			return [shlex.split(line) for line in f]
+	except IOError: return afile
 
 def draw_annotations(map, annots, args):
 	"""Draw a set of annotations on the map. These are specified

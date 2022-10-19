@@ -2947,7 +2947,7 @@ class CG:
 		import h5py
 		with h5py.File(fname, "r") as hfile:
 			for key in ["i","rz","rz0","x","r","p","err"]:
-				setattr(self, key, hfile[key].value)
+				setattr(self, key, hfile[key][()])
 
 def nditer(shape):
 	ndim = len(shape)
