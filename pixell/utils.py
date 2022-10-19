@@ -261,14 +261,94 @@ def medmean(x, axis=None, frac=0.5):
 	i = int(x.shape[-1]*frac)//2
 	return np.mean(x[...,i:-i],-1)
 
-def maskmed(arr, axis=-1, maskval=0):
+def maskmed(arr, mask=None, axis=-1, maskval=0):
 	"""Median of array along the given axis, but ignoring
 	entries with the given mask value."""
-	marr = np.ma.array(arr, mask=arr==maskval)
+	if mask is None: mask = arr != maskval
+	marr = np.ma.array(arr, mask=mask==0)
 	res  = np.ma.median(marr, axis=axis)
 	if isinstance(res, np.ma.MaskedArray):
 		res = res.filled(maskval)
 	return res
+
+def search(a, v, side="left"):
+	"""Like np.searchsorted, but searches a[...,n] along the
+	last axis for v[...] values, returning the inds[...] values.
+	Does not perform a binary search, so less efficient on large
+	arrays, but faster than my original idea of shoehorning
+	the arrays into a single monotonic array, since that would have
+	required touching all the values anyway."""
+	a, v = broadcast_arrays(a, v, npost=[1,0])
+	if side == "left": return np.sum(a <  v[...,None], -1)
+	else:              return np.sum(a <= v[...,None], -1)
+
+def weighted_quantile(map, ivar, quantile, axis=-1):
+	"""Multidimensional weighted quantile. Takes the given quantile (scalar) along
+	the given axis (default last axis) of the array "map". Each element along
+	the axis is given weight from the corresponding element in "ivar". This is
+	based on the weighted percentile method in https://en.wikipedia.org/wiki/Percentile.
+	
+	Arguments:
+	map:  The array to find quantiles for. Must broadcast with ivar
+	ivar: The weight array. Must broadcast with map
+	quantiles: The quantiles to evaluate.
+	axis: The axis to take the quantiles along.
+
+	If post-broadcast map and ivar have shape A when excluding the quantile-axis
+	and quantile has shape B, then the result will have shape B+A.
+	"""
+	map, ivar = np.broadcast_arrays(map, ivar)
+	quantile  = np.asfarray(quantile)
+	axis      = axis % map.ndim
+	# Move axis to end
+	map       = np.moveaxis(map,  axis, -1)
+	ivar      = np.moveaxis(ivar, axis, -1)
+	# Store original shape and reshpe to 2d
+	ishape    = map.shape[:-1]
+	qshape    = quantile.shape
+	n         = map.shape[-1]
+	map       = map .reshape(-1, n) # [A,n]
+	ivar      = ivar.reshape(-1, n) # [A,n]
+	quantile  = quantile.reshape(-1)             # [B]
+	# Sort
+	order     = np.argsort(map, -1)
+	map       = np.asfarray(np.take_along_axis(map,  order, -1))
+	ivar      = np.asfarray(np.take_along_axis(ivar, order, -1))
+	# We don't have interp or searchsorted for this case, so do it ourselves.
+	# The 0.5 part corresponds to the C=0.5 case in the method
+	icum      = np.cumsum(ivar, axis=-1) # [A,n]
+	ends      = icum[:,-1,None]
+	# Avoid division by zero for zero total weight case
+	icum      = (icum - 0.5*ivar)/np.where(ends>0, ends, 1) # [A,n]
+	# Find the point left of our quantile. [A,n],[B,A1]=>[B,A]
+	i1        = search(icum, quantile[:,None])
+	# This interpolation should maybe be factorized out into its own function,
+	# maybe an improved version of np.interp
+	# 3 cases:
+	# 1. i1 == 0: We're left of the leftmost point. Should just use map[...,0] without interp
+	# 2. i1 == n: We're right of the rightmost point. Shoudl just use map[...,-1] without interp
+	# 3. otherwise: interp between i1-1 and i1
+	linds = np.where(i1 == 0) # [B,A]. same for other masks
+	rinds = np.where(i1 == n)
+	cinds = np.where((i1>0)&(i1<n))
+	res   = np.zeros(i1.shape, np.result_type(map, ivar, quantile)) # [B,A]
+	res[linds] = map[..., 0][linds[1:]]
+	res[rinds] = map[...,-1][rinds[1:]]
+	cflat = icum[cinds[1:]]       # [C,n]
+	mflat = map[cinds[1:]]        # [C,n]
+	qflat = quantile[cinds[:1]]   # [C]
+	inds  = np.arange(len(cflat)) # [C]
+	ci    = i1[cinds]             # [C]
+	x     = (qflat-cflat[inds,ci-1])/(cflat[inds,ci]-cflat[inds,ci-1]) # [c]
+	res[cinds] = mflat[inds,ci-1]*(1-x)+mflat[inds,ci]*x
+	# Restore flattened dimensions
+	res = res.reshape(qshape+ishape)
+	if res.ndim == 0: res = res*1
+	return res
+
+def weighted_median(map, ivar=1, axis=-1):
+	"""Compute the multidimensional weghted median. See weighted_quantile for details"""
+	return weighted_quantile(map, ivar, 0.5, axis=axis)
 
 def moveaxis(a, o, n):
 	if o < 0: o = o+a.ndim
@@ -471,13 +551,24 @@ def grid(box, shape, endpoint=True, axis=0, flat=False):
 	if flat: res = res.reshape(-1, res.shape[-1])
 	return np.rollaxis(res, -1, axis)
 
-def cumsum(a, endpoint=False):
+def cumsum(a, endpoint=False, axis=None):
 	"""As numpy.cumsum for a 1d array a, but starts from 0. If endpoint is True, the result
 	will have one more element than the input, and the last element will be the sum of the
 	array. Otherwise (the default), it will have the same length as the array, and the last
 	element will be the sum of the first n-1 elements."""
-	res = np.concatenate([[0],np.cumsum(a)])
-	return res if endpoint else res[:-1]
+	a = np.asanyarray(a)
+	if axis is None:
+		a    = a.reshape(-1)
+		axis = 0
+	axis %= a.ndim
+	cum = np.cumsum(a, axis=axis)
+	if endpoint:
+		ca  = np.zeros(a.shape[:axis]+(a.shape[axis]+1,)+a.shape[axis+1:], cum.dtype)
+		ca[(slice(None),)*axis+(slice(1,None),)] = cum
+	else:
+		ca = np.zeros(a.shape, cum.dtype)
+		ca[(slice(None),)*axis+(slice(1,None),)] = cum[(slice(None),)*axis+(slice(0,-1),)]
+	return ca
 
 def nearest_product(n, factors, direction="below"):
 	"""Compute the highest product of positive integer powers of the specified
@@ -1664,13 +1755,33 @@ def broadcast_shape(*shapes):
 		oshape.insert(0, olen)
 	return tuple(oshape)
 
-def broadcast_arrays(*arrays, npre=0):
+def broadcast_shape(*shapes, at=0):
+	"""Return the shape resulting from broadcasting arrays with the given shapes.
+	"at" controls how new axes are added. at=0 adds them at the beginning, which
+	matches how numpy broadcasting works. at=1 would add them after the first
+	element, etc. -1 adds them at the end."""
+	# Output should have this length
+	ndim   = max([len(shape) for shape in shapes])
+	# Output shape starting point
+	oshape = [1 for i in range(ndim)]
+	for shape in shapes:
+		# Start by inserting 1s as needed
+		my_at = at if at >= 0 else len(shape)+1+at
+		shape_padded = shape[:my_at] + (1,)*(ndim-len(shape)) + shape[my_at:]
+		for i in range(ndim):
+			if oshape[i] != shape_padded[i] and shape_padded[i] != 1:
+				if oshape[i] == 1: oshape[i] = shape_padded[i]
+				else: raise ValueError("operands could not be broadcast togehter with shapes " + " ".join([str(shape) for shape in shapes]))
+	return tuple(oshape)
+
+def broadcast_arrays(*arrays, npre=0, npost=0, at=0):
 	"""Like np.broadcast_arrays, but allows arrays to be None, in which case they are
 	passed just passed through as None without affecting the rest of the broadcasting.
 	The argument npre specifies the number of dimensions at the beginning of the arrays
 	to exempt from broadcasting. This can be either an integer or a list of integers.
 	"""
-	npre    = np.broadcast_to(npre, len(arrays))
+	npre    = np.broadcast_to(npre,  len(arrays))
+	npost   = np.broadcast_to(npost, len(arrays))
 	narr    = len(arrays)
 	arrays  = list(arrays)
 	warrs, wshapes = [], []
@@ -1678,15 +1789,16 @@ def broadcast_arrays(*arrays, npre=0):
 		if arrays[i] is None: continue
 		arrays[i] = np.asanyarray(arrays[i])
 		warrs.append(arrays[i])
-		wshapes.append(arrays[i].shape[npre[i]:])
+		wshapes.append(arrays[i].shape[npre[i]:arrays[i].ndim-npost[i]])
 	# Find broadcasting shape
-	oshape = broadcast_shape(*wshapes)
+	oshape = broadcast_shape(*wshapes, at=at)
 	# Broadcast and insert into output array
 	res    = [None for a in arrays]
-	for i, (n, arr) in enumerate(zip(npre, arrays)):
+	for i, (n, m, arr) in enumerate(zip(npre, npost, arrays)):
 		if arr is not None:
-			ninsert = n+len(oshape)-arr.ndim
-			res[i]  = np.broadcast_to(arr[(slice(None),)*n+(None,)*ninsert], arr.shape[:n]+oshape)
+			ninsert = len(oshape)-(arr.ndim-n-m)
+			my_at   = n+at if at >= 0 else arr.ndim+1+at-m
+			res[i]  = np.broadcast_to(arr[(slice(None),)*my_at+(None,)*ninsert], arr.shape[:n]+oshape+arr.shape[arr.ndim-m:])
 	return res
 
 def point_in_polygon(points, polys):
