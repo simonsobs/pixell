@@ -542,6 +542,20 @@ def cumsum(a, endpoint=False, axis=None):
 		ca[(slice(None),)*axis+(slice(1,None),)] = cum[(slice(None),)*axis+(slice(0,-1),)]
 	return ca
 
+def pixwin_1d(f, order=0):
+	"""Calculate the 1D pixel window for the dimensionless frequncy f corresponding
+	to a pixel spacing of 1 (so the Nyquist frequncy is 0.5). The order argument
+	controls the interpolation order to assume in the mapmaker. order = 0 corresponds
+	to standard nearest-neighbor mapmking. order = 1 corresponds to linear interpolation.
+	For a multidimensional (e.g. 2d) image, the full pixel window will be the outer
+	product of this pixel window along each axis."""
+	if order == 0:
+		return np.sinc(f)
+	elif order == 1:
+		return np.sinc(f)**2/(1/3*(2+np.cos(2*np.pi*f)))
+	else:
+		raise ValueError("Unsupported order '%s'" % str(order))
+
 def nearest_product(n, factors, direction="below"):
 	"""Compute the highest product of positive integer powers of the specified
 	factors that is lower than or equal to n. This is done using a simple,

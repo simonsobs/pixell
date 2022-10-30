@@ -1284,18 +1284,22 @@ def inpaint(map, mask, method="nearest"):
 		m[pix_bad[:,0],pix_bad[:,1]] = val_ipol
 	return omap
 
-def calc_window(shape):
-	"""Compute fourier-space window function. Since the
+def calc_window(shape, order=0):
+	"""Compute fourier-space pixel window function. Since the
 	window function is separable, it is returned as an x and y part,
-	such that window = wy[:,None]*wx[None,:]."""
-	wy = np.sinc(np.fft.fftfreq(shape[-2]))
-	wx = np.sinc(np.fft.fftfreq(shape[-1]))
+	such that window = wy[:,None]*wx[None,:]. By default the pixel
+	window for interpolation order 0 mapmaking (nearest neighbor)
+	is returned. Pass 1 for bilinear mapmaking's pixel window."""
+	wy = utils.pixwin_1d(np.fft.fftfreq(shape[-2]), order=order)
+	wx = utils.pixwin_1d(np.fft.fftfreq(shape[-1]), order=order)
 	return wy, wx
 
-def apply_window(emap, pow=1.0):
+def apply_window(emap, pow=1.0, order=0):
 	"""Apply the pixel window function to the specified power to the map,
-	returning a modified copy. Use pow=-1 to unapply the pixel window."""
-	wy, wx = calc_window(emap.shape)
+	returning a modified copy. Use pow=-1 to unapply the pixel window.
+	By default the pixel window for interpolation order 0 mapmaking
+	(nearest neighbor) is applied. Pass 1 for bilinear mapmaking's pixel window."""
+	wy, wx = calc_window(emap.shape, order=order)
 	return ifft(fft(emap) * wy[:,None]**pow * wx[None,:]**pow).real
 
 def samewcs(arr, *args):
