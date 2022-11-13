@@ -111,7 +111,7 @@ def sim_objects(shape, wcs, poss, amps, profile, prof_ids=None, omap=None, vmin=
 	else:            omap_flat = omap.preflat
 	assert omap_flat.dtype == dtype, "omap.dtype must be np.float32"
 	assert omap_flat.shape == (ncomp,)+shape[-2:], "omap must be [...,ny,nx], where [ny,nx] agrees with shape, and ... agrees with amps"
-	# Whew! Actually do the workA
+	# Whew! Actually do the work
 	times = srcsim.sim_objects(omap_flat, obj_decs, obj_ras, obj_ys, obj_xs, amps_flat, profile, prof_ids, posmap, vmin, rmax=rmax, separable=separable, transpose=transpose, prof_equi=prof_equi, return_times=True)[1]
 	omap = omap_flat.reshape(pre+shape[-2:])
 	# NB! Since we're not padding, this fourier operation will have problems at the edges
