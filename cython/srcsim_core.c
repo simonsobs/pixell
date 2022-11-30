@@ -39,6 +39,13 @@
 #include <omp.h>
 #include "srcsim_core.h"
 
+// Precompute profile levels down to 1e-10 of the abspeak. Beyond that
+// the whole profile is used.
+#define prof_base   10
+#define prof_levels 11
+// Only use profile precompution if we have significantly fewer profiles than objects
+#define prof_prec_lim 10
+
 // I thought this was part of math.h, but apparently it's optional
 #define M_PI 3.14159265358979323846
 
@@ -54,7 +61,8 @@ float sum_map(float * m, int ny, int nx) {
 }
 
 float * measure_amax(int nobj, int ncomp, float ** amps);
-float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, float ** prof_rs, float ** prof_vs, float vmin, float rmax);
+float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, float ** prof_rs, float ** prof_vs, float vmin, float rmax, int * prof_info);
+int * build_prof_info(int nprof, int * prof_ns, float ** prof_vs);
 
 int assign_cells(
 		int nobj,         // Number of objects
@@ -174,11 +182,15 @@ void sim_objects(
 		int csize,        // cell size. These are processed in parallel. E.g. 32 for 32x32 cells
 		double * times    // Time taken in the different steps
 	) {
-	// 1. Measure the maximum radius for each source
+	// 1. Measure the maximum radius for each source. prof_info is an optimization for the common
+	// case where the same profile is shared between many objects. In this case it can make sense
+	// to precompute information about roughly where in the profile relevant values start.
 	double t1 = wall_time();
 	float * amaxs = measure_amax(nobj, ncomp, amps);
-	float * rmaxs = measure_rmax(nobj, amaxs, prof_ids, prof_ns, prof_rs, prof_vs, vmin, rmax);
+	int   * prof_info = nobj > nprof*prof_prec_lim ? build_prof_info(nprof, prof_ns, prof_vs) : NULL;
+	float * rmaxs = measure_rmax(nobj, amaxs, prof_ids, prof_ns, prof_rs, prof_vs, vmin, rmax, prof_info);
 	free(amaxs);
+	free(prof_info);
 	// 2. Find which objects are relevant for which cells
 	double t2 = wall_time();
 	int *cell_nobj, **cell_objs, **cell_boxes; // [ncell], [ncell][objs] and [ncell][{y1,y2,x1,x2}]
@@ -229,6 +241,70 @@ float * measure_amax(int nobj, int ncomp, float ** amps) {
 	return amaxs;
 }
 
+int * build_prof_info(int nprof, int * prof_ns, float ** prof_vs) {
+	int * prof_info = calloc(nprof*prof_levels, sizeof(int));
+	#pragma omp parallel for
+	for(int i = 0; i < nprof; i++) {
+		// First measure the maximum value and index
+		float vmax = fabsf(prof_vs[i][0]);
+		int imax = 0;
+		for(int ri = 1; ri < prof_ns[i]; ri++) {
+			float v = fabsf(prof_vs[i][ri]);
+			if(v > vmax) {
+				imax = ri;
+				vmax = v;
+			}
+		}
+		// This corresponds to the 0th exponent
+		prof_info[i*prof_levels+0] = imax;
+		// The last level just goes all the way out to the end
+		prof_info[i*prof_levels+prof_levels-1] = prof_ns[i];
+		// Populate the others by inwards from the edge
+		int ri = prof_ns[i]-1;
+		for(int li = prof_levels-2; li > 0; li--) {
+			float vlim = vmax * powf(prof_base, -li);
+			for(; ri > imax && fabsf(prof_vs[i][ri]) < vlim; ri--);
+			prof_info[i*prof_levels+li] = ri;
+		}
+	}
+	return prof_info;
+}
+
+int prof_info_lookup(int * prof_info, int prof, float vrel) {
+	// Calculate what power of our base (e.g. power of ten) we are
+	// away from the profile peak
+	int ind = (int)ceilf(-logf(vrel)/logf(prof_base));
+	// Cap to [0:nlevel]
+	if(ind < 0) ind = 0;
+	else if(ind >= prof_levels) ind = prof_levels-1;
+	// And look up the relevant starting point in the profile
+	return prof_info[prof_levels*prof+ind];
+}
+
+float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, float ** prof_rs, float ** prof_vs, float vmin, float rmax, int * prof_info) {
+	float * rmaxs = calloc(nobj, sizeof(float));
+	#pragma omp parallel for
+	for(int oi = 0; oi < nobj; oi++) {
+		int pid    = prof_ids[oi];
+		int n      = prof_ns[pid];
+		float * rs = prof_rs[pid];
+		float * vs = prof_vs[pid];
+		float vrel = vmin/amaxs[oi];
+		// Don't assume that the profile is monotonic. This is expensive, since we have to loop
+		// through lots of potentially tiny values in the wings of the profile to find the last
+		// non-negligible point. Assuming that profiles tend to be repeated, I could precompute
+		// the inds where profiles reach a set of predefined multiples of their peak height. Then
+		// this loop could use that to reduce the loop range for the individual objects.
+		int i = prof_info ? prof_info_lookup(prof_info, pid, vrel) : n-1;
+		for(; i > 0 && fabsf(vs[i]) < vrel; i--);
+		rmaxs[oi] = rs[i];
+		if(rmax > 0) rmaxs[oi] = fminf(rmaxs[oi], rmax);
+	}
+	return rmaxs;
+}
+
+// This old version did not support profiles that chance sign or start at zero
+/*
 float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, float ** prof_rs, float ** prof_vs, float vmin, float rmax) {
 	float * rmaxs = calloc(nobj, sizeof(float));
 	#pragma omp parallel for
@@ -244,11 +320,13 @@ float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, flo
 			int i;
 			for(i = n-1; i > 0 && vs[i] < vrel; i--);
 			rmaxs[oi] = rs[i];
-			if(rmax > 0) rmaxs[oi] = fmin(rmaxs[oi], rmax);
+			if(rmax > 0) rmaxs[oi] = fminf(rmaxs[oi], rmax);
 		}
 	}
 	return rmaxs;
 }
+*/
+
 
 int assign_cells(
 		int nobj,         // Number of objects
@@ -601,8 +679,8 @@ void calc_pix_shape_separable(int y, int x, int ny, int nx, float * pix_decs, fl
 	float ddec_dy = calc_grad(y, ny,  1, pix_decs);
 	float dra_dx  = calc_grad(x, nx,  1, pix_ras);
 	float c       = cos(pix_decs[y]);
-	*ysize        = fabs(ddec_dy);
-	*xsize        = fabs(dra_dx*c);
+	*ysize        = fabsf(ddec_dy);
+	*xsize        = fabsf(dra_dx*c);
 }
 
 void calc_pix_shape(int y, int x, int ny, int nx, int separable, float * pix_decs, float * pix_ras, float * ysize, float * xsize) {
@@ -635,9 +713,9 @@ void estimate_bounding_box(
 		if(dy0 < dy) dy = dy0;
 		if(dx0 < dx) dx = dx0;
 	}
-	float tol = fmax(fmax(dy, dx)*1e-6, 1e-12);
-	dy = fmax(dy, tol);
-	dx = fmax(dx, tol);
+	float tol = fmaxf(fmaxf(dy, dx)*1e-6, 1e-12);
+	dy = fmaxf(dy, tol);
+	dx = fmaxf(dx, tol);
 	// 4. Use this to define a final rectangle
 	Dy = (int)(rmax/dy)+1;
 	Dx = (int)(rmax/dx)+1;

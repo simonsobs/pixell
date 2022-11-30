@@ -14,6 +14,7 @@ h  = 6.62606957e-34
 k  = 1.3806488e-23
 e  = 1.60217662e-19
 G  = 6.67430e-11
+sb = 5.670374419e-8
 AU = 149597870700.0
 R_earth = 6378.1e3
 minute = 60
@@ -35,7 +36,7 @@ sigma_T = 6.6524587158e-29 # Thomson scattering cross section, m²
 
 # Solar system constants. Nice to have, unlikely to clash with anything, and
 # don't take up much space.
-R_sun     = 695700e3  ; M_sun     = 1.9885e30   ; r_sun     =  29e3*ly
+R_sun     = 695700e3  ; M_sun     = 1.9885e30   ; r_sun     =  29e3*ly; L_sun = 3.827e26
 R_mercury = 2439.5e3  ; M_mercury = 0.330e24    ; r_mercury =  57.9e9
 R_venus   = 6052e3    ; M_venus   = 4.87e24     ; r_venus   = 108.2e9
 R_earth   = 6378.1e3  ; M_earth   = 5.9722e24   ; r_earth   = 149.6e9
@@ -261,46 +262,97 @@ def medmean(x, axis=None, frac=0.5):
 	i = int(x.shape[-1]*frac)//2
 	return np.mean(x[...,i:-i],-1)
 
-def maskmed(arr, axis=-1, maskval=0):
+def maskmed(arr, mask=None, axis=-1, maskval=0):
 	"""Median of array along the given axis, but ignoring
 	entries with the given mask value."""
-	marr = np.ma.array(arr, mask=arr==maskval)
+	if mask is None: mask = arr != maskval
+	marr = np.ma.array(arr, mask=mask==0)
 	res  = np.ma.median(marr, axis=axis)
 	if isinstance(res, np.ma.MaskedArray):
 		res = res.filled(maskval)
 	return res
 
-def moveaxis(a, o, n):
-	if o < 0: o = o+a.ndim
-	if n < 0: n = n+a.ndim
-	if n <= o: return np.rollaxis(a, o, n)
-	else: return np.rollaxis(a, o, n+1)
+def moveaxis(a, o, n): return np.moveaxis(a, o, n)
+def moveaxes(a, old, new): return np.moveaxis(a, old, new)
 
-def moveaxes(a, old, new):
-	"""Move the axes listed in old to the positions given
-	by new. This is like repeated calls to numpy rollaxis
-	while taking into account the effect of previous rolls.
+def search(a, v, side="left"):
+	"""Like np.searchsorted, but searches a[...,n] along the
+	last axis for v[...] values, returning the inds[...] values.
+	Does not perform a binary search, so less efficient on large
+	arrays, but faster than my original idea of shoehorning
+	the arrays into a single monotonic array, since that would have
+	required touching all the values anyway."""
+	a, v = broadcast_arrays(a, v, npost=[1,0])
+	if side == "left": return np.sum(a <  v[...,None], -1)
+	else:              return np.sum(a <= v[...,None], -1)
 
-	This version is slow but simple and safe. It moves
-	all axes to be moved to the end, and then moves them
-	one by one to the target location."""
-	# The final moves will happen in left-to-right order.
-	# Hence, the first moves must be in the reverse of
-	# this order.
-	n = len(old)
-	old   = np.asarray(old)
-	order = np.argsort(new)
-	rold  = old[order[::-1]]
-	for i in range(n):
-		a = moveaxis(a, rold[i], -1)
-		# This may have moved some of the olds we're going to
-		# move next, so update these
-		for j in range(i+1,n):
-			if rold[j] > rold[i]: rold[j] -= 1
-	# Then do the final moves
-	for i in range(n):
-		a = moveaxis(a, -1, new[order[i]])
-	return a
+def weighted_quantile(map, ivar, quantile, axis=-1):
+	"""Multidimensional weighted quantile. Takes the given quantile (scalar) along
+	the given axis (default last axis) of the array "map". Each element along
+	the axis is given weight from the corresponding element in "ivar". This is
+	based on the weighted percentile method in https://en.wikipedia.org/wiki/Percentile.
+	
+	Arguments:
+	map:  The array to find quantiles for. Must broadcast with ivar
+	ivar: The weight array. Must broadcast with map
+	quantiles: The quantiles to evaluate.
+	axis: The axis to take the quantiles along.
+
+	If post-broadcast map and ivar have shape A when excluding the quantile-axis
+	and quantile has shape B, then the result will have shape B+A.
+	"""
+	map, ivar = np.broadcast_arrays(map, ivar)
+	quantile  = np.asfarray(quantile)
+	axis      = axis % map.ndim
+	# Move axis to end
+	map       = np.moveaxis(map,  axis, -1)
+	ivar      = np.moveaxis(ivar, axis, -1)
+	# Store original shape and reshpe to 2d
+	ishape    = map.shape[:-1]
+	qshape    = quantile.shape
+	n         = map.shape[-1]
+	map       = map .reshape(-1, n) # [A,n]
+	ivar      = ivar.reshape(-1, n) # [A,n]
+	quantile  = quantile.reshape(-1)             # [B]
+	# Sort
+	order     = np.argsort(map, -1)
+	map       = np.asfarray(np.take_along_axis(map,  order, -1))
+	ivar      = np.asfarray(np.take_along_axis(ivar, order, -1))
+	# We don't have interp or searchsorted for this case, so do it ourselves.
+	# The 0.5 part corresponds to the C=0.5 case in the method
+	icum      = np.cumsum(ivar, axis=-1) # [A,n]
+	ends      = icum[:,-1,None]
+	# Avoid division by zero for zero total weight case
+	icum      = (icum - 0.5*ivar)/np.where(ends>0, ends, 1) # [A,n]
+	# Find the point left of our quantile. [A,n],[B,A1]=>[B,A]
+	i1        = search(icum, quantile[:,None])
+	# This interpolation should maybe be factorized out into its own function,
+	# maybe an improved version of np.interp
+	# 3 cases:
+	# 1. i1 == 0: We're left of the leftmost point. Should just use map[...,0] without interp
+	# 2. i1 == n: We're right of the rightmost point. Shoudl just use map[...,-1] without interp
+	# 3. otherwise: interp between i1-1 and i1
+	linds = np.where(i1 == 0) # [B,A]. same for other masks
+	rinds = np.where(i1 == n)
+	cinds = np.where((i1>0)&(i1<n))
+	res   = np.zeros(i1.shape, np.result_type(map, ivar, quantile)) # [B,A]
+	res[linds] = map[..., 0][linds[1:]]
+	res[rinds] = map[...,-1][rinds[1:]]
+	cflat = icum[cinds[1:]]       # [C,n]
+	mflat = map[cinds[1:]]        # [C,n]
+	qflat = quantile[cinds[:1]]   # [C]
+	inds  = np.arange(len(cflat)) # [C]
+	ci    = i1[cinds]             # [C]
+	x     = (qflat-cflat[inds,ci-1])/(cflat[inds,ci]-cflat[inds,ci-1]) # [c]
+	res[cinds] = mflat[inds,ci-1]*(1-x)+mflat[inds,ci]*x
+	# Restore flattened dimensions
+	res = res.reshape(qshape+ishape)
+	if res.ndim == 0: res = res*1
+	return res
+
+def weighted_median(map, ivar=1, axis=-1):
+	"""Compute the multidimensional weghted median. See weighted_quantile for details"""
+	return weighted_quantile(map, ivar, 0.5, axis=axis)
 
 def partial_flatten(a, axes=[-1], pos=0):
 	"""Flatten all dimensions of a except those mentioned
@@ -471,13 +523,38 @@ def grid(box, shape, endpoint=True, axis=0, flat=False):
 	if flat: res = res.reshape(-1, res.shape[-1])
 	return np.rollaxis(res, -1, axis)
 
-def cumsum(a, endpoint=False):
+def cumsum(a, endpoint=False, axis=None):
 	"""As numpy.cumsum for a 1d array a, but starts from 0. If endpoint is True, the result
 	will have one more element than the input, and the last element will be the sum of the
 	array. Otherwise (the default), it will have the same length as the array, and the last
 	element will be the sum of the first n-1 elements."""
-	res = np.concatenate([[0],np.cumsum(a)])
-	return res if endpoint else res[:-1]
+	a = np.asanyarray(a)
+	if axis is None:
+		a    = a.reshape(-1)
+		axis = 0
+	axis %= a.ndim
+	cum = np.cumsum(a, axis=axis)
+	if endpoint:
+		ca  = np.zeros(a.shape[:axis]+(a.shape[axis]+1,)+a.shape[axis+1:], cum.dtype)
+		ca[(slice(None),)*axis+(slice(1,None),)] = cum
+	else:
+		ca = np.zeros(a.shape, cum.dtype)
+		ca[(slice(None),)*axis+(slice(1,None),)] = cum[(slice(None),)*axis+(slice(0,-1),)]
+	return ca
+
+def pixwin_1d(f, order=0):
+	"""Calculate the 1D pixel window for the dimensionless frequncy f corresponding
+	to a pixel spacing of 1 (so the Nyquist frequncy is 0.5). The order argument
+	controls the interpolation order to assume in the mapmaker. order = 0 corresponds
+	to standard nearest-neighbor mapmking. order = 1 corresponds to linear interpolation.
+	For a multidimensional (e.g. 2d) image, the full pixel window will be the outer
+	product of this pixel window along each axis."""
+	if order == 0:
+		return np.sinc(f)
+	elif order == 1:
+		return np.sinc(f)**2/(1/3*(2+np.cos(2*np.pi*f)))
+	else:
+		raise ValueError("Unsupported order '%s'" % str(order))
 
 def nearest_product(n, factors, direction="below"):
 	"""Compute the highest product of positive integer powers of the specified
@@ -1500,20 +1577,35 @@ def vec_angdist(v1, v2, axis=0):
 	ang= 2*np.arctan(((((a-b)+c)*mu)/((a+(b+c))*((a-c)+b)))**0.5)
 	return ang
 
-def rotmatrix(ang, raxis, axis=0):
+def rotmatrix(ang, raxis, axis=-1, dtype=None):
 	"""Construct a 3d rotation matrix representing a rotation of
 	ang degrees around the specified rotation axis raxis, which can be "x", "y", "z"
 	or 0, 1, 2. If ang is a scalar, the result will be [3,3]. Otherwise,
-	it will be ang.shape + (3,3)."""
-	ang  = np.asarray(ang)
-	raxis = raxis.lower()
-	c, s = np.cos(ang), np.sin(ang)
-	R = np.zeros(ang.shape + (3,3))
-	if   raxis == 0 or raxis == "x": R[...,0,0]=1;R[...,1,1]= c;R[...,1,2]=-s;R[...,2,1]= s;R[...,2,2]=c
-	elif raxis == 1 or raxis == "y": R[...,0,0]=c;R[...,0,2]= s;R[...,1,1]= 1;R[...,2,0]=-s;R[...,2,2]=c
-	elif raxis == 2 or raxis == "z": R[...,0,0]=c;R[...,0,1]=-s;R[...,1,0]= s;R[...,1,1]= c;R[...,2,2]=1
+	it will be ang.shape[:axis] + (3,3) + ang.shape[axis:]. Negative axis is interpreted
+	as ang.ndim+1+axis, such that the (3,3) part ends at the end for axis=-1"""
+	ang   = np.asarray(ang)
+	c, s  = np.cos(ang), np.sin(ang)
+	if axis < 0: axis = ang.ndim+1+axis
+	if dtype is None: dtype = np.float64
+	R  = np.zeros(ang.shape[:axis] + (3,3) + ang.shape[axis:], dtype)
+	# Slice tuples to let us assign things directly into the position of the
+	# output matrix we want
+	a  = (slice(None),)*axis
+	b  = (slice(None),)*(ang.ndim-axis)
+	if   raxis == 0 or raxis == "x" or raxis == "X":
+		R[a+(0,0)+b]= 1
+		R[a+(1,1)+b]= c; R[a+(1,2)+b]=-s
+		R[a+(2,1)+b]= s; R[a+(2,2)+b]= c
+	elif raxis == 1 or raxis == "y" or raxis == "Y":
+		R[a+(0,0)+b]= c; R[a+(0,2)+b]= s
+		R[a+(1,1)+b]= 1
+		R[a+(2,0)+b]=-s; R[a+(2,2)+b]= c
+	elif raxis == 2 or raxis == "z" or raxis == "Z":
+		R[a+(0,0)+b]= c; R[a+(0,1)+b]=-s
+		R[a+(1,0)+b]= s; R[a+(1,1)+b]= c
+		R[a+(2,2)+b]=1
 	else: raise ValueError("Rotation axis %s not recognized" % raxis)
-	return moveaxis(R, 0, axis)
+	return R
 
 def label_unique(a, axes=(), rtol=1e-5, atol=1e-8):
 	"""Given an array of values, return an array of
@@ -1638,6 +1730,24 @@ def find_equal_groups_fast(vals):
 	edges = np.concatenate([edges,[len(vals)]])
 	return uvals, order, edges
 
+def label_multi(valss):
+	"""Given the argument valss[:][n], which is a list of 1d arrays of the same
+	length n but potentially different data types, return a single 1d array
+	labels[n] of integers such that unique lables correspond to unique valss[:].
+	More precisely, valss[:][labels[i]] == valss[:][labels[j]] only if
+	labels[i] == labels[j]. The purpose of this is to go from having a heterogenous
+	label like (1, "foo", 1.24) to having a single integer as the label.
+
+	Example: label_multi([0,0,1,1,2],["a","b","b","b","b"]) → [0,1,2,2,3]"""
+	oinds = 0
+	nprev = 1
+	for vals in valss:
+		# remap arbitrary values in vals to integers in inds
+		uvals, inds = np.unique(vals, return_inverse=True)
+		oinds = oinds*nprev + inds
+		nprev = len(uvals)
+	return oinds
+
 def pathsplit(path):
 	"""Like os.path.split, but for all components, not just the last one.
 	Why did I have to write this function? It should have been in os already!"""
@@ -1668,13 +1778,33 @@ def broadcast_shape(*shapes):
 		oshape.insert(0, olen)
 	return tuple(oshape)
 
-def broadcast_arrays(*arrays, npre=0):
+def broadcast_shape(*shapes, at=0):
+	"""Return the shape resulting from broadcasting arrays with the given shapes.
+	"at" controls how new axes are added. at=0 adds them at the beginning, which
+	matches how numpy broadcasting works. at=1 would add them after the first
+	element, etc. -1 adds them at the end."""
+	# Output should have this length
+	ndim   = max([len(shape) for shape in shapes])
+	# Output shape starting point
+	oshape = [1 for i in range(ndim)]
+	for shape in shapes:
+		# Start by inserting 1s as needed
+		my_at = at if at >= 0 else len(shape)+1+at
+		shape_padded = shape[:my_at] + (1,)*(ndim-len(shape)) + shape[my_at:]
+		for i in range(ndim):
+			if oshape[i] != shape_padded[i] and shape_padded[i] != 1:
+				if oshape[i] == 1: oshape[i] = shape_padded[i]
+				else: raise ValueError("operands could not be broadcast togehter with shapes " + " ".join([str(shape) for shape in shapes]))
+	return tuple(oshape)
+
+def broadcast_arrays(*arrays, npre=0, npost=0, at=0):
 	"""Like np.broadcast_arrays, but allows arrays to be None, in which case they are
 	passed just passed through as None without affecting the rest of the broadcasting.
 	The argument npre specifies the number of dimensions at the beginning of the arrays
 	to exempt from broadcasting. This can be either an integer or a list of integers.
 	"""
-	npre    = np.broadcast_to(npre, len(arrays))
+	npre    = np.broadcast_to(npre,  len(arrays))
+	npost   = np.broadcast_to(npost, len(arrays))
 	narr    = len(arrays)
 	arrays  = list(arrays)
 	warrs, wshapes = [], []
@@ -1682,15 +1812,16 @@ def broadcast_arrays(*arrays, npre=0):
 		if arrays[i] is None: continue
 		arrays[i] = np.asanyarray(arrays[i])
 		warrs.append(arrays[i])
-		wshapes.append(arrays[i].shape[npre[i]:])
+		wshapes.append(arrays[i].shape[npre[i]:arrays[i].ndim-npost[i]])
 	# Find broadcasting shape
-	oshape = broadcast_shape(*wshapes)
+	oshape = broadcast_shape(*wshapes, at=at)
 	# Broadcast and insert into output array
 	res    = [None for a in arrays]
-	for i, (n, arr) in enumerate(zip(npre, arrays)):
+	for i, (n, m, arr) in enumerate(zip(npre, npost, arrays)):
 		if arr is not None:
-			ninsert = n+len(oshape)-arr.ndim
-			res[i]  = np.broadcast_to(arr[(slice(None),)*n+(None,)*ninsert], arr.shape[:n]+oshape)
+			ninsert = len(oshape)-(arr.ndim-n-m)
+			my_at   = n+at if at >= 0 else arr.ndim+1+at-m
+			res[i]  = np.broadcast_to(arr[(slice(None),)*my_at+(None,)*ninsert], arr.shape[:n]+oshape+arr.shape[arr.ndim-m:])
 	return res
 
 def point_in_polygon(points, polys):
@@ -2839,7 +2970,7 @@ class CG:
 		import h5py
 		with h5py.File(fname, "r") as hfile:
 			for key in ["i","rz","rz0","x","r","p","err"]:
-				setattr(self, key, hfile[key].value)
+				setattr(self, key, hfile[key][()])
 
 def nditer(shape):
 	ndim = len(shape)
