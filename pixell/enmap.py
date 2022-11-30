@@ -1284,18 +1284,21 @@ def inpaint(map, mask, method="nearest"):
 		m[pix_bad[:,0],pix_bad[:,1]] = val_ipol
 	return omap
 
-def calc_window(shape):
+def calc_window(shape, scale=1):
 	"""Compute fourier-space window function. Since the
 	window function is separable, it is returned as an x and y part,
-	such that window = wy[:,None]*wx[None,:]."""
-	wy = np.sinc(np.fft.fftfreq(shape[-2]))
-	wx = np.sinc(np.fft.fftfreq(shape[-1]))
+	such that window = wy[:,None]*wx[None,:].
+	The scale argument can be used to calculate the pixel window
+	at non-native resolutions. For example, with scale=2 you will
+	get the pixwin for a map with twice the resolution"""
+	wy = np.sinc(np.fft.fftfreq(shape[-2])/scale)
+	wx = np.sinc(np.fft.fftfreq(shape[-1])/scale)
 	return wy, wx
 
-def apply_window(emap, pow=1.0):
+def apply_window(emap, pow=1.0, scale=1):
 	"""Apply the pixel window function to the specified power to the map,
 	returning a modified copy. Use pow=-1 to unapply the pixel window."""
-	wy, wx = calc_window(emap.shape)
+	wy, wx = calc_window(emap.shape, scale=scale)
 	return ifft(fft(emap) * wy[:,None]**pow * wx[None,:]**pow).real
 
 def samewcs(arr, *args):
@@ -2576,7 +2579,8 @@ def fractional_shift(map, off, keepwcs=False, nofft=False):
 	"""Shift map cyclically by a non-integer amount off [{y_off,x_off}]"""
 	omap = samewcs(enfft.shift(map, off, nofft=nofft), map)
 	if not keepwcs:
-		omap.wcs.wcs.crval -= omap.wcs.wcs.cdelt*off[::-1]
+		omap.wcs.wcs.crpix += off[::-1]
+		#omap.wcs.wcs.crval -= omap.wcs.wcs.cdelt*off[::-1]
 	return omap
 
 def fftshift(map, inplace=False):
