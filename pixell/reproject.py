@@ -12,10 +12,13 @@ except NameError: basestring = str
 def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*utils.arcmin,
 		order=3, oversample=4, pol=None, oshape=None, owcs=None, extensive=False, verbose=False,
 		filter=None,pixwin=False):
-	"""Given an enmap [...,ny,nx] and a set of coords [n,{dec,ra}], extract a set
+	"""Given an enmap [...,ny,nx] and a set of coordinates in a numpy array
+	coords with shape (n,2) and ordering [n,{dec,ra}], extract a set
 	of thumbnail images [n,...,thumby,thumbx] centered on each set of
-	coordinates. Each of these thumbnail images is projected onto a local tangent
-	plane, removing the effect of size and shape distortions in the input map.
+	coordinates, where n is the number of images. 
+	When proj is 'tan', each of these thumbnail images is projected onto a local 
+	tangent plane, removing the effect of size and shape distortions in the input 
+	map.
 
 	If oshape, owcs are specified, then the thumbnails will have this geometry,
 	which should be centered on [0,0]. Otherwise, a geometry with the given
