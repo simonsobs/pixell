@@ -331,7 +331,7 @@ def corners(shape, wcs, npoint=10, corner=True):
 	if wcsutils.is_plain(wcs):
 		return np.array(coords).T[[0,-1]]*get_unit(wcs)
 	else:
-		return utils.unwind(np.array(coords)*get_unit(wcs)).T[[0,-1]]
+		return utils.unwind(np.array(coords)*get_unit(wcs),refmode="middle").T[[0,-1]]
 def box(shape, wcs, npoint=10, corner=True):
 	"""Alias for corners."""
 	return corners(shape, wcs, npoint=npoint, corner=corner)
@@ -449,7 +449,7 @@ def pix2sky(shape, wcs, pix, safe=True, corner=False):
 	coords = np.asarray(wcsutils.nobcheck(wcs).wcs_pix2world(*(tuple(pflat)[::-1]+(0,)))[::-1])*get_unit(wcs)
 	coords = coords.reshape(pix.shape)
 	if safe and not wcsutils.is_plain(wcs):
-		coords = utils.unwind(coords)
+		coords = utils.unwind(coords, refmode="middle")
 	return coords
 
 def sky2pix(shape, wcs, coords, safe=True, corner=False):
@@ -1375,16 +1375,18 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
 	at the poles and wrap-around points. Assumes a CAR (clenshaw curtis variant)
 	projection for now."""
 	assert proj == "car", "Only CAR fullsky geometry implemented"
+	res = np.zeros(2)+res
 	if shape is None:
-	 res   = np.zeros(2)+res
-	 shape = utils.nint(([1*np.pi,2*np.pi]/res) + (1,0))
+		shape = utils.nint(([1*np.pi,2*np.pi]/res) + (1,0))
+	else:
+		res = np.array([1*np.pi,2*np.pi])/(np.array(shape)-(1,0))
 	ny, nx = shape
 	assert abs(res[0] * (ny-1) - np.pi) < 1e-8, "Vertical resolution does not evenly divide the sky; this is required for SHTs."
 	assert abs(res[1] * nx - 2*np.pi)   < 1e-8, "Horizontal resolution does not evenly divide the sky; this is required for SHTs."
 	wcs   = wcsutils.WCS(naxis=2)
 	# Note the reference point is shifted by half a pixel to keep
 	# the grid in bounds, from ra=180+cdelt/2 to ra=-180+cdelt/2.
-	wcs.wcs.crval = [res[0]/2/utils.degree,0]
+	wcs.wcs.crval = [res[1]/2/utils.degree,0]
 	wcs.wcs.cdelt = [-360./nx,180./(ny-1)]
 	wcs.wcs.crpix = [nx//2+0.5,(ny+1)/2]
 	wcs.wcs.ctype = ["RA---CAR","DEC--CAR"]

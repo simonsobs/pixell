@@ -33,6 +33,7 @@ m_n     = 1.6749274980e-27 # Neutron mass
 
 # Cross sections and rates
 sigma_T = 6.6524587158e-29 # Thomson scattering cross section, m²
+sigma_sb = 5.670374419e-8  # Stefan-Boltzman constant
 
 # Solar system constants. Nice to have, unlikely to clash with anything, and
 # don't take up much space.
@@ -168,7 +169,7 @@ def dict_apply_listfun(dict, function):
 	res  = function(vals)
 	return {key: res[i] for i, key in enumerate(keys)}
 
-def unwind(a, period=2*np.pi, axes=[-1], ref=0):
+def unwind(a, period=2*np.pi, axes=[-1], ref=0, refmode="left", mask_nan=False):
 	"""Given a list of angles or other cyclic coordinates
 	where a and a+period have the same physical meaning,
 	make a continuous by removing any sudden jumps due to
@@ -178,13 +179,28 @@ def unwind(a, period=2*np.pi, axes=[-1], ref=0):
 	res = rewind(a, period=period, ref=ref)
 	for axis in axes:
 		with flatview(res, axes=[axis]) as flat:
-			# Avoid trying to sum nans
-			mask = ~np.isfinite(flat)
-			bad = flat[mask]
-			flat[mask] = 0
-			flat[:,1:]-= np.cumsum(np.round((flat[:,1:]-flat[:,:-1])/period),-1)*period
-			# Restore any nans
-			flat[mask] = bad
+			if mask_nan:
+				# Avoid trying to sum nans
+				mask = ~np.isfinite(flat)
+				bad = flat[mask]
+				flat[mask] = 0
+			# step[i] = val[i+1]-val[i]
+			steps = nint((flat[:,1:]-flat[:,:-1])/period)
+			# I want to use the middle element as the reference point that won't be changed
+			if refmode == "left":
+				flat[:,1:] -= np.cumsum(np.round((flat[:,1:]-flat[:,:-1])/period),-1)*period
+			elif refmode == "middle":
+				iref  = flat.shape[-1]//2
+				# Values [0:iref]   have offs -cumsum(steps[iref-1::-1])
+				# Values [iref+1:n] have offs  cumsum(steps[iref:])
+				loffs = -np.cumsum(steps[:,iref-1::-1],1)[:,::-1]*period
+				roffs =  np.cumsum(steps[:,iref:],1)*period
+				flat[:,:iref]   -= loffs
+				flat[:,iref+1:] += roffs
+			else: raise ValueError("Unsupported refmode '%s'" % str(refmode))
+			if mask_nan:
+				# Restore any nans
+				flat[mask] = bad
 	return res
 
 def rewind(a, ref=0, period=2*np.pi):
@@ -3020,3 +3036,9 @@ def without_nan(a):
 	"""Returns a copy of a with nans and infs set to 0. The original
 	array is not modified."""
 	return np.nan_to_num(a, copy=True, nan=0, posinf=0, neginf=0)
+
+def res2nside(res):
+	return (np.pi/3)**0.5/res
+def nside2res(nside):
+	return (np.pi/3)**0.5/nside
+
