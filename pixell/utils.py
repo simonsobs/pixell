@@ -196,7 +196,7 @@ def unwind(a, period=2*np.pi, axes=[-1], ref=0, refmode="left", mask_nan=False):
 				loffs = -np.cumsum(steps[:,iref-1::-1],1)[:,::-1]*period
 				roffs =  np.cumsum(steps[:,iref:],1)*period
 				flat[:,:iref]   -= loffs
-				flat[:,iref+1:] += roffs
+				flat[:,iref+1:] -= roffs
 			else: raise ValueError("Unsupported refmode '%s'" % str(refmode))
 			if mask_nan:
 				# Restore any nans
