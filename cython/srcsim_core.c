@@ -662,8 +662,8 @@ float calc_grad(int i, int n, int s, float * v) {
 // A coarse grid should suffice, just make sure to include the edges of
 // the map
 void calc_pix_shape_general(int y, int x, int ny, int nx, float * pix_decs, float * pix_ras, float * ysize, float * xsize) {
-	y = y < 0 ? 0 : y >= ny ? ny : y;
-	x = x < 0 ? 0 : x >= nx ? nx : x;
+	y = y < 0 ? 0 : y >= ny ? ny-1 : y;
+	x = x < 0 ? 0 : x >= nx ? nx-1 : x;
 	float ddec_dy = calc_grad(y, ny, nx, pix_decs+x);
 	float ddec_dx = calc_grad(x, nx,  1, pix_decs+nx*y);
 	float dra_dy  = calc_grad(y, ny, nx, pix_ras+x);
@@ -674,8 +674,8 @@ void calc_pix_shape_general(int y, int x, int ny, int nx, float * pix_decs, floa
 }
 
 void calc_pix_shape_separable(int y, int x, int ny, int nx, float * pix_decs, float * pix_ras, float * ysize, float * xsize) {
-	y = y < 0 ? 0 : y >= ny ? ny : y;
-	x = x < 0 ? 0 : x >= nx ? nx : x;
+	y = y < 0 ? 0 : y >= ny ? ny-1 : y;
+	x = x < 0 ? 0 : x >= nx ? nx-1 : x;
 	float ddec_dy = calc_grad(y, ny,  1, pix_decs);
 	float dra_dx  = calc_grad(x, nx,  1, pix_ras);
 	float c       = cos(pix_decs[y]);
