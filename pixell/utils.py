@@ -847,7 +847,8 @@ def regularize_beam(beam, cutoff=1e-2, nl=None):
 	vcut  = np.max(beam,-1)*cutoff
 	above = beam > vcut
 	lcut  = np.argmin(above, -1)
-	if lcut > nl or lcut == 0: return beam[:nl]
+	if lcut == 0: lcut = np.array(above.shape[-1]-1)
+	if lcut > nl: return beam[:nl]
 	obeam = vcut * (l/lcut)**(2*np.log(cutoff))
 	# Get the mask for what we want to keep. This looks complicated, but that's
 	# just to support arbitrary-dimensionality (maybe that wasn't really necessary).
