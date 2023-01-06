@@ -281,7 +281,7 @@ def find_edges(mask, flat=False):
 	# Ensure that we have the right data type and contiguity. Try extra hard to avoid copies
 	# when the input is known to have a compatible data type.
 	mask = np.asanyarray(mask)
-	if mask.dtype in [np.uint8, np.int8, np.bool]:
+	if mask.dtype in [np.uint8, np.int8, bool]:
 		mask = mask.astype(mask.dtype, order="C", copy=False).view(np.uint8)
 	else:
 		mask = mask.astype(np.uint8, order="C", copy=False)
@@ -374,7 +374,7 @@ def find_edges_healpix(healpix_info info, mask, flat=True):
 	cdef int * edges_raw
 	cdef inum nedge = 0
 	mask = np.asanyarray(mask)
-	if mask.dtype in [np.uint8, np.int8, np.bool]:
+	if mask.dtype in [np.uint8, np.int8, bool]:
 		mask = mask.astype(mask.dtype, order="C", copy=False).view(np.uint8)
 	else:
 		mask = mask.astype(np.uint8, order="C", copy=False)
