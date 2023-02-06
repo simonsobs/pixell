@@ -1297,13 +1297,16 @@ def calc_window(shape, order=0, scale=1):
 	wx = utils.pixwin_1d(np.fft.fftfreq(shape[-1], scale), order=order)
 	return wy, wx
 
-def apply_window(emap, pow=1.0, order=0, scale=1):
+def apply_window(emap, pow=1.0, order=0, scale=1, nofft=False):
 	"""Apply the pixel window function to the specified power to the map,
 	returning a modified copy. Use pow=-1 to unapply the pixel window.
 	By default the pixel window for interpolation order 0 mapmaking
 	(nearest neighbor) is applied. Pass 1 for bilinear mapmaking's pixel window."""
 	wy, wx = calc_window(emap.shape, order=order, scale=scale)
-	return ifft(fft(emap) * wy[:,None]**pow * wx[None,:]**pow).real
+	if not nofft: emap = fft(emap)
+	emap = emap * wy[:,None]**pow * wx[None,:]**pow
+	if not nofft: emap = ifft(emap).real
+	return emap
 
 def samewcs(arr, *args):
 	"""Returns arr with the same wcs information as the first enmap among
