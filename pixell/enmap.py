@@ -662,7 +662,9 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 		rpix = r/pixsize(shape, wcs)
 		centers = sky2pix(poss.T).T
 		return np.moveaxis([centers-rpix,center+rpix+1],0,1)
-	poss = np.asarray(poss)
+	poss   = np.asarray(poss)
+	ishape = poss.shape
+	poss   = poss.reshape(-1,2)
 	res  = np.zeros([len(poss),2,2])
 	for i, pos in enumerate(poss):
 		# Find the coordinate box we need
@@ -679,6 +681,8 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 	res = utils.nint(res)
 	res = np.sort(res, 1)
 	res[:,1] += 1
+	# Recover pre-dimensions
+	res = res.reshape(ishape[:-1]+res.shape[-2:])
 	return res
 
 def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=False, safe=True):
