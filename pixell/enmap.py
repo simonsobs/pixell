@@ -669,7 +669,9 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 		rpix = r/pixsize(shape, wcs)
 		centers = sky2pix(poss.T).T
 		return np.moveaxis([centers-rpix,center+rpix+1],0,1)
-	poss = np.asarray(poss)
+	poss   = np.asarray(poss)
+	ishape = poss.shape
+	poss   = poss.reshape(-1,2)
 	res  = np.zeros([len(poss),2,2])
 	for i, pos in enumerate(poss):
 		# Find the coordinate box we need
@@ -686,6 +688,8 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 	res = utils.nint(res)
 	res = np.sort(res, 1)
 	res[:,1] += 1
+	# Recover pre-dimensions
+	res = res.reshape(ishape[:-1]+res.shape[-2:])
 	return res
 
 def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=False, safe=True):
@@ -1292,23 +1296,29 @@ def inpaint(map, mask, method="nearest"):
 		m[pix_bad[:,0],pix_bad[:,1]] = val_ipol
 	return omap
 
-def calc_window(shape, order=0):
+def calc_window(shape, order=0, scale=1):
 	"""Compute fourier-space pixel window function. Since the
 	window function is separable, it is returned as an x and y part,
 	such that window = wy[:,None]*wx[None,:]. By default the pixel
 	window for interpolation order 0 mapmaking (nearest neighbor)
-	is returned. Pass 1 for bilinear mapmaking's pixel window."""
-	wy = utils.pixwin_1d(np.fft.fftfreq(shape[-2]), order=order)
-	wx = utils.pixwin_1d(np.fft.fftfreq(shape[-1]), order=order)
+	is returned. Pass 1 for bilinear mapmaking's pixel window.
+	The scale argument can be used to calculate the pixel window
+	at non-native resolutions. For example, with scale=2 you will
+	get the pixwin for a map with twice the resolution"""
+	wy = utils.pixwin_1d(np.fft.fftfreq(shape[-2], scale), order=order)
+	wx = utils.pixwin_1d(np.fft.fftfreq(shape[-1], scale), order=order)
 	return wy, wx
 
-def apply_window(emap, pow=1.0, order=0):
+def apply_window(emap, pow=1.0, order=0, scale=1, nofft=False):
 	"""Apply the pixel window function to the specified power to the map,
 	returning a modified copy. Use pow=-1 to unapply the pixel window.
 	By default the pixel window for interpolation order 0 mapmaking
 	(nearest neighbor) is applied. Pass 1 for bilinear mapmaking's pixel window."""
-	wy, wx = calc_window(emap.shape, order=order)
-	return ifft(fft(emap) * wy[:,None]**pow * wx[None,:]**pow).real
+	wy, wx = calc_window(emap.shape, order=order, scale=scale)
+	if not nofft: emap = fft(emap)
+	emap = emap * wy[:,None]**pow * wx[None,:]**pow
+	if not nofft: emap = ifft(emap).real
+	return emap
 
 def unapply_window(emap, pow=1.0, order=0):
 	"""The inverse of apply_window. Equivalent to just flipping the sign of the pow argument."""
@@ -2661,7 +2671,8 @@ def fractional_shift(map, off, keepwcs=False, nofft=False):
 	"""Shift map cyclically by a non-integer amount off [{y_off,x_off}]"""
 	omap = samewcs(enfft.shift(map, off, nofft=nofft), map)
 	if not keepwcs:
-		omap.wcs.wcs.crval -= omap.wcs.wcs.cdelt*off[::-1]
+		omap.wcs.wcs.crpix += off[::-1]
+		#omap.wcs.wcs.crval -= omap.wcs.wcs.cdelt*off[::-1]
 	return omap
 
 def fftshift(map, inplace=False):

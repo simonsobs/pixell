@@ -206,7 +206,7 @@ def radial_bin(map, poss, bins, weights=None, separable="auto",
 	times = np.concatenate([times1,times2])
 	return (profs, times) if return_times else profs
 
-def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None, smul=1,
+def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None, smul=1, vmin=None,
 		return_padded=False, pixwin=False, op=np.add, wrap="auto", verbose=False, cache=None,
 		separable="auto", method="c"):
 	"""Backwards compatibility wrapper that exposes the speed of the new sim_objects
@@ -230,7 +230,7 @@ def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None,
 	if method in ["c", "C"]:
 		assert dtype is None or dtype == np.float32, "method 'c' only supports float32. Use method='python' if you need others"
 		assert smul == 1, "method 'c' does not support smul != 1. Use method='python' if you need this"
-		vmin = np.exp(-0.5*nsigma**2)
+		if vmin is None: vmin = np.exp(-0.5*nsigma**2)
 		if   op == np.add or op == np.ndarray.__iadd__ or op == "add": op_ = "add"
 		elif op == np.max or op == "max": op_ = "max"
 		elif op == np.min or op == "min": op_ = "min"

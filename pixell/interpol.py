@@ -115,6 +115,7 @@ def spline_filter(data, order=3, border="cyclic", ndim=None, trans=False):
 def get_core(dtype):
 	if dtype == np.float32:   return _interpol_32.fortran
 	elif dtype == np.float64: return _interpol_64.fortran
+	else: raise ValueError("No interpol core found for dtype '%s'" % str(dtype))
 
 ###### The functions below deal with building multilinear interpolations for arbitrary functions ####
 

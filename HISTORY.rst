@@ -2,6 +2,18 @@
 History
 =======
 
+0.17.1 (2023-01-26)
+-------------------
+
+Changes relative to 0.16.0 include:
+
+* Bilinear map-making pixel window function
+* Miscellaneous new functions and API improvements
+* Miscellaneous bug fixes
+* Fixes for Apple Silicon
+
+
+
 0.16.0 (2022-06-08)
 -------------------
 
@@ -110,7 +122,7 @@ Changes relative to 0.11.2 include:
 
 Changes relative to 0.11.0 include:
 
-* Bug-fix for when using rmax in distance_transform
+* Bug-fix for distance_transform when using rmax
 
 
 0.11.0 (2021-02-02)
