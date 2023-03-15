@@ -88,7 +88,7 @@ requirements =  ['numpy>=1.20.0',
 
 
 test_requirements = ['pip>=9.0',
-                     'bumpversion>=0.5.',
+                     'bumpversion>=0.5',
                      'wheel>=0.30',
                      'watchdog>=0.8',
                      'flake8>=3.5',
