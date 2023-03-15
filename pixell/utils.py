@@ -16,13 +16,13 @@ e  = 1.60217662e-19
 G  = 6.67430e-11
 sb = 5.670374419e-8
 AU = 149597870700.0
-R_earth = 6378.1e3
 minute = 60
 hour   = 60*minute
 day    = 24*hour
 yr     = 365.2422*day
 ly     = c*yr
 pc     = AU/arcsec
+Jy     = 1e-26
 yr2days = yr/day
 day2sec = day/1.0
 
@@ -55,6 +55,15 @@ a    = np.array(1.0)
 adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
+
+def l2ang(l):
+	"""Compute the angular scale roughly corresponding to a given multipole. Based on
+	matching the number of alm degrees of freedom with map degrees of freedom."""
+	return (4*np.pi)**0.5/(l+1)
+def ang2l(ang):
+	"""Compute the multipole roughly corresponding to a given angular scale. Based on
+	matching the number of alm degrees of freedom with map degrees of freedom."""
+	return (4*np.pi)**0.5/ang-1
 
 def D(f, eps=1e-10):
 	"""Clever derivative operator for function f(x) from Ivan Yashchuck.
@@ -576,14 +585,15 @@ def nearest_product(n, factors, direction="below"):
 	"""Compute the highest product of positive integer powers of the specified
 	factors that is lower than or equal to n. This is done using a simple,
 	O(n) brute-force algorithm."""
-	if 1 in factors: return n
 	below = direction=="below"
-	nmax = n+1 if below else n*min(factors)+1
+	ni = floor(n) if below else ceil(n)
+	if 1 in factors: return ni
+	nmax = ni+1 if below else ni*min(factors)+1
 	# a keeps track of all the visited multiples
 	a = np.zeros(nmax+1,dtype=bool)
 	a[1] = True
 	best = None
-	for i in range(n+1):
+	for i in range(ni+1):
 		if not a[i]: continue
 		for f in factors:
 			m = i*f
@@ -899,12 +909,15 @@ def atleast_3d(a):
 	elif a.ndim == 2: return a.reshape((1,)+a.shape)
 	else: return a
 
-def to_Nd(a, n, return_inverse=False):
-	a = np.asanyarray(a)
+def to_Nd(a, n, axis=0, return_inverse=False):
+	a    = np.asanyarray(a)
 	if n >= a.ndim:
-		res = a.reshape((1,)*(n-a.ndim)+a.shape)
+		# make -1 add at end instead of in front of the end
+		if axis < 0: axis = a.ndim+1+axis
+		res = a.reshape(a.shape[:axis]+(1,)*(n-a.ndim)+a.shape[axis:])
 	else:
-		res = a.reshape((-1,)+a.shape[1:])
+		if axis < 0: axis = n+axis
+		res  = a.reshape(a.shape[:axis]+(-1,)+a.shape[axis+1+a.ndim-n:])
 	return (res, a.shape) if return_inverse else res
 
 def between_angles(a, range, period=2*np.pi):
@@ -3038,8 +3051,23 @@ def without_nan(a):
 	array is not modified."""
 	return np.nan_to_num(a, copy=True, nan=0, posinf=0, neginf=0)
 
+# Why doesn't scipy have this?
+def primes(n):
+	"""Simple prime factorization of the positive integer n. Uses the
+	brute force algorithm, but it's quite fast even for huge numbers."""
+	i = 2
+	factors = []
+	while i * i <= n:
+		if n % i:
+			i += 1
+		else:
+			n //= i
+		factors.append(i)
+	if n > 1:
+		factors.append(n)
+	return factors
+
 def res2nside(res):
 	return (np.pi/3)**0.5/res
 def nside2res(nside):
 	return (np.pi/3)**0.5/nside
-

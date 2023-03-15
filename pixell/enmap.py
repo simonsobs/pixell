@@ -324,10 +324,17 @@ def corners(shape, wcs, npoint=10, corner=True):
 	(or equivalent for other coordinate systems).
 	e.g. an array of the form [[dec_min, ra_min ], [dec_max, ra_max]]."""
 	# Because of wcs's wrapping, we need to evaluate several
-	# extra pixels to make our unwinding unambiguous
-	pix = np.array([np.linspace(0,shape[-2],num=npoint,endpoint=True),
-		np.linspace(0,shape[-1],num=npoint,endpoint=True)])
-	if corner: pix -= 0.5
+	# extra pixels to make our unwinding unambiguous.
+	# Could reduce code duplication a bit here, but I think it's clearer
+	# when written like this
+	if corner:
+		pix = np.array([
+			np.linspace(-0.5,shape[-2]-0.5,num=npoint,endpoint=True),
+			np.linspace(-0.5,shape[-1]-0.5,num=npoint,endpoint=True)])
+	else:
+		pix = np.array([
+			np.linspace(0,shape[-2]-1,num=npoint,endpoint=True),
+			np.linspace(0,shape[-1]-1,num=npoint,endpoint=True)])
 	coords = wcsutils.nobcheck(wcs).wcs_pix2world(pix[1],pix[0],0)[::-1]
 	if wcsutils.is_plain(wcs):
 		return np.array(coords).T[[0,-1]]*get_unit(wcs)
@@ -662,7 +669,9 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 		rpix = r/pixsize(shape, wcs)
 		centers = sky2pix(poss.T).T
 		return np.moveaxis([centers-rpix,center+rpix+1],0,1)
-	poss = np.asarray(poss)
+	poss   = np.asarray(poss)
+	ishape = poss.shape
+	poss   = poss.reshape(-1,2)
 	res  = np.zeros([len(poss),2,2])
 	for i, pos in enumerate(poss):
 		# Find the coordinate box we need
@@ -679,6 +688,8 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 	res = utils.nint(res)
 	res = np.sort(res, 1)
 	res[:,1] += 1
+	# Recover pre-dimensions
+	res = res.reshape(ishape[:-1]+res.shape[-2:])
 	return res
 
 def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=False, safe=True):
@@ -1285,23 +1296,33 @@ def inpaint(map, mask, method="nearest"):
 		m[pix_bad[:,0],pix_bad[:,1]] = val_ipol
 	return omap
 
-def calc_window(shape, order=0):
+def calc_window(shape, order=0, scale=1):
 	"""Compute fourier-space pixel window function. Since the
 	window function is separable, it is returned as an x and y part,
 	such that window = wy[:,None]*wx[None,:]. By default the pixel
 	window for interpolation order 0 mapmaking (nearest neighbor)
-	is returned. Pass 1 for bilinear mapmaking's pixel window."""
-	wy = utils.pixwin_1d(np.fft.fftfreq(shape[-2]), order=order)
-	wx = utils.pixwin_1d(np.fft.fftfreq(shape[-1]), order=order)
+	is returned. Pass 1 for bilinear mapmaking's pixel window.
+	The scale argument can be used to calculate the pixel window
+	at non-native resolutions. For example, with scale=2 you will
+	get the pixwin for a map with twice the resolution"""
+	wy = utils.pixwin_1d(np.fft.fftfreq(shape[-2], scale), order=order)
+	wx = utils.pixwin_1d(np.fft.fftfreq(shape[-1], scale), order=order)
 	return wy, wx
 
-def apply_window(emap, pow=1.0, order=0):
+def apply_window(emap, pow=1.0, order=0, scale=1, nofft=False):
 	"""Apply the pixel window function to the specified power to the map,
 	returning a modified copy. Use pow=-1 to unapply the pixel window.
 	By default the pixel window for interpolation order 0 mapmaking
 	(nearest neighbor) is applied. Pass 1 for bilinear mapmaking's pixel window."""
-	wy, wx = calc_window(emap.shape, order=order)
-	return ifft(fft(emap) * wy[:,None]**pow * wx[None,:]**pow).real
+	wy, wx = calc_window(emap.shape, order=order, scale=scale)
+	if not nofft: emap = fft(emap)
+	emap = emap * wy[:,None]**pow * wx[None,:]**pow
+	if not nofft: emap = ifft(emap).real
+	return emap
+
+def unapply_window(emap, pow=1.0, order=0):
+	"""The inverse of apply_window. Equivalent to just flipping the sign of the pow argument."""
+	return apply_window(emap, pow=-pow, order=0)
 
 def samewcs(arr, *args):
 	"""Returns arr with the same wcs information as the first enmap among
@@ -1371,24 +1392,29 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 		shape = tuple(np.round(np.abs(faredge-nearedge)).astype(int))
 	return pre+tuple(shape), wcs
 
-def fullsky_geometry(res=None, shape=None, dims=(), proj="car"):
+def fullsky_geometry(res=None, shape=None, dims=(), proj="car", variant="CC"):
 	"""Build an enmap covering the full sky, with the outermost pixel centers
 	at the poles and wrap-around points. Assumes a CAR (clenshaw curtis variant)
 	projection for now."""
 	assert proj == "car", "Only CAR fullsky geometry implemented"
+	# Handle the CAR variants
+	if   variant == "CC":     yo = 1
+	elif variant == "fejer1": yo = 0
+	else: raise ValueError("Unrecognized CAR variant '%s'" % str(variant))
+	# Set up the shape/resolution
 	res = np.zeros(2)+res
 	if shape is None:
-		shape = utils.nint(([1*np.pi,2*np.pi]/res) + (1,0))
+		shape = utils.nint(([1*np.pi,2*np.pi]/res) + (yo,0))
 	else:
-		res = np.array([1*np.pi,2*np.pi])/(np.array(shape)-(1,0))
+		res = np.array([1*np.pi,2*np.pi])/(np.array(shape)-(yo,0))
 	ny, nx = shape
-	assert abs(res[0] * (ny-1) - np.pi) < 1e-8, "Vertical resolution does not evenly divide the sky; this is required for SHTs."
-	assert abs(res[1] * nx - 2*np.pi)   < 1e-8, "Horizontal resolution does not evenly divide the sky; this is required for SHTs."
+	assert abs(res[0]*(ny-yo)-  np.pi) < 1e-8, "Vertical resolution does not evenly divide the sky; this is required for SHTs."
+	assert abs(res[1]*nx     -2*np.pi) < 1e-8, "Horizontal resolution does not evenly divide the sky; this is required for SHTs."
 	wcs   = wcsutils.WCS(naxis=2)
 	# Note the reference point is shifted by half a pixel to keep
 	# the grid in bounds, from ra=180+cdelt/2 to ra=-180+cdelt/2.
 	wcs.wcs.crval = [res[1]/2/utils.degree,0]
-	wcs.wcs.cdelt = [-360./nx,180./(ny-1)]
+	wcs.wcs.cdelt = [-360./nx,180./(ny-yo)]
 	wcs.wcs.crpix = [nx//2+0.5,(ny+1)/2]
 	wcs.wcs.ctype = ["RA---CAR","DEC--CAR"]
 	return dims+(ny,nx), wcs
@@ -2645,7 +2671,8 @@ def fractional_shift(map, off, keepwcs=False, nofft=False):
 	"""Shift map cyclically by a non-integer amount off [{y_off,x_off}]"""
 	omap = samewcs(enfft.shift(map, off, nofft=nofft), map)
 	if not keepwcs:
-		omap.wcs.wcs.crval -= omap.wcs.wcs.cdelt*off[::-1]
+		omap.wcs.wcs.crpix += off[::-1]
+		#omap.wcs.wcs.crval -= omap.wcs.wcs.cdelt*off[::-1]
 	return omap
 
 def fftshift(map, inplace=False):
