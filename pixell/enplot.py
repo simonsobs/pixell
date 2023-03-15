@@ -381,7 +381,7 @@ def get_map(ifile, args, return_info=False, name=None):
 			m = m.submap(sub)
 		# Perform a common autocrop across all fields
 		if args.autocrop:
-			m = enmap.autocrop(m[:])
+			m = enmap.autocrop(m[:], value=0)
 		# If necessary, split into stamps. If no stamp splitting occurs,
 		# a list containing only the original map is returned
 		mlist = extract_stamps(m, args)
@@ -862,7 +862,7 @@ def prepare_map_field(map, args, crange=None, printer=noprint):
 	if map.ndim == 2:
 		map = map[None]
 	if args.autocrop_each:
-		map = enmap.autocrop(map)
+		map = enmap.autocrop(map, value=0)
 	with printer.time("colorize", 3):
 		color = map_to_color(map, crange, args)
 	return map, color
