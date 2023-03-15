@@ -16,13 +16,13 @@ e  = 1.60217662e-19
 G  = 6.67430e-11
 sb = 5.670374419e-8
 AU = 149597870700.0
-R_earth = 6378.1e3
 minute = 60
 hour   = 60*minute
 day    = 24*hour
 yr     = 365.2422*day
 ly     = c*yr
 pc     = AU/arcsec
+Jy     = 1e-26
 yr2days = yr/day
 day2sec = day/1.0
 
@@ -55,6 +55,15 @@ a    = np.array(1.0)
 adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
+
+def l2ang(l):
+	"""Compute the angular scale roughly corresponding to a given multipole. Based on
+	matching the number of alm degrees of freedom with map degrees of freedom."""
+	return (4*np.pi)**0.5/(l+1)
+def ang2l(ang):
+	"""Compute the multipole roughly corresponding to a given angular scale. Based on
+	matching the number of alm degrees of freedom with map degrees of freedom."""
+	return (4*np.pi)**0.5/ang-1
 
 def D(f, eps=1e-10):
 	"""Clever derivative operator for function f(x) from Ivan Yashchuck.
