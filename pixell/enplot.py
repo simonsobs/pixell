@@ -452,7 +452,7 @@ def extract_stamps(map, args):
 	# lines of [ra, dec] in degrees
 	toks = args.stamps.split(":")
 	# Read in our positions, optionally truncating the list
-	srcs = np.loadtxt(toks[0], usecols=[0,1]).T[1::-1]*utils.degree
+	srcs = np.loadtxt(toks[0], usecols=[0,1], ndmin=2).T[1::-1]*utils.degree
 	size = int(toks[1]) if len(toks) > 1 else 16
 	nsrc = int(toks[2]) if len(toks) > 2 else len(srcs.T)
 	srcs = srcs[:,:nsrc]

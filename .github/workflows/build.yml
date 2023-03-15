@@ -8,7 +8,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        python: ["3.10", "3.9", "3.8", "3.7"]
+        python: ["3.11", "3.10", "3.9", "3.8", "3.7"]
     steps:
       - uses: actions/checkout@v1
       - uses: actions/setup-python@v1
@@ -38,7 +38,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-20.04, macos-latest]
-        cp: [cp37, cp38, cp39, cp310]
+        cp: [cp37, cp38, cp39, cp310, cp311]
         include:
           - cp: cp37
             numpyver: "1.20"
@@ -47,6 +47,8 @@ jobs:
           - cp: cp39
             numpyver: "1.20"
           - cp: cp310
+            numpyver: "1.22"
+          - cp: cp311
             numpyver: "1.22"
 
     steps:
