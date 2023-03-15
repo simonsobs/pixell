@@ -206,7 +206,7 @@ def radial_bin(map, poss, bins, weights=None, separable="auto",
 	times = np.concatenate([times1,times2])
 	return (profs, times) if return_times else profs
 
-def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None, vmin=None, smul=1, vmin=None,
+def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None, vmin=None, smul=1,
 		return_padded=False, pixwin=False, pixwin_order=0, op=np.add, wrap="auto", verbose=False, cache=None,
 		separable="auto", method="c"):
 	"""Backwards compatibility wrapper that exposes the speed of the new sim_objects
