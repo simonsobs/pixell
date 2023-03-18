@@ -2,6 +2,13 @@
 History
 =======
 
+0.17.3 (2023-03-17)
+-------------------
+
+Changes relative to 0.17.2 include:
+
+* More support for fejer1
+  
 0.17.2 (2023-02-21)
 -------------------
 
