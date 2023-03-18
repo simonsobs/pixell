@@ -1320,9 +1320,9 @@ def apply_window(emap, pow=1.0, order=0, scale=1, nofft=False):
 	if not nofft: emap = ifft(emap).real
 	return emap
 
-def unapply_window(emap, pow=1.0, order=0):
+def unapply_window(emap, pow=1.0, order=0, scale=1, nofft=False):
 	"""The inverse of apply_window. Equivalent to just flipping the sign of the pow argument."""
-	return apply_window(emap, pow=-pow, order=0)
+	return apply_window(emap, pow=-pow, order=order, scale=scale, nofft=nofft)
 
 def samewcs(arr, *args):
 	"""Returns arr with the same wcs information as the first enmap among
