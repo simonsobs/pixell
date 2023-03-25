@@ -1316,7 +1316,9 @@ def apply_window(emap, pow=1.0, order=0, scale=1, nofft=False):
 	(nearest neighbor) is applied. Pass 1 for bilinear mapmaking's pixel window."""
 	wy, wx = calc_window(emap.shape, order=order, scale=scale)
 	if not nofft: emap = fft(emap)
-	emap = emap * wy[:,None]**pow * wx[None,:]**pow
+	else:         emap = emap.copy()
+	emap *= wy[:,None]**pow
+	emap *= wx[None,:]**pow
 	if not nofft: emap = ifft(emap).real
 	return emap
 
