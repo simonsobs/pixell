@@ -33,7 +33,7 @@ from . import utils, enmap, srcsim, wcsutils
 # New version. Usually 10 or more times faster than the old one, and with less memory
 # overhead. But interface is a bit different, so it has a new name.
 def sim_objects(shape, wcs, poss, amps, profile, prof_ids=None, omap=None, vmin=None, rmax=None,
-		op="add", pixwin=False, separable="auto", transpose=False, prof_equi="auto", cache=None,
+		op="add", pixwin=False, pixwin_order=0, separable="auto", transpose=False, prof_equi="auto", cache=None,
 		return_times=False):
 	"""Simulate radially symmetric objects with arbitrary profiles and amplitudes.
 	Arguments:
@@ -115,7 +115,7 @@ def sim_objects(shape, wcs, poss, amps, profile, prof_ids=None, omap=None, vmin=
 	times = srcsim.sim_objects(omap_flat, obj_decs, obj_ras, obj_ys, obj_xs, amps_flat, profile, prof_ids, posmap, vmin, rmax=rmax, separable=separable, transpose=transpose, prof_equi=prof_equi, return_times=True)[1]
 	omap = omap_flat.reshape(pre+shape[-2:])
 	# NB! Since we're not padding, this fourier operation will have problems at the edges
-	if pixwin: omap = enmap.apply_window(omap)
+	if pixwin: omap = enmap.apply_window(omap, order=pixwin_order)
 	return (omap, times) if return_times else omap
 
 def is_equi(r):
@@ -206,8 +206,8 @@ def radial_bin(map, poss, bins, weights=None, separable="auto",
 	times = np.concatenate([times1,times2])
 	return (profs, times) if return_times else profs
 
-def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None, smul=1, vmin=None,
-		return_padded=False, pixwin=False, op=np.add, wrap="auto", verbose=False, cache=None,
+def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None, vmin=None, smul=1,
+		return_padded=False, pixwin=False, pixwin_order=0, op=np.add, wrap="auto", verbose=False, cache=None,
 		separable="auto", method="c"):
 	"""Backwards compatibility wrapper that exposes the speed of the new sim_objects
 	function using the old sim_srcs interface. For most users this should result in a
@@ -244,12 +244,12 @@ def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None,
 		amps  = amps.reshape(shape[:-2]+(nobj,))
 		# Handle beam = float, in which case a gaussian beam is made
 		beam  = expand_beam(beam, nsigma, rmax)
-		return sim_objects(shape, wcs, poss, amps, beam, omap=omap, vmin=vmin, rmax=rmax, op=op, pixwin=pixwin, separable=separable, cache=cache)
+		return sim_objects(shape, wcs, poss, amps, beam, omap=omap, vmin=vmin, rmax=rmax, op=op, pixwin=pixwin, pixwin_order=0, separable=separable, cache=cache)
 	elif method == "python":
-		return sim_srcs_python(shape, wcs, srcs, beam, omap=omap, dtype=dtype, nsigma=nsigma, rmax=rmax, smul=smul, return_padded=return_padded, pixwin=pixwin, op=op, wrap=wrap, verbose=verbose, cache=cache, separable=separable)
+		return sim_srcs_python(shape, wcs, srcs, beam, omap=omap, dtype=dtype, nsigma=nsigma, rmax=rmax, smul=smul, return_padded=return_padded, pixwin=pixwin, pixwin_order=pixwin_order, op=op, wrap=wrap, verbose=verbose, cache=cache, separable=separable)
 
 def sim_srcs_python(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None, smul=1,
-		return_padded=False, pixwin=False, op=np.add, wrap="auto", verbose=False, cache=None,
+		return_padded=False, pixwin=False, pixwin_order=0, op=np.add, wrap="auto", verbose=False, cache=None,
 		separable="auto"):
 	"""Simulate a point source map in the geometry given by shape, wcs
 	for the given srcs[nsrc,{dec,ra,T...}], using the beam[{r,val},npoint],
@@ -299,7 +299,7 @@ def sim_srcs_python(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rma
 	if cache is not None: cache[0] = posmap
 	model = eval_srcs_loop(posmap, poss, amps, beam, cres, nhit, cell_srcs, dtype=wmap.dtype, op=op, verbose=verbose)
 	del posmap
-	if pixwin: model = enmap.apply_window(model)
+	if pixwin: model = enmap.apply_window(model, order=pixwin_order)
 	# Update our work map, through our view
 	if smul != 1: model *= smul
 	wmap   = op(wmap, model, wmap)

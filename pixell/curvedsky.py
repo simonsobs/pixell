@@ -773,7 +773,7 @@ def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=0, inplac
 		try: nthread = nthread or int(os.environ['OMP_NUM_THREADS'])
 		except (KeyError, ValueError): nthread = 0
 		for I in utils.nditer(alm.shape[:-1]):
-			alm[I] = ducc0.sht.rotate_alm(alm[I], lmax=lmax, psi=psi, theta=theta, phi=phi)
+			alm[I] = ducc0.sht.rotate_alm(alm[I], lmax=lmax, psi=psi, theta=theta, phi=phi, nthreads=nthread)
 	elif method == "healpy":
 		import healpy
 		for I in utils.nditer(alm.shape[:-1]):

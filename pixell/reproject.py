@@ -236,7 +236,8 @@ def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], met
 			if rot is not None and imap.ndim > 2:
 				# Update the polarization to account for the new coordinate system
 				for s, c1, c2 in enmap.spin_helper(spin, imap.shape[-3]):
-					vals = enmap.rotate_pol(vals, -pos[2], spin=s, comps=[c1,c2-1], axis=-2)
+					if s != 0:
+						vals = enmap.rotate_pol(vals, -pos[2], spin=s, comps=[c1,c2-1], axis=-2)
 			out[...,i1:i2] = vals
 	else:
 		raise ValueError("Map reprojection method '%s' not recognized" % str(method))
