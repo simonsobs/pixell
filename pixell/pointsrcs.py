@@ -530,8 +530,8 @@ def read_simple(fname):
 def read_dory_fits(fname, hdu=1):
 	d = fits.open(fname)[hdu].data
 	ocat = np.zeros(len(d), dtype=[("ra","d"),("dec","d"),("I","d"),("Q","d"),("U","d")]).view(np.recarray)
-	ocat.ra  = d.ra
-	ocat.dec = d.dec
+	ocat.ra  = d.ra  * utils.degree
+	ocat.dec = d.dec * utils.degree
 	ocat.I, ocat.Q, ocat.U = d.amp.T*1e3
 	return ocat
 

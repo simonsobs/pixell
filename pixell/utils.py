@@ -505,8 +505,8 @@ def interp(x, xp, fp, left=None, right=None, period=None):
 	x, xp, fp = [np.asanyarray(a) for a in [x, xp, fp]]
 	fp_flat   = fp.reshape(-1, fp.shape[-1])
 	f_flat    = np.empty((fp_flat.shape[0],)+x.shape, fp.dtype)
-	for f1, fp1 in zip(f_flat, fp_flat):
-		f1[:] = np.interp(x, xp, fp1, left=left, right=right, period=period)
+	for i in range(len(fp_flat)):
+		f_flat[i] = np.interp(x, xp, fp_flat[i], left=left, right=right, period=period)
 	f = f_flat.reshape(fp.shape[:-1]+x.shape)
 	return f
 
