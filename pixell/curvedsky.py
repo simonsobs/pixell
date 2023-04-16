@@ -549,8 +549,8 @@ def get_minfo(shape, wcs, quad=False, tweak=False, rtol=None, atol=None):
 	 even when making this approximation, as long as tweak=True is passed to both.
 	rtol and atol: Controls the maximum relative and absolute tolerance allowed
 	 for tweaking, in units of pixels. Defaults to None which implies 1 pixel."""
-	if tweak: return match_predefined_minfo(shape, wcs, rtol=rtol, atol=atol)
-	if quad:  return match_predefined_minfo(shape, wcs, rtol=1e-6, atol=1e-6)
+	if tweak: return match_predefined_minfo(shape, wcs, rtol=1,    atol=1)
+	if quad:  return match_predefined_minfo(shape, wcs, rtol=None, atol=None)
 	else:     return geo2minfo(shape, wcs)
 
 def geo2minfo(shape, wcs):
@@ -571,55 +571,55 @@ def map2minfo(m):
 def match_predefined_minfo(shape, wcs, rtol=None, atol=None):
 	"""Given an enmap with constant-latitude rows and constant longitude
 	intervals, return the libsharp predefined minfo with ringweights that's
-	the closest match to our pixelization. This function is actually
-	a bit slow, taking about 250 ms. Still subdominant to an SHT, though."""
-	if rtol is None: rtol = 1.0 # 1 pixel local error
-	if atol is None: atol = 1.0 # 1 pixel overall shift
+	the closest match to our pixelization."""
+	# This version of match_predefined_minfo is about 7x faster than the old one,
+	# and should be more robust. The cost of that is that it's more specialized.
+	# It uses the knowledge that sharp only supports CC and Fejer (and healpix,
+	# but that's done elsewhere), and has special purpose code to handle those.
+	if atol is None: atol = 1e-6
+	if rtol is None: rtol = 1e-6
 	# Make sure the colatitude ascends
 	flipy  = wcs.wcs.cdelt[1] > 0
 	if flipy: shape, wcs = enmap.slice_geometry(shape, wcs, [slice(None,None,-1)])
-	ntheta, nphi = shape[-2:]
-	theta  = np.pi/2 - enmap.pix2sky(shape, wcs, [np.arange(ntheta),np.zeros(ntheta)])[0]
-	# First find out how many lat rings there are in the whole sky.
-	# Find the first and last pixel center inside bounds
-	y1   = int(np.round(enmap.sky2pix(shape, wcs, [np.pi/2,0])[0]))
-	y2   = int(np.round(enmap.sky2pix(shape, wcs, [-np.pi/2,0])[0]))
-	phi0 = enmap.pix2sky(shape, wcs, [0,0])[1]
-	ny   = utils.nint(y2-y1+1)
-	nx   = utils.nint(np.abs(360./wcs.wcs.cdelt[0]))
-	# Define our candidate pixelizations
-	minfos = []
-	for i in range(-1,2):
-		minfos.append(sharp.map_info_clenshaw_curtis(ny+i, nx, phi0))
-		minfos.append(sharp.map_info_fejer1(ny+i, nx, phi0))
-		minfos.append(sharp.map_info_fejer2(ny+i, nx, phi0))
-	# For each pixelization find the first ring in the map
-	aroffs, scores, minfos2 = [], [], []
-	for minfo in minfos:
-		# Find theta closest to our first theta
-		i1 = np.argmin(np.abs(theta[0]-minfo.theta))
-		# If we're already on the full sky, the the +1
-		# pixel alternative will not work.
-		if i1+len(theta) > minfo.theta.size: continue
-		# Find the largest theta offset for all y in our input map
-		offs = theta-minfo.theta[i1:i1+len(theta)]
-		aoff = np.max(np.abs(offs))
-		# Find the largest offset after applying a small pointing offset
-		roff = np.max(np.abs(offs-np.mean(offs)))
-		aroffs.append([aoff,roff,i1])
-		scores.append(aoff/atol + roff/rtol)
-		minfos2.append(minfo)
-	# Choose the one with the lowest score (lowest mismatch)
-	best  = np.argmin(scores)
-	aoff, roff, i1 = aroffs[best]
-	i2 = i1+ntheta
-	# Convert from coordinate errors to pixel errors using the typical pixel height
-	pixheight = np.abs(wcs.wcs.cdelt[1]*utils.degree)
-	aoff /= pixheight
-	roff /= pixheight
-	if not roff < rtol: raise ShapeError("Could not find a map_info with predefined quadrature weights matching input map (rel offset %e >= %e). Pass tweak=True to map2alm to allow it to use slightly shifted pixel positions to match a geometry for which a predefined quadrature exists. This matches the old default. The resulted slightly shifted alms can be projected back onto the original pixels by passing tweak=True to alm2map." % (aoff, atol))
-	if not aoff < atol: raise ShapeError("Could not find a map_info with predefined quadrature weights matching input map (abs offset %e >= %e). Pass tweak=True to map2alm to allow it to use slightly shifted pixel positions to match a geometry for which a predefined quadrature exists. This matches the old default. The resulted slightly shifted alms can be projected back onto the original pixels by passing tweak=True to alm2map." % (aoff, atol))
-	minfo = minfos2[best]
+	if wcs.wcs.ctype[0] == "RA---CAR":
+		# We have a CAR projection
+		# Check that we have an integer number of pixels horizontally
+		nxf  = np.abs(360/wcs.wcs.cdelt[0])
+		nx   = utils.nint(nxf)
+		if np.abs(nxf-nx) > atol: raise ShapeError("CAR map does not evenly divide the sky in RA direction (%g excess pixels). Pass tweak=True to map2alm to relax this requirement. This will result in slightly inaccurate alms, of the order of pixwidth/skywidth." % (nxf-nx))
+		# Check which CAR variant we have, which is determined by the vertical positions.
+		# Find the pixel coordinate of the north and south pole
+		y   = enmap.sky2pix(shape, wcs, [[np.pi/2,-np.pi/2],[0,0]], safe=False)[0]
+		# We want the closest pixel center or edge to these, since only pixel centers
+		# and edges are valid at the pole in our predefined minfos. Can do this by
+		# rounding to half-pixel steps. Even numbers will be pixel centers and odd
+		# will be pixel edges.
+		y2  = utils.nint(2*y)
+		off = 2*y-y2
+		if np.any(np.abs(off) > atol): raise ShapeError("CAR map does not have a pixel center or edge at the poles (%g offset at south and %g offset at north pole. Pass tweak=True ato map2alm to relax this requirement. This will result in slightly inaccurate alms, of the order pixheight/skyheight" % tuple(y-np.round(y)))
+		# Ok, we have a valid CAR variant. Get our phi0
+		phi0 = enmap.pix2sky(shape, wcs, [0,0], safe=False)[1]
+		# And set up the appropriate minfo
+		nedge = np.sum(y2 % 2)
+		if nedge == 0 or (nedge == 1 and atol >= 0.5):
+			# Clenshaw-Curtis: Pixel center at both poles
+			# Practically equivalent to Fejer2
+			# This is the case we default to if we have mixed odd/evenness and the tolerance
+			# is high enough.
+			ny    = utils.nint(y[1]-y[0])+1
+			minfo = sharp.map_info_clenshaw_curtis(ny, nx, phi0)
+			off   = 0
+		else:
+			# Fejer1: Pixel edge at both poles
+			ny    = utils.nint(y[1]-y[0])
+			minfo = sharp.map_info_fejer1(ny, nx, phi0)
+			off   = 0.5
+		# Determine which row-range of the full geometry our map covers
+		i1 = -utils.nint(y[0]+off)
+		i2 = i1 + shape[-2]
+	else:
+		# Other pixelizations don't have integration weights available
+		raise ShapeError("Only CAR maps have predefined integration weights in libhsarp, but got wcs %s" % str(wcs))
 	# Modify the minfo to restrict it to only the rows contained in the geometry
 	minfo_cut = sharp.map_info(
 			minfo.theta[i1:i2],  minfo.nphi[i1:i2], minfo.phi0[i1:i2],
