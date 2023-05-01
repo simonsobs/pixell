@@ -390,13 +390,13 @@ def partial_flatten(a, axes=[-1], pos=0):
 	# Flatten all the other axes
 	a = a.reshape(a.shape[:len(axes)]+(-1,))
 	# Move flattened axis to the target position
-	return moveaxis(a, -1, pos)
+	return np.moveaxis(a, -1, pos)
 
 def partial_expand(a, shape, axes=[-1], pos=0):
 	"""Undo a partial flatten. Shape is the shape of the
 	original array before flattening, and axes and pos should be
 	the same as those passed to the flatten operation."""
-	a = moveaxis(a, pos, -1)
+	a = np.moveaxis(a, pos, -1)
 	axes = np.array(axes)%len(shape)
 	rest = list(np.delete(shape, axes))
 	a = np.reshape(a, list(a.shape[:len(axes)])+rest)
@@ -1104,13 +1104,13 @@ def unwrap_range(range, nwrap=2*np.pi):
 	return range
 
 def sum_by_id(a, ids, axis=0):
-	ra = moveaxis(a, axis, 0)
+	ra = np.moveaxis(a, axis, 0)
 	fa = ra.reshape(ra.shape[0],-1)
 	fb = np.zeros((np.max(ids)+1,fa.shape[1]),fa.dtype)
 	for i,id in enumerate(ids):
 		fb[id] += fa[i]
 	rb = fb.reshape((fb.shape[0],)+ra.shape[1:])
-	return moveaxis(rb, 0, axis)
+	return np.moveaxis(rb, 0, axis)
 
 def pole_wrap(pos):
 	"""Given pos[{lat,lon},...], normalize coordinates so that
@@ -1168,7 +1168,7 @@ def allgatherv(a, comm, axis=0):
 	dtype  = np.result_type(*dtypes)
 	a      = a.astype(dtype, copy=False)
 	# Put the axis first, as that's what Allgatherv wants
-	fa = moveaxis(a, axis, 0)
+	fa = np.moveaxis(a, axis, 0)
 	# Do the same for the shapes, to figure out what the non-gather dimensions should be
 	shapes = [shape[1:] for shape in comm.allgather(fa.shape) if np.product(shape) != 0]
 	# All arrays are empty, so just return what we had
@@ -1192,7 +1192,7 @@ def allgatherv(a, comm, axis=0):
 	# Restore original data type
 	if must_fix:
 		fb = fb.view(dtype=a.dtype)
-	return moveaxis(fb, 0, axis)
+	return np.moveaxis(fb, 0, axis)
 
 def send(a, comm, dest=0, tag=0):
 	"""Faster version of comm.send for numpy arrays.
@@ -1553,28 +1553,29 @@ def ang2rect(angs, zenith=False, axis=0):
 	the angle from the z axis. If zenith is False, then theta
 	goes from -pi/2 to pi/2, and measures the angle up from the xy plane."""
 	angs       = np.asanyarray(angs)
-	phi, theta = moveaxis(angs, axis, 0)
+	phi, theta = np.moveaxis(angs, axis, 0)
 	ct, st, cp, sp = np.cos(theta), np.sin(theta), np.cos(phi), np.sin(phi)
 	if zenith: res = np.array([st*cp,st*sp,ct])
 	else:      res = np.array([ct*cp,ct*sp,st])
-	return moveaxis(res, 0, axis)
+	return np.moveaxis(res, 0, axis)
 
-def rect2ang(rect, zenith=False, axis=0):
+def rect2ang(rect, zenith=False, axis=0, return_r=False):
 	"""The inverse of ang2rect."""
-	x,y,z = moveaxis(rect, axis, 0)
+	x,y,z = np.moveaxis(rect, axis, 0)
 	r     = (x**2+y**2)**0.5
 	phi   = np.arctan2(y,x)
 	if zenith: theta = np.arctan2(r,z)
 	else:      theta = np.arctan2(z,r)
-	return moveaxis(np.array([phi,theta]), 0, axis)
+	ang = np.moveaxis(np.array([phi,theta]), 0, axis)
+	return (ang,r) if return_r else ang
 
 def angdist(a, b, zenith=False, axis=0):
 	"""Compute the angular distance between a[{ra,dec},...]
 	and b[{ra,dec},...] using a Vincenty formula that's stable
 	both for small and large angular separations. a and b must
 	broadcast correctly."""
-	a = moveaxis(np.asarray(a), axis, 0)
-	b = moveaxis(np.asarray(b), axis, 0)
+	a = np.moveaxis(np.asarray(a), axis, 0)
+	b = np.moveaxis(np.asarray(b), axis, 0)
 	dra = a[0]-b[0]
 	sin_dra = np.sin(dra)
 	cos_dra = np.cos(dra)
@@ -2600,7 +2601,7 @@ def slice_downgrade(d, s, axis=-1):
 	"""Slice array d along the specified axis using the Slice s,
 	but interpret the step part of the slice as downgrading rather
 	than skipping."""
-	a = moveaxis(d, axis, 0)
+	a = np.moveaxis(d, axis, 0)
 	step = s.step or 1
 	a = a[s.start:s.stop:-1 if step < 0 else 1]
 	step = abs(step)
@@ -2611,7 +2612,7 @@ def slice_downgrade(d, s, axis=-1):
 	if len(a2)*step != len(a):
 		rest = a[len(a2)*step:]
 		a2 = np.concatenate([a2,[np.mean(rest,0)]],0)
-	return moveaxis(a2, 0, axis)
+	return np.moveaxis(a2, 0, axis)
 
 def outer_stack(arrays):
 	"""Example. outer_stack([[1,2,3],[10,20]]) -> [[[1,1],[2,2],[3,3]],[[10,20],[10,20],[10,2]]]"""
