@@ -82,6 +82,10 @@ def lines(file_or_fname):
 	else:
 		for line in file_or_fname: yield line
 
+def touch(fname):
+	with open(fname, "a"):
+		os.utime(fname)
+
 def listsplit(seq, elem):
 	"""Analogue of str.split for lists.
 	listsplit([1,2,3,4,5,6,7],4) -> [[1,2],[3,4,5,6]]."""
@@ -505,8 +509,8 @@ def interp(x, xp, fp, left=None, right=None, period=None):
 	x, xp, fp = [np.asanyarray(a) for a in [x, xp, fp]]
 	fp_flat   = fp.reshape(-1, fp.shape[-1])
 	f_flat    = np.empty((fp_flat.shape[0],)+x.shape, fp.dtype)
-	for f1, fp1 in zip(f_flat, fp_flat):
-		f1[:] = np.interp(x, xp, fp1, left=left, right=right, period=period)
+	for i in range(len(fp_flat)):
+		f_flat[i] = np.interp(x, xp, fp_flat[i], left=left, right=right, period=period)
 	f = f_flat.reshape(fp.shape[:-1]+x.shape)
 	return f
 
@@ -3072,3 +3076,27 @@ def res2nside(res):
 	return (np.pi/3)**0.5/res
 def nside2res(nside):
 	return (np.pi/3)**0.5/nside
+
+def split_esc(string, delim, esc='\\'):
+	"""Split string by the delimiter except when escaped by
+	the given escape character, which defaults to backslash.
+	Consumes one level of escapes. Yields the tokens one by
+	one as an iterator."""
+	if len(delim) != 1: raise ValueError("delimiter must be one character")
+	if len(esc)   != 1: raise ValueError("escape character must be one character")
+	if len(string) == 0: yield ""
+	inesc = False
+	ostr  = ""
+	for i, c in enumerate(string):
+		if inesc:
+			if c != esc: ostr += c
+			inesc = False
+		elif c == esc:
+			inesc = True
+		elif c == delim:
+			yield ostr
+			ostr = ""
+		else:
+			ostr += c
+	if len(ostr) > 0:
+		yield ostr
