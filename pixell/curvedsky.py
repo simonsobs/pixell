@@ -73,7 +73,7 @@ def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=
 ### Top-level wrappers ###
 ##########################
 
-def alm2map(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=False, oversample=2.0, method="auto", verbose=False, map2alm_adjoint=False, tweak=False, rtol=None, atol=None):
+def alm2map(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=False, oversample=2.0, method="auto", verbose=False, map2alm_adjoint=False, tweak=True, rtol=None, atol=None):
 	"""Project the spherical harmonics coefficients alm[...,nalm] onto the
 	enmap map[...,ny,nx].
 
@@ -121,7 +121,7 @@ def alm2map(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=Fa
 	return map
 
 def map2alm(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False, copy=False,
-		oversample=2.0, method="auto", tweak=False, rtol=None, atol=None, alm2map_adjoint=False):
+		oversample=2.0, method="auto", tweak=True, rtol=None, atol=None, alm2map_adjoint=False):
 	"""Spherical harmonics analysis of the enmap map[...,ny,nx] into the spherical harmonics
 	coefficients alm[...,nalm]. The (approximate) inverse of alm2map. To support partial
 	sky coverage and arbitrary projections, an intermediate map will be constructed
@@ -153,19 +153,19 @@ def map2alm(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False, copy
 
 # Adjoints
 
-def map2alm_adjoint(alm, map, ainfo=None, spin=[0,2], direct=False, copy=False, oversample=2.0, method="auto", verbose=False, tweak=False, rtol=None, atol=None):
+def map2alm_adjoint(alm, map, ainfo=None, spin=[0,2], direct=False, copy=False, oversample=2.0, method="auto", verbose=False, tweak=True, rtol=None, atol=None):
 	"""Adjoint of map2alm"""
 	return alm2map(alm, map, ainfo=ainfo, spin=spin, direct=direct, copy=copy, oversample=oversample, method=method, verbose=verbose, tweak=tweak, map2alm_adjoint=True, rtol=rtol, atol=atol)
 
 def alm2map_adjoint(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False, copy=False,
-		oversample=2.0, method="auto", tweak=False, rtol=None, atol=None):
+		oversample=2.0, method="auto", tweak=True, rtol=None, atol=None):
 	"""Adjoint of alm2map"""
 	return map2alm(map, alm=alm, ainfo=ainfo, lmax=lmax, spin=spin, direct=direct, copy=copy,
 		oversample=oversample, method=method, tweak=tweak, rtol=rtol, atol=atol, alm2map_adjoint=True)
 
 # Quadrature weights
 
-def quad_weights(shape, wcs, tweak=False):
+def quad_weights(shape, wcs, tweak=True):
 	if wcsutils.is_cyl(wcs):
 		return quad_weights_cyl(shape, wcs, tweak=tweak)
 	else:
@@ -214,7 +214,7 @@ def map2alm_adjoint_pos(alm, pos, ainfo=None, oversample=2.0, spin=[0,2], deriv=
 # system is extended internally if necessary. minfo is built
 # internally automatically.
 
-def alm2map_cyl(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=False, verbose=False, map2alm_adjoint=False, rtol=None, atol=None, tweak=False):
+def alm2map_cyl(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=False, verbose=False, map2alm_adjoint=False, rtol=None, atol=None, tweak=True):
 	"""When called as alm2map(alm, map) projects those alms onto that map.
 	alms are interpreted according to ainfo if specified.
 
@@ -259,7 +259,7 @@ def alm2map_healpix(alm, healmap=None, ainfo=None, nside=None, spin=[0,2], deriv
 			spin=spin, deriv=deriv, copy=copy, map2alm_adjoint=map2alm_adjoint)[...,0]
 
 def map2alm_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False,
-		copy=False, tweak=False, rtol=None, atol=None, alm2map_adjoint=False):
+		copy=False, tweak=True, rtol=None, atol=None, alm2map_adjoint=False):
 	"""When called as map2alm_cyl(map, alm) computes the alms corresponding
 	to the given map. alms will be ordered according to ainfo if specified.
 	The map must be in a cylindrical projection. If no ring weights
@@ -305,7 +305,7 @@ def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], copy=F
 
 # Adjoints
 
-def map2alm_adjoint_cyl(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=False, tweak=False, verbose=False):
+def map2alm_adjoint_cyl(alm, map, ainfo=None, spin=[0,2], deriv=False, direct=False, copy=False, tweak=True, verbose=False):
 	"""Adjoint of map2alm_cyl"""
 	return alm2map_cyl(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, direct=direct, copy=copy, tweak=tweak, verbose=verbose, map2alm_adjoint=True)
 
@@ -316,7 +316,7 @@ def map2alm_adjoint_healpix(alm, healmap=None, ainfo=None, nside=None, spin=[0,2
 		theta_min=theta_min, theta_max=theta_max, map2alm_adjoint=True)
 
 def alm2map_adjoint_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], direct=False,
-		copy=False, tweak=False, rtol=None, atol=None):
+		copy=False, tweak=True, rtol=None, atol=None):
 	"""Adjoint of alm2map_cyl"""
 	return map2alm_cyl(map, alm=alm, ainfo=ainfo, lmax=lmax, spin=spin, direct=direct,
 		copy=copy, tweak=tweak, rtol=rtol, atol=atol, alm2map_adjoint=True)
@@ -329,7 +329,7 @@ def alm2map_adjoint_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2]
 
 # Quadrature weights
 
-def quad_weights_cyl(shape, wcs, tweak=False):
+def quad_weights_cyl(shape, wcs, tweak=True):
 	return get_minfo(shape, wcs, quad=True, tweak=tweak).weight
 
 ######################
@@ -535,7 +535,7 @@ def make_projectable_map_by_pos(pos, lmax, dims=(), oversample=2.0, dtype=float,
 	tmap = enmap.zeros(dims+(ny+1,nx),wcs,dtype=dtype)
 	return tmap
 
-def get_minfo(shape, wcs, quad=False, tweak=False, rtol=None, atol=None):
+def get_minfo(shape, wcs, quad=False, tweak=True, rtol=None, atol=None):
 	"""Get a map info to be used in a spherical harmonics transform for the
 	given geometry (shape, wcs).
 	quad: Specifies whether we need quadrature weights or not. These are only
