@@ -82,6 +82,10 @@ def lines(file_or_fname):
 	else:
 		for line in file_or_fname: yield line
 
+def touch(fname):
+	with open(fname, "a"):
+		os.utime(fname)
+
 def listsplit(seq, elem):
 	"""Analogue of str.split for lists.
 	listsplit([1,2,3,4,5,6,7],4) -> [[1,2],[3,4,5,6]]."""
@@ -3072,3 +3076,27 @@ def res2nside(res):
 	return (np.pi/3)**0.5/res
 def nside2res(nside):
 	return (np.pi/3)**0.5/nside
+
+def split_esc(string, delim, esc='\\'):
+	"""Split string by the delimiter except when escaped by
+	the given escape character, which defaults to backslash.
+	Consumes one level of escapes. Yields the tokens one by
+	one as an iterator."""
+	if len(delim) != 1: raise ValueError("delimiter must be one character")
+	if len(esc)   != 1: raise ValueError("escape character must be one character")
+	if len(string) == 0: yield ""
+	inesc = False
+	ostr  = ""
+	for i, c in enumerate(string):
+		if inesc:
+			if c != esc: ostr += c
+			inesc = False
+		elif c == esc:
+			inesc = True
+		elif c == delim:
+			yield ostr
+			ostr = ""
+		else:
+			ostr += c
+	if len(ostr) > 0:
+		yield ostr
