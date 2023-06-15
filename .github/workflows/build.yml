@@ -73,7 +73,6 @@ jobs:
         env:
           CIBW_ENVIRONMENT: OMP_NUM_THREADS=2
                             OPENBLAS_NUM_THREADS=2
-                            MACOSX_DEPLOYMENT_TARGET=10.13          
           CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy cython"
           CIBW_BUILD_VERBOSITY: 3
           CIBW_BUILD: "${{ matrix.cp }}-*x86_64"
