@@ -13,8 +13,7 @@ if [ "$(uname)" == "Darwin" ]; then
 		fi
 		
 		brew reinstall gcc
-		echo "!!!!!!!!!!@@@@@  ATTEMPTING TO SEE GCC VERSION"
-		gcc --version
+		hash -r
 
 	fi
 
