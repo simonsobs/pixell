@@ -12,8 +12,7 @@ set -x
 if [[ $(uname) == "Darwin" ]]; then
 
     sudo xcodebuild -license accept
-    xcode-select --install
-
+    
     # Make sure to use a libomp version binary compatible with the oldest
     # supported version of the macos SDK as libomp will be vendored into the
     # scikit-learn wheels for macos.
