@@ -381,7 +381,7 @@ def get_map(ifile, args, return_info=False, name=None):
 			m = m.submap(sub)
 		# Perform a common autocrop across all fields
 		if args.autocrop:
-			m = enmap.autocrop(m[:])
+			m = enmap.autocrop(m[:], value=0)
 		# If necessary, split into stamps. If no stamp splitting occurs,
 		# a list containing only the original map is returned
 		mlist = extract_stamps(m, args)
@@ -452,7 +452,7 @@ def extract_stamps(map, args):
 	# lines of [ra, dec] in degrees
 	toks = args.stamps.split(":")
 	# Read in our positions, optionally truncating the list
-	srcs = np.loadtxt(toks[0], usecols=[0,1]).T[1::-1]*utils.degree
+	srcs = np.loadtxt(toks[0], usecols=[0,1], ndmin=2).T[1::-1]*utils.degree
 	size = int(toks[1]) if len(toks) > 1 else 16
 	nsrc = int(toks[2]) if len(toks) > 2 else len(srcs.T)
 	srcs = srcs[:,:nsrc]
@@ -862,7 +862,7 @@ def prepare_map_field(map, args, crange=None, printer=noprint):
 	if map.ndim == 2:
 		map = map[None]
 	if args.autocrop_each:
-		map = enmap.autocrop(map)
+		map = enmap.autocrop(map, value=0)
 	with printer.time("colorize", 3):
 		color = map_to_color(map, crange, args)
 	return map, color

@@ -16,13 +16,13 @@ e  = 1.60217662e-19
 G  = 6.67430e-11
 sb = 5.670374419e-8
 AU = 149597870700.0
-R_earth = 6378.1e3
 minute = 60
 hour   = 60*minute
 day    = 24*hour
 yr     = 365.2422*day
 ly     = c*yr
 pc     = AU/arcsec
+Jy     = 1e-26
 yr2days = yr/day
 day2sec = day/1.0
 
@@ -33,6 +33,7 @@ m_n     = 1.6749274980e-27 # Neutron mass
 
 # Cross sections and rates
 sigma_T = 6.6524587158e-29 # Thomson scattering cross section, m²
+sigma_sb = 5.670374419e-8  # Stefan-Boltzman constant
 
 # Solar system constants. Nice to have, unlikely to clash with anything, and
 # don't take up much space.
@@ -55,6 +56,15 @@ adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
 
+def l2ang(l):
+	"""Compute the angular scale roughly corresponding to a given multipole. Based on
+	matching the number of alm degrees of freedom with map degrees of freedom."""
+	return (4*np.pi)**0.5/(l+1)
+def ang2l(ang):
+	"""Compute the multipole roughly corresponding to a given angular scale. Based on
+	matching the number of alm degrees of freedom with map degrees of freedom."""
+	return (4*np.pi)**0.5/ang-1
+
 def D(f, eps=1e-10):
 	"""Clever derivative operator for function f(x) from Ivan Yashchuck.
 	Accurate to second order in eps. Only calls f(x) once to evaluate the
@@ -71,6 +81,10 @@ def lines(file_or_fname):
 			for line in file: yield line
 	else:
 		for line in file_or_fname: yield line
+
+def touch(fname):
+	with open(fname, "a"):
+		os.utime(fname)
 
 def listsplit(seq, elem):
 	"""Analogue of str.split for lists.
@@ -168,7 +182,7 @@ def dict_apply_listfun(dict, function):
 	res  = function(vals)
 	return {key: res[i] for i, key in enumerate(keys)}
 
-def unwind(a, period=2*np.pi, axes=[-1], ref=0):
+def unwind(a, period=2*np.pi, axes=[-1], ref=0, refmode="left", mask_nan=False):
 	"""Given a list of angles or other cyclic coordinates
 	where a and a+period have the same physical meaning,
 	make a continuous by removing any sudden jumps due to
@@ -178,13 +192,28 @@ def unwind(a, period=2*np.pi, axes=[-1], ref=0):
 	res = rewind(a, period=period, ref=ref)
 	for axis in axes:
 		with flatview(res, axes=[axis]) as flat:
-			# Avoid trying to sum nans
-			mask = ~np.isfinite(flat)
-			bad = flat[mask]
-			flat[mask] = 0
-			flat[:,1:]-= np.cumsum(np.round((flat[:,1:]-flat[:,:-1])/period),-1)*period
-			# Restore any nans
-			flat[mask] = bad
+			if mask_nan:
+				# Avoid trying to sum nans
+				mask = ~np.isfinite(flat)
+				bad = flat[mask]
+				flat[mask] = 0
+			# step[i] = val[i+1]-val[i]
+			steps = nint((flat[:,1:]-flat[:,:-1])/period)
+			# I want to use the middle element as the reference point that won't be changed
+			if refmode == "left":
+				flat[:,1:] -= np.cumsum(np.round((flat[:,1:]-flat[:,:-1])/period),-1)*period
+			elif refmode == "middle":
+				iref  = flat.shape[-1]//2
+				# Values [0:iref]   have offs -cumsum(steps[iref-1::-1])
+				# Values [iref+1:n] have offs  cumsum(steps[iref:])
+				loffs = -np.cumsum(steps[:,iref-1::-1],1)[:,::-1]*period
+				roffs =  np.cumsum(steps[:,iref:],1)*period
+				flat[:,:iref]   -= loffs
+				flat[:,iref+1:] -= roffs
+			else: raise ValueError("Unsupported refmode '%s'" % str(refmode))
+			if mask_nan:
+				# Restore any nans
+				flat[mask] = bad
 	return res
 
 def rewind(a, ref=0, period=2*np.pi):
@@ -365,13 +394,13 @@ def partial_flatten(a, axes=[-1], pos=0):
 	# Flatten all the other axes
 	a = a.reshape(a.shape[:len(axes)]+(-1,))
 	# Move flattened axis to the target position
-	return moveaxis(a, -1, pos)
+	return np.moveaxis(a, -1, pos)
 
 def partial_expand(a, shape, axes=[-1], pos=0):
 	"""Undo a partial flatten. Shape is the shape of the
 	original array before flattening, and axes and pos should be
 	the same as those passed to the flatten operation."""
-	a = moveaxis(a, pos, -1)
+	a = np.moveaxis(a, pos, -1)
 	axes = np.array(axes)%len(shape)
 	rest = list(np.delete(shape, axes))
 	a = np.reshape(a, list(a.shape[:len(axes)])+rest)
@@ -480,8 +509,8 @@ def interp(x, xp, fp, left=None, right=None, period=None):
 	x, xp, fp = [np.asanyarray(a) for a in [x, xp, fp]]
 	fp_flat   = fp.reshape(-1, fp.shape[-1])
 	f_flat    = np.empty((fp_flat.shape[0],)+x.shape, fp.dtype)
-	for f1, fp1 in zip(f_flat, fp_flat):
-		f1[:] = np.interp(x, xp, fp1, left=left, right=right, period=period)
+	for i in range(len(fp_flat)):
+		f_flat[i] = np.interp(x, xp, fp_flat[i], left=left, right=right, period=period)
 	f = f_flat.reshape(fp.shape[:-1]+x.shape)
 	return f
 
@@ -560,14 +589,15 @@ def nearest_product(n, factors, direction="below"):
 	"""Compute the highest product of positive integer powers of the specified
 	factors that is lower than or equal to n. This is done using a simple,
 	O(n) brute-force algorithm."""
-	if 1 in factors: return n
 	below = direction=="below"
-	nmax = n+1 if below else n*min(factors)+1
+	ni = floor(n) if below else ceil(n)
+	if 1 in factors: return ni
+	nmax = ni+1 if below else ni*min(factors)+1
 	# a keeps track of all the visited multiples
 	a = np.zeros(nmax+1,dtype=bool)
 	a[1] = True
 	best = None
-	for i in range(n+1):
+	for i in range(ni+1):
 		if not a[i]: continue
 		for f in factors:
 			m = i*f
@@ -847,7 +877,8 @@ def regularize_beam(beam, cutoff=1e-2, nl=None):
 	vcut  = np.max(beam,-1)*cutoff
 	above = beam > vcut
 	lcut  = np.argmin(above, -1)
-	if lcut > nl or lcut == 0: return beam[:nl]
+	if lcut == 0: lcut = np.array(above.shape[-1]-1)
+	if lcut > nl: return beam[:nl]
 	obeam = vcut * (l/lcut)**(2*np.log(cutoff))
 	# Get the mask for what we want to keep. This looks complicated, but that's
 	# just to support arbitrary-dimensionality (maybe that wasn't really necessary).
@@ -882,12 +913,15 @@ def atleast_3d(a):
 	elif a.ndim == 2: return a.reshape((1,)+a.shape)
 	else: return a
 
-def to_Nd(a, n, return_inverse=False):
-	a = np.asanyarray(a)
+def to_Nd(a, n, axis=0, return_inverse=False):
+	a    = np.asanyarray(a)
 	if n >= a.ndim:
-		res = a.reshape((1,)*(n-a.ndim)+a.shape)
+		# make -1 add at end instead of in front of the end
+		if axis < 0: axis = a.ndim+1+axis
+		res = a.reshape(a.shape[:axis]+(1,)*(n-a.ndim)+a.shape[axis:])
 	else:
-		res = a.reshape((-1,)+a.shape[1:])
+		if axis < 0: axis = n+axis
+		res  = a.reshape(a.shape[:axis]+(-1,)+a.shape[axis+1+a.ndim-n:])
 	return (res, a.shape) if return_inverse else res
 
 def between_angles(a, range, period=2*np.pi):
@@ -1074,13 +1108,13 @@ def unwrap_range(range, nwrap=2*np.pi):
 	return range
 
 def sum_by_id(a, ids, axis=0):
-	ra = moveaxis(a, axis, 0)
+	ra = np.moveaxis(a, axis, 0)
 	fa = ra.reshape(ra.shape[0],-1)
 	fb = np.zeros((np.max(ids)+1,fa.shape[1]),fa.dtype)
 	for i,id in enumerate(ids):
 		fb[id] += fa[i]
 	rb = fb.reshape((fb.shape[0],)+ra.shape[1:])
-	return moveaxis(rb, 0, axis)
+	return np.moveaxis(rb, 0, axis)
 
 def pole_wrap(pos):
 	"""Given pos[{lat,lon},...], normalize coordinates so that
@@ -1138,7 +1172,7 @@ def allgatherv(a, comm, axis=0):
 	dtype  = np.result_type(*dtypes)
 	a      = a.astype(dtype, copy=False)
 	# Put the axis first, as that's what Allgatherv wants
-	fa = moveaxis(a, axis, 0)
+	fa = np.moveaxis(a, axis, 0)
 	# Do the same for the shapes, to figure out what the non-gather dimensions should be
 	shapes = [shape[1:] for shape in comm.allgather(fa.shape) if np.product(shape) != 0]
 	# All arrays are empty, so just return what we had
@@ -1162,7 +1196,7 @@ def allgatherv(a, comm, axis=0):
 	# Restore original data type
 	if must_fix:
 		fb = fb.view(dtype=a.dtype)
-	return moveaxis(fb, 0, axis)
+	return np.moveaxis(fb, 0, axis)
 
 def send(a, comm, dest=0, tag=0):
 	"""Faster version of comm.send for numpy arrays.
@@ -1523,28 +1557,29 @@ def ang2rect(angs, zenith=False, axis=0):
 	the angle from the z axis. If zenith is False, then theta
 	goes from -pi/2 to pi/2, and measures the angle up from the xy plane."""
 	angs       = np.asanyarray(angs)
-	phi, theta = moveaxis(angs, axis, 0)
+	phi, theta = np.moveaxis(angs, axis, 0)
 	ct, st, cp, sp = np.cos(theta), np.sin(theta), np.cos(phi), np.sin(phi)
 	if zenith: res = np.array([st*cp,st*sp,ct])
 	else:      res = np.array([ct*cp,ct*sp,st])
-	return moveaxis(res, 0, axis)
+	return np.moveaxis(res, 0, axis)
 
-def rect2ang(rect, zenith=False, axis=0):
+def rect2ang(rect, zenith=False, axis=0, return_r=False):
 	"""The inverse of ang2rect."""
-	x,y,z = moveaxis(rect, axis, 0)
+	x,y,z = np.moveaxis(rect, axis, 0)
 	r     = (x**2+y**2)**0.5
 	phi   = np.arctan2(y,x)
 	if zenith: theta = np.arctan2(r,z)
 	else:      theta = np.arctan2(z,r)
-	return moveaxis(np.array([phi,theta]), 0, axis)
+	ang = np.moveaxis(np.array([phi,theta]), 0, axis)
+	return (ang,r) if return_r else ang
 
 def angdist(a, b, zenith=False, axis=0):
 	"""Compute the angular distance between a[{ra,dec},...]
 	and b[{ra,dec},...] using a Vincenty formula that's stable
 	both for small and large angular separations. a and b must
 	broadcast correctly."""
-	a = moveaxis(np.asarray(a), axis, 0)
-	b = moveaxis(np.asarray(b), axis, 0)
+	a = np.moveaxis(np.asarray(a), axis, 0)
+	b = np.moveaxis(np.asarray(b), axis, 0)
 	dra = a[0]-b[0]
 	sin_dra = np.sin(dra)
 	cos_dra = np.cos(dra)
@@ -2570,7 +2605,7 @@ def slice_downgrade(d, s, axis=-1):
 	"""Slice array d along the specified axis using the Slice s,
 	but interpret the step part of the slice as downgrading rather
 	than skipping."""
-	a = moveaxis(d, axis, 0)
+	a = np.moveaxis(d, axis, 0)
 	step = s.step or 1
 	a = a[s.start:s.stop:-1 if step < 0 else 1]
 	step = abs(step)
@@ -2581,7 +2616,7 @@ def slice_downgrade(d, s, axis=-1):
 	if len(a2)*step != len(a):
 		rest = a[len(a2)*step:]
 		a2 = np.concatenate([a2,[np.mean(rest,0)]],0)
-	return moveaxis(a2, 0, axis)
+	return np.moveaxis(a2, 0, axis)
 
 def outer_stack(arrays):
 	"""Example. outer_stack([[1,2,3],[10,20]]) -> [[[1,1],[2,2],[3,3]],[[10,20],[10,20],[10,2]]]"""
@@ -3020,3 +3055,48 @@ def without_nan(a):
 	"""Returns a copy of a with nans and infs set to 0. The original
 	array is not modified."""
 	return np.nan_to_num(a, copy=True, nan=0, posinf=0, neginf=0)
+
+# Why doesn't scipy have this?
+def primes(n):
+	"""Simple prime factorization of the positive integer n. Uses the
+	brute force algorithm, but it's quite fast even for huge numbers."""
+	i = 2
+	factors = []
+	while i * i <= n:
+		if n % i:
+			i += 1
+		else:
+			n //= i
+		factors.append(i)
+	if n > 1:
+		factors.append(n)
+	return factors
+
+def res2nside(res):
+	return (np.pi/3)**0.5/res
+def nside2res(nside):
+	return (np.pi/3)**0.5/nside
+
+def split_esc(string, delim, esc='\\'):
+	"""Split string by the delimiter except when escaped by
+	the given escape character, which defaults to backslash.
+	Consumes one level of escapes. Yields the tokens one by
+	one as an iterator."""
+	if len(delim) != 1: raise ValueError("delimiter must be one character")
+	if len(esc)   != 1: raise ValueError("escape character must be one character")
+	if len(string) == 0: yield ""
+	inesc = False
+	ostr  = ""
+	for i, c in enumerate(string):
+		if inesc:
+			if c != esc: ostr += c
+			inesc = False
+		elif c == esc:
+			inesc = True
+		elif c == delim:
+			yield ostr
+			ostr = ""
+		else:
+			ostr += c
+	if len(ostr) > 0:
+		yield ostr

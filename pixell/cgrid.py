@@ -21,6 +21,31 @@ def calc_line_segs(pixs, steplim=10.0, extrapolate=2.0):
 	for i in range(1,nseg): segs[i] = extrap(segs[i][::-1])[::-1]
 	return segs
 
+def prune_bad_segs(segs, shape, tol=10000):
+	"""Given a list of lists segments [:][:,{y,x}], remove segments that contain
+	NaN or where both points are outside the shape."""
+	osegs = []
+	# tol is a hack to skip points that are far outside the area.
+	# we can't skip all points outside the area due to our non-zero step size.
+	# With a zero tol, we could skip cases where one point is above our patch and the
+	# next point is below it.
+	pmin = -tol
+	pmax = np.array([shape[-1],shape[-2]])+tol
+	for seg in segs:
+		# A segment with just one point won't result in a line
+		if len(seg) <= 1: continue
+		seg = np.asarray(seg)
+		finite = np.all(np.isfinite(seg),1)
+		seg    = seg[finite]
+		inside = np.all((seg >= pmin) & (seg <= pmax),1)
+		left_inside  = np.concatenate([[False],inside[:-1]])
+		right_inside = np.concatenate([inside[1:],[False]])
+		good   = inside | left_inside | right_inside
+		seg    = seg[good]
+		if len(seg) > 1:
+			osegs.append(seg)
+	return osegs
+
 #def calc_line_segs(pixs, steplim=10.0):
 #	# Split on huge jumps
 #	lens = np.sum((pixs[1:]-pixs[:-1])**2,1)**0.5
@@ -33,7 +58,12 @@ class Gridinfo: pass
 def calc_gridinfo(shape, wcs, steps=[2,2], nstep=[200,200], zenith=False, unit=1):
 	"""Return an array of line segments representing a coordinate grid
 	for the given shape and wcs. the steps argument describes the
-	number of points to use along each meridian."""
+	number of points to use along each meridian.
+
+	Known bugs:
+	* projections invalid coordinates, like TAN, can have some of these invalid coordinates
+	  incorrectly appear inside the map area.
+	"""
 	if   unit in ["d","degree"]: unit = 1.0
 	elif unit in ["m","arcmin"]: unit = 1.0/60
 	elif unit in ["s","arcsec"]: unit = 1.0/3600
@@ -59,13 +89,13 @@ def calc_gridinfo(shape, wcs, steps=[2,2], nstep=[200,200], zenith=False, unit=1
 		# Loop over theta
 		pixs = np.array(wcsutils.nobcheck(wcs).wcs_world2pix(phi, np.linspace(box[0,0],box[1,0],nstep[0],endpoint=True), 0)).T
 		if not wcsutils.is_plain(wcs): phi = utils.rewind(phi, 0, 360)
-		gridinfo.lon.append((phi/unit,calc_line_segs(pixs)))
+		gridinfo.lon.append((phi/unit,prune_bad_segs(calc_line_segs(pixs),shape)))
 	# Draw lines of latitude
 	for theta in start[0] + np.arange(nline[0])*steps[0]:
 		# Loop over phi
-		pixs = np.array(wcsutils.nobcheck(wcs).wcs_world2pix(np.linspace(box[0,1],box[1,1]+0.9,nstep[1],endpoint=True), theta, 0)).T
+		pixs = np.array(wcsutils.nobcheck(wcs).wcs_world2pix(np.linspace(box[0,1],box[1,1]+0.9,nstep[1],endpoint=True), theta, 0)).T # [:,{x,y}]
 		if zenith: theta = 90-theta
-		gridinfo.lat.append((theta/unit,calc_line_segs(pixs)))
+		gridinfo.lat.append((theta/unit,prune_bad_segs(calc_line_segs(pixs),shape)))
 	return gridinfo
 
 def draw_grid(gridinfo, color="00000020", width=1, background=None):
@@ -75,7 +105,7 @@ def draw_grid(gridinfo, color="00000020", width=1, background=None):
 		draw = ImageDraw.Draw(grid, "RGBA")
 		for cval, segs in gridinfo.lon:
 			for seg in segs:
-					draw.line([tuple(i) for i in seg], fill=col, width=width)
+				draw.line([tuple(i) for i in seg], fill=col, width=width)
 		for cval, segs in gridinfo.lat:
 			for seg in segs:
 				draw.line([tuple(i) for i in seg], fill=col, width=width)
@@ -95,6 +125,7 @@ def calc_label_pos(linesegs, shape):
 	for label_value, curveset in linesegs:
 		# Loop over subsegments, which are generated due to angle wrapping
 		for curve in curveset:
+			#print("curve", curve)
 			# Check if we cross one of the edges of the image. We want
 			# the crossing to happen between the selected position and the next
 			# Used to have curve + 0.5 for ldist and shape - 0.5 - curve for rdist
