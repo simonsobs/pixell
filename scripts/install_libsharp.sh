@@ -22,11 +22,6 @@ else
 			brew install autoconf automake libtool
 		fi
 		aclocal
-		alias gcc='gcc-*'
-		alias cc='gcc-*'
-		alias g++='g++-*'
-		alias c++='c++-*'
-		alias gfortran='gfortran-*'
 	elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
 		echo WARNING: automake not found. Since this looks like Linux, attempting to load its module.
 		module load autotools
