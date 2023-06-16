@@ -13,13 +13,13 @@ if [ $? -eq 0 ]; then
 else
 	if [ "$(uname)" == "Darwin" ]; then
 		echo WARNING: automake not found. Since this looks like Mac OS, attempting to install it.
-		brew install autoconf automake
+		brew install autoconf automake libtool
 		if [ $? -eq 0 ]; then
 			echo
 		else
 			echo "NOTE: You might need to enter your user password since we are going to attempt to install homebrew."
 			ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)" < /dev/null 2> /dev/null
-			brew install autoconf automake
+			brew install autoconf automake libtool
 		fi
 		aclocal
 	elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
