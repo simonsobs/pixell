@@ -267,31 +267,79 @@ def alm2map_adjoint(map, alm, spin=[0,2], deriv=False,
 		copy=copy, method=method, ainfo=ainfo, verbose=verbose, nthread=nthread,
 		niter=niter, epsilon=epsilon, pix_tol=pix_tol, weights=weights, locinfo=locinfo)
 
-# Healpix versions. Not updated yet
-def alm2map_healpix(alm, healmap=None, ainfo=None, nside=None, spin=[0,2], deriv=False, copy=False,
-		theta_min=None, theta_max=None, map2alm_adjoint=False):
+def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, map2alm_adjoint=False,
+		copy=False, ainfo=None, nside=None, theta_min=None, theta_max=None, nthread=None):
 	"""Projects the given alm[...,ncomp,nalm] onto the given healpix map
 	healmap[...,ncomp,npix]."""
-	raise NotImplementedError
 	alm, ainfo = prepare_alm(alm, ainfo)
 	healmap    = prepare_healmap(healmap, nside, alm.shape[:-1], alm.real.dtype)
-	nside = npix2nside(healmap.shape[-1])
-	minfo = sharp.map_info_healpix(nside)
-	minfo = apply_minfo_theta_lim(minfo, theta_min, theta_max)
-	return alm2map_raw(alm, healmap[...,None], ainfo=ainfo, minfo=minfo,
-			spin=spin, deriv=deriv, copy=copy, map2alm_adjoint=map2alm_adjoint)[...,0]
+	alm_full   = utils.atleast_Nd(alm, 2 if deriv else 3)
+	map_full   = utils.atleast_Nd(healmap, 3)
+	alm_full   = utils.fix_zero_strides(alm_full)
+	map_full   = utils.fix_zero_strides(map_full)
+	# Check if shapes are consistent
+	if deriv and (alm_full.shape[:-1] != map_full.shape[:-2] or map_full.shape[-2] != 2):
+		raise ValueError("When deriv is True, alm must have shape [...,nelem] and map shape [...,2,npix]")
+	if not deriv and (alm_full.shape[:-1] != map_full.shape[:-1]):
+		raise ValueError("alm must have shape [...,[ncomp,]nelem] and map shape [...,[ncomp,]npix]")
+	if map2alm_adjoint: raise NotImplementedError("map2alm_adjoint is not implemented in ducc")
+	else: func = ducc0.sht.experimental.synthesis
+	nside   = npix2nside(map_full.shape[-1])
+	rinfo   = get_ring_info_healpix(nside)
+	rinfo   = apply_minfo_theta_lim(rinfo, theta_min, theta_max)
+	nthread = int(utils.getenv("OMP_NUM_THREADS", nthread))
+	kwargs  = {"theta":rinfo.theta, "nphi":rinfo.nphi, "phi0":rinfo.phi0,
+		"ringstart":rinfo.offsets, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
+		"mstart": ainfo.mstart, "nthreads":nthread}
+	# Loop over pre-dimensions
+	for I in utils.nditer(map_full.shape[:-3]):
+		if deriv:
+			ducc0.sht.experimental.synthesis(alm=alm_full[I], map=map_full[I], mode="DERIV1", **kwargs)
+			# Flip sign of theta derivative to get dec derivative
+			map_full[I+(0,)] *= -1
+		else:
+			for s, j1, j2 in enmap.spin_helper(spin, alm_full[I].shape[-2]):
+				Ij = I+(slice(j1,j2),)
+				print(alm_full[Ij].shape, map_full[Ij].shape)
+				ducc0.sht.experimental.synthesis(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
+	return healmap
 
-def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], copy=False,
-		theta_min=None, theta_max=None, alm2map_adjoint=False):
-	raise NotImplementedError
-	"""Projects the given alm[...,ncomp,nalm] onto the given healpix map
-	healmap[...,ncomp,npix]."""
-	alm, ainfo = prepare_alm(alm, ainfo, lmax, healmap.shape[:-1], healmap.dtype)
-	nside = npix2nside(healmap.shape[-1])
-	minfo = sharp.map_info_healpix(nside)
-	minfo = apply_minfo_theta_lim(minfo, theta_min, theta_max)
-	return map2alm_raw(healmap[...,None], alm, minfo=minfo, ainfo=ainfo,
-			spin=spin, copy=copy, alm2map_adjoint=alm2map_adjoint)
+def map2alm_healpix(healmap, alm, ainfo=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, niter=0, theta_min=None, theta_max=None, nthread=None):
+	"""Helper function for map2alm_cyl. Usually not called directly. See the map2alm docstring for details."""
+	if copy: alm = alm.copy()
+	alm, ainfo = prepare_alm(alm, ainfo)
+	alm_full   = utils.atleast_Nd(alm, 2 if deriv else 3)
+	map_full   = utils.atleast_Nd(healmap, 3)
+	alm_full   = utils.fix_zero_strides(alm_full)
+	map_full   = utils.fix_zero_strides(map_full)
+	nside      = npix2nside(map_full.shape[-1])
+	rinfo      = get_ring_info_healpix(nside)
+	rinfo      = apply_minfo_theta_lim(rinfo, theta_min, theta_max)
+	nthread    = int(utils.getenv("OMP_NUM_THREADS", nthread))
+	kwargs     = {"theta":rinfo.theta, "nphi":rinfo.nphi, "phi0":rinfo.phi0,
+		"ringstart":rinfo.offsets, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
+		"mstart": ainfo.mstart, "nthreads":nthread}
+	if weights is None: weights = 4*np.pi/rinfo.npix
+	# Helper for weights multiplication
+	def wmul(map_flat, weights): return map_flat*weights
+	# Iterate over all the predimensions
+	for I in utils.nditer(map_full.shape[:-2]):
+		if deriv:
+			def forward(alm): return ducc0.sht.experimental.synthesis(alm=alm, mode="DERIV1", **kwargs)
+			def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis(map=map, mode="DERIV1", **kwargs)
+			def approx_backward(map): return adjoint(wmul(map,weights))
+			decflip = np.array([-1,1])[:,None,None]
+			if alm2map_adjoint: alm_full[I] = adjoint(map_full[I]*decflip)
+			else:               alm_full[I] = jacobi_inverse(forward, approx_backward, map_full[I]*decflip, niter=niter)
+		else:
+			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
+				Ij = I+(slice(j1,j2),)
+				def forward(alm): return ducc0.sht.experimental.synthesis(alm=alm, spin=s, **kwargs)
+				def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis(map=map, spin=s, **kwargs)
+				def approx_backward(map): return adjoint(wmul(map,weights))
+				if alm2map_adjoint: alm_full[Ij] = adjoint(map_full[Ij])
+				else:               alm_full[Ij] = jacobi_inverse(forward, approx_backward, map_full[Ij], niter=niter)
+	return alm
 
 # Class used to specify alm layout. Compatible with the old one from the libsharp-based
 # implementation.
@@ -447,7 +495,9 @@ def apply_minfo_theta_lim(minfo, theta_min=None, theta_max=None):
 	mask = np.full(minfo.nrow, True, bool)
 	if theta_min is not None: mask &= minfo.theta >= theta_min
 	if theta_max is not None: mask &= minfo.theta <= theta_max
-	return minfo.select_rows(mask)
+	res = minfo.copy()
+	for key in ["theta", "nphi", "phi0"]: res[key] = res[key][mask]
+	return res
 
 def fill_gauss(arr, bsize=0x10000):
 	rtype = np.zeros([0],arr.dtype).real.dtype
@@ -688,26 +738,18 @@ def alm2map_raw_2d(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, ve
 	minfo = analyse_geometry(map.shape, map.wcs)
 	if map2alm_adjoint: raise NotImplementedError("map2alm_adjoint_2d is not implemented in ducc")
 	else:               func = ducc0.sht.experimental.synthesis_2d
+	kwargs = {"phi0": minfo.phi0, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
+		"geometry": minfo.ducc_name, "nthreads": nthread}
 	# Iterate over all the predimensions.
 	for I in utils.nditer(alm_full.shape[:-2]):
 		if deriv:
-			func(
-				alm      = alm_full[I],  map      = map_full[I],
-				phi0     = minfo.phi0,   lmax     = ainfo.lmax,
-				mmax     = ainfo.mmax,   mode     = "DERIV1", 
-				nthreads = nthread,      geometry = minfo.ducc_name,
-			)
+			func(alm=alm_full[I], map=map_full[I], mode="DERIV1", **kwargs)
 			# Flip sign of theta derivative to get dec derivative
 			map_full[I+(0,)] *= -1
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
-				func(
-					alm      = alm_full[Ij],  map      = map_full[Ij],
-					phi0     = minfo.phi0,    lmax     = ainfo.lmax,
-					mmax     = ainfo.mmax,    spin     = s,
-					nthreads = nthread,       geometry = minfo.ducc_name,
-				)
+				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
 	return map
 
 def alm2map_raw_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None):
@@ -718,6 +760,9 @@ def alm2map_raw_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, c
 	rinfo    = get_ring_info(map.shape, map.wcs)
 	if map2alm_adjoint: raise NotImplementedError("map2alm_adjoint is not implemented in ducc")
 	else:               func = ducc0.sht.experimental.synthesis
+	kwargs   = {"theta":rinfo.theta, "nphi":rinfo.nphi, "phi0":rinfo.phi0,
+		"ringstart":rinfo.offsets, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
+		"mstart": ainfo.mstart, "nthreads":nthread}
 	# Iterate over all the predimensions. Why do I do this instead of just
 	# passing them on to ducc all at once?
 	# 1. numpy.reshape can end up silently making a copy in some cases when slicing
@@ -727,29 +772,17 @@ def alm2map_raw_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, c
 	#    make big internal work arrays.
 	# 3. According to Reinecke, ducc almost always just loop internally over pre-
 	#    dimensions anyway.
+	# Normally this will be called from alm2map_cyl, which already loops over pre-
+	# dimensions, so this outermost loop usually does nothing
 	for I in utils.nditer(alm_full.shape[:-2]):
 		if deriv:
-			func(
-				alm       = alm_full[I],  map       = map_full[I],
-				theta     = rinfo.theta,  nphi      = rinfo.nphi,
-				phi0      = rinfo.phi0,   ringstart = rinfo.offsets,
-				lmax      = ainfo.lmax,   mmax      = ainfo.mmax,
-				mode      = "DERIV1",     mstart    = ainfo.mstart,
-				nthreads  = nthread,
-			)
+			func(alm=alm_full[I], map=map_full[I], mode="DERIV1", **kwargs)
 			# Flip sign of theta derivative to get dec derivative
 			map_full[I+(0,)] *= -1
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
-				func(
-					alm      = alm_full[Ij],  map       = map_full[Ij],
-					theta    = rinfo.theta,   nphi      = rinfo.nphi,
-					phi0     = rinfo.phi0,    ringstart = rinfo.offsets,
-					lmax     = ainfo.lmax,    mmax      = ainfo.mmax,
-					mstart   = ainfo.mstart,  spin      = s,
-					nthreads = nthread,
-				)
+				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
 	return map
 
 def alm2map_raw_pos(alm, map, loc, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, epsilon=1e-6):
@@ -758,26 +791,17 @@ def alm2map_raw_pos(alm, map, loc, ainfo=None, spin=[0,2], deriv=False, copy=Fal
 	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, deriv=deriv, nthread=nthread, pixdims=1)
 	if map2alm_adjoint: raise NotImplementedError("map2alm_adjoint_pos is not implemented in ducc")
 	else:               func = ducc0.sht.experimental.synthesis_general
+	kwargs = {"loc":loc, "lmax":ainfo.lmax, "mmax":ainfo.mmax, "nthreads":nthread, "epsilon":epsilon}
 	# Iterate over all the predimensions.
 	for I in utils.nditer(alm_full.shape[:-2]):
 		if deriv:
-			func(
-				alm      = alm_full[I],  map      = map_full[I],
-				loc      = loc,          lmax     = ainfo.lmax,
-				mmax     = ainfo.mmax,   mode     = "DERIV1", 
-				nthreads = nthread,      epsilon  = epsilon,
-			)
+			func(alm=alm_full[I], map=map_full[I], mode="DERIV1", **kwargs)
 			# Flip sign of theta derivative to get dec derivative
 			map_full[I+(0,)] *= -1
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
-				func(
-					alm      = alm_full[Ij], map      = map_full[Ij],
-					loc      = loc,          lmax     = ainfo.lmax,
-					mmax     = ainfo.mmax,   spin     = s,
-					nthreads = nthread,      epsilon  = epsilon,
-				)
+				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
 	return map
 
 def map2alm_raw_2d(map, alm, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None):
@@ -790,26 +814,18 @@ def map2alm_raw_2d(map, alm, ainfo=None, spin=[0,2], deriv=False, copy=False, ve
 		raise NotImplementedError("ducc does not support derivatives for map2alm operations. Can be worked around if necessary.")
 	if alm2map_adjoint: func = ducc0.sht.experimental.adjoint_synthesis_2d
 	else:               func = ducc0.sht.experimental.analysis_2d
+	kwargs = {"phi0": minfo.phi0, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
+		"geometry": minfo.ducc_name, "nthreads": nthread}
 	# Iterate over all the predimensions.
-	for I in utils.nditer(alm_full.shape[:-2]):
+	for I in utils.nditer(map_full.shape[:-3]):
 		if deriv:
 			# Flip sign of theta derivative to get dec derivative
 			decflip = np.array([-1,1])[:,None,None]
-			func(
-				alm      = alm_full[I],  map      = map_full[I]*decflip,
-				phi0     = minfo.phi0,   lmax     = ainfo.lmax,
-				mmax     = ainfo.mmax,   mode     = "DERIV1",
-				nthreads = nthread,      geometry = minfo.ducc_name,
-			)
+			func(alm=alm_full[I], map=map_full[I]*decflip, mode="DERIV1", **kwargs)
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
-				func(
-					alm      = alm_full[Ij],  map      = map_full[Ij],
-					phi0     = minfo.phi0,    lmax     = ainfo.lmax,
-					mmax     = ainfo.mmax,    spin     = s,
-					nthreads = nthread,       geometry = minfo.ducc_name,
-				)
+				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
 	return alm
 
 def map2alm_raw_cyl(map, alm, ainfo=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, niter=0, nthread=None):
@@ -821,12 +837,11 @@ def map2alm_raw_cyl(map, alm, ainfo=None, spin=[0,2], weights=None, deriv=False,
 	kwargs   = {"theta":rinfo.theta, "nphi":rinfo.nphi, "phi0":rinfo.phi0,
 		"ringstart":rinfo.offsets, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
 		"mstart": ainfo.mstart, "nthreads":nthread}
-	if weights is None: weights = np.ones(1)
 	# Helper for weights multiplication
 	def wmul(map_flat, weights):
 		return (map_flat.reshape(map_flat.shape[:-1]+map.shape[-2:])*weights[:,None]).reshape(map_flat.shape)
 	# Iterate over all the predimensions.
-	for I in utils.nditer(alm_full.shape[:-2]):
+	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
 			def forward(alm): return ducc0.sht.experimental.synthesis(alm=alm, mode="DERIV1", **kwargs)
 			def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis(map=map, mode="DERIV1", **kwargs)
@@ -851,7 +866,7 @@ def map2alm_raw_pos(map, alm, loc, ainfo=None, spin=[0,2], weights=None, deriv=F
 	kwargs = {"loc":loc, "lmax":ainfo.lmax, "mmax":ainfo.mmax, "nthreads":nthread, "epsilon":epsilon}
 	if weights is None: weights = np.ones(1)
 	# Iterate over all the predimensions.
-	for I in utils.nditer(alm_full.shape[:-2]):
+	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
 			def forward(alm): return ducc0.sht.experimental.synthesis_general(alm=alm, mode="DERIV1", **kwargs)
 			def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis_general(map=map, mode="DERIV1", **kwargs)
@@ -938,6 +953,38 @@ def get_ring_info(shape, wcs):
 	offsets = utils.cumsum(nphi).astype(np.uint64)
 	stride  = np.zeros(ntheta,dtype=np.int32)+1
 	return bunch.Bunch(theta=theta, nphi=nphi, phi0=phi0, offsets=offsets, stride=stride, npix=np.sum(nphi), nrow=len(nphi))
+
+def get_ring_info_healpix(nside, rings=None):
+	# Which rings to work with.
+	nside = int(nside)
+	if rings is None: rings = np.arange(4*nside-1)
+	else:             rings = np.asarray(rings)
+	nring  = len(rings)
+	npix   = 12*nside**2
+	# Allocate output arrays
+	theta  = np.zeros(nring, np.float64)
+	phi0   = np.zeros(nring, np.float64)
+	nphi   = np.zeros(nring, np.uint64)
+	# One-based to make comparison with sharp implementation easier
+	rings      = rings+1
+	northrings = np.where(rings > 2*nside, 4*nside-rings, rings)
+	# Handle polar cap
+	cap         = np.where(northrings < nside)[0]
+	theta[ cap] = 2*np.arcsin(northrings[cap]/(6**0.5*nside))
+	nphi [ cap] = 4*northrings[cap]
+	phi0 [ cap] = np.pi/(4*northrings[cap])
+	# Handle rest
+	rest        = np.where(northrings >= nside)[0]
+	theta[rest] = np.arccos((2*nside-northrings[rest])*(8*nside/npix))
+	nphi [rest] = 4*nside
+	phi0 [rest] = np.pi/(4*nside) * (((northrings[rest]-nside)&1)==0)
+	# Above assumed northern hemisphere. Fix southern
+	south       = np.where(northrings != rings)[0]
+	theta[south]= np.pi-theta[south]
+	# Compute the starting point of each ring
+	offsets     = utils.cumsum(nphi).astype(np.uint64)
+	stride      = np.ones(nring, np.int32)
+	return bunch.Bunch(theta=theta, nphi=nphi, phi0=phi0, offsets=offsets, stride=stride, npix=npix, nrow=nring)
 
 def flip2slice(flips):
 	res = (Ellipsis,)
