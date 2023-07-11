@@ -14,8 +14,6 @@ else
 	if [ "$(uname)" == "Darwin" ]; then
 		echo WARNING: automake not found. Since this looks like Mac OS, attempting to install it.
 		brew install autoconf automake libtool
-		export CC=gcc-11
-		export CXX=g++-11
 		if [ $? -eq 0 ]; then
 			echo
 		else
