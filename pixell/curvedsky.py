@@ -163,6 +163,37 @@ def map2alm_adjoint(alm, map, spin=[0,2], deriv=False,
 		copy=copy, method=method, ainfo=ainfo, verbose=verbose, nthread=nthread,
 		epsilon=epsilon, pix_tol=pix_tol, locinfo=locinfo)
 
+def alm2map_pos(alm, pos=None, loc=None, ainfo=None, map=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, epsilon=1e-6):
+	"""Like alm2map, but operates directly on arbitrary positions instead of an enmap.
+	The positions are given either with the pos argument or the loc argument.
+	 pos: [{dec,ra},...] in radians
+	 loc: [...,{codec,ra}] in radians. codec is pi/2 - dec, ra must be positive
+	The underlying implementation uses loc, so if pos is passed an internal loc will be
+	built. See alm2map for the meaning of the other arguments."""
+	if copy: map = map.copy()
+	if loc is None:
+		# The disadvantage of passing pos instead of loc is that we end up
+		# making a copy in the convention ducc wants
+		loc = np.moveaxis(np.asarray(pos),0,-1).copy(order="C")
+		# This should use less memory than writing loc[:,0] = np.pi/2-loc[:,0]
+		loc[...,0] *= -1
+		loc[...,0] += np.pi/2
+		# Should use rewind here, but this is more efficient
+		loc[loc[...,1]<0,1] += 2*np.pi
+		# Support arbitrary pre-dimensions for loc (post-dimensions for pos)
+	lpre = loc.shape[:-1]
+	loc  = loc.reshape(-1,2)
+	if deriv: oshape = alm.shape[:-1]+(2,len(loc))
+	else:     oshape = alm.shape[:-1]+(len(loc),)
+	if map is None:
+		map = np.zeros(oshape, utils.real_dtype(alm.dtype))
+	for I in utils.nditer(map.shape[:-2]):
+		alm2map_raw_general(alm[I], map[I], loc, ainfo=ainfo, spin=spin, deriv=deriv,
+				verbose=verbose, epsilon=epsilon, map2alm_adjoint=map2alm_adjoint)
+	# Reshape to reflect the dimensions pos/loc
+	map = map.reshape(map.shape[:-1]+lpre)
+	return map
+
 def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, alm2map_adjoint=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
 		niter=0, epsilon=1e-6, pix_tol=1e-6, weights=None, locinfo=None):
@@ -287,7 +318,7 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, map2alm_adjoint=
 	nside   = npix2nside(map_full.shape[-1])
 	rinfo   = get_ring_info_healpix(nside)
 	rinfo   = apply_minfo_theta_lim(rinfo, theta_min, theta_max)
-	nthread = int(utils.getenv("OMP_NUM_THREADS", nthread))
+	nthread = int(utils.fallback(utils.getenv("OMP_NUM_THREADS", nthread),0))
 	kwargs  = {"theta":rinfo.theta, "nphi":rinfo.nphi, "phi0":rinfo.phi0,
 		"ringstart":rinfo.offsets, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
 		"mstart": ainfo.mstart, "nthreads":nthread}
@@ -597,7 +628,7 @@ def alm2cl(alm, alm2=None, ainfo=None):
 	ainfo = alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
 	return ainfo.alm2cl(alm, alm2=alm2)
 
-def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=0, inplace=False):
+def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=None, inplace=False):
 	"""Rotate the given alm[...,:] via the zyz rotations given by psi, theta and phi.
 	The underlying implementation is provided by ducc0 or healpy. This is controlled
 	with the "method" argument, which can be "ducc0", "healpy" or "auto". For "auto"
@@ -610,8 +641,7 @@ def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=0, inplac
 	if lmax is None: lmax = nalm2lmax(alm.shape[-1])
 	if method == "auto": method = utils.first_importable("ducc0", "healpy")
 	if method == "ducc0":
-		try: nthread = nthread or int(os.environ['OMP_NUM_THREADS'])
-		except (KeyError, ValueError): nthread = 0
+		nthread = int(utils.fallback(utils.getenv("OMP_NUM_THREADS",nthread),0))
 		for I in utils.nditer(alm.shape[:-1]):
 			alm[I] = ducc0.sht.rotate_alm(alm[I], lmax=lmax, psi=psi, theta=theta, phi=phi, nthreads=nthread)
 	elif method == "healpy":
@@ -679,37 +709,6 @@ def alm2map_general(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, v
 			map[I][mslice] = tmap
 		else:
 			map[I] = tmap.reshape(map[I].shape)
-	return map
-
-def alm2map_pos(alm, pos=None, loc=None, ainfo=None, map=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, epsilon=1e-6):
-	"""Like alm2map, but operates directly on arbitrary positions instead of an enmap.
-	The positions are given either with the pos argument or the loc argument.
-	 pos: [{dec,ra},...] in radians
-	 loc: [...,{codec,ra}] in radians. codec is pi/2 - dec, ra must be positive
-	The underlying implementation uses loc, so if pos is passed an internal loc will be
-	built. See alm2map for the meaning of the other arguments."""
-	if copy: map = map.copy()
-	if loc is None:
-		# The disadvantage of passing pos instead of loc is that we end up
-		# making a copy in the convention ducc wants
-		loc = np.moveaxis(np.asarray(pos),0,-1).copy(order="C")
-		# This should use less memory than writing loc[:,0] = np.pi/2-loc[:,0]
-		loc[...,0] *= -1
-		loc[...,0] += np.pi/2
-		# Should use rewind here, but this is more efficient
-		loc[loc[...,1]<0,1] += 2*np.pi
-		# Support arbitrary pre-dimensions for loc (post-dimensions for pos)
-	lpre = loc.shape[:-1]
-	loc  = loc.reshape(-1,2)
-	if deriv: oshape = alm.shape[:-1]+(2,len(loc))
-	else:     oshape = alm.shape[:-1]+(len(loc),)
-	if map is None:
-		map = np.zeros(oshape, utils.real_dtype(alm.dtype))
-	for I in utils.nditer(map.shape[:-2]):
-		alm2map_raw_general(alm[I], map[I], loc, ainfo=ainfo, spin=spin, deriv=deriv,
-				verbose=verbose, epsilon=epsilon, map2alm_adjoint=map2alm_adjoint)
-	# Reshape to reflect the dimensions pos/loc
-	map = map.reshape(map.shape[:-1]+lpre)
 	return map
 
 def map2alm_2d(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, pix_tol=1e-6):
@@ -1220,7 +1219,7 @@ def prepare_raw(alm, map, ainfo=None, lmax=None, deriv=False, verbose=False, nth
 	else:
 		assert map.shape[:-pixdims] == alm.shape[:-1], "map and alm must agree on pre-dimensions"
 	# Maybe this should be a part of map_info too
-	nthread  = int(utils.getenv("OMP_NUM_THREADS", nthread))
+	nthread  = int(utils.fallback(utils.getenv("OMP_NUM_THREADS", nthread),0))
 	# Massage to the shape the general ducc interface wants.
 	alm_full = utils.atleast_Nd(alm, 2 if deriv else 3)
 	map_full = utils.atleast_Nd(map, pixdims+2)

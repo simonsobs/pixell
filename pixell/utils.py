@@ -182,6 +182,11 @@ def dict_apply_listfun(dict, function):
 	res  = function(vals)
 	return {key: res[i] for i, key in enumerate(keys)}
 
+def fallback(*args):
+	for arg in args:
+		if arg is not None: return arg
+	return None
+
 def unwind(a, period=2*np.pi, axes=[-1], ref=0, refmode="left", mask_nan=False):
 	"""Given a list of angles or other cyclic coordinates
 	where a and a+period have the same physical meaning,
