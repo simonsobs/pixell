@@ -13,6 +13,7 @@ if [ "$(uname)" == "Darwin" ]; then
 		fi
 		
 		brew reinstall gcc
+		hash -r
 
 	fi
 
