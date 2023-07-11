@@ -2,11 +2,11 @@
 full sky."""
 from __future__ import print_function, division
 import numpy as np, os, ducc0
-from . import enmap, powspec, wcsutils, utils, bunch
+from . import enmap, powspec, wcsutils, utils, bunch, cmisc
 
 class ShapeError(Exception): pass
 
-def rand_map(shape, wcs, ps, lmax=None, dtype=np.float64, seed=None, oversample=2.0, spin=[0,2], method="auto", direct=False, verbose=False):
+def rand_map(shape, wcs, ps, lmax=None, dtype=np.float64, seed=None, spin=[0,2], method="auto", verbose=False):
 	"""Generates a CMB realization with the given power spectrum for an enmap
 	with the specified shape and WCS. This is identical to enlib.rand_map, except
 	that it takes into account the curvature of the full sky. This makes it much
@@ -23,7 +23,7 @@ def rand_map(shape, wcs, ps, lmax=None, dtype=np.float64, seed=None, oversample=
 	alm   = rand_alm_healpy(ps, lmax=lmax, seed=seed, dtype=ctype)
 	if verbose: print("Allocating output map shape %s dtype %s" % (str((ncomp,)+shape[-2:]), np.dtype(dtype).char))
 	map   = enmap.empty((ncomp,)+shape[-2:], wcs, dtype=dtype)
-	alm2map(alm, map, spin=spin, oversample=oversample, method=method, direct=direct, verbose=verbose)
+	alm2map(alm, map, spin=spin, method=method, verbose=verbose)
 	if len(shape) == 2: map = map[0]
 	return map
 
@@ -117,9 +117,9 @@ def alm2map(alm, map, spin=[0,2], deriv=False, map2alm_adjoint=False,
 	  projection where pixels are equi-spaced and evenly divide the sky
 	  along each horizontal line. Maps with partial sky coverage will be
 	  temporarily padded horizontally as necessary.
-	 "pos": Use ducc's general transforms. These work for any pixelization,
+	 "general": Use ducc's general transforms. These work for any pixelization,
 	  but are significantly more expensive, both in terms of time and memory.
-	 "auto": Automatically choose "2d", "cyl" or "pos". This is the default.,
+	 "auto": Automatically choose "2d", "cyl" or "general". This is the default.,
 	ainfo: alm_info object containing information about the alm layout.
 	 default: standard triangular layout,
 	verbose: If True, prints information about what's being done
@@ -147,9 +147,9 @@ def alm2map(alm, map, spin=[0,2], deriv=False, map2alm_adjoint=False,
 		if verbose: print("method: cyl")
 		return alm2map_cyl(alm, map, ainfo=ainfo, minfo=minfo, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, map2alm_adjoint=map2alm_adjoint, nthread=nthread, pix_tol=pix_tol)
-	elif method == "pos":
-		if verbose: print("method: pos")
-		return alm2map_pos(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, copy=copy,
+	elif method == "general":
+		if verbose: print("method: general")
+		return alm2map_general(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, map2alm_adjoint=map2alm_adjoint, nthread=nthread, epsilon=epsilon,
 			locinfo=locinfo)
 	else:
@@ -163,7 +163,7 @@ def map2alm_adjoint(alm, map, spin=[0,2], deriv=False,
 		copy=copy, method=method, ainfo=ainfo, verbose=verbose, nthread=nthread,
 		epsilon=epsilon, pix_tol=pix_tol, locinfo=locinfo)
 
-def map2alm(map, alm, spin=[0,2], deriv=False, alm2map_adjoint=False,
+def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, alm2map_adjoint=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
 		niter=0, epsilon=1e-6, pix_tol=1e-6, weights=None, locinfo=None):
 	"""Spherical harmonics analysis. Transform from real space to harmonic space.
@@ -244,26 +244,26 @@ def map2alm(map, alm, spin=[0,2], deriv=False, alm2map_adjoint=False,
 	if method == "auto": method = get_method(map.shape, map.wcs, minfo=minfo)
 	if   method == "2d":
 		if verbose: print("method: 2d")
-		return map2alm_2d(map, alm, ainfo=ainfo, minfo=minfo, spin=spin, deriv=deriv, copy=copy,
+		return map2alm_2d(map, alm, ainfo=ainfo, minfo=minfo, lmax=lmax, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, alm2map_adjoint=alm2map_adjoint, nthread=nthread, pix_tol=pix_tol)
 	elif method == "cyl":
 		if verbose: print("method: cyl")
-		return map2alm_cyl(map, alm, ainfo=ainfo, minfo=minfo, spin=spin, deriv=deriv, copy=copy,
+		return map2alm_cyl(map, alm, ainfo=ainfo, minfo=minfo, lmax=lmax, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, alm2map_adjoint=alm2map_adjoint, nthread=nthread, niter=niter,
 			pix_tol=pix_tol, weights=weights)
 	elif method == "pos":
 		if verbose: print("method: pos")
-		return map2alm_pos(map, alm, ainfo=ainfo, spin=spin, deriv=deriv, copy=copy,
+		return map2alm_general(map, alm, ainfo=ainfo, lmax=lmax, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, alm2map_adjoint=alm2map_adjoint, nthread=nthread, epsilon=epsilon,
 			locinfo=locinfo, weights=weights)
 	else:
 		raise ValueError("Unrecognized alm2map method '%s'" % str(method))
 
-def alm2map_adjoint(map, alm, spin=[0,2], deriv=False,
+def alm2map_adjoint(map, alm=None, lmax=None, spin=[0,2], deriv=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
 		niter=0, epsilon=1e-6, pix_tol=1e-6, weights=None, locinfo=None):
 	"""The adjoint of alm2map. Forwards to map2alm. See its docstring for details"""
-	map2alm(map, alm, spin=spin, deriv=deriv, alm2map_adjoint=True,
+	map2alm(map, alm=alm, lmax=lmax, spin=spin, deriv=deriv, alm2map_adjoint=True,
 		copy=copy, method=method, ainfo=ainfo, verbose=verbose, nthread=nthread,
 		niter=niter, epsilon=epsilon, pix_tol=pix_tol, weights=weights, locinfo=locinfo)
 
@@ -294,7 +294,7 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, map2alm_adjoint=
 	# Loop over pre-dimensions
 	for I in utils.nditer(map_full.shape[:-3]):
 		if deriv:
-			ducc0.sht.experimental.synthesis(alm=alm_full[I], map=map_full[I], mode="DERIV1", **kwargs)
+			ducc0.sht.experimental.synthesis(alm=alm_full[I], map=map_full[I], mode="DERIV1", spin=1, **kwargs)
 			# Flip sign of theta derivative to get dec derivative
 			map_full[I+(0,)] *= -1
 		else:
@@ -304,10 +304,10 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, map2alm_adjoint=
 				ducc0.sht.experimental.synthesis(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
 	return healmap
 
-def map2alm_healpix(healmap, alm, ainfo=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, niter=0, theta_min=None, theta_max=None, nthread=None):
+def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, niter=0, theta_min=None, theta_max=None, nthread=None):
 	"""Helper function for map2alm_cyl. Usually not called directly. See the map2alm docstring for details."""
-	if copy: alm = alm.copy()
-	alm, ainfo = prepare_alm(alm, ainfo)
+	if copy and alm is not None: alm = alm.copy()
+	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=healmap.shape[:-1], dtype=healmap.dtype)
 	alm_full   = utils.atleast_Nd(alm, 2 if deriv else 3)
 	map_full   = utils.atleast_Nd(healmap, 3)
 	alm_full   = utils.fix_zero_strides(alm_full)
@@ -325,8 +325,8 @@ def map2alm_healpix(healmap, alm, ainfo=None, spin=[0,2], weights=None, deriv=Fa
 	# Iterate over all the predimensions
 	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
-			def forward(alm): return ducc0.sht.experimental.synthesis(alm=alm, mode="DERIV1", **kwargs)
-			def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis(map=map, mode="DERIV1", **kwargs)
+			def forward(alm): return ducc0.sht.experimental.synthesis(alm=alm, mode="DERIV1", spin=1, **kwargs)
+			def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis(map=map, mode="DERIV1", spin=1, **kwargs)
 			def approx_backward(map): return adjoint(wmul(map,weights))
 			decflip = np.array([-1,1])[:,None,None]
 			if alm2map_adjoint: alm_full[I] = adjoint(map_full[I]*decflip)
@@ -371,7 +371,7 @@ class alm_info:
 		self.lmax  = lmax
 		self.mmax  = mmax
 		self.stride= stride
-		self.nelem = np.max(mstart) + (lmax+1)*stride
+		self.nelem = int(np.max(mstart) + (lmax+1)*stride)
 		if nalm is not None:
 			assert self.nelem == nalm, "lmax must be explicitly specified when lmax != mmax"
 		self.mstart= mstart.astype(np.uint64)
@@ -388,7 +388,7 @@ class alm_info:
 		this function with the same array as "alm" and "out". If the out
 		argument is not specified, then a new array will be constructed
 		and returned."""
-		raise NotImplementedError
+		return cmisc.transpose_alm(self, alm, out=out)
 	def alm2cl(self, alm, alm2=None):
 		"""Computes the cross power spectrum for the given alm and alm2, which
 		must have the same dtype and broadcast. For example, to get the TEB,TEB
@@ -398,11 +398,13 @@ class alm_info:
 		be
 		 cl = ainfo.alm2cl(alm1[:,None,:], alm2[None,:,:])
 		In both these cases the output will be [{T,E,B},{T,E,B},nl]"""
-		raise NotImplementedError
+		return cmisc.alm2cl(self, alm, alm2=alm2)
 	def lmul(self, alm, lmat, out=None):
 		"""Computes res[a,lm] = lmat[a,b,l]*alm[b,lm], where lm is the position of the
 		element with (l,m) in the alm array, as defined by this class."""
-		raise NotImplementedError
+		return cmisc.lmul(self, alm, lmat, out=out)
+	def __repr__(self):
+		return "alm_info(lmax=%s,mmax=%s,mstart=%s)" % (str(self.lmax),str(self.mmax),str(self.mstart))
 
 def get_method(shape, wcs, minfo=None, pix_tol=1e-6):
 	"""Return which method map2alm and alm2map will use for the given
@@ -411,9 +413,9 @@ def get_method(shape, wcs, minfo=None, pix_tol=1e-6):
 	# Decide which method to use. Some cyl cases can be handled with 2d.
 	# Consider doing that in the future. Not that important for alm2map,
 	# but could help for map2alm.
-	if   info.case == "general": method = "pos"
-	elif info.case == "2d":      method = "2d"
-	else:                        method = "cyl"
+	if   minfo.case == "general": method = "pos"
+	elif minfo.case == "2d":      method = "2d"
+	else:                         method = "cyl"
 	return method
 
 # Quadrature weights
@@ -442,25 +444,25 @@ def profile2harm(br, r, lmax=None, oversample=1, left=None, right=None):
 	br    = np.asarray(br)
 	r     = np.asarray(r)
 	# 1. We will implement this using a SHT. Start by setting up its parameters
+	# Clenshaw-curtis sample points
 	dr    = (r[-1]-r[0])/(len(r)-1)
-	n     = utils.nint(np.pi/dr)
-	m     = int(np.ceil(r[-1]/dr))
-	minfo = sharp.map_info_clenshaw_curtis(n*oversample, nphi=1)
-	minfo = minfo.select_rows(np.arange(m))
-	if lmax is None: lmax = n//2-1
-	ainfo = sharp.alm_info(lmax=lmax, mmax=0)
-	sht   = sharp.sht(minfo, ainfo)
-	# 2. Interpolate br to the minfo geometry. Simple linear interpolation.
+	nfull = utils.nint(np.pi/dr)+1
+	dr    = np.pi/(nfull-1)
+	ncut  = int(np.ceil(r[-1]/dr))
+	if lmax is None: lmax = int(nfull//2-1)
 	l     = np.arange(lmax+1)
-	npre  = np.prod(br.shape[:-1], dtype=int)
-	harm  = np.zeros((npre,lmax+1),br.dtype)
-	alm   = np.zeros(ainfo.nelem, np.result_type(br,0j))
+	rinfo = get_ring_info_radial(np.arange(ncut)*dr)
+	# Get the ring weights
+	weights = ducc0.sht.experimental.get_gridweights("CC", nfull)[:ncut]
 	# This is to support br[...,nr] instead of just br[nr]
-	for i, br_single in enumerate(br.reshape(npre,-1)):
-		map = np.interp(minfo.theta, r, br_single, left=left, right=right)
-		sht.map2alm(map, alm)
-		harm[i] = alm.real * (4*np.pi/(2*l+1))**0.5
-	harm = harm.reshape(br.shape[:-1] + (harm.shape[-1],))
+	harm  = np.zeros(br.shape[:-1]+(lmax+1,), br.dtype)
+	for I in utils.nditer(br.shape[:-1]):
+		# 2. Interpolate br to the rinfo geometry. Simple linear interpolation.
+		map = np.interp(rinfo.theta, r, br[I], left=left, right=right).reshape(1,-1)
+		alm = ducc0.sht.experimental.adjoint_synthesis(
+				map=map*weights, theta=rinfo.theta, nphi=rinfo.nphi,
+				phi0=rinfo.phi0, ringstart=rinfo.offsets, spin=0, lmax=lmax, mmax=0)[0]
+		harm[I] = alm.real * (4*np.pi/(2*l+1))**0.5
 	return harm
 
 def harm2profile(bl, r):
@@ -468,15 +470,14 @@ def harm2profile(bl, r):
 	than these (150x faster in my test case). Should be exact too."""
 	bl = np.asarray(bl)
 	r  = np.asarray(r)
-	rtype = bl.reshape(-1)[0].real.dtype
-	minfo = sharp.map_info(theta=r, nphi=1)
-	ainfo = sharp.alm_info(lmax=bl.shape[-1]-1, mmax=0)
-	sht   = sharp.sht(minfo, ainfo)
-	l     = np.arange(bl.shape[-1])
+	l  = np.arange(bl.shape[-1])
+	rinfo = get_ring_info_radial(r)
 	alm   = bl * ((2*l+1)/(4*np.pi))**0.5 + 0j
-	br    = np.zeros(bl.shape[:-1]+(r.size,), rtype)
-	for a, b in zip(alm.reshape(-1, alm.shape[-1]), br.reshape(-1, br.shape[-1])):
-		sht.alm2map(a,b)
+	br    = np.zeros(bl.shape[:-1]+(r.size,), bl.dtype)
+	for I in utils.nditer(bl.shape[:-1]):
+		ducc0.sht.experimental.synthesis(
+				alm=alm[I][None], map=br[I][None], theta=rinfo.theta, nphi=rinfo.nphi, phi0=rinfo.phi0,
+				ringstart=rinfo.offsets, spin=0, lmax=bl.shape[-1]-1, mmax=0)[0]
 	return br
 
 #####################
@@ -510,7 +511,7 @@ def prepare_ps(ps, ainfo=None, lmax=None):
 	if ainfo is None:
 		if lmax is None: lmax = ps.shape[-1]-1
 		if lmax > ps.shape[-1]-1: ps = pad_spectrum(ps, lmax)
-		ainfo = sharp.alm_info(lmax)
+		ainfo = alm_info(lmax)
 	if   ps.ndim == 1: wps = ps[None,None]
 	elif ps.ndim == 2: wps = powspec.sym_expand(ps, scheme="diag")
 	elif ps.ndim == 3: wps = ps
@@ -544,7 +545,7 @@ def almxfl(alm,lfilter=None,ainfo=None):
 	    falm: The filtered alms a_{l,m} * lfilter(l)
 	"""
 	alm   = np.asarray(alm)
-	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
+	ainfo = alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
 	if callable(lfilter):
 		l = np.arange(ainfo.lmax+1.0)
 		lfilter = lfilter(l)
@@ -593,7 +594,7 @@ def alm2cl(alm, alm2=None, ainfo=None):
 	If a Healpix-style compressed spectrum is desired, use pixell.powspec.sym_compress.
 	"""
 	alm = np.asarray(alm)
-	ainfo = sharp.alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
+	ainfo = alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
 	return ainfo.alm2cl(alm, alm2=alm2)
 
 def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=0, inplace=False):
@@ -606,7 +607,7 @@ def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=0, inplac
 	0 (the default), then the number of threads is given by the value of the OMP_NUM_THREADS
 	variable."""
 	if not inplace:  alm  = alm.copy()
-	if lmax is None: lmax = sharp.nalm2lmax(alm.shape[-1])
+	if lmax is None: lmax = nalm2lmax(alm.shape[-1])
 	if method == "auto": method = utils.first_importable("ducc0", "healpy")
 	if method == "ducc0":
 		try: nthread = nthread or int(os.environ['OMP_NUM_THREADS'])
@@ -634,11 +635,11 @@ def alm2map_2d(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=F
 	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
-	for I in utils.nditer(map.shape[:-4]):
+	for I in utils.nditer(map.shape[:-3]):
 		# Pad as necessary
 		pad  = ((minfo.ypad[0],minfo.xpad[0]),(minfo.ypad[1],minfo.xpad[1]))
 		tmap = map2buffer(map[I], minfo.flip, pad)
-		alm2map_raw_2d(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, verbose=verbose)
+		alm2map_raw_2d(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, verbose=verbose, map2alm_adjoint=map2alm_adjoint)
 		# Copy out if necessary
 		if not utils.same_array(tmap, map[I]):
 			map[I] = buffer2map(tmap, minfo.flip, pad)
@@ -650,58 +651,91 @@ def alm2map_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=
 	if minfo is None: minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
-	for I in utils.nditer(map.shape[:-4]):
+	for I in utils.nditer(map.shape[:-3]):
 		# Unlike 2d, cyl is fine with a band around the sky, so y padding is not needed
 		pad  = ((0,minfo.xpad[0]),(0,minfo.xpad[1]))
 		tmap = map2buffer(map[I], minfo.flip, pad)
-		alm2map_raw_cyl(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, verbose=verbose)
+		alm2map_raw_cyl(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, verbose=verbose, map2alm_adjoint=map2alm_adjoint)
 		# Copy out if necessary
 		if not utils.same_array(tmap, map[I]):
 			map[I] = buffer2map(tmap, minfo.flip, pad)
 	return map
 
-def alm2map_pos(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, locinfo=None, epsilon=1e-6):
+def alm2map_general(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, locinfo=None, epsilon=1e-6):
 	"""Helper function for alm2map. See its docstring for details"""
 	if copy: map = map.copy()
 	if locinfo is None: locinfo = calc_locinfo(map.shape, map.wcs)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
-	for I in utils.nditer(map.shape[:-4]):
+	for I in utils.nditer(map.shape[:-3]):
 		if locinfo.masked:
 			mslice = (mask,) if map.ndim == 2 else (slice(None),locinfo.mask)
 			tmap = np.ascontiguousarray(map[I][mslice])
 		else:
 			tmap = utils.postflat(map[I],2)
-		alm2map_raw_pos(alm[I], tmap, locinfo.loc, ainfo=ainfo, spin=spin, deriv=deriv,
-				verbose=verbose, epsilon=epsilon)
+		alm2map_raw_general(alm[I], tmap, locinfo.loc, ainfo=ainfo, spin=spin, deriv=deriv,
+				verbose=verbose, epsilon=epsilon, map2alm_adjoint=map2alm_adjoint)
 		if locinfo.masked:
 			map[I][mslice] = tmap
 		else:
 			map[I] = tmap.reshape(map[I].shape)
 	return map
 
-def map2alm_2d(map, alm, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, pix_tol=1e-6):
+def alm2map_pos(alm, pos=None, loc=None, ainfo=None, map=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, epsilon=1e-6):
+	"""Like alm2map, but operates directly on arbitrary positions instead of an enmap.
+	The positions are given either with the pos argument or the loc argument.
+	 pos: [{dec,ra},...] in radians
+	 loc: [...,{codec,ra}] in radians. codec is pi/2 - dec, ra must be positive
+	The underlying implementation uses loc, so if pos is passed an internal loc will be
+	built. See alm2map for the meaning of the other arguments."""
+	if copy: map = map.copy()
+	if loc is None:
+		# The disadvantage of passing pos instead of loc is that we end up
+		# making a copy in the convention ducc wants
+		loc = np.moveaxis(np.asarray(pos),0,-1).copy(order="C")
+		# This should use less memory than writing loc[:,0] = np.pi/2-loc[:,0]
+		loc[...,0] *= -1
+		loc[...,0] += np.pi/2
+		# Should use rewind here, but this is more efficient
+		loc[loc[...,1]<0,1] += 2*np.pi
+		# Support arbitrary pre-dimensions for loc (post-dimensions for pos)
+	lpre = loc.shape[:-1]
+	loc  = loc.reshape(-1,2)
+	if deriv: oshape = alm.shape[:-1]+(2,len(loc))
+	else:     oshape = alm.shape[:-1]+(len(loc),)
+	if map is None:
+		map = np.zeros(oshape, utils.real_dtype(alm.dtype))
+	for I in utils.nditer(map.shape[:-2]):
+		alm2map_raw_general(alm[I], map[I], loc, ainfo=ainfo, spin=spin, deriv=deriv,
+				verbose=verbose, epsilon=epsilon, map2alm_adjoint=map2alm_adjoint)
+	# Reshape to reflect the dimensions pos/loc
+	map = map.reshape(map.shape[:-1]+lpre)
+	return map
+
+def map2alm_2d(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, pix_tol=1e-6):
 	"""Helper function for map2alm. See its docsctring for details."""
-	if copy: alm = alm.copy()
+	if copy and alm is not None: alm = alm.copy()
+	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=map.dtype)
 	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
-	for I in utils.nditer(map.shape[:-4]):
+	for I in utils.nditer(map.shape[:-3]):
 		# Pad as necessary
 		pad  = ((minfo.ypad[0],minfo.xpad[0]),(minfo.ypad[1],minfo.xpad[1]))
 		tmap = map2buffer(map[I], minfo.flip, pad)
-		map2alm_raw_2d(tmap, alm[I], ainfo=ainfo, spin=spin, deriv=deriv, verbose=verbose)
+		map2alm_raw_2d(tmap, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, deriv=deriv, verbose=verbose)
 	return alm
 
-def map2alm_cyl(map, alm, ainfo=None, minfo=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, pix_tol=1e-6, niter=0):
+def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, pix_tol=1e-6, niter=0):
 	"""Helper function for map2alm. See its docsctring for details."""
-	if copy: alm = alm.copy()
+	if copy and alm is not None: alm = alm.copy()
+	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=map.dtype)
 	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Get our weights, approximate or not
 	if weights is None and not alm2map_adjoint:
-		if minfo.ducc_name is not None:
+		if minfo.ducc_geo.name is not None:
 			ny      = map.shape[-2]+np.sum(minfo.ypad)
-			weights = ducc0.sht.experimental.get_gridweights(minfo.ducc_name, ny)
+			weights = ducc0.sht.experimental.get_gridweights(minfo.ducc_geo.name, ny)
 			weights = weights[minfo.ypad[0]:len(weights)-minfo.ypad[1]]
 			weights/= map.shape[-1]
 		else:
@@ -709,25 +743,26 @@ def map2alm_cyl(map, alm, ainfo=None, minfo=None, spin=[0,2], weights=None, deri
 		weights = weights.astype(map.dtype)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
-	for I in utils.nditer(map.shape[:-4]):
+	for I in utils.nditer(map.shape[:-3]):
 		# Pad as necessary
 		pad  = ((minfo.ypad[0],minfo.xpad[0]),(minfo.ypad[1],minfo.xpad[1]))
 		tmap = map2buffer(map[I], minfo.flip, pad)
-		map2alm_raw_cyl(tmap, alm[I], ainfo=ainfo, spin=spin, weights=weights, deriv=deriv, niter=niter, verbose=verbose)
+		map2alm_raw_cyl(tmap, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, weights=weights, deriv=deriv, niter=niter, verbose=verbose)
 	return alm
 
-def map2alm_pos(map, alm, ainfo=None, minfo=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, locinfo=None, epsilon=1e-6, niter=0):
+def map2alm_general(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, locinfo=None, epsilon=1e-6, niter=0):
 	"""Helper function for map2alm. See its docsctring for details."""
-	if copy: alm = alm.copy()
+	if copy and alm is not None: alm = alm.copy()
+	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=map.dtype)
 	if locinfo is None: locinfo = calc_locinfo(map.shape, map.wcs)
 	if weights is None: weights = map.pixsizemap()[locinfo.mask].astype(map.dtype)
-	for I in utils.nditer(map.shape[:-4]):
+	for I in utils.nditer(map.shape[:-3]):
 		if locinfo.masked:
 			mslice = (mask,) if map.ndim == 2 else (slice(None),locinfo.mask)
 			tmap = np.ascontiguousarray(map[I][mslice])
 		else:
 			tmap = utils.postflat(map[I],2)
-		map2alm_raw_pos(tmap, alm[I], locinfo.loc, ainfo=ainfo, spin=spin, deriv=deriv, weights=weights,
+		map2alm_raw_general(tmap, locinfo.loc, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, deriv=deriv, weights=weights,
 				verbose=verbose, niter=niter, epsilon=epsilon)
 	return alm
 
@@ -738,12 +773,16 @@ def alm2map_raw_2d(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, ve
 	minfo = analyse_geometry(map.shape, map.wcs)
 	if map2alm_adjoint: raise NotImplementedError("map2alm_adjoint_2d is not implemented in ducc")
 	else:               func = ducc0.sht.experimental.synthesis_2d
+	# mstart is needed to support a lower lmax than the one actually used in the alm
 	kwargs = {"phi0": minfo.phi0, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
-		"geometry": minfo.ducc_name, "nthreads": nthread}
-	# Iterate over all the predimensions.
-	for I in utils.nditer(alm_full.shape[:-2]):
+		"geometry": minfo.ducc_geo.name, "nthreads": nthread, "mstart": ainfo.mstart}
+	# Iterate over all the predimensions. If deriv is true we have
+	# alm[{pre},nalm], map[{pre},2,ny,nx]. Otherwise we have
+	# alm[{pre},ncomp,nalm], map[{pre},ncomp,ny,nx]. In either case, the
+	# pre-dimentions are map.shape[:-3]
+	for I in utils.nditer(map_full.shape[:-3]):
 		if deriv:
-			func(alm=alm_full[I], map=map_full[I], mode="DERIV1", **kwargs)
+			func(alm=utils.fix_zero_strides(alm_full[I][None]), map=map_full[I], mode="DERIV1", spin=1, **kwargs)
 			# Flip sign of theta derivative to get dec derivative
 			map_full[I+(0,)] *= -1
 		else:
@@ -774,9 +813,9 @@ def alm2map_raw_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, c
 	#    dimensions anyway.
 	# Normally this will be called from alm2map_cyl, which already loops over pre-
 	# dimensions, so this outermost loop usually does nothing
-	for I in utils.nditer(alm_full.shape[:-2]):
+	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
-			func(alm=alm_full[I], map=map_full[I], mode="DERIV1", **kwargs)
+			func(alm=utils.fix_zero_strides(alm_full[I][None]), map=map_full[I], mode="DERIV1", spin=1, **kwargs)
 			# Flip sign of theta derivative to get dec derivative
 			map_full[I+(0,)] *= -1
 		else:
@@ -785,17 +824,17 @@ def alm2map_raw_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, c
 				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
 	return map
 
-def alm2map_raw_pos(alm, map, loc, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, epsilon=1e-6):
-	"""Helper function for alm2map_pos. Usually not called directly. See the alm2map docstring for details."""
+def alm2map_raw_general(alm, map, loc, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, epsilon=1e-6):
+	"""Helper function for alm2map_general. Usually not called directly. See the alm2map docstring for details."""
 	if copy: map = map.copy()
 	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, deriv=deriv, nthread=nthread, pixdims=1)
-	if map2alm_adjoint: raise NotImplementedError("map2alm_adjoint_pos is not implemented in ducc")
+	if map2alm_adjoint: raise NotImplementedError("map2alm_adjoint_general is not implemented in ducc")
 	else:               func = ducc0.sht.experimental.synthesis_general
 	kwargs = {"loc":loc, "lmax":ainfo.lmax, "mmax":ainfo.mmax, "nthreads":nthread, "epsilon":epsilon}
 	# Iterate over all the predimensions.
-	for I in utils.nditer(alm_full.shape[:-2]):
+	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
-			func(alm=alm_full[I], map=map_full[I], mode="DERIV1", **kwargs)
+			func(alm=utils.fix_zero_strides(alm_full[I][None]), map=map_full[I], mode="DERIV1", spin=1, **kwargs)
 			# Flip sign of theta derivative to get dec derivative
 			map_full[I+(0,)] *= -1
 		else:
@@ -804,34 +843,38 @@ def alm2map_raw_pos(alm, map, loc, ainfo=None, spin=[0,2], deriv=False, copy=Fal
 				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
 	return map
 
-def map2alm_raw_2d(map, alm, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None):
+def map2alm_raw_2d(map, alm=None, ainfo=None, lmax=None, spin=[0,2], deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None):
 	"""Helper function for map2alm_2d. Usually not called directly. See the map2alm docstring for details."""
-	if copy: alm = alm.copy()
-	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, deriv=deriv, nthread=nthread)
+	if copy and alm is not None: alm = alm.copy()
+	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, lmax=lmax, deriv=deriv, nthread=nthread)
 	minfo = analyse_geometry(map.shape, map.wcs)
+	# Restrict to lmax and mmax that ducc_2d allows. Higher ones will be ignored.
+	lmax  = min(ainfo.lmax, minfo.ducc_geo.lmax)
+	mmax  = min(ainfo.mmax, lmax)
 	if deriv and not alm2map_adjoint:
 		# Could fix this by calling adjoint_synthesis_2d with weights myself
 		raise NotImplementedError("ducc does not support derivatives for map2alm operations. Can be worked around if necessary.")
 	if alm2map_adjoint: func = ducc0.sht.experimental.adjoint_synthesis_2d
 	else:               func = ducc0.sht.experimental.analysis_2d
-	kwargs = {"phi0": minfo.phi0, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
-		"geometry": minfo.ducc_name, "nthreads": nthread}
+	# mstart is needed to support a lower lmax than the one actually used in the alm
+	kwargs = {"phi0": minfo.phi0, "lmax":lmax, "mmax":mmax,
+		"geometry": minfo.ducc_geo.name, "nthreads": nthread, "mstart": ainfo.mstart[:mmax+1]}
 	# Iterate over all the predimensions.
 	for I in utils.nditer(map_full.shape[:-3]):
 		if deriv:
 			# Flip sign of theta derivative to get dec derivative
 			decflip = np.array([-1,1])[:,None,None]
-			func(alm=alm_full[I], map=map_full[I]*decflip, mode="DERIV1", **kwargs)
+			func(alm=utils.fix_zero_strides(alm_full[I][None]), map=map_full[I]*decflip, mode="DERIV1", spin=1, **kwargs)
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
 				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
 	return alm
 
-def map2alm_raw_cyl(map, alm, ainfo=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, niter=0, nthread=None):
+def map2alm_raw_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, niter=0, nthread=None):
 	"""Helper function for map2alm_cyl. Usually not called directly. See the map2alm docstring for details."""
-	if copy: alm = alm.copy()
-	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, deriv=deriv, nthread=nthread)
+	if copy and alm is not None: alm = alm.copy()
+	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, lmax=lmax, deriv=deriv, nthread=nthread)
 	map_full = utils.postflat(map_full, 2) # ducc wants just 1 pixel axis
 	rinfo    = get_ring_info   (map.shape, map.wcs)
 	kwargs   = {"theta":rinfo.theta, "nphi":rinfo.nphi, "phi0":rinfo.phi0,
@@ -843,12 +886,13 @@ def map2alm_raw_cyl(map, alm, ainfo=None, spin=[0,2], weights=None, deriv=False,
 	# Iterate over all the predimensions.
 	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
-			def forward(alm): return ducc0.sht.experimental.synthesis(alm=alm, mode="DERIV1", **kwargs)
-			def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis(map=map, mode="DERIV1", **kwargs)
+			def forward(alm): return ducc0.sht.experimental.synthesis(alm=alm, mode="DERIV1", spin=1, **kwargs)
+			def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis(map=map, mode="DERIV1", spin=1, **kwargs)
 			def approx_backward(map): return adjoint(wmul(map,weights))
 			decflip = np.array([-1,1])[:,None,None]
-			if alm2map_adjoint: alm_full[I] = adjoint(map_full[I]*decflip)
-			else:               alm_full[I] = jacobi_inverse(forward, approx_backward, map_full[I]*decflip, niter=niter)
+			# The with deriv, alm has a shape of [1,nalm]. The [0] reduces this to [nalm]
+			if alm2map_adjoint: alm_full[I] = adjoint(map_full[I]*decflip)[0]
+			else:               alm_full[I] = jacobi_inverse(forward, approx_backward, map_full[I]*decflip, niter=niter)[0]
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
@@ -859,21 +903,21 @@ def map2alm_raw_cyl(map, alm, ainfo=None, spin=[0,2], weights=None, deriv=False,
 				else:               alm_full[Ij] = jacobi_inverse(forward, approx_backward, map_full[Ij], niter=niter)
 	return alm
 
-def map2alm_raw_pos(map, alm, loc, ainfo=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, niter=0, epsilon=1e-6):
-	"""Helper function for map2alm_pos. Usually not called directly. See the map2alm docstring for details."""
-	if copy: map = map.copy()
-	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, deriv=deriv, nthread=nthread, pixdims=1)
+def map2alm_raw_general(map, loc, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, niter=0, epsilon=1e-6):
+	"""Helper function for map2alm_general. Usually not called directly. See the map2alm docstring for details."""
+	if copy and alm is not None: alm = alm.copy()
+	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, lmax=lmax, deriv=deriv, nthread=nthread, pixdims=1)
 	kwargs = {"loc":loc, "lmax":ainfo.lmax, "mmax":ainfo.mmax, "nthreads":nthread, "epsilon":epsilon}
 	if weights is None: weights = np.ones(1)
 	# Iterate over all the predimensions.
 	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
-			def forward(alm): return ducc0.sht.experimental.synthesis_general(alm=alm, mode="DERIV1", **kwargs)
-			def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis_general(map=map, mode="DERIV1", **kwargs)
+			def forward(alm): return ducc0.sht.experimental.synthesis_general(alm=alm, mode="DERIV1", spin=1, **kwargs)
+			def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis_general(map=map, mode="DERIV1", spin=1, **kwargs)
 			def approx_backward(map): return adjoint(map*weights)
 			decflip = np.array([-1,1])[:,None,None]
-			if alm2map_adjoint: alm_full[I] = adjoint(map_full[I]*decflip)
-			else:               alm_full[I] = jacobi_inverse(forward, approx_backward, map_full[I]*decflip, niter=niter)
+			if alm2map_adjoint: alm_full[I] = adjoint(map_full[I]*decflip)[0]
+			else:               alm_full[I] = jacobi_inverse(forward, approx_backward, map_full[I]*decflip, niter=niter)[0]
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
@@ -986,6 +1030,18 @@ def get_ring_info_healpix(nside, rings=None):
 	stride      = np.ones(nring, np.int32)
 	return bunch.Bunch(theta=theta, nphi=nphi, phi0=phi0, offsets=offsets, stride=stride, npix=npix, nrow=nring)
 
+def get_ring_info_radial(r):
+	"""Construct a ring info for a case where there's just one pixel in each ring.
+	This is useful for radially symmetric (mmax=0) transforms."""
+	theta = np.asarray(r, dtype=np.float64)
+	assert theta.ndim == 1, "r must be one-dimensional!"
+	n       = len(theta)
+	nphi    = np.ones  (n, dtype=np.uint64)
+	phi0    = np.zeros (n, dtype=np.float64)
+	offsets = np.arange(n, dtype=np.uint64)
+	stride  = np.ones  (n, dtype=np.int32)
+	return bunch.Bunch(theta=theta, nphi=nphi, phi0=phi0, offsets=offsets, stride=stride, npix=n, nrow=n)
+
 def flip2slice(flips):
 	res = (Ellipsis,)
 	for flip in flips: res = res + (slice(None,None,1-2*flip),)
@@ -1006,8 +1062,9 @@ def analyse_geometry(shape, wcs, tol=1e-6):
 	   general: only synthesis_general can be used
 	 flip: [flipy,flipx] bools. Only relevant for 2d and cyl.
 	   partial always needs slices, general never needs them.
-	 ducc_name: Matching ducc geometry: "CC", "F1", "MW", "MWflip"
-	   "DH", "F2". Or None if this doesn't correspond to a ducc geometry.
+	 ducc_geo: Matching ducc geometry. Most useful member is .name, which
+	   can be "CC", "F1", "MW", "MWflip" "DH", "F2".
+	   ducc_geo is None if this doesn't correspond to a ducc geometry.
 	 ypad: [npre,npost]. Only used when padding to 2d
 	 xpad: [npre,npost]. Used when case=="partial"
 	"""
@@ -1020,7 +1077,7 @@ def analyse_geometry(shape, wcs, tol=1e-6):
 	divides   = utils.hasoff(360/np.abs(wcs.wcs.cdelt[0]), 0, tol=tol)
 	if not separable or not divides:
 		# Not cylindrical or ra does not evenly divide the sky
-		return bunch.Bunch(case="general", flip=[False,False], ducc_name=None, ypad=(0,0), xpad=(0,0), phi0=0)
+		return bunch.Bunch(case="general", flip=[False,False], ducc_geo=None, ypad=(0,0), xpad=(0,0), phi0=0)
 	# Ok, so we're a cylindrical projection. Check if we need flipping
 	flip = [wcs.wcs.cdelt[1] > 0, wcs.wcs.cdelt[0] < 0]
 	# Flipped geometry
@@ -1029,12 +1086,11 @@ def analyse_geometry(shape, wcs, tol=1e-6):
 	phi0 = wwcs.wcs_pix2world(0, 0, 0)[0]*utils.degree
 	# Check how we fit with a predefined ducc geometry
 	ducc_geo  = get_ducc_geo(wwcs, shape=wshape, tol=tol)
-	ducc_name = ducc_geo.name if ducc_geo is not None else None
 	# If ducc_geo exists, then this map can either be used directly in
 	# analysis_2d, or it could be extended to be used in it
 	if ducc_geo is not None and shape[-2] == ducc_geo.ny and shape[-1] == ducc_geo.nx and np.abs(ducc_geo.yoff) < tol:
 		# We can use 2d directly, though maybe with some flipping
-		return bunch.Bunch(case="2d", flip=flip, ducc_name=ducc_name, ypad=(0,0), xpad=(0,0), phi0=phi0)
+		return bunch.Bunch(case="2d", flip=flip, ducc_geo=ducc_geo, ypad=(0,0), xpad=(0,0), phi0=phi0)
 				
 	else:
 		# We can't call 2d directly. But we may want to pad and then call it.
@@ -1045,11 +1101,11 @@ def analyse_geometry(shape, wcs, tol=1e-6):
 		if shape[-1] == nx:
 			# Yes, we have full rows, so can call cyl directly. But define a y slice for 2d
 			# compatibility if we can, so the user can choose
-			return bunch.Bunch(case="cyl", flip=flip, ducc_name=ducc_name, ypad=ypad, xpad=(0,0), phi0=phi0)
+			return bunch.Bunch(case="cyl", flip=flip, ducc_geo=ducc_geo, ypad=ypad, xpad=(0,0), phi0=phi0)
 		else:
 			# No, we don't have full rows. Define an x padding that takes us there
 			xpad = (0, nx-shape[-1])
-			return bunch.Bunch(case="partial", flip=flip, ducc_name=ducc_name, ypad=ypad, xpad=xpad, phi0=phi0)
+			return bunch.Bunch(case="partial", flip=flip, ducc_geo=ducc_geo, ypad=ypad, xpad=xpad, phi0=phi0)
 
 def get_ducc_geo(wcs, shape=None, tol=1e-6):
 	"""Return the ducc geometry type for the given world coordinate system
@@ -1088,8 +1144,15 @@ def get_ducc_geo(wcs, shape=None, tol=1e-6):
 	ny   = utils.nint(y2-y1+1-o1-o2)
 	# yoff is the y pixel offset of our first pixel from where the first pixel
 	yoff = utils.nint(-y1-o1)
-	# logically starts
-	return bunch.Bunch(name=name, nx=utils.nint(nx), ny=ny, pole_offs=[o1,o2], phi0=phi0, yoff=yoff)
+	# maximum lmax supported for the geometry
+	lmax = get_ducc_maxlmax(name, ny)
+	return bunch.Bunch(name=name, nx=utils.nint(nx), ny=ny, pole_offs=[o1,o2], phi0=phi0, yoff=yoff, lmax=lmax)
+
+def get_ducc_maxlmax(name, ny):
+	if   name == "CC": return ny-2
+	elif name == "DH": return (ny-2)//2
+	elif name == "F2": return (ny-1)//2
+	else:              return ny-1
 
 def calc_locinfo(shape, wcs, bsize=1000):
 	"""Calculate pixel position info in the format ducc needs"""
@@ -1149,8 +1212,8 @@ def prepare_alm(alm=None, ainfo=None, lmax=None, pre=(), dtype=np.float64):
 		ainfo = alm_info(nalm=alm.shape[-1])
 	return alm, ainfo
 
-def prepare_raw(alm, map, ainfo=None, deriv=False, verbose=False, nthread=None, pixdims=2):
-	alm, ainfo = prepare_alm(alm, ainfo)
+def prepare_raw(alm, map, ainfo=None, lmax=None, deriv=False, verbose=False, nthread=None, pixdims=2):
+	alm, ainfo = prepare_alm(alm, ainfo, lmax=lmax, pre=map.shape[:-pixdims], dtype=map.dtype)
 	if deriv:
 		assert map.ndim >= pixdims+1 and map.shape[-pixdims-1] == 2, "map must have shape [...,2,%s] when deriv is True" % ("nloc" if pixdims == 1 else "ny,nx")
 		assert map.shape[:-1-pixdims] == alm.shape[:-1], "map and alm must agree on pre-dimensions"

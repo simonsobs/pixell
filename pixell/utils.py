@@ -521,7 +521,7 @@ def bin_multi(pix, shape, weights=None):
 	returning map[shape]."""
 	pix  = np.maximum(np.minimum(pix, (np.array(shape)-1)[:,None]),0)
 	inds = np.ravel_multi_index(tuple(pix), tuple(shape))
-	size = np.product(shape)
+	size = np.prod(shape)
 	if weights is not None: weights = inds*0+weights
 	return np.bincount(inds, weights=weights, minlength=size).reshape(shape)
 
@@ -1122,7 +1122,7 @@ def box_slice(a, b):
 
 def box_area(a):
 	"""Compute the area of a [{from,to},ndim] box, or an array of such boxes."""
-	return np.abs(np.product(a[...,1,:]-a[...,0,:],-1))
+	return np.abs(np.prod(a[...,1,:]-a[...,0,:],-1))
 
 def box_overlap(a, b):
 	"""Given two boxes/boxarrays, compute the overlap of each box with each other
@@ -1224,7 +1224,7 @@ def allgatherv(a, comm, axis=0):
 	# Put the axis first, as that's what Allgatherv wants
 	fa = np.moveaxis(a, axis, 0)
 	# Do the same for the shapes, to figure out what the non-gather dimensions should be
-	shapes = [shape[1:] for shape in comm.allgather(fa.shape) if np.product(shape) != 0]
+	shapes = [shape[1:] for shape in comm.allgather(fa.shape) if np.prod(shape) != 0]
 	# All arrays are empty, so just return what we had
 	if len(shapes) == 0: return a
 	# otherwise make sure we have the right shape
@@ -1235,7 +1235,7 @@ def allgatherv(a, comm, axis=0):
 	if must_fix:
 		fa = fa.view(dtype=np.uint8)
 	#print(comm.rank, "fa.shape", fa.shape)
-	ra = fa.reshape(fa.shape[0],-1) if fa.size > 0 else fa.reshape(0,np.product(fa.shape[1:],dtype=int))
+	ra = fa.reshape(fa.shape[0],-1) if fa.size > 0 else fa.reshape(0,np.prod(fa.shape[1:],dtype=int))
 	N  = ra.shape[1]
 	n  = allgather([len(ra)],comm)
 	o  = cumsum(n)
@@ -1302,7 +1302,7 @@ def redistribute(iarrs, iboxes, oboxes, comm, wrap=0):
 	preshape = iarrs[0].shape[:-2]
 	oshapes= [tuple(sbox_size(b)) for b in oboxes]
 	oarrs  = [np.zeros(preshape+oshape,dtype) for oshape in oshapes]
-	presize= np.product(preshape,dtype=int)
+	presize= np.prod(preshape,dtype=int)
 	# Find out what we must send to and receive from each other task.
 	# rboxes will contain slices into oarr and sboxes into iarr.
 	# Due to wrapping, a single pair of boxes can have multiple intersections,
@@ -1325,7 +1325,7 @@ def redistribute(iarrs, iboxes, oboxes, comm, wrap=0):
 		for i2 in range(rboxes.shape[1]):
 			rboxes[i1,i2] = safe_div(rboxes[i1,i2], oboxes[i2])
 			for box in rboxes[i1,i2]:
-				count += np.product(sbox_size(box))
+				count += np.prod(sbox_size(box))
 		nrecv[nimap[i1]] += count*presize
 	recvbuf = np.empty(np.sum(nrecv), dtype)
 
@@ -1339,7 +1339,7 @@ def redistribute(iarrs, iboxes, oboxes, comm, wrap=0):
 		for i2 in range(sboxes.shape[1]):
 			sboxes[i1,i2] = safe_div(sboxes[i1,i2], iboxes[i2])
 			for box in sboxes[i1,i2]:
-				count += np.product(sbox_size(box))
+				count += np.prod(sbox_size(box))
 				sendbuf.append(iarrs[i2][sbox2slice(box)].reshape(-1))
 		nsend[nomap[i1]] += count*presize
 	sendbuf = np.concatenate(sendbuf) if len(sendbuf) > 0 else np.zeros(0,dtype)
@@ -1356,7 +1356,7 @@ def redistribute(iarrs, iboxes, oboxes, comm, wrap=0):
 		for i2 in range(rboxes.shape[1]):
 			for rbox in rboxes[i1,i2]:
 				rshape = tuple(sbox_size(rbox))
-				data   = recvbuf[off:off+np.product(rshape)*presize]
+				data   = recvbuf[off:off+np.prod(rshape)*presize]
 				oarrs[i2][sbox2slice(rbox)] = data.reshape(preshape + rshape)
 				off += data.size
 	return oarrs
@@ -1383,7 +1383,7 @@ def sbox_intersect(a,b,wrap=0):
 			peraxis = [sbox_intersect_1d(a1[d],b1[d],wrap=wrap[d]) for d in range(ndim)]
 			# Get the outer product of these
 			nper    = tuple([len(p) for p in peraxis])
-			iflat   = np.arange(np.product(nper))
+			iflat   = np.arange(np.prod(nper))
 			ifull   = np.array(np.unravel_index(iflat, nper)).T
 			subres  = [[p[i] for i,p in zip(inds,peraxis)] for inds in ifull]
 			res[ai,bi] = subres
@@ -1581,7 +1581,7 @@ def sbox_wrap(sbox, wrap=0, cap=0):
 		dim_boxes.append(boxes_1d)
 	# Now create the outer product of all the individual dimensions' box sets
 	nper    = tuple([len(p) for p in dim_boxes])
-	iflat   = np.arange(np.product(nper))
+	iflat   = np.arange(np.prod(nper))
 	ifull   = np.array(np.unravel_index(iflat, nper)).T
 	res     = [[[p[i][io] for i,p in zip(inds,dim_boxes)] for io in [0,1]] for inds in ifull]
 	return res
@@ -1702,7 +1702,7 @@ def label_unique(a, axes=(), rtol=1e-5, atol=1e-8):
 
 	# First reshape into a doubly-flattened 2d array [nelem,ndim]
 	fa = partial_flatten(a, axes, 0)
-	fa = fa.reshape(np.product(rest),-1)
+	fa = fa.reshape(np.prod(rest),-1)
 	# Can't use lexsort, as it has no tolerance. This
 	# is O(N^2) instead of O(NlogN)
 	id = 0

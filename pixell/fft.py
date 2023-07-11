@@ -28,7 +28,7 @@ class numpy_FFTW:
 				self.b[:] = np.fft.irfftn(self.a, s=[self.b.shape[i] for i in self.axes], axes=self.axes)
 			# Numpy already normalizes, so undo this if necessary
 			if not normalise_idft:
-				self.b *= np.product([self.b.shape[i] for i in self.axes])
+				self.b *= np.prod([self.b.shape[i] for i in self.axes])
 
 class ducc_FFTW:
 	"""Minimal wrapper of numpy in order to be able to provide it as an engine.
@@ -156,7 +156,7 @@ def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None):
 		plan(normalise_idft=False)
 	# I get a small, cumulative loss in amplitude when using
 	# pyfftw's normalize function.. So normalize manually instead	
-	if normalize: tod /= np.product([tod.shape[i] for i in axes])
+	if normalize: tod /= np.prod([tod.shape[i] for i in axes])
 	return tod
 
 def rfft(tod, ft=None, nthread=0, axes=[-1], flags=None):
@@ -237,7 +237,7 @@ def idct(dt, tod=None, nthread=0, normalize=False, axes=[-1], flags=None, type="
 	if tod is None:
 		tod = empty(dt.shape, dt.dtype)
 	fft(dt, tod, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes))
-	if normalize: tod /= np.product([2*(tod.shape[i]+off) for i in axes])
+	if normalize: tod /= np.prod([2*(tod.shape[i]+off) for i in axes])
 	return tod
 
 _dct_names = {
