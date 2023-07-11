@@ -1421,7 +1421,7 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car", variant="CC"):
 	wcs.wcs.ctype = ["RA---CAR","DEC--CAR"]
 	return dims+(ny,nx), wcs
 
-def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
+def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car", variant="CC"):
 	"""Return a geometry corresponding to a sky that had a full-sky
 	geometry but to which a declination cut was applied. If dec_cut
 	is a single number, the declination range will be (-dec_cut,dec_cut)
@@ -1440,7 +1440,7 @@ def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car"):
 		assert dec_cut_max>dec_cut_min
 	else:
 		raise ValueError
-	ishape,iwcs = fullsky_geometry(res=res, shape=shape, dims=dims, proj=proj)
+	ishape,iwcs = fullsky_geometry(res=res, shape=shape, dims=dims, proj=proj, variant=variant)
 	start = sky2pix(ishape,iwcs,(dec_cut_min,0))[0]
 	stop = sky2pix(ishape,iwcs,(dec_cut_max,0))[0]
 	Ny,_ = ishape[-2:]

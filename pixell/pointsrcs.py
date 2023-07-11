@@ -520,18 +520,21 @@ def read_nemo(fname):
 
 def read_simple(fname):
 	try:
-		return np.loadtxt(fname, dtype=[("ra","d"),("dec","d"),("I","d"),("dI","d")], usecols=range(4), ndmin=1).view(np.recarray)
+		cat = np.loadtxt(fname, dtype=[("ra","d"),("dec","d"),("I","d"),("dI","d")], usecols=range(4), ndmin=1).view(np.recarray)
 	except ValueError:
 		try:
-			return np.loadtxt(fname, dtype=[("ra","d"),("dec","d"),("I","d")], usecols=range(3), ndmin=1).view(np.recarray)
+			cat = np.loadtxt(fname, dtype=[("ra","d"),("dec","d"),("I","d")], usecols=range(3), ndmin=1).view(np.recarray)
 		except ValueError as e:
 			raise IOError(e.args[0])
+	cat.ra  *= utils.degree
+	cat.dec *= utils.degree
+	return cat
 
 def read_dory_fits(fname, hdu=1):
 	d = fits.open(fname)[hdu].data
 	ocat = np.zeros(len(d), dtype=[("ra","d"),("dec","d"),("I","d"),("Q","d"),("U","d")]).view(np.recarray)
-	ocat.ra  = d.ra
-	ocat.dec = d.dec
+	ocat.ra  = d.ra  * utils.degree
+	ocat.dec = d.dec * utils.degree
 	ocat.I, ocat.Q, ocat.U = d.amp.T*1e3
 	return ocat
 

@@ -11,7 +11,7 @@ except NameError: basestring = str
 
 def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*utils.arcmin,
 		order=3, oversample=4, pol=None, oshape=None, owcs=None, extensive=False, verbose=False,
-		filter=None,pixwin=False):
+		filter=None,pixwin=False,pixwin_order=0):
 	"""Given an enmap [...,ny,nx] and a set of coordinates in a numpy array
 	coords with shape (n,2) and ordering [n,{dec,ra}], extract a set
 	of thumbnail images [n,...,thumby,thumbx] centered on each set of
@@ -80,7 +80,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 		ithumb = imap.extract_pixbox(pixbox)
 		if extensive: ithumb /= ithumb.pixsizemap()
 		ithumb = ithumb.apod(apod_pix, fill="median")
-		if pixwin: ithumb = enmap.apply_window(ithumb, -1)
+		if pixwin: ithumb = enmap.unapply_window(ithumb, order=pixwin_order)
 		if filter is not None: ithumb = filter(ithumb)
 		if verbose:
 			print("%4d/%d %6.2f %6.2f %8.2f %dx%d" % (si+1, nsrc, coords[si,0]/utils.degree, coords[si,1]/utils.degree, np.max(ithumb), ithumb.shape[-2], ithumb.shape[-1]))
@@ -102,14 +102,14 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 	return omaps
 
 def thumbnails_ivar(imap, coords, r=5*utils.arcmin, res=None, proj="tan",
-		oshape=None, owcs=None, extensive=True, verbose=False):
+		oshape=None, owcs=None, order=1, extensive=True, verbose=False):
 	"""Like thumbnails, but for hitcounts, ivars, masks, and other quantities that
 	should stay positive and local. Remember to set extensive to True if you have an
 	extensive quantity, i.e. if the values in each pixel would go up if multiple pixels
 	combined. An example of this is a hitcount map or ivar per pixel. Conversely, if
 	you have an intensive quantity like ivar per arcmin you should set extensive=False."""
 	return thumbnails(imap, coords, r=r, res=res, proj=proj, oshape=oshape, owcs=owcs,
-			order=1, oversample=1, pol=False, extensive=extensive, verbose=verbose,
+			order=order, oversample=1, pol=False, extensive=extensive, verbose=verbose,
 			pixwin=False)
 
 def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, nside_mode="pow2", boundary="constant", verbose=False):
