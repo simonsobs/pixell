@@ -913,6 +913,12 @@ def atleast_3d(a):
 	elif a.ndim == 2: return a.reshape((1,)+a.shape)
 	else: return a
 
+def atleast_Nd(a, n):
+	"""Prepend length-1 dimensions to array a to make it n-dimensional"""
+	a = np.asanyarray(a)
+	if a.ndim >= n: return a
+	else: return a[(None,)*(n-a.ndim)]
+
 def to_Nd(a, n, axis=0, return_inverse=False):
 	a    = np.asanyarray(a)
 	if n >= a.ndim:
@@ -924,9 +930,53 @@ def to_Nd(a, n, axis=0, return_inverse=False):
 		res  = a.reshape(a.shape[:axis]+(-1,)+a.shape[axis+1+a.ndim-n:])
 	return (res, a.shape) if return_inverse else res
 
+def preflat(a, n):
+	"""Flatten the first n dimensions of a. If n is negative,
+	flatten all but the last -n dimensions."""
+	a = np.asanyarray(a)
+	if n < 0: n = a.ndim-n
+	return a.reshape((-1,)+a.shape[n:])
+
+def postflat(a, n):
+	"""Flatten the last n dimensions of a. If n is negative,
+	flatten all but the last -n dimensions."""
+	a = np.asanyarray(a)
+	if n < 0: n = a.ndim-n
+	return a.reshape(a.shape[:a.ndim-n]+(-1,))
+
 def between_angles(a, range, period=2*np.pi):
 	a = rewind(a, np.mean(range), period=period)
 	return (a>=range[0])&(a<range[1])
+
+def hasoff(val, off, tol=1e-6):
+	"""Return True if val's deviation from an integer value
+	equals off to the given tolerance (default: 1e-6). Example.
+	hasoff(17.3, 0.3) == True"""
+	return np.abs((val-off+0.5)%1-0.5)<tol
+
+def same_array(a, b):
+	"""Returns true if a and b are the same array"""
+	return a.shape == b.shape and a.dtype == b.dtype and a.data == b.data and a.strides == b.strides
+
+def fix_zero_strides(a):
+	"""Given an array a, return the same array with any zero-stride along
+	an axis with length one, such as those introduced by None-indexing,
+	replaced with an equivalent value"""
+	# Find last non-zero stride
+	good_strides = [s for s in a.strides if s != 0]
+	last = good_strides[-1] if len(good_strides) > 0 else a.itemsize
+	ostrides = []
+	for i in range(a.ndim-1,-1,-1):
+		s = a.strides[i]
+		n = a.shape[i]
+		if s == 0 and n == 1:
+			if i == a.ndim-1: s = last
+			else: s = last * a.shape[i+1]
+		ostrides.append(s)
+		last = s
+	ostrides = tuple(ostrides[::-1])
+	oarr = np.lib.stride_tricks.as_strided(a, strides=ostrides)
+	return oarr
 
 def greedy_split(data, n=2, costfun=max, workfun=lambda w,x: x if w is None else x+w):
 	"""Given a list of elements data, return indices that would
@@ -1089,6 +1139,16 @@ def widen_box(box, margin=1e-3, relative=True):
 	margin = np.asarray(margin) # Support 1d case
 	margin[box[0]>box[1]] *= -1
 	return np.array([box[0]-margin/2, box[1]+margin/2])
+
+def pad_box(box, padding):
+	"""How I should have implemented widen_box from the beginning.
+	Simply pads a box by an absolute amount. The only complication
+	is the sign stuff that handles descending axes in the box."""
+	box  = np.array(box, copy=True)
+	sign = np.sign(box[...,1,:]-box[...,0,:])
+	box[...,0,:] -= padding*sign
+	box[...,1,:] += padding*sign
+	return box
 
 def unwrap_range(range, nwrap=2*np.pi):
 	"""Given a logically ordered range[{from,to},...] that
@@ -2954,7 +3014,7 @@ class CG:
 		dot argument. This is useful for MPI-parallelization, for example."""
 		# Init parameters
 		self.A   = A
-		self.b   = b
+		self.b   = b # not necessary to store this. Delete?
 		self.M   = M
 		self.dot = dot
 		if x0 is None:
@@ -2976,10 +3036,13 @@ class CG:
 		and .err being updated. To solve the system, call step() in
 		a loop until you are satisfied with the accuracy. The result
 		can then be read off from .x."""
+		# Full vectors: p, Ap, x, r, z. Ap and z not in memory at the
+		# same time. Total memory cost: 4 vectors + 1 temporary = 5 vectors
 		Ap = self.A(self.p)
 		alpha = self.rz/self.dot(self.p, Ap)
 		self.x += alpha*self.p
 		self.r -= alpha*Ap
+		del Ap
 		z       = self.M(self.r)
 		next_rz = self.dot(self.r, z)
 		self.err = next_rz/self.rz0
@@ -3002,6 +3065,55 @@ class CG:
 		with h5py.File(fname, "r") as hfile:
 			for key in ["i","rz","rz0","x","r","p","err"]:
 				setattr(self, key, hfile[key][()])
+
+class Minres:
+	"""A simple Minres solver. Solves the equation system Ax=b."""
+	def __init__(self, A, b, x0=None, dot=default_dot):
+		"""Initialize a solver for the system Ax=b, with a starting guess of x0 (0
+		if not provided). Vectors b and x0 must provide addition and multiplication,
+		as well as the .copy() method, such as provided by numpy arrays. The
+		preconditioner is given by M. A and M must be functors acting on vectors
+		and returning vectors. The dot product may be manually specified using the
+		dot argument. This is useful for MPI-parallelization, for example."""
+		# Init parameters
+		self.A   = A
+		self.dot = dot
+		if x0 is None:
+			self.x = b*0
+			self.r = b*1
+		else:
+			self.x  = x0.copy()
+			self.r  = b-self.A(self.x)
+		# Internal work variables
+		z       = self.A(self.r)
+		self.rz = self.dot(self.r,z)
+		self.rz0= self.rz
+		self.p  = self.r.copy()
+		self.q  = z
+		self.i  = 0
+		self.err= 1
+		self.abserr = self.rz/len(self.x)
+	def step(self):
+		"""Take a single step in the iteration. Results in .x, .i
+		and .err being updated. To solve the system, call step() in
+		a loop until you are satisfied with the accuracy. The result
+		can then be read off from .x."""
+		# Vectors: x, r, z, p, q. All in use at the same time.
+		# So memory cost = 5 vectors + 1 temporary = 6 vectors
+		alpha   = self.rz/self.dot(self.q,self.q)
+		self.x += alpha*self.p
+		self.r -= alpha*self.q
+		z       = self.A(self.r)
+		next_rz = self.dot(self.r,z)
+		beta    = next_rz/self.rz
+		self.rz = next_rz
+		self.q *= beta; self.q += z; del z
+		self.p *= beta; self.p += self.r
+		self.i += 1
+		# Estimate of variance of Ax-b relative to starting point
+		self.err    = self.rz/self.rz0
+		# Estimate of variance of Ax-b
+		self.abserr = self.rz/len(self.x)
 
 def nditer(shape):
 	ndim = len(shape)
@@ -3100,3 +3212,17 @@ def split_esc(string, delim, esc='\\'):
 			ostr += c
 	if len(ostr) > 0:
 		yield ostr
+
+def getenv(name, default=None):
+	"""Return the value of the named environment variable, or default if it's not set"""
+	try: return os.environ[name]
+	except KeyError: return default
+
+def setenv(name, value, keep=False):
+	"""Set the named environment variable to the given value. If keep==False
+	(the default), existing values are overwritten. If the value is None, then
+	it's deleted from the environment. If keep==True, then this function does
+	nothing if the variable already has a value."""
+	if   name in os.environ and keep: return
+	elif name in os.environ and value is None: del os.environ[name]
+	else: os.environ[name] = str(value)
