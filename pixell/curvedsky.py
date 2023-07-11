@@ -157,13 +157,13 @@ def alm2map(alm, map, spin=[0,2], deriv=False, map2alm_adjoint=False,
 
 def map2alm_adjoint(alm, map, spin=[0,2], deriv=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
-		epsilon=1e-6, pix_tol=1e-6, locinfo=None):
+		epsilon=None, pix_tol=1e-6, locinfo=None):
 	"""The adjoint of map2alm. Forwards to alm2map; see its docstring for details"""
 	return alm2map(alm, map, spin=spin, deriv=deriv, map2alm_adjoint=True,
 		copy=copy, method=method, ainfo=ainfo, verbose=verbose, nthread=nthread,
 		epsilon=epsilon, pix_tol=pix_tol, locinfo=locinfo)
 
-def alm2map_pos(alm, pos=None, loc=None, ainfo=None, map=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, epsilon=1e-6):
+def alm2map_pos(alm, pos=None, loc=None, ainfo=None, map=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, epsilon=None):
 	"""Like alm2map, but operates directly on arbitrary positions instead of an enmap.
 	The positions are given either with the pos argument or the loc argument.
 	 pos: [{dec,ra},...] in radians
@@ -196,7 +196,7 @@ def alm2map_pos(alm, pos=None, loc=None, ainfo=None, map=None, spin=[0,2], deriv
 
 def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, alm2map_adjoint=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
-		niter=0, epsilon=1e-6, pix_tol=1e-6, weights=None, locinfo=None):
+		niter=0, epsilon=None, pix_tol=1e-6, weights=None, locinfo=None):
 	"""Spherical harmonics analysis. Transform from real space to harmonic space.
 
 	Parameters
@@ -691,7 +691,7 @@ def alm2map_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=
 			map[I] = buffer2map(tmap, minfo.flip, pad)
 	return map
 
-def alm2map_general(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, locinfo=None, epsilon=1e-6):
+def alm2map_general(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, locinfo=None, epsilon=None):
 	"""Helper function for alm2map. See its docstring for details"""
 	if copy: map = map.copy()
 	if locinfo is None: locinfo = calc_locinfo(map.shape, map.wcs)
@@ -749,7 +749,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], we
 		map2alm_raw_cyl(tmap, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, weights=weights, deriv=deriv, niter=niter, verbose=verbose)
 	return alm
 
-def map2alm_general(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, locinfo=None, epsilon=1e-6, niter=0):
+def map2alm_general(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, locinfo=None, epsilon=None, niter=0):
 	"""Helper function for map2alm. See its docsctring for details."""
 	if copy and alm is not None: alm = alm.copy()
 	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=map.dtype)
@@ -829,6 +829,9 @@ def alm2map_raw_general(alm, map, loc, ainfo=None, spin=[0,2], deriv=False, copy
 	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, deriv=deriv, nthread=nthread, pixdims=1)
 	if map2alm_adjoint: raise NotImplementedError("map2alm_adjoint_general is not implemented in ducc")
 	else:               func = ducc0.sht.experimental.synthesis_general
+	if epsilon is None:
+		if map.dtype == np.float64: epsilon = 1e-10
+		else:                       epsilon = 1e-6
 	kwargs = {"loc":loc, "lmax":ainfo.lmax, "mmax":ainfo.mmax, "nthreads":nthread, "epsilon":epsilon}
 	# Iterate over all the predimensions.
 	for I in utils.nditer(map_full.shape[:-2]):
@@ -902,7 +905,7 @@ def map2alm_raw_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=No
 				else:               alm_full[Ij] = jacobi_inverse(forward, approx_backward, map_full[Ij], niter=niter)
 	return alm
 
-def map2alm_raw_general(map, loc, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, niter=0, epsilon=1e-6):
+def map2alm_raw_general(map, loc, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, niter=0, epsilon=None):
 	"""Helper function for map2alm_general. Usually not called directly. See the map2alm docstring for details."""
 	if copy and alm is not None: alm = alm.copy()
 	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, lmax=lmax, deriv=deriv, nthread=nthread, pixdims=1)
