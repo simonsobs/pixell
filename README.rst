@@ -15,7 +15,7 @@ pixell
 .. image:: https://badge.fury.io/py/pixell.svg
 		       :target: https://badge.fury.io/py/pixell
 
-``pixell`` is a library for loading, manipulating and analyzing maps stored in rectangular pixelization. It is mainly targeted for use with maps of the sky (e.g. CMB intensity and polarization maps, stacks of 21 cm intensity maps, binned galaxy positions or shear) in cylindrical projection, but its core functionality is more general. It extends numpy's ``ndarray`` to an ``ndmap`` class that associates a World Coordinate System (WCS) with a numpy array.  It includes tools for Fourier transforms  (through numpy or pyfft) and spherical harmonic transforms (through ducc0) of such maps and tools for visualization (through the Python Image Library). 
+``pixell`` is a library for loading, manipulating and analyzing maps stored in rectangular pixelization. It is mainly targeted for use with maps of the sky (e.g. CMB intensity and polarization maps, stacks of 21 cm intensity maps, binned galaxy positions or shear) in cylindrical projection, but its core functionality is more general. It extends numpy's ``ndarray`` to an ``ndmap`` class that associates a World Coordinate System (WCS) with a numpy array.  It includes tools for Fourier transforms  (through numpy or pyfft) and spherical harmonic transforms (through ducc0_) of such maps and tools for visualization (through the Python Image Library). 
 
 
 * Free software: BSD license
@@ -27,7 +27,7 @@ Dependencies
 
 * Python>=3.7
 * gcc/gfortran or Intel compilers (clang might not work out of the box), if compiling from source
-* ducc0, healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py, Pillow (Python Image Library)
+* ducc0_, healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py, Pillow (Python Image Library)
 
 Installing
 ----------
@@ -112,6 +112,7 @@ If you have write access to this repository, please:
 
 If you do not have write access, create a fork of this repository and proceed as described above. For more details, see Contributing_.
   
+.. _ducc0: https://pypi.org/project/ducc0/
 .. _Tutorials: https://github.com/simonsobs/pixell_tutorials/
 .. _Contributing: https://pixell.readthedocs.io/en/latest/contributing.html
 .. _NERSC: https://pixell.readthedocs.io/en/latest/nersc.html
