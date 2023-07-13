@@ -660,6 +660,13 @@ def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=None, inp
 		raise ValueError("Unrecognized rotate_alm implementation '%s'" % str(method))
 	return alm
 
+def transfer_alm(iainfo, ialm, oainfo, oalm=None, op=lambda a,b:b):
+	"""Copy data from ialm with layout given by iainfo to oalm with layout
+	given by oainfo. If oalm is not passed, it will be allocated. In either
+	case oalm is returned. If op is specified, then it defines out oalm
+	is updated: oalm = op(ialm, oalm). For example, if op = lambda a,b:a+b,
+	then ialm would be added to oalm instead of overwriting it."""
+	return cmisc.transfer_alm(ainfo, ialm, oainfo, oalm=oalm, op=op)
 
 ##############################
 ### Implementation details ###
@@ -750,7 +757,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], we
 	# these, so looping in python is cheap
 	for I in utils.nditer(map.shape[:-3]):
 		# Pad as necessary
-		pad  = ((minfo.ypad[0],minfo.xpad[0]),(minfo.ypad[1],minfo.xpad[1]))
+		pad  = ((0,minfo.xpad[0]),(0,minfo.xpad[1]))
 		tmap = map2buffer(map[I], minfo.flip, pad)
 		map2alm_raw_cyl(tmap, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, weights=weights, deriv=deriv, niter=niter, verbose=verbose)
 	return alm

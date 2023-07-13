@@ -16,7 +16,7 @@ void alm2cl_sp(int lmax, int mmax, int64_t * mstart, float * alm1, float * alm2,
 	int nthread = omp_get_max_threads();
 	int nl      = lmax+1;
 	float * buf = calloc(nthread*nl, sizeof(float));
-	//#pragma omp parallel
+	#pragma omp parallel
 	{
 		int id = omp_get_thread_num();
 		if(id == 0) {
@@ -25,15 +25,15 @@ void alm2cl_sp(int lmax, int mmax, int64_t * mstart, float * alm1, float * alm2,
 				buf[nl*id+l] = alm1[i]*alm2[i]/2;
 			}
 		}
-		//#pragma omp for schedule(dynamic)
+		#pragma omp for schedule(dynamic)
 		for(int m = 1; m <= mmax; m++) {
 			for(int l = m; l <= lmax; l++) {
 				int64_t i = mstart[m]*2 + l*2;
 				buf[nl*id+l] += alm1[i]*alm2[i] + alm1[i+1]*alm2[i+1];
 			}
 		}
-		//#pragma omp barrier
-		//#pragma omp for
+		#pragma omp barrier
+		#pragma omp for
 		for(int l = 0; l < nl; l++) {
 			cl[l] = 0;
 			for(int i = 0; i < nthread; i++)
@@ -48,7 +48,7 @@ void alm2cl_dp(int lmax, int mmax, int64_t * mstart, double * alm1, double * alm
 	int nthread = omp_get_max_threads();
 	int nl      = lmax+1;
 	double * buf = calloc(nthread*nl, sizeof(double));
-	//#pragma omp parallel
+	#pragma omp parallel
 	{
 		int id = omp_get_thread_num();
 		if(id == 0) {
@@ -57,15 +57,15 @@ void alm2cl_dp(int lmax, int mmax, int64_t * mstart, double * alm1, double * alm
 				buf[nl*id+l] = alm1[i]*alm2[i]/2;
 			}
 		}
-		//#pragma omp for schedule(dynamic)
+		#pragma omp for schedule(dynamic)
 		for(int m = 1; m <= mmax; m++) {
 			for(int l = m; l <= lmax; l++) {
 				int64_t i = mstart[m]*2 + l*2;
 				buf[nl*id+l] += alm1[i]*alm2[i] + alm1[i+1]*alm2[i+1];
 			}
 		}
-		//#pragma omp barrier
-		//#pragma omp for
+		#pragma omp barrier
+		#pragma omp for
 		for(int l = 0; l < nl; l++) {
 			cl[l] = 0;
 			for(int i = 0; i < nthread; i++)
@@ -124,7 +124,7 @@ void transpose_alm_sp(int lmax, int mmax, int64_t * mstart, float * ialm, float 
 
 // Multiply a scalar alm by a scalar function of l
 void lmul_dp(int lmax, int mmax, int64_t * mstart, double * alm, int lfmax, double * lfun) {
-	//#pragma omp parallel for
+	#pragma omp parallel for
 	for(int m = 0; m <= mmax; m++) {
 		for(int l = m; l <= lmax; l++) {
 			int64_t i = mstart[m]+l;
@@ -137,7 +137,7 @@ void lmul_dp(int lmax, int mmax, int64_t * mstart, double * alm, int lfmax, doub
 
 // Multiply a scalar alm by a scalar function of l
 void lmul_sp(int lmax, int mmax, int64_t * mstart, float * alm, int lfmax, float * lfun) {
-	//#pragma omp parallel for
+	#pragma omp parallel for
 	for(int m = 0; m <= mmax; m++) {
 		for(int l = m; l <= lmax; l++) {
 			int64_t i = mstart[m]+l;
@@ -151,7 +151,7 @@ void lmul_sp(int lmax, int mmax, int64_t * mstart, float * alm, int lfmax, float
 // Multiply matrix [N,M,l] by alm [M,nalm] producing oalm[N,nalm]
 void lmatmul_dp(int N, int M, int lmax, int mmax, int64_t * mstart, double ** alm, int lfmax, double ** lmat, double ** oalm) {
 	int leff = min(lmax, lfmax);
-	//#pragma omp parallel
+	#pragma omp parallel
 	{
 		// We need these arrays so that we can store a whole
 		// row of the output. We can't write the row to oalm
@@ -159,7 +159,7 @@ void lmatmul_dp(int N, int M, int lmax, int mmax, int64_t * mstart, double ** al
 		// running in-place.
 		double * vreal = calloc(N, sizeof(double));
 		double * vimag = calloc(N, sizeof(double));
-		//#pragma omp for
+		#pragma omp for
 		for(int m = 0; m <= mmax; m++) {
 			for(int l = m; l <= leff; l++) {
 				int64_t i = mstart[m]+l;
@@ -183,7 +183,7 @@ void lmatmul_dp(int N, int M, int lmax, int mmax, int64_t * mstart, double ** al
 		free(vimag);
 	}
 	// Zero out parts beyond lfmax
-	//#pragma omp parallel for
+	#pragma omp parallel for
 	for(int r = 0; r < N; r++) {
 		for(int m = 0; m <= mmax; m++) {
 			for(int l = max(m,leff+1); l <= lmax; l++) {
@@ -197,7 +197,7 @@ void lmatmul_dp(int N, int M, int lmax, int mmax, int64_t * mstart, double ** al
 // Multiply matrix [N,M,l] by alm [M,nalm] producing oalm[N,nalm]
 void lmatmul_sp(int N, int M, int lmax, int mmax, int64_t * mstart, float ** alm, int lfmax, float ** lmat, float ** oalm) {
 	int leff = min(lmax,lfmax);
-	//#pragma omp parallel
+	#pragma omp parallel
 	{
 		// We need these arrays so that we can store a whole
 		// row of the output. We can't write the row to oalm
@@ -205,7 +205,7 @@ void lmatmul_sp(int N, int M, int lmax, int mmax, int64_t * mstart, float ** alm
 		// running in-place.
 		float * vreal = calloc(N, sizeof(float));
 		float * vimag = calloc(N, sizeof(float));
-		//#pragma omp for
+		#pragma omp for
 		for(int m = 0; m <= mmax; m++) {
 			for(int l = m; l <= lfmax; l++) {
 				int64_t i = mstart[m]+l;
@@ -229,7 +229,7 @@ void lmatmul_sp(int N, int M, int lmax, int mmax, int64_t * mstart, float ** alm
 		free(vimag);
 	}
 	// Zero out parts beyond lfmax
-	//#pragma omp parallel for
+	#pragma omp parallel for
 	for(int r = 0; r < N; r++) {
 		for(int m = 0; m <= mmax; m++) {
 			for(int l = max(m,leff+1); l <= lmax; l++) {
@@ -245,7 +245,7 @@ void lmatmul_sp(int N, int M, int lmax, int mmax, int64_t * mstart, float ** alm
 void transfer_alm_dp(int lmax1, int mmax1, int64_t * mstart1, double * alm1, int lmax2, int mmax2, int64_t * mstart2, double * alm2) {
 	int lmax = min(lmax1,lmax2);
 	int mmax = min(mmax1,mmax2);
-	//#pragma omp parallel for
+	#pragma omp parallel for
 	for(int m = 0; m <= mmax; m++) {
 		for(int l = m; l <= lmax; l++) {
 			int64_t i1 = mstart1[m]+l;
@@ -259,7 +259,7 @@ void transfer_alm_dp(int lmax1, int mmax1, int64_t * mstart1, double * alm1, int
 void transfer_alm_sp(int lmax1, int mmax1, int64_t * mstart1, float * alm1, int lmax2, int mmax2, int64_t * mstart2, float * alm2) {
 	int lmax = min(lmax1,lmax2);
 	int mmax = min(mmax1,mmax2);
-	//#pragma omp parallel for
+	#pragma omp parallel for
 	for(int m = 0; m <= mmax; m++) {
 		for(int l = m; l <= lmax; l++) {
 			int64_t i1 = mstart1[m]+l;

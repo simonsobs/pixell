@@ -31,13 +31,19 @@ class numpy_FFTW:
 				self.b *= np.prod([self.b.shape[i] for i in self.axes])
 
 class ducc_FFTW:
-	"""Minimal wrapper of numpy in order to be able to provide it as an engine.
+	"""Minimal wrapper of ducc in order to be able to provide it as an engine.
 	Not a full-blown interface."""
 	def __init__(self, a, b, axes=(-1,), direction='FFTW_FORWARD', threads=1, *args, **kwargs):
 		self.a, self.b = a, b
 		self.axes = axes
 		self.direction = direction
 		self.threads   = threads
+	def do_dct(self, kind, *args, **kwargs):
+		# Expect format of type FFTW_REDFT00
+		name = {"REDFT":"DCT","RODFT":"DST"}[kind[5:10]]
+		num  = {"00":1, "10": 2, "01": 3, "11":4}[kind[10:12]]
+		if   name == "DCT": return ducc0.fft.dct(*args, type=num, **kwargs)
+		elif name == "DST": return ducc0.fft.dst(*args, type=num, **kwargs)
 	def __call__(self, normalise_idft=False):
 		if self.direction == 'FFTW_FORWARD':
 			if self.a.shape == self.b.shape:
@@ -46,12 +52,23 @@ class ducc_FFTW:
 			else:
 				# Real to complex
 				ducc0.fft.r2c(self.a, axes=self.axes, out=self.b, nthreads=self.threads)
-		else:
+		elif self.direction == "FFTW_BACKWARD":
 			if self.a.shape == self.b.shape:
 				# Complex to complex
 				ducc0.fft.c2c(self.a, axes=self.axes, out=self.b, forward=False, inorm=2 if normalise_idft else 0, nthreads=self.threads)
 			else:
 				ducc0.fft.c2r(self.a, axes=self.axes, out=self.b, lastsize=self.b.shape[self.axes[-1]], inorm=2 if normalise_idft else 0, nthreads=self.threads)
+		elif _check_ducc_r2r(self.direction):
+			# dct and dst are passed with a list with one entry per dimension of the transform,
+			# but ducc doesn't support heterogeneous transforms like this, so just use the first element
+			self.do_dct(self.direction[0], self.a, axes=self.axes, out=self.b, nthreads=self.threads)
+
+def _check_ducc_r2r(direction):
+	if isinstance(direction, str): return False
+	for d in direction:
+		if d != direction[0]:
+			raise ValueError("ducc only supports homogeneous r2r transforms")
+	return direction[0].startswith("FFTW_REDFT") or direction[0].startswith("FFTW_RODFT")
 
 def numpy_empty_aligned(shape, dtype, n=None):
 	"""This dummy function just skips the alignment, since numpy
@@ -85,15 +102,15 @@ try:
 	engine = "intel"
 except ImportError: pass
 # ducc is slower than intel, but can be faster than pyfftw
-#try:
-#	import ducc0
-#	class DuccEngine: pass
-#	ducc_engine = DuccEngine()
-#	ducc_engine.FFTW = ducc_FFTW
-#	ducc_engine.empty_aligned = numpy_empty_aligned
-#	engines["ducc"] = ducc_engine
-#	if engine != "intel": engine = "ducc"
-#except ImportError: pass
+try:
+	import ducc0
+	class DuccEngine: pass
+	ducc_engine = DuccEngine()
+	ducc_engine.FFTW = ducc_FFTW
+	ducc_engine.empty_aligned = numpy_empty_aligned
+	engines["ducc"] = ducc_engine
+	if engine != "intel": engine = "ducc"
+except ImportError: pass
 
 if len(engines) == 0:
 	# This should not happen due to the numpy fallback
@@ -110,7 +127,10 @@ def set_engine(eng):
 	global engine
 	engine = eng
 
-def fft(tod, ft=None, nthread=0, axes=[-1], flags=None, _direction="FFTW_FORWARD"):
+def get_engine(eng):
+	return engine if eng == "auto" else eng
+
+def fft(tod, ft=None, nthread=0, axes=[-1], flags=None, _direction="FFTW_FORWARD", engine="auto"):
 	"""Compute discrete fourier transform of tod, and store it in ft. What
 	transform to do (real or complex, number of dimension etc.) is determined
 	from the size and type of tod and ft. If ft is left out, a complex transform
@@ -126,6 +146,7 @@ def fft(tod, ft=None, nthread=0, axes=[-1], flags=None, _direction="FFTW_FORWARD
 		otype = np.result_type(tod.dtype,0j)
 		ft  = empty(tod.shape, otype)
 		tod = tod.astype(otype, copy=False)
+	engine = get_engine(engine)
 	if engine == 'intel':
 		ft[:] = fft_flat(tod, ft, axes=axes, nthread=nt, flags=flags, _direction=_direction)
 	else:
@@ -133,7 +154,7 @@ def fft(tod, ft=None, nthread=0, axes=[-1], flags=None, _direction="FFTW_FORWARD
 		plan()
 	return ft
 
-def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None):
+def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None, engine="auto"):
 	"""Compute inverse discrete fourier transform of ft, and store it in tod. What
 	transform to do (real or complex, number of dimension etc.) is determined
 	from the size and type of tod and ft. The optional nthread argument specifies
@@ -148,6 +169,7 @@ def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None):
 	nt = nthread or nthread_ifft
 	if flags is None: flags = default_flags
 	if tod is None:	tod = empty(ft.shape, ft.dtype)
+	engine = get_engine(engine)
 	if engine == 'intel':
 		tod[:] = ifft_flat(ft, tod, axes=axes, nthread=nt, flags=flags)
 	else:
@@ -159,7 +181,7 @@ def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None):
 	if normalize: tod /= np.prod([tod.shape[i] for i in axes])
 	return tod
 
-def rfft(tod, ft=None, nthread=0, axes=[-1], flags=None):
+def rfft(tod, ft=None, nthread=0, axes=[-1], flags=None, engine="auto"):
 	"""Equivalent to fft, except that if ft is not passed, it is allocated with
 	appropriate shape and data type for a real-to-complex transform."""
 	tod = asfcarray(tod)
@@ -168,9 +190,9 @@ def rfft(tod, ft=None, nthread=0, axes=[-1], flags=None):
 		oshape[axes[-1]] = oshape[axes[-1]]//2+1
 		dtype = np.result_type(tod.dtype,0j)
 		ft = empty(oshape, dtype)
-	return fft(tod, ft, nthread, axes, flags=flags)
+	return fft(tod, ft, nthread, axes, flags=flags, engine=engine)
 
-def irfft(ft, tod=None, n=None, nthread=0, normalize=False, axes=[-1], flags=None):
+def irfft(ft, tod=None, n=None, nthread=0, normalize=False, axes=[-1], flags=None, engine="auto"):
 	"""Equivalent to ifft, except that if tod is not passed, it is allocated with
 	appropriate shape and data type for a complex-to-real transform. If n
 	is specified, that is used as the length of the last transform axis
@@ -182,9 +204,9 @@ def irfft(ft, tod=None, n=None, nthread=0, normalize=False, axes=[-1], flags=Non
 		oshape[axes[-1]] = n or (oshape[axes[-1]]-1)*2
 		dtype = np.zeros([],ft.dtype).real.dtype
 		tod = empty(oshape, dtype)
-	return ifft(ft, tod, nthread, normalize, axes, flags=flags)
+	return ifft(ft, tod, nthread, normalize, axes, flags=flags, engine=engine)
 
-def dct(tod, dt=None, nthread=0, normalize=False, axes=[-1], flags=None, type="DCT-I"):
+def dct(tod, dt=None, nthread=0, normalize=False, axes=[-1], flags=None, type="DCT-I", engine="auto"):
 	"""Compute discrete cosine transform of tod, and store it in dt. By
 	default it will do a DCT-I trasnform, but this can be controlled with the type argument.
 	Even the much less common discrete sine transforms are avialble by passing e.g. type="DST-I".
@@ -203,9 +225,9 @@ def dct(tod, dt=None, nthread=0, normalize=False, axes=[-1], flags=None, type="D
 	type= _dct_names[type]
 	if dt is None:
 		dt = empty(tod.shape, tod.dtype)
-	return fft(tod, dt, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes))
+	return fft(tod, dt, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes), engine=engine)
 
-def idct(dt, tod=None, nthread=0, normalize=False, axes=[-1], flags=None, type="DCT-I"):
+def idct(dt, tod=None, nthread=0, normalize=False, axes=[-1], flags=None, type="DCT-I", engine="auto"):
 	"""Compute the inverse discrete cosine transform of dt, and store it in tod. By
 	default it will do the inverse of a DCT-I trasnform, but this can be controlled with the type argument.
 	Even the much less common discrete sine transforms are avialble by passing e.g. type="DST-I".
@@ -236,7 +258,7 @@ def idct(dt, tod=None, nthread=0, normalize=False, axes=[-1], flags=None, type="
 	off  = _dct_sizes[type]
 	if tod is None:
 		tod = empty(dt.shape, dt.dtype)
-	fft(dt, tod, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes))
+	fft(dt, tod, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes), engine=engine)
 	if normalize: tod /= np.prod([2*(tod.shape[i]+off) for i in axes])
 	return tod
 
@@ -261,7 +283,7 @@ _dct_sizes = {
 		"FFTW_RODFT00":+1, "FFTW_RODFT10":0, "FFTW_RODFT01":0, "FFTW_RODFT11":0,
 }
 
-def redft00(a, b=None, nthread=0, normalize=False, flags=None):
+def redft00(a, b=None, nthread=0, normalize=False, flags=None, engine="auto"):
 	"""Old brute-force work-around for missing dcts in pyfftw. Can be
 	removed when newer versions of pyfftw become common. It's not very
 	fast, sadly - about 5 times slower than an rfft. Transforms along the last axis."""
@@ -272,23 +294,23 @@ def redft00(a, b=None, nthread=0, normalize=False, flags=None):
 	itmp = empty(tshape, a.dtype)
 	itmp[...,:n] = a[...,:n]
 	itmp[...,n:] = a[...,-2:0:-1]
-	otmp = rfft(itmp, axes=[-1], nthread=nthread, flags=flags)
+	otmp = rfft(itmp, axes=[-1], nthread=nthread, flags=flags, engine=engine)
 	del itmp
 	b[...] = otmp[...,:n].real
 	if normalize: b /= 2*(n-1)
 	return b
 
-def chebt(a, b=None, nthread=0, flags=None):
+def chebt(a, b=None, nthread=0, flags=None, engine="auto"):
 	"""The chebyshev transform of a, along its last dimension."""
-	b = redft00(a, b, nthread, normalize=True, flags=flags)
+	b = redft00(a, b, nthread, normalize=True, flags=flags, engine=engine)
 	b[1:-1] *= 2
 	return b
 
-def ichebt(a, b=None, nthread=0):
+def ichebt(a, b=None, nthread=0, engine="auto"):
 	"""The inverse chebyshev transform of a, along its last dimension."""
 	a = asfcarray(a).copy()
 	a[1:-1] *= 0.5
-	return redft00(a, b, nthread)
+	return redft00(a, b, nthread, engine=engine)
 
 def fft_len(n, direction="below", factors=None):
 	if factors is None: factors = [2,3,5,7,11,13]
@@ -311,7 +333,7 @@ def freq2ind(n, f, d=1.0):
 	return np.where(j >= 0, j, n+j)
 def rfreq2ind(n, f, d=1.0): return f*(n*d)
 
-def shift(a, shift, axes=None, nofft=False, deriv=None):
+def shift(a, shift, axes=None, nofft=False, deriv=None, engine="auto"):
 	"""Shift the array a by a (possibly fractional) number of samples "shift"
 	to the right, along the specified axis, which defaults to the last one.
 	shift can also be an array, in which case multiple axes are shifted together."""
@@ -319,7 +341,7 @@ def shift(a, shift, axes=None, nofft=False, deriv=None):
 	ca     = a+0j
 	shift  = np.atleast_1d(shift)
 	if axes is None: axes = range(-len(shift),0)
-	fa = fft(ca, axes=axes) if not nofft else ca
+	fa = fft(ca, axes=axes, engine=engine) if not nofft else ca
 	for i, ax in enumerate(axes):
 		ax   %= ca.ndim
 		freqs = fftfreq(ca.shape[ax])
@@ -327,7 +349,7 @@ def shift(a, shift, axes=None, nofft=False, deriv=None):
 		if deriv == i:
 			phase *= -2j*np.pi*freqs
 		fa   *= phase[(None,)*ax + (slice(None),) + (None,)*(a.ndim-ax-1)]
-	if not nofft: ifft(fa, ca, axes=axes, normalize=True)
+	if not nofft: ifft(fa, ca, axes=axes, normalize=True, engine=engine)
 	else:	      ca = fa
 	return ca if np.iscomplexobj(a) else ca.real
 
