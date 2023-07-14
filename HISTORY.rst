@@ -2,6 +2,15 @@
 History
 =======
 
+0.18.0 (2023-07-14)
+-------------------
+
+Changes relative to 0.17.3 include:
+
+* Migrate fully from libsharp2 to ducc0 (for curved sky functions)
+* Temporary suspension of MacOS pip binaries (use `pip install pixell==0.17.3` for Macs in the meantime)
+* Miscellaneous fixes
+
 0.17.3 (2023-03-17)
 -------------------
 
