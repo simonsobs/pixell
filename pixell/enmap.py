@@ -2103,7 +2103,7 @@ def _bin_helper(map, r, bsize, return_nhit=False, return_bins=False):
 	functions on this one."""
 	# Get the number of bins
 	n     = int(np.max(r/bsize))
-	rinds = utils.nint((r/bsize).reshape(-1))
+	rinds = utils.floor((r/bsize).reshape(-1))
 	# Ok, rebin the map. We do this using bincount, which can be a bit slow
 	mflat = map.reshape((-1,)+map.shape[-2:])
 	mout = np.zeros((len(mflat),n))

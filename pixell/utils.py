@@ -2222,15 +2222,20 @@ def edges2bins(edges):
 def bins2edges(bins):
 	return np.concatenate([bins[:,0],bins[1,-1:]])
 
-def linbin(n, nbin=None, nmin=None):
+def linbin(n, nbin=None, nmin=None, bsize=None):
 	"""Given a number of points to bin and the number of approximately
 	equal-sized bins to generate, returns [nbin_out,{from,to}].
 	nbin_out may be smaller than nbin. The nmin argument specifies
 	the minimum number of points per bin, but it is not implemented yet.
 	nbin defaults to the square root of n if not specified."""
-	if not nbin: nbin = int(np.round(n**0.5))
-	tmp  = np.arange(nbin+1)*n//nbin
-	return np.vstack((tmp[:-1],tmp[1:])).T
+	if bsize is not None:
+		if nbin is None: nbin = ceil(n/bsize)
+		edges = np.arange(nbin+1)*bsize
+	else:
+		if nbin is None: nbin = nint(n**0.5)
+		edges = np.arange(nbin+1)*n//nbin
+	edges = np.arange(nbin+1)*bsize
+	return np.vstack((edges[:-1],edges[1:])).T
 
 def expbin(n, nbin=None, nmin=8, nmax=0):
 	"""Given a number of points to bin and the number of exponentially spaced
