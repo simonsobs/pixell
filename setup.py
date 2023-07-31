@@ -84,7 +84,8 @@ requirements =  ['numpy>=1.20.0',
                  'Pillow>=5.3.0',
                  'pytest-cov>=2.6',
                  'coveralls>=1.5',
-                 'pytest>=4.6']
+                 'pytest>=4.6',
+                 'ducc0>=0.31.0']
 
 
 test_requirements = ['pip>=9.0',
@@ -126,14 +127,7 @@ def presrc():
         raise DistutilsError('Failure in the fortran source-prep step.')
     
 def prebuild():
-    # Handle the special external dependencies.
-    if not os.path.exists('_deps/libsharp2/success.txt'):
-        try:
-            sp.check_call('scripts/install_libsharp.sh', shell=True)
-        except sp.CalledProcessError:
-            raise DistutilsError('Failed to install libsharp.')
-        
-    # Handle cythonization to create sharp.c, etc.
+    # Handle cythonization
     no_cython = sp.call('cython --version',shell=True)
     if no_cython:
         try:
@@ -201,10 +195,9 @@ setup(
     entry_points={
     },
     ext_modules=[
-        Extension('pixell.sharp',
-            sources=['cython/sharp.c', 'cython/sharp_utils.c'],
-            libraries=['sharp2', 'm'],
-            library_dirs=['_deps/libsharp2/build/lib'],
+        Extension('pixell.cmisc',
+            sources=['cython/cmisc.c','cython/cmisc_core.c'],
+            libraries=['m'],
             include_dirs=[np.get_include()],
             **compile_opts),
         Extension('pixell.distances',
@@ -233,8 +226,8 @@ setup(
             sources=['fortran/array_ops_64.f90'],
             **compile_opts),
     ],
-    include_dirs = ['_deps/libsharp2/build/include'],
-    library_dirs = ['_deps/libsharp2/build/lib'],
+    include_dirs = [],
+    library_dirs = [],
     install_requires=requirements,
     extras_require = {'fftw':['pyFFTW>=0.10'],'mpi':['mpi4py>=2.0']},
     license="BSD license",

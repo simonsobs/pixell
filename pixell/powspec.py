@@ -118,7 +118,7 @@ def expand_inds(x, y):
 	res[:,x] = y
 	return res
 
-def scale_spectrum(a, direction, l=None, extra=0):
+def scale_spectrum(a, direction, extra=0, l=None):
 	a = np.array(a)
 	if l is None: l = np.arange(a.shape[-1])
 	a[...,1:] *= (2*np.pi/(l[1:]*(l[1:]+1))**(1+extra))**direction

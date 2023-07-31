@@ -1,5 +1,5 @@
 import numpy as np
-from . import enmap, utils, wcsutils, curvedsky, sharp, multimap
+from . import enmap, utils, wcsutils, curvedsky, multimap
 
 ######## Wavelet basis generators ########
 
@@ -201,13 +201,13 @@ class WaveletTransform:
 				owave.maps[i] = enmap.ifft(fsmall, normalize=False).real
 		else:
 			# FIXME: Normalization is broken
-			ainfo = sharp.alm_info(lmax=self.basis.lmax)
-			alm   = curvedsky.map2alm(map, ainfo=ainfo, tweak=self.uht.tweak)
+			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
+			alm   = curvedsky.map2alm(map, ainfo=ainfo)
 			for i, (shape, wcs) in enumerate(self.geometries):
-				smallinfo = sharp.alm_info(lmax=self.basis.lmaxs[i])
-				asmall    = sharp.transfer_alm(ainfo, alm, smallinfo)
+				smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
+				asmall    = curvedsky.transfer_alm(ainfo, alm, smallinfo)
 				smallinfo.lmul(asmall, filters[i]/norms[i]**0.5, asmall)
-				curvedsky.alm2map(asmall, owave.maps[i], tweak=self.uht.tweak)
+				curvedsky.alm2map(asmall, owave.maps[i])
 		return owave
 	def wave2map(self, wave, omap=None, half=False, individual=False):
 		"""Transform from the wavelet coefficients wave (multimap), to the corresponding enmap.
@@ -229,16 +229,16 @@ class WaveletTransform:
 			return omap
 		else:
 			# FIXME: Normalization is broken
-			ainfo = sharp.alm_info(lmax=self.basis.lmax)
+			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
 			oalm  = np.zeros(wave.pre + (ainfo.nelem,), dtype=np.result_type(wave.dtype,0j))
 			for i, (shape, wcs) in enumerate(self.geometries):
-				smallinfo = sharp.alm_info(lmax=self.basis.lmaxs[i])
-				asmall    = curvedsky.map2alm(wave.maps[i], ainfo=smallinfo, tweak=self.uht.tweak)
+				smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
+				asmall    = curvedsky.map2alm(wave.maps[i], ainfo=smallinfo)
 				smallinfo.lmul(asmall, filters[i]*norms[i]**0.5, asmall)
-				sharp.transfer_alm(smallinfo, asmall, ainfo, oalm, op=np.add)
+				curvedsky.transfer_alm(smallinfo, asmall, ainfo, oalm, op=np.add)
 			if omap is None:
 				omap = enmap.zeros(wave.pre + self.uht.shape[-2:], self.uht.wcs, wave.dtype)
-			return curvedsky.alm2map(oalm, omap, tweak=self.uht.tweak)
+			return curvedsky.alm2map(oalm, omap)
 	def _wave2map_individual(self, wave, omap=None):
 		"""Transform from the wavelet coefficients wave (multimap), to a separate enmap for
 		each wavelet scale. If omap is provided, it must have the correct geometry
@@ -257,14 +257,14 @@ class WaveletTransform:
 			else:            omap[:] = tmp
 			return omap
 		else:
-			ainfo = sharp.alm_info(lmax=self.basis.lmax)
+			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
 			if omap is None:
 				omap = enmap.zeros((self.nlevel,)+wave.pre + self.uht.shape[-2:], self.uht.wcs, wave.dtype)
 			for i, (shape, wcs) in enumerate(self.geometries):
-				smallinfo = sharp.alm_info(lmax=self.basis.lmaxs[i])
-				asmall    = curvedsky.map2alm(wave.maps[i], ainfo=smallinfo, tweak=self.uht.tweak)
+				smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
+				asmall    = curvedsky.map2alm(wave.maps[i], ainfo=smallinfo)
 				smallinfo.lmul(asmall, self.filters[i]*self.norms[i]**0.5, asmall)
-				curvedsky.alm2map(asmall, omap[i], tweak=self.uht.tweak)
+				curvedsky.alm2map(asmall, omap[i])
 			return omap
 	def get_ls(self, i):
 		"""Get the multipole indices for wavelet scale i"""

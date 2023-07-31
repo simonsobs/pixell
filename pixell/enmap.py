@@ -84,7 +84,7 @@ class ndmap(np.ndarray):
 		"""Returns a view of the map with the non-pixel dimensions flattened."""
 		return self.reshape(-1, self.shape[-2], self.shape[-1])
 	@property
-	def npix(self): return np.product(self.shape[-2:])
+	def npix(self): return np.prod(self.shape[-2:])
 	@property
 	def geometry(self): return self.shape, self.wcs
 	def resample(self, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3): return resample(self, oshape, off=off, method=method, mode=mode, corner=corner, order=order)
@@ -951,7 +951,7 @@ def area_contour(shape, wcs, nsamp=1000):
 
 def pixsize(shape, wcs):
 	"""Returns the average pixel area, in steradians."""
-	return area(shape, wcs)/np.product(shape[-2:])
+	return area(shape, wcs)/np.prod(shape[-2:])
 
 def pixshape(shape, wcs, signed=False):
 	"""Returns the average pixel height and width, in radians."""
@@ -1047,14 +1047,14 @@ def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000):
 	if broadcastable is True.
 	"""
 	if separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
-		psize = np.product(pixshapes_cyl(shape, wcs),0)[:,None]
+		psize = np.prod(pixshapes_cyl(shape, wcs),0)[:,None]
 		# Expand to full shape unless we are willing to accept an array
 		# with smaller size that is still broadcastable to the right result
 		if not broadcastable:
 			psize = np.broadcast_to(psize, shape[-2:])
 		return ndmap(psize, wcs)
 	else:
-		return np.product(pixshapemap(shape, wcs, bsize=bsize, separable=separable),0)
+		return np.prod(pixshapemap(shape, wcs, bsize=bsize, separable=separable),0)
 
 def pixshapebounds(shape, wcs, separable="auto"):
 	"""Return the minimum and maximum pixel height and width for the given
@@ -1124,7 +1124,7 @@ def lrmap(shape, wcs, oversample=1):
 	return lmap(shape, wcs, oversample=oversample)[...,:shape[-1]//2+1]
 
 def lpixsize(shape, wcs, signed=False, method="auto"):
-	return np.product(lpixshape(shape, wcs, signed=signed, method=method))
+	return np.prod(lpixshape(shape, wcs, signed=signed, method=method))
 
 def lpixshape(shape, wcs, signed=False, method="auto"):
 	return 2*np.pi/extent(shape,wcs, signed=signed, method=method)
@@ -1404,8 +1404,8 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car", variant="CC"):
 	elif variant == "fejer1": yo = 0
 	else: raise ValueError("Unrecognized CAR variant '%s'" % str(variant))
 	# Set up the shape/resolution
-	res = np.zeros(2)+res
 	if shape is None:
+		res   = np.zeros(2)+res
 		shape = utils.nint(([1*np.pi,2*np.pi]/res) + (yo,0))
 	else:
 		res = np.array([1*np.pi,2*np.pi])/(np.array(shape)-(yo,0))
@@ -1570,7 +1570,7 @@ def spec2flat_corr(shape, wcs, cov, exp=1.0, mode="constant"):
 	corr2d = np.roll(corr2d, -corr2d.shape[-2]//2, -2)
 	corr2d = np.roll(corr2d, -corr2d.shape[-1]//2, -1)
 	corr2d = ndmap(corr2d, wcs)
-	return fft(corr2d).real * np.product(shape[-2:])**0.5
+	return fft(corr2d).real * np.prod(shape[-2:])**0.5
 
 def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 	"""Smooth the spectrum ps with the given kernel, using the given weighting."""
@@ -1642,7 +1642,7 @@ def calc_ps2d(harm, harm2=None):
 	# I used to flatten here to make looping simple, but that caused a copy to be made
 	# when combined with np.broadcast. So instead I will use manual raveling
 	pshape = harm.shape[:-2]
-	npre   = int(np.product(pshape))
+	npre   = int(np.prod(pshape))
 	# A common use case is to compute TEBxTEB auto-cross spectra, where
 	# e.g. TE === ET since harm1 is the same array as harm2. To avoid duplicate
 	# calculations in this case we use a cache, which skips computing the
@@ -1926,7 +1926,7 @@ def find_blank_edges(m, value="auto"):
 		# Find the median value along each edge
 		medians = [np.median(m[...,:,i],-1) for i in [0,-1]] + [np.median(m[...,i,:],-1) for i in [0,-1]]
 		bs = [find_blank_edges(m, med) for med in medians]
-		nb = [np.product(np.sum(b,0)) for b in bs]
+		nb = [np.prod(np.sum(b,0)) for b in bs]
 		blanks = bs[np.argmax(nb)]
 		return blanks
 	elif value == "none":
