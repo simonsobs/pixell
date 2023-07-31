@@ -1498,7 +1498,7 @@ def thumbnail_geometry(r=None, res=None, shape=None, dims=(), proj="tan"):
 		res_ratio = (shape-1)/(2*rpix)*dirs
 		wcs.wcs.cdelt /= res_ratio[::-1]
 		wcs.wcs.crpix  = shape[::-1]//2+1
-	shape = tuple(shape)
+	shape = dims+tuple(shape)
 	return shape, wcs
 
 def create_wcs(shape, box=None, proj="cea"):
