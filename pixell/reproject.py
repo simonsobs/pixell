@@ -2,8 +2,6 @@ from __future__ import print_function
 import numpy as np
 from scipy import spatial
 from . import wcsutils, utils, enmap, coordinates, fft, curvedsky
-try: from . import sharp
-except ImportError: pass
 
 # Python 2/3 compatibility
 try: basestring
@@ -530,8 +528,8 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
 
 	"""
 	from pixell import curvedsky
-	import healpy as hp
-
+	import healpy as hp, warnings
+	warnings.warn("enmap_from_healpix is obsolete. Use healpix2map instead. enmap_from_healpix has not been tested after the port from libsharp to ducc0. It also uses a very inefficient approach for coordinate rotation.")
 	dtype = np.float64
 	if not(is_alm):
 		assert ncomp == 1 or ncomp == 3, "Only 1 or 3 components supported"
@@ -544,21 +542,11 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
 			m = np.atleast_2d(hp_map).astype(dtype)
 		if unit != 1:
 			m /= unit
-		# Prepare the transformation
-		print("Preparing SHT")
-		nside = hp.npix2nside(m.shape[1])
-		lmax = lmax or 3 * nside
-		minfo = sharp.map_info_healpix(nside)
-		ainfo = sharp.alm_info(lmax)
-		sht = sharp.sht(minfo, ainfo)
-		alm = np.zeros((ncomp, ainfo.nelem), dtype=ctype)
 		# Perform the actual transform
-		print("T -> alm")
-		print(m.dtype, alm.dtype)
-		sht.map2alm(m[0], alm[0])
-		if ncomp == 3:
-			print("P -> alm")
-			sht.map2alm(m[1:3], alm[1:3], spin=2)
+		print("map -> alm")
+		nside = hp.npix2nside(m.shape[1])
+		lmax  = lmax or 3 * nside
+		alm   = curvedsky.map2alm_healpix(m, lmax=lmax)
 		del m
 	else:
 		alm = hp_map

@@ -2,7 +2,7 @@
 that looks the same whether it's operating using the flat-sky approximation (2d FFTs)
 or the curved sky (SHTs and alms)"""
 import numpy as np
-from . import utils, enmap, curvedsky, sharp
+from . import utils, enmap, curvedsky
 
 # Unified Harmonic Transform
 class UHT:
@@ -83,7 +83,7 @@ class UHT:
 				lmax = res2lmax(res)
 			self.lmax = lmax
 			self.l    = np.arange(lmax+1)
-			self.ainfo= sharp.alm_info(lmax=lmax)
+			self.ainfo= curvedsky.alm_info(lmax=lmax)
 			self.nper = 2*self.l+1
 			self.ntot = np.sum(self.nper)
 		else:
