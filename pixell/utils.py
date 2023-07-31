@@ -119,6 +119,26 @@ def find_any(array, vals):
 	res = find(array, vals, default=-1)
 	return res[res >= 0]
 
+def nearest_ind(arr, vals, sorted=False):
+	"""Given array arr and values vals, return the index of the entry in
+	arr with value closest to each entry in val"""
+	arr = np.asarray(arr)
+	if not sorted:
+		order = np.argsort(arr)
+		arr   = arr[order]
+	inds = np.searchsorted(arr, vals)
+	# The closest one will be either arr[i-1] or arr[i]. Simply check both.
+	# Cap to 1 below to handle edge case. Still correct.
+	inds = np.clip(inds, 1, len(arr)-1)
+	diff1= np.abs(arr[inds-1]-vals)
+	diff2= np.abs(arr[inds  ]-vals)
+	# Entries where diff1 is smallest should point one earlier
+	inds -= diff1 <= diff2
+	# Undo sorting if necessary
+	if not sorted:
+		inds = order[inds]
+	return inds
+
 def contains(array, vals):
 	"""Given an array[n], returns a boolean res[n], which is True
 	for any element in array that is also in vals, and False otherwise."""
