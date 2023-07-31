@@ -1498,7 +1498,7 @@ def thumbnail_geometry(r=None, res=None, shape=None, dims=(), proj="tan"):
 		res_ratio = (shape-1)/(2*rpix)*dirs
 		wcs.wcs.cdelt /= res_ratio[::-1]
 		wcs.wcs.crpix  = shape[::-1]//2+1
-	shape = tuple(shape)
+	shape = dims+tuple(shape)
 	return shape, wcs
 
 def create_wcs(shape, box=None, proj="cea"):
@@ -2103,7 +2103,7 @@ def _bin_helper(map, r, bsize, return_nhit=False, return_bins=False):
 	functions on this one."""
 	# Get the number of bins
 	n     = int(np.max(r/bsize))
-	rinds = utils.nint((r/bsize).reshape(-1))
+	rinds = utils.floor((r/bsize).reshape(-1))
 	# Ok, rebin the map. We do this using bincount, which can be a bit slow
 	mflat = map.reshape((-1,)+map.shape[-2:])
 	mout = np.zeros((len(mflat),n))
