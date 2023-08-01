@@ -342,7 +342,7 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, map2alm_adjoint=
 	return healmap
 
 def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, niter=0, theta_min=None, theta_max=None, nthread=None):
-	"""Helper function for map2alm_cyl. Usually not called directly. See the map2alm docstring for details."""
+	"""map2alm for healpix maps. Similar to healpy's map2alm. See the map2alm docstring for details."""
 	if copy and alm is not None: alm = alm.copy()
 	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=healmap.shape[:-1], dtype=healmap.dtype)
 	alm_full   = utils.atleast_Nd(alm, 2 if deriv else 3)

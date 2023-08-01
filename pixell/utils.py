@@ -119,6 +119,26 @@ def find_any(array, vals):
 	res = find(array, vals, default=-1)
 	return res[res >= 0]
 
+def nearest_ind(arr, vals, sorted=False):
+	"""Given array arr and values vals, return the index of the entry in
+	arr with value closest to each entry in val"""
+	arr = np.asarray(arr)
+	if not sorted:
+		order = np.argsort(arr)
+		arr   = arr[order]
+	inds = np.searchsorted(arr, vals)
+	# The closest one will be either arr[i-1] or arr[i]. Simply check both.
+	# Cap to 1 below to handle edge case. Still correct.
+	inds = np.clip(inds, 1, len(arr)-1)
+	diff1= np.abs(arr[inds-1]-vals)
+	diff2= np.abs(arr[inds  ]-vals)
+	# Entries where diff1 is smallest should point one earlier
+	inds -= diff1 <= diff2
+	# Undo sorting if necessary
+	if not sorted:
+		inds = order[inds]
+	return inds
+
 def contains(array, vals):
 	"""Given an array[n], returns a boolean res[n], which is True
 	for any element in array that is also in vals, and False otherwise."""
@@ -1144,6 +1164,16 @@ def widen_box(box, margin=1e-3, relative=True):
 	margin = np.asarray(margin) # Support 1d case
 	margin[box[0]>box[1]] *= -1
 	return np.array([box[0]-margin/2, box[1]+margin/2])
+
+def pad_box(box, padding):
+	"""How I should have implemented widen_box from the beginning.
+	Simply pads a box by an absolute amount. The only complication
+	is the sign stuff that handles descending axes in the box."""
+	box  = np.array(box, copy=True)
+	sign = np.sign(box[...,1,:]-box[...,0,:])
+	box[...,0,:] -= padding*sign
+	box[...,1,:] += padding*sign
+	return box
 
 def unwrap_range(range, nwrap=2*np.pi):
 	"""Given a logically ordered range[{from,to},...] that
@@ -2277,15 +2307,20 @@ def edges2bins(edges):
 def bins2edges(bins):
 	return np.concatenate([bins[:,0],bins[1,-1:]])
 
-def linbin(n, nbin=None, nmin=None):
+def linbin(n, nbin=None, nmin=None, bsize=None):
 	"""Given a number of points to bin and the number of approximately
 	equal-sized bins to generate, returns [nbin_out,{from,to}].
 	nbin_out may be smaller than nbin. The nmin argument specifies
 	the minimum number of points per bin, but it is not implemented yet.
 	nbin defaults to the square root of n if not specified."""
-	if not nbin: nbin = int(np.round(n**0.5))
-	tmp  = np.arange(nbin+1)*n//nbin
-	return np.vstack((tmp[:-1],tmp[1:])).T
+	if bsize is not None:
+		if nbin is None: nbin = ceil(n/bsize)
+		edges = np.arange(nbin+1)*bsize
+	else:
+		if nbin is None: nbin = nint(n**0.5)
+		edges = np.arange(nbin+1)*n//nbin
+	edges = np.arange(nbin+1)*bsize
+	return np.vstack((edges[:-1],edges[1:])).T
 
 def expbin(n, nbin=None, nmin=8, nmax=0):
 	"""Given a number of points to bin and the number of exponentially spaced

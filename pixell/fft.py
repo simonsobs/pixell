@@ -34,8 +34,8 @@ class ducc_FFTW:
 	"""Minimal wrapper of ducc in order to be able to provide it as an engine.
 	Not a full-blown interface."""
 	def __init__(self, a, b, axes=(-1,), direction='FFTW_FORWARD', threads=1, *args, **kwargs):
-		self.a, self.b = a, b
-		self.axes = axes
+		self.a, self.b = np.asarray(a), np.asarray(b)
+		self.axes = tuple(axes)
 		self.direction = direction
 		self.threads   = threads
 	def do_dct(self, kind, *args, **kwargs):
@@ -55,9 +55,9 @@ class ducc_FFTW:
 		elif self.direction == "FFTW_BACKWARD":
 			if self.a.shape == self.b.shape:
 				# Complex to complex
-				ducc0.fft.c2c(self.a, axes=self.axes, out=self.b, forward=False, inorm=2 if normalise_idft else 0, nthreads=self.threads)
+				ducc0.fft.c2c(a=self.a, axes=self.axes, out=self.b, forward=False, inorm=2 if normalise_idft else 0, nthreads=self.threads)
 			else:
-				ducc0.fft.c2r(self.a, axes=self.axes, out=self.b, lastsize=self.b.shape[self.axes[-1]], inorm=2 if normalise_idft else 0, nthreads=self.threads)
+				ducc0.fft.c2r(a=self.a, axes=self.axes, out=self.b, lastsize=self.b.shape[self.axes[-1]], inorm=2 if normalise_idft else 0, nthreads=self.threads)
 		elif _check_ducc_r2r(self.direction):
 			# dct and dst are passed with a list with one entry per dimension of the transform,
 			# but ducc doesn't support heterogeneous transforms like this, so just use the first element
