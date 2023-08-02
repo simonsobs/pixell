@@ -140,18 +140,22 @@ def transfer_alm(iainfo, ialm, oainfo, oalm=None, op=lambda a,b:b):
 
 def islastcontig(arr):
 	return arr[(0,)*(arr.ndim-1)].flags["C_CONTIGUOUS"]
-def aslastcontig(arr):
-	arr = np.asarray(arr)
+def aslastcontig(arr, dtype=None):
+	arr = np.asarray(arr, dtype=dtype)
 	if islastcontig(arr): return arr
 	else: return np.ascontiguousarray(arr)
 
 def lmul(ainfo, alm, lfun, out=None):
 	import warnings
+	# alm must be complex, lfun must be the corresponding real type
+	alm  = np.asarray(alm)
+	ctype= np.result_type(alm.dtype, 0j)
+	rtype= np.zeros(1, alm.dtype).real.dtype
 	# The arrays need to be contiguous along the last dimension
-	alm  = aslastcontig(alm)
-	lfun = aslastcontig(lfun)
-	if out is not None and not islastcontig(out):
-		raise ValueError("lmul's out argument must be contiguous along last axis")
+	alm  = aslastcontig(alm,  dtype=ctype)
+	lfun = aslastcontig(lfun, dtype=rtype)
+	if out is not None and not islastcontig(out) and out.dtype != ctype:
+		raise ValueError("lmul's out argument must be contiguous along last axis, and have the same dtype as alm")
 	# Are we doing a matmul?
 	if lfun.ndim == 3 and alm.ndim == 2:
 		if out is None: out = np.zeros(lfun.shape[:1]+alm.shape[1:], alm.dtype)
