@@ -27,7 +27,7 @@ compile_opts = {
 # Set compiler options
 # Windows
 if sys.platform == 'win32':
-    raise DistUtilsError('Windows is not supported.')
+    raise DistutilsError('Windows is not supported.')
 # Mac OS X - needs gcc (usually via HomeBrew) because the default compiler LLVM (clang) does not support OpenMP
 #          - with gcc -fopenmp option implies -pthread
 elif sys.platform == 'darwin':
