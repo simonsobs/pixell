@@ -749,7 +749,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], we
 			ny      = map.shape[-2]+np.sum(minfo.ypad)
 			weights = ducc0.sht.experimental.get_gridweights(minfo.ducc_geo.name, ny)
 			weights = weights[minfo.ypad[0]:len(weights)-minfo.ypad[1]]
-			weights/= map.shape[-1]
+			weights/= minfo.ducc_geo.nx
 		else:
 			weights = map.pixsizemap(separable=True, broadcastable=True)[:,0]
 		weights = weights.astype(map.dtype)
