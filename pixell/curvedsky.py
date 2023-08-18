@@ -407,13 +407,13 @@ class alm_info:
 			mstart = layout
 		self.lmax  = lmax
 		self.mmax  = mmax
-		self.stride= stride
+		self.stride= int(stride)
 		self.nelem = int(np.max(mstart) + (lmax+1)*stride)
 		if nalm is not None:
 			assert self.nelem == nalm, "lmax must be explicitly specified when lmax != mmax"
 		self.mstart= mstart.astype(np.uint64)
 	def lm2ind(self, l, m):
-		return self.mstart[m]+l*self.stride
+		return (self.mstart[m].astype(int, copy=False)+l*self.stride).astype(int, copy=False)
 	def get_map(self):
 		"""Return the explicit [nelem,{l,m}] mapping this alm_info represents."""
 		raise NotImplementedError

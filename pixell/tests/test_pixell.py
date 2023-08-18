@@ -511,12 +511,11 @@ class PixelTests(unittest.TestCase):
         self.assertEqual(ainfo_out.nelem, ainfo_in.nelem)
 
     def test_alm2map_roundtrip(self):
-                
         # Test curvedsky's alm2map/map2alm.
-        lmax = 3
+        lmax = 30
         ainfo = curvedsky.alm_info(lmax)
 
-        nrings = lmax + 1
+        nrings = lmax + 2
         nphi = 2 * lmax + 1
         shape, wcs = enmap.fullsky_geometry(shape=(nrings,nphi))
 
@@ -524,7 +523,8 @@ class PixelTests(unittest.TestCase):
         # Case 1a: 1d double precision.
         spin = 0
         alm = np.zeros((ainfo.nelem), dtype=np.complex128)
-        alm[4] = 1. + 1.j
+        i   = ainfo.lm2ind(lmax,lmax)
+        alm[i] = 1. + 1.j
 
         omap = enmap.zeros(shape, wcs, np.float64)
         curvedsky.alm2map(alm, omap, spin=spin)
@@ -535,7 +535,7 @@ class PixelTests(unittest.TestCase):
         # Case 1b: 1d single precision.
         spin = 0
         alm = np.zeros((ainfo.nelem), dtype=np.complex64)
-        alm[4] = 1. + 1.j
+        alm[i] = 1. + 1.j
 
         omap = enmap.zeros(shape, wcs, np.float32)
         curvedsky.alm2map(alm, omap, spin=spin)
@@ -546,8 +546,8 @@ class PixelTests(unittest.TestCase):
         spin = 1
         nspin = 2
         alm = np.zeros((nspin, ainfo.nelem), dtype=np.complex128)
-        alm[0,4] = 1. + 1.j
-        alm[1,4] = 2. - 2.j
+        alm[0,i] = 1. + 1.j
+        alm[1,i] = 2. - 2.j
 
         omap = enmap.zeros((nspin,)+shape, wcs, np.float64)
         curvedsky.alm2map(alm, omap, spin=spin)
@@ -558,8 +558,8 @@ class PixelTests(unittest.TestCase):
         spin = 1
         nspin = 2
         alm = np.zeros((nspin, ainfo.nelem), dtype=np.complex64)
-        alm[0,4] = 1. + 1.j
-        alm[1,4] = 2. - 2.j
+        alm[0,i] = 1. + 1.j
+        alm[1,i] = 2. - 2.j
 
         omap = enmap.zeros((nspin,)+shape, wcs, np.float32)
         curvedsky.alm2map(alm, omap, spin=spin)
@@ -571,12 +571,12 @@ class PixelTests(unittest.TestCase):
         nspin = 2
         ntrans = 3
         alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=np.complex128)
-        alm[0,0,4] = 1. + 1.j
-        alm[0,1,4] = 2. - 2.j
-        alm[1,0,4] = 3. + 3.j
-        alm[1,1,4] = 4. - 4.j
-        alm[2,0,4] = 5. + 5.j
-        alm[2,1,4] = 6. - 6.j
+        alm[0,0,i] = 1. + 1.j
+        alm[0,1,i] = 2. - 2.j
+        alm[1,0,i] = 3. + 3.j
+        alm[1,1,i] = 4. - 4.j
+        alm[2,0,i] = 5. + 5.j
+        alm[2,1,i] = 6. - 6.j
 
         omap = enmap.zeros((ntrans,nspin)+shape, wcs, np.float64)
         curvedsky.alm2map(alm, omap, spin=spin)
@@ -588,12 +588,12 @@ class PixelTests(unittest.TestCase):
         nspin = 2
         ntrans = 3
         alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=np.complex64)
-        alm[0,0,4] = 1. + 1.j
-        alm[0,1,4] = 2. - 2.j
-        alm[1,0,4] = 3. + 3.j
-        alm[1,1,4] = 4. - 4.j
-        alm[2,0,4] = 5. + 5.j
-        alm[2,1,4] = 6. - 6.j
+        alm[0,0,i] = 1. + 1.j
+        alm[0,1,i] = 2. - 2.j
+        alm[1,0,i] = 3. + 3.j
+        alm[1,1,i] = 4. - 4.j
+        alm[2,0,i] = 5. + 5.j
+        alm[2,1,i] = 6. - 6.j
 
         omap = enmap.zeros((ntrans,nspin)+shape, wcs, np.float32)
         curvedsky.alm2map(alm, omap, spin=spin)
