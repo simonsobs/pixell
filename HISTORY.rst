@@ -2,6 +2,15 @@
 History
 =======
 
+0.19.2 (2023-08-18)
+-------------------
+
+Changes relative to 0.19.0 include:
+
+* Important bugfixes for the migration from libsharp2 to ducc0
+* Improved SHT unit tests
+
+
 0.19.0 (2023-07-14)
 -------------------
 

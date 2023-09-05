@@ -510,6 +510,26 @@ class PixelTests(unittest.TestCase):
         self.assertEqual(ainfo_out.mmax, ainfo_in.mmax)
         self.assertEqual(ainfo_out.nelem, ainfo_in.nelem)
 
+    def test_almxfl(self):
+        # We try to filter alms of shape (nalms,) and (ncomp,nalms) with
+        # a filter of shape (nells,)
+        lmax = 30
+        ells = np.arange(lmax+1)
+        nells = ells.size
+        for ncomp in range(4):
+            if ncomp==0:
+                fl = np.ones((nells,))
+                ps = np.zeros((nells,))
+                ps[ells>1] = 1./ells[ells>1]
+            else:
+                fl = np.ones((nells))
+                ps = np.zeros((ncomp,ncomp,nells))
+                for i in range(ncomp):
+                    ps[i,i][ells>1] = 1./ells[ells>1]
+            ialm = curvedsky.rand_alm(ps,lmax=lmax)
+            oalm = curvedsky.almxfl(ialm,fl)
+            np.testing.assert_array_almost_equal(ialm, oalm)
+
     def test_alm2map_roundtrip(self):
         # Test curvedsky's alm2map/map2alm.
         lmax = 30
