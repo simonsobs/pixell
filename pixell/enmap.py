@@ -1501,6 +1501,18 @@ def thumbnail_geometry(r=None, res=None, shape=None, dims=(), proj="tan"):
 	shape = dims+tuple(shape)
 	return shape, wcs
 
+def union_geometry(geometries):
+	"""Given a list of compatible geometries, return a new geometry that's the union
+	if the inputs, in the sense that it contains all the pixels that the individual ones
+	contain"""
+	ref      = geometries[0]
+	pixboxes = [pixbox_of(ref[1],shape,wcs) for shape, wcs in geometries]
+	bbox     = utils.bounding_box(pixboxes)
+	oshape   = tuple(bbox[1]-bbox[0])
+	owcs     = ref[1].deepcopy()
+	owcs.wcs.crpix -= bbox[0,::-1]
+	return oshape, owcs
+
 def create_wcs(shape, box=None, proj="cea"):
 	if box is None:
 		box = np.array([[-1,-1],[1,1]])*0.5*10
@@ -2666,7 +2678,7 @@ def shift(map, off, inplace=False, keepwcs=False):
 		if o != 0:
 			map[:] = np.roll(map, o, -len(off)+i)
 	if not keepwcs:
-		map.wcs.wcs.crval -= map.wcs.wcs.cdelt*off[::-1]
+		map.wcs.wcs.crpix += off[::-1]
 	return map
 
 def fractional_shift(map, off, keepwcs=False, nofft=False):
