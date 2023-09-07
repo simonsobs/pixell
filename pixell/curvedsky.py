@@ -457,14 +457,20 @@ def get_method(shape, wcs, minfo=None, pix_tol=1e-6):
 
 # Quadrature weights
 
-def quad_weights(shape, wcs, tweak=False):
-	if wcsutils.is_cyl(wcs):
-		return quad_weights_cyl(shape, wcs, tweak=tweak)
-	else:
-		raise NotImplementedError("Quadrature weights only supported for cylindrical projections")
-
-def quad_weights_cyl(shape, wcs, tweak=False):
-	return get_minfo(shape, wcs, quad=True, tweak=tweak).weight
+def quad_weights(shape, wcs, pix_tol=1e-6):
+	"""Return the quadrature weights to use for map2alm operations for the given geometry.
+	Only valid for a limited number of cylindrical geometries recognized by ducc. Returns
+	weights[ny] where ny is shape[-2]. For cases where quadrature weights aren't available,
+	it's a pretty good approximation to just use the pixel area."""
+	minfo = analyse_geometry(shape, wcs, tol=pix_tol)
+	if minfo.ducc_geo.name is None:
+		raise ValueError("Quadrature weights not available for geometry %s,%s" % (str(shape),str(wcs)))
+	ny      = shape[-2]+np.sum(minfo.ypad)
+	weights = ducc0.sht.experimental.get_gridweights(minfo.ducc_geo.name, ny)
+	weights = weights[minfo.ypad[0]:len(weights)-minfo.ypad[1]]
+	if minfo.flip: weights = weights[::-1]
+	weights/= minfo.ducc_geo.nx
+	return weights
 
 #####################
 ### 1d Transforms ###
