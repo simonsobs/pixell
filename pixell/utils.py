@@ -1221,13 +1221,13 @@ def pole_wrap(pos):
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result
 	rather than needing an output argument."""
-	res = a.copy()
+	res = np.zeros_like(a)
 	if op is None: comm.Allreduce(a, res)
 	else:          comm.Allreduce(a, res, op)
 	return res
 
 def reduce(a, comm, root=0, op=None):
-	res = a.copy() if comm.rank == root else None
+	res = np.zeros_like(a) if comm.rank == root else None
 	if op is None: comm.Reduce(a, res, root=root)
 	else:          comm.Reduce(a, res, op, root=root)
 	return res
