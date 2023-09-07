@@ -3256,3 +3256,19 @@ def setenv(name, value, keep=False):
 	if   name in os.environ and keep: return
 	elif name in os.environ and value is None: del os.environ[name]
 	else: os.environ[name] = str(value)
+
+def zip2(*args):
+	"""Variant of python's zip that calls next() the same number of times on
+	all arguments. This means that it doesn't give up immediately after getting
+	the first StopIteration exception, but continues on until the end of the row.
+	This can be useful for iterators that want to do cleanup after hte last yield."""
+	done = False
+	while not done:
+		res = []
+		for arg in args:
+			try:
+				res.append(next(arg))
+			except StopIteration:
+				done = True
+		if not done:
+			yield tuple(res)
