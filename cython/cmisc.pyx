@@ -140,41 +140,55 @@ def transfer_alm(iainfo, ialm, oainfo, oalm=None, op=lambda a,b:b):
 
 def islastcontig(arr):
 	return arr[(0,)*(arr.ndim-1)].flags["C_CONTIGUOUS"]
-def aslastcontig(arr):
-	arr = np.asarray(arr)
+def aslastcontig(arr, dtype=None):
+	arr = np.asarray(arr, dtype=dtype)
 	if islastcontig(arr): return arr
 	else: return np.ascontiguousarray(arr)
 
 def lmul(ainfo, alm, lfun, out=None):
 	import warnings
+	# alm must be complex, lfun must be the corresponding real type
+	alm  = np.asarray(alm)
+	ctype= np.result_type(alm.dtype, 0j)
+	rtype= np.zeros(1, alm.dtype).real.dtype
 	# The arrays need to be contiguous along the last dimension
-	alm  = aslastcontig(alm)
-	lfun = aslastcontig(lfun)
-	if out is not None and not islastcontig(out):
-		raise ValueError("lmul's out argument must be contiguous along last axis")
+	alm  = aslastcontig(alm,  dtype=ctype)
+	lfun = aslastcontig(lfun, dtype=rtype)
+	if out is not None and not islastcontig(out) and out.dtype != ctype:
+		raise ValueError("lmul's out argument must be contiguous along last axis, and have the same dtype as alm")
 	# Are we doing a matmul?
 	if lfun.ndim == 3 and alm.ndim == 2:
 		if out is None: out = np.zeros(lfun.shape[:1]+alm.shape[1:], alm.dtype)
 		if alm.dtype == np.complex128:  _lmatmul_dp(ainfo, alm, lfun, out)
 		elif alm.dtype == np.complex64: _lmatmul_sp(ainfo, alm, lfun, out)
 		else: raise ValueError("lmul requires complex64 or complex128 arrays")
-	elif lfun.ndim == 1 and alm.ndim == 1:
-		if out is None: out = alm.copy()
-		if alm.dtype == np.complex128:  _lmul_dp(ainfo, out[None], lfun[None])
-		elif alm.dtype == np.complex64: _lmul_sp(ainfo, out[None], lfun[None])
-		else: raise ValueError("lmul requires complex64 or complex128 arrays")
-	elif lfun.ndim == 2 and alm.ndim == 2:
-		if out is None: out = alm.copy()
-		if alm.dtype == np.complex128:  _lmul_dp(ainfo, out, lfun)
-		elif alm.dtype == np.complex64: _lmul_sp(ainfo, out, lfun)
-		else: raise ValueError("lmul requires complex64 or complex128 arrays")
 	else:
-		raise ValueError("lmul only supports alm,lfun shapes of [nalm],[nl], [N,nalm],[N,nl] and [N,M,nalm],[M,nl]")
+		# Broadcast pre-dimensions, if they're compatible
+		try:
+			pre  = np.broadcast_shapes(alm.shape[:-1], lfun.shape[:-1])
+		except ValueError:
+			raise ValueError("lmul's alm and lfun's dimensions must either broadcast (when ignoring the last dimension), or have shape compatible with a matrix product (again ignoring the last dimension)")
+		alm  = np.broadcast_to(alm,  pre+ alm.shape[-1:])
+		lfun = np.broadcast_to(lfun, pre+lfun.shape[-1:])
+		# Flatten, so the C code doesn't need to deal with variable dimensionality
+		aflat= alm.reshape(-1,alm.shape[-1])
+		lflat= lfun.reshape(-1,lfun.shape[-1])
+		if out is None:
+			out = aflat.copy()
+		else:
+			out = out.reshape(aflat.shape)
+			out[:] = aflat
+		if alm.dtype == np.complex128:  _lmul_dp(ainfo, out, lflat)
+		elif alm.dtype == np.complex64: _lmul_sp(ainfo, out, lflat)
+		else: raise ValueError("lmul requires complex64 or complex128 arrays")
+		# Unflatten output
+		out = out.reshape(pre + out.shape[-1:])
 	return out
 
 cdef _lmul_dp(ainfo, alm, lfun):
 	cdef int64_t[::1] mstart = np.ascontiguousarray(ainfo.mstart).view(np.int64)
-	cdef double[::1] _alm, _lfun
+	cdef double[::1] _alm
+	cdef const double[::1] _lfun
 	for i in range(alm.shape[-2]):
 		_alm  = alm [i].view(np.float64)
 		_lfun = lfun[i].view(np.float64)
@@ -182,7 +196,8 @@ cdef _lmul_dp(ainfo, alm, lfun):
 
 cdef _lmul_sp(ainfo, alm, lfun):
 	cdef int64_t[::1] mstart = np.ascontiguousarray(ainfo.mstart).view(np.int64)
-	cdef float  [::1] _alm, _lfun
+	cdef float  [::1] _alm
+	cdef const float  [::1] _lfun
 	for i in range(alm.shape[-2]):
 		_alm  = alm [i].view(np.float32)
 		_lfun = lfun[i].view(np.float32)

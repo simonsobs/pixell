@@ -2,7 +2,7 @@
 that looks the same whether it's operating using the flat-sky approximation (2d FFTs)
 or the curved sky (SHTs and alms)"""
 import numpy as np
-from . import utils, enmap, curvedsky, sharp
+from . import utils, enmap, curvedsky
 
 # Unified Harmonic Transform
 class UHT:
@@ -50,7 +50,7 @@ class UHT:
 	  - flat:   An enmap[...,ny,nx] corresponding to the multipoles self.l
 	  - curved: A 1d array [...,self.lmax+1]
 	"""
-	def __init__(self, shape, wcs, mode="auto", lmax=None, max_distortion=0.1, tweak=False):
+	def __init__(self, shape, wcs, mode="auto", lmax=None, max_distortion=0.1):
 		"""Initialize a UHT object.
 		Arguments:
 			shape, wcs: The geometry of the enmaps the UHT object will be used on.
@@ -63,7 +63,6 @@ class UHT:
 		self.shape, self.wcs = shape[-2:], wcs
 		self.area = enmap.area(self.shape, self.wcs)
 		self.fsky = self.area/(4*np.pi)
-		self.tweak= tweak
 		if mode == "auto":
 			dist = estimate_distortion(shape, wcs)
 			if dist <= max_distortion: mode = "flat"
@@ -83,7 +82,7 @@ class UHT:
 				lmax = res2lmax(res)
 			self.lmax = lmax
 			self.l    = np.arange(lmax+1)
-			self.ainfo= sharp.alm_info(lmax=lmax)
+			self.ainfo= curvedsky.alm_info(lmax=lmax)
 			self.nper = 2*self.l+1
 			self.ntot = np.sum(self.nper)
 		else:
@@ -94,26 +93,26 @@ class UHT:
 		if self.mode == "flat":
 			return enmap.map2harm(map, spin=spin, normalize="phys")
 		else:
-			return curvedsky.map2alm(map, ainfo=self.ainfo, spin=spin, tweak=self.tweak)
+			return curvedsky.map2alm(map, ainfo=self.ainfo, spin=spin)
 	def harm2map(self, harm, spin=0):
 		if self.mode == "flat":
 			return enmap.harm2map(harm, spin=spin, normalize="phys").real
 		else:
 			rtype= np.zeros(1, harm.dtype).real.dtype
 			omap = enmap.zeros(harm.shape[:-1]+self.shape, self.wcs, rtype)
-			return curvedsky.alm2map(harm, omap, ainfo=self.ainfo, spin=spin, tweak=self.tweak)
+			return curvedsky.alm2map(harm, omap, ainfo=self.ainfo, spin=spin)
 	def harm2map_adjoint(self, map, spin=0):
 		if self.mode == "flat":
 			return enmap.harm2map_adjoint(map, spin=spin, normalize="phys")
 		else:
-			return curvedsky.alm2map_adjoint(map, ainfo=self.ainfo, tweak=self.tweak)
+			return curvedsky.alm2map_adjoint(map, ainfo=self.ainfo)
 	def map2harm_adjoint(self, harm, spin=0):
 		if self.mode == "flat":
 			return enmap.map2harm_adjoint(harm, spin=spin, normalize="phys")
 		else:
 			rtype= np.zeros(1, harm.dtype).real.dtype
 			omap = enmap.zeros(harm.shape[:-1]+self.shape, self.wcs, rtype)
-			return curvedsky.map2alm_adjoint(harm, omap, ainfo=self.ainfo, spin=spin, tweak=self.tweak)
+			return curvedsky.map2alm_adjoint(harm, omap, ainfo=self.ainfo, spin=spin)
 	def quad_weights(self):
 		"""Returns the quadrature weights array W. This will broadcast correctly
 		with maps, but may not have the same dimensions due to symmetries.
@@ -122,7 +121,7 @@ class UHT:
 			if self.mode == "flat":
 				self.quad = enmap.pixsizemap(self.shape, self.wcs, broadcastable=True)
 			else:
-				self.quad = curvedsky.quad_weights(self.shape, self.wcs, tweak=self.tweak)[:,None]
+				self.quad = curvedsky.quad_weights(self.shape, self.wcs)[:,None]
 		return self.quad
 	def rprof2hprof(self, br, r):
 		"""Like map2harm, but for a 1d function of r."""

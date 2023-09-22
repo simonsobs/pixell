@@ -952,7 +952,7 @@ def show(img, title=None, method="auto"):
 		# do. Try them one by one in priority order
 		try:
 			# Only use ipython for graphical notebooks
-			if "ZMQ" in get_ipython().__class__.__name__:
+			if get_ipython().__class__.__name__ in ["ZMQInteractiveShell", "Shell"]:
 				return show_ipython(img, title=title)
 		except (ImportError, NameError): pass
 		try: return show_tk(img, title=title)

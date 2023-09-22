@@ -1165,6 +1165,16 @@ def widen_box(box, margin=1e-3, relative=True):
 	margin[box[0]>box[1]] *= -1
 	return np.array([box[0]-margin/2, box[1]+margin/2])
 
+def pad_box(box, padding):
+	"""How I should have implemented widen_box from the beginning.
+	Simply pads a box by an absolute amount. The only complication
+	is the sign stuff that handles descending axes in the box."""
+	box  = np.array(box, copy=True)
+	sign = np.sign(box[...,1,:]-box[...,0,:])
+	box[...,0,:] -= padding*sign
+	box[...,1,:] += padding*sign
+	return box
+
 def unwrap_range(range, nwrap=2*np.pi):
 	"""Given a logically ordered range[{from,to},...] that
 	may have been exposed to wrapping with period nwrap,
@@ -3248,3 +3258,19 @@ def setenv(name, value, keep=False):
 	if   name in os.environ and keep: return
 	elif name in os.environ and value is None: del os.environ[name]
 	else: os.environ[name] = str(value)
+
+def zip2(*args):
+	"""Variant of python's zip that calls next() the same number of times on
+	all arguments. This means that it doesn't give up immediately after getting
+	the first StopIteration exception, but continues on until the end of the row.
+	This can be useful for iterators that want to do cleanup after hte last yield."""
+	done = False
+	while not done:
+		res = []
+		for arg in args:
+			try:
+				res.append(next(arg))
+			except StopIteration:
+				done = True
+		if not done:
+			yield tuple(res)

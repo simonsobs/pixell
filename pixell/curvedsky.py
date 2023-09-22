@@ -342,7 +342,7 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, map2alm_adjoint=
 	return healmap
 
 def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, niter=0, theta_min=None, theta_max=None, nthread=None):
-	"""Helper function for map2alm_cyl. Usually not called directly. See the map2alm docstring for details."""
+	"""map2alm for healpix maps. Similar to healpy's map2alm. See the map2alm docstring for details."""
 	if copy and alm is not None: alm = alm.copy()
 	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=healmap.shape[:-1], dtype=healmap.dtype)
 	alm_full   = utils.atleast_Nd(alm, 2 if deriv else 3)
@@ -407,13 +407,13 @@ class alm_info:
 			mstart = layout
 		self.lmax  = lmax
 		self.mmax  = mmax
-		self.stride= stride
+		self.stride= int(stride)
 		self.nelem = int(np.max(mstart) + (lmax+1)*stride)
 		if nalm is not None:
 			assert self.nelem == nalm, "lmax must be explicitly specified when lmax != mmax"
 		self.mstart= mstart.astype(np.uint64)
 	def lm2ind(self, l, m):
-		return self.mstart[m]+l*self.stride
+		return (self.mstart[m].astype(int, copy=False)+l*self.stride).astype(int, copy=False)
 	def get_map(self):
 		"""Return the explicit [nelem,{l,m}] mapping this alm_info represents."""
 		raise NotImplementedError
@@ -457,14 +457,20 @@ def get_method(shape, wcs, minfo=None, pix_tol=1e-6):
 
 # Quadrature weights
 
-def quad_weights(shape, wcs, tweak=False):
-	if wcsutils.is_cyl(wcs):
-		return quad_weights_cyl(shape, wcs, tweak=tweak)
-	else:
-		raise NotImplementedError("Quadrature weights only supported for cylindrical projections")
-
-def quad_weights_cyl(shape, wcs, tweak=False):
-	return get_minfo(shape, wcs, quad=True, tweak=tweak).weight
+def quad_weights(shape, wcs, pix_tol=1e-6):
+	"""Return the quadrature weights to use for map2alm operations for the given geometry.
+	Only valid for a limited number of cylindrical geometries recognized by ducc. Returns
+	weights[ny] where ny is shape[-2]. For cases where quadrature weights aren't available,
+	it's a pretty good approximation to just use the pixel area."""
+	minfo = analyse_geometry(shape, wcs, tol=pix_tol)
+	if minfo.ducc_geo.name is None:
+		raise ValueError("Quadrature weights not available for geometry %s,%s" % (str(shape),str(wcs)))
+	ny      = shape[-2]+np.sum(minfo.ypad)
+	weights = ducc0.sht.experimental.get_gridweights(minfo.ducc_geo.name, ny)
+	weights = weights[minfo.ypad[0]:len(weights)-minfo.ypad[1]]
+	if minfo.flip: weights = weights[::-1]
+	weights/= minfo.ducc_geo.nx
+	return weights
 
 #####################
 ### 1d Transforms ###
@@ -749,7 +755,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], we
 			ny      = map.shape[-2]+np.sum(minfo.ypad)
 			weights = ducc0.sht.experimental.get_gridweights(minfo.ducc_geo.name, ny)
 			weights = weights[minfo.ypad[0]:len(weights)-minfo.ypad[1]]
-			weights/= map.shape[-1]
+			weights/= minfo.ducc_geo.nx
 		else:
 			weights = map.pixsizemap(separable=True, broadcastable=True)[:,0]
 		weights = weights.astype(map.dtype)

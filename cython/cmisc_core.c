@@ -123,7 +123,7 @@ void transpose_alm_sp(int lmax, int mmax, int64_t * mstart, float * ialm, float 
 }
 
 // Multiply a scalar alm by a scalar function of l
-void lmul_dp(int lmax, int mmax, int64_t * mstart, double * alm, int lfmax, double * lfun) {
+void lmul_dp(int lmax, int mmax, int64_t * mstart, double * alm, int lfmax, const double * lfun) {
 	#pragma omp parallel for
 	for(int m = 0; m <= mmax; m++) {
 		for(int l = m; l <= lmax; l++) {
@@ -136,7 +136,7 @@ void lmul_dp(int lmax, int mmax, int64_t * mstart, double * alm, int lfmax, doub
 }
 
 // Multiply a scalar alm by a scalar function of l
-void lmul_sp(int lmax, int mmax, int64_t * mstart, float * alm, int lfmax, float * lfun) {
+void lmul_sp(int lmax, int mmax, int64_t * mstart, float * alm, int lfmax, const float * lfun) {
 	#pragma omp parallel for
 	for(int m = 0; m <= mmax; m++) {
 		for(int l = m; l <= lmax; l++) {
