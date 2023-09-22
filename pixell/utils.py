@@ -1221,13 +1221,13 @@ def pole_wrap(pos):
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result
 	rather than needing an output argument."""
-	res = a.copy()
+	res = np.zeros_like(a)
 	if op is None: comm.Allreduce(a, res)
 	else:          comm.Allreduce(a, res, op)
 	return res
 
 def reduce(a, comm, root=0, op=None):
-	res = a.copy() if comm.rank == root else None
+	res = np.zeros_like(a) if comm.rank == root else None
 	if op is None: comm.Reduce(a, res, root=root)
 	else:          comm.Reduce(a, res, op, root=root)
 	return res
@@ -2811,6 +2811,8 @@ class RadialFourierTransform:
 		if self.pad == 0: res = arrs
 		else: res = tuple([arr[...,self.pad:-self.pad] for arr in arrs])
 		return res[0] if len(arrs) == 1 else res
+	def lind(self, l): return (np.log(l)-np.log(self.l[0]))/self.dlog
+	def rind(self, r): return (np.log(r)-np.log(self.r[0]))/self.dlog
 
 def profile_to_tform_hankel(profile_fun, lmin=0.1, lmax=1e7, n=512, pad=256):
 	"""Transform a radial profile given by the function profile_fun(r) to
