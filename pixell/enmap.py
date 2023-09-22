@@ -669,27 +669,24 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 		rpix = r/pixsize(shape, wcs)
 		centers = sky2pix(poss.T).T
 		return np.moveaxis([centers-rpix,center+rpix+1],0,1)
-	poss   = np.asarray(poss)
-	ishape = poss.shape
-	poss   = poss.reshape(-1,2)
-	res  = np.zeros([len(poss),2,2])
-	for i, pos in enumerate(poss):
+	poss, r = utils.broadcast_arrays(poss, r, npost=(1,0))
+	res     = np.zeros(poss.shape[:-1]+(2,2))
+	for I in utils.nditer(poss.shape[:-1]):
+		pos, r_ = poss[I], r[I]
 		# Find the coordinate box we need
 		dec, ra = pos[:2]
-		dec1, dec2 = max(dec-r,-np.pi/2), min(dec+r,np.pi/2)
+		dec1, dec2 = max(dec-r_,-np.pi/2), min(dec+r_,np.pi/2)
 		with utils.nowarn():
 			scale = 1/min(np.cos(dec1), np.cos(dec2))
-		dra        = min(r*scale, np.pi)
+		dra        = min(r_*scale, np.pi)
 		ra1, ra2   = ra-dra, ra+dra
 		box        = np.array([[dec1,ra1],[dec2,ra2]])
 		# And get the corresponding pixbox
-		res[i]     = skybox2pixbox(shape, wcs, box)
+		res[I]     = skybox2pixbox(shape, wcs, box)
 	# Turn ranges into from-inclusive, to-exclusive integers.
 	res = utils.nint(res)
-	res = np.sort(res, 1)
-	res[:,1] += 1
-	# Recover pre-dimensions
-	res = res.reshape(ishape[:-1]+res.shape[-2:])
+	res = np.sort(res, -2)
+	res[...,1,:] += 1
 	return res
 
 def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=False, safe=True):
