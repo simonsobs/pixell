@@ -1365,6 +1365,17 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	To force the geometry to exactly match the corners provided you can pass force=True.
 	It is also possible to manually choose the reference point via the ref argument, which
 	must be a dec,ra coordinate pair (in radians)."""
+	# TODO: This function should be generalized to support fejer1.
+	# This is problematic because we can't assume that ra=0,dec=0 will be a pixel
+	# center in a Fejer1 geometry. Actually we can't even assume that for CC.
+	# For both cases it will happen for odd ny, but odd ny is normal for CC but
+	# rare for fejer1. For fejer1 the norm will instead be to have a pixel edge
+	# at ra=0,dec=0. In general the safest approach is to at least conceptually
+	# start from a standardized fullsky geometry and then crop it to the target,
+	# rather than to start from a standard point on the sky and then grow it
+	# to the required size. This will require a complete rework of this function
+	# though.
+
 	# We use radians by default, while wcslib uses degrees, so need to rescale.
 	# The exception is when we are using a plain, non-spherical wcs, in which case
 	# both are unitless. So undo the scaling in this case.
@@ -1400,8 +1411,8 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car", variant="CC"):
 	projection for now."""
 	assert proj == "car", "Only CAR fullsky geometry implemented"
 	# Handle the CAR variants
-	if   variant == "CC":     yo = 1
-	elif variant == "fejer1": yo = 0
+	if   variant.lower() == "cc":     yo = 1
+	elif variant.lower() == "fejer1": yo = 0
 	else: raise ValueError("Unrecognized CAR variant '%s'" % str(variant))
 	# Set up the shape/resolution
 	if shape is None:
@@ -2192,6 +2203,7 @@ def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000, destroy_input=Fa
 	tradeoff of the function. Higher values use more memory, and might (and might not)
 	give higher speed. If destroy_input is True, then the input map will be prefiltered
 	in-place, which saves memory but modifies its values."""
+	warnings.warn("enmap.to_healpix is deprecated. Reprojecting this way is error-prone due to the potential loss of information, and the (very small) loss of high-l power due to the use of spline interpolation. Use reproject.map2healpix instead. And read its docstring!")
 	import healpy
 	if not destroy_input and order > 1: imap = imap.copy()
 	if order > 1:
@@ -2686,7 +2698,6 @@ def fractional_shift(map, off, keepwcs=False, nofft=False):
 	omap = samewcs(enfft.shift(map, off, nofft=nofft), map)
 	if not keepwcs:
 		omap.wcs.wcs.crpix += off[::-1]
-		#omap.wcs.wcs.crval -= omap.wcs.wcs.cdelt*off[::-1]
 	return omap
 
 def fftshift(map, inplace=False):
