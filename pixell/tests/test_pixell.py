@@ -530,7 +530,7 @@ class PixelTests(unittest.TestCase):
             oalm = curvedsky.almxfl(ialm,fl)
             np.testing.assert_array_almost_equal(ialm, oalm)
 
-    def test_alm2map_roundtrip(self):
+    def test_alm2map_2d_roundtrip(self):
         # Test curvedsky's alm2map/map2alm.
         lmax = 30
         ainfo = curvedsky.alm_info(lmax)
@@ -619,6 +619,62 @@ class PixelTests(unittest.TestCase):
         curvedsky.alm2map(alm, omap, spin=spin)
         alm_out = curvedsky.map2alm(omap, spin=spin, ainfo=ainfo)
         np.testing.assert_array_almost_equal(alm_out, alm)
+
+    def test_alm2map_healpix_roundtrip(self):
+        # Test curvedsky's alm2map/map2alm.
+        nside = 2
+        lmax  = nside*2
+        nside = lmax//2
+        ainfo = curvedsky.alm_info(lmax)
+        npix  = 12*nside**2
+        # 7 iterations needed to reach 6 digits of
+        # precision. This is more than the 3 default
+        # in healpy and the 0 default in pixell
+        niter = 7
+
+        for dtype in [np.float64, np.float32]:
+            ctype = utils.complex_dtype(dtype)
+
+            # Case 1: 1d
+            spin = 0
+            alm = np.zeros((ainfo.nelem), dtype=ctype)
+            i   = ainfo.lm2ind(lmax,lmax)
+            alm[i] = 1. + 1.j
+
+            omap = np.zeros(npix, dtype)
+            curvedsky.alm2map_healpix(alm, omap, spin=spin)
+            alm_out = curvedsky.map2alm_healpix(omap, spin=spin, ainfo=ainfo, niter=niter)
+
+            np.testing.assert_array_almost_equal(alm_out, alm)
+
+            # Case 2: 2d
+            spin = 1
+            nspin = 2
+            alm = np.zeros((nspin, ainfo.nelem), dtype=ctype)
+            alm[0,i] = 1. + 1.j
+            alm[1,i] = 2. - 2.j
+
+            omap = np.zeros((nspin,npix), dtype)
+            curvedsky.alm2map_healpix(alm, omap, spin=spin)
+            alm_out = curvedsky.map2alm_healpix(omap, spin=spin, ainfo=ainfo, niter=niter)
+            np.testing.assert_array_almost_equal(alm_out, alm)
+
+            # Case 3: 3d
+            spin = 1
+            nspin = 2
+            ntrans = 3
+            alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=ctype)
+            alm[0,0,i] = 1. + 1.j
+            alm[0,1,i] = 2. - 2.j
+            alm[1,0,i] = 3. + 3.j
+            alm[1,1,i] = 4. - 4.j
+            alm[2,0,i] = 5. + 5.j
+            alm[2,1,i] = 6. - 6.j
+
+            omap = np.zeros((ntrans,nspin,npix), dtype)
+            curvedsky.alm2map_healpix(alm, omap, spin=spin)
+            alm_out = curvedsky.map2alm_healpix(omap, spin=spin, ainfo=ainfo, niter=niter)
+            np.testing.assert_array_almost_equal(alm_out, alm)
 
     #def test_sharp_alm2map_der1(self):
     #            
