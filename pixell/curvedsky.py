@@ -330,7 +330,7 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, adjoint=False,
 		"ringstart":rinfo.offsets, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
 		"mstart": ainfo.mstart, "nthreads":nthread}
 	# Loop over pre-dimensions
-	for I in utils.nditer(map_full.shape[:-3]):
+	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
 			ducc0.sht.experimental.synthesis(alm=alm_full[I], map=map_full[I], mode="DERIV1", spin=1, **kwargs)
 			# Flip sign of theta derivative to get dec derivative
@@ -338,7 +338,6 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, adjoint=False,
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full[I].shape[-2]):
 				Ij = I+(slice(j1,j2),)
-				print(alm_full[Ij].shape, map_full[Ij].shape)
 				ducc0.sht.experimental.synthesis(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
 	if adjoint: return alm
 	else:       return healmap
@@ -357,7 +356,7 @@ def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], weight
 	nside      = npix2nside(map_full.shape[-1])
 	rinfo      = get_ring_info_healpix(nside)
 	rinfo      = apply_minfo_theta_lim(rinfo, theta_min, theta_max)
-	nthread    = int(utils.getenv("OMP_NUM_THREADS", nthread))
+	nthread    = int(utils.fallback(utils.getenv("OMP_NUM_THREADS",nthread),0))
 	kwargs     = {"theta":rinfo.theta, "nphi":rinfo.nphi, "phi0":rinfo.phi0,
 		"ringstart":rinfo.offsets, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
 		"mstart": ainfo.mstart, "nthreads":nthread}
