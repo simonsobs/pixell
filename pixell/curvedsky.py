@@ -152,8 +152,8 @@ def alm2map(alm, map, spin=[0,2], deriv=False, adjoint=False,
 		if verbose: print("method: cyl")
 		return alm2map_cyl(alm, map, ainfo=ainfo, minfo=minfo, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, adjoint=adjoint, nthread=nthread, pix_tol=pix_tol)
-	elif method == "general":
-		if verbose: print("method: general")
+	elif method == "pos":
+		if verbose: print("method: pos")
 		return alm2map_general(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, adjoint=adjoint, nthread=nthread, epsilon=epsilon,
 			locinfo=locinfo)
@@ -680,7 +680,7 @@ def transfer_alm(iainfo, ialm, oainfo, oalm=None, op=lambda a,b:b):
 	case oalm is returned. If op is specified, then it defines out oalm
 	is updated: oalm = op(ialm, oalm). For example, if op = lambda a,b:a+b,
 	then ialm would be added to oalm instead of overwriting it."""
-	return cmisc.transfer_alm(ainfo, ialm, oainfo, oalm=oalm, op=op)
+	return cmisc.transfer_alm(iainfo, ialm, oainfo, oalm=oalm, op=op)
 
 ##############################
 ### Implementation details ###
@@ -716,7 +716,7 @@ def alm2map_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=
 	for I in utils.nditer(map.shape[:-3]):
 		# Unlike 2d, cyl is fine with a band around the sky, so y padding is not needed
 		pad  = ((0,minfo.xpad[0]),(0,minfo.xpad[1]))
-		tmap = map2buffer(map[I], minfo.flip, pad)
+		tmap = map2buffer(map[I], minfo.flip, pad, obuf=True)
 		alm2map_raw_cyl(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, adjoint=adjoint, nthread=nthread, verbose=verbose)
 		# Copy out if necessary
 		if not utils.same_array(tmap, map[I]):
@@ -780,7 +780,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], we
 	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Get our weights, approximate or not
 	if weights is None:
-		if minfo.ducc_geo.name is not None:
+		if minfo.ducc_geo is not None and minfo.ducc_geo.name is not None:
 			ny      = map.shape[-2]+np.sum(minfo.ypad)
 			weights = ducc0.sht.experimental.get_gridweights(minfo.ducc_geo.name, ny)
 			weights = weights[minfo.ypad[0]:len(weights)-minfo.ypad[1]]
@@ -919,7 +919,7 @@ def alm2map_raw_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, c
 # I didn't do that for the other ones since an adjoint was already avaliable from ducc,
 # and it was more convenient to keep the read/write direction consistent.
 
-def alm2map_raw_general(alm, map, loc, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, epsilon=1e-6):
+def alm2map_raw_general(alm, map, loc, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, epsilon=None):
 	"""Helper function for alm2map_general. Usually not called directly. See the alm2map docstring for details."""
 	if copy:
 		if adjoint: alm = alm.copy()
@@ -1007,8 +1007,8 @@ def map2alm_raw_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=No
 				Ij = I+(slice(j1,j2),)
 				def Y(alm):   return ducc0.sht.experimental.synthesis(alm=alm, spin=s, **kwargs)
 				def YT(map):  return ducc0.sht.experimental.adjoint_synthesis(map=map, spin=s, **kwargs)
-				def YTW(map): return adjoint(wmul(map,weights))
-				def WY(alm):  return wmul(forward(alm),weights)
+				def YTW(map): return YT(wmul(map,weights))
+				def WY(alm):  return wmul(Y(alm),weights)
 				if adjoint: map_full[Ij] = jacobi_inverse(YT, WY, alm_full[Ij], niter=niter)
 				else:       alm_full[Ij] = jacobi_inverse(Y, YTW, map_full[Ij], niter=niter)
 	if adjoint: return map
@@ -1020,9 +1020,13 @@ def map2alm_raw_general(map, loc, alm=None, ainfo=None, lmax=None, spin=[0,2], w
 		if copy and map is not None: map = map.copy()
 	else:
 		if copy and alm is not None: alm = alm.copy()
+	if epsilon is None:
+		if map.dtype == np.float64: epsilon = 1e-10
+		else:                       epsilon = 1e-6
 	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, lmax=lmax, deriv=deriv, nthread=nthread, pixdims=1)
-	kwargs = {"loc":loc, "lmax":ainfo.lmax, "mmax":ainfo.mmax, "nthreads":nthread, "epsilon":epsilon}
+	kwargs = {"loc":loc, "lmax":ainfo.lmax, "mmax":ainfo.mmax, "nthreads":nthread, "epsilon":epsilon, "mstart":ainfo.mstart, "epsilon": epsilon}
 	if weights is None: weights = np.ones(1)
+	def wmul(map, weights): return map*weights
 	# Iterate over all the predimensions.
 	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
@@ -1166,6 +1170,13 @@ def flip_geometry(shape, wcs, flips):
 	return enmap.slice_geometry(shape, wcs, flip2slice(flips))
 def flip_array(arr, flips):
 	return arr[flip2slice(flips)]
+def pad_geometry(shape, wcs, pad):
+	w = int(pad[0,0] + shape[-2] + pad[1,0])
+	h = int(pad[0,1] + shape[-1] + pad[1,1])
+	wcs = wcs.deepcopy()
+	wcs.wcs.crpix += pad[0,::-1]
+	shape = shape[:-2] + (w,h)
+	return shape, wcs
 
 def analyse_geometry(shape, wcs, tol=1e-6):
 	"""
@@ -1299,15 +1310,25 @@ def calc_locinfo(shape, wcs, bsize=1000):
 	masked = off < shape[-2]*shape[-1]
 	return bunch.Bunch(loc=loc, mask=mask, masked=masked)
 
-def map2buffer(map, flip, pad):
+def map2buffer(map, flip, pad, obuf=False):
 	"""Prepare a map for ducc operations by flipping and/or padding it, returning
 	the resulting map."""
-	map = flip_array(map, flip)
-	pad = np.array(pad)
-	if np.any(pad!=0):
-		map = enmap.pad(map, pad)
-	map = enmap.samewcs(np.ascontiguousarray(map),map)
-	return map
+	# First allocate the output buffer
+	pad = np.asarray(pad)
+	geo = enmap.Geometry(*map.geometry)
+	geo = flip_geometry(*geo, flip)
+	geo = pad_geometry(*geo, pad)
+	buf = enmap.zeros(*geo, map.dtype)
+	# Then copy the input map over, unless we're a pure
+	# output buffer
+	if not obuf:
+		buf[...,pad[0,0]:buf.shape[-2]-pad[1,0],pad[0,1]:buf.shape[-1]-pad[1,1]] = flip_array(map, flip)
+	#map = flip_array(map, flip)
+	#pad = np.array(pad)
+	#if np.any(pad!=0):
+	#	map = enmap.pad(map, pad)
+	#map = enmap.samewcs(np.ascontiguousarray(map),map)
+	return buf
 
 def buffer2map(map, flip, pad):
 	"""The inverse of map2buffer. Undoes flipping and padding"""

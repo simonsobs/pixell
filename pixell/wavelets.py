@@ -1,6 +1,15 @@
 import numpy as np
 from . import enmap, utils, wcsutils, curvedsky, multimap
 
+# Note on units:
+#  The current version uses "pix" normalization. With flat-sky
+#  this is equivalent to physical normalization up to a constant:
+#  the average pixel area. However, on the curved sky this isn't
+#  the case, and it's better to just work with physical units.
+#  By physical units, I mean units where the mean of the square
+#  of a wavelet map is the power spectrum value for that map's
+#  typical l.
+
 ######## Wavelet basis generators ########
 
 class Butterworth:
@@ -129,21 +138,65 @@ class AdriSD:
 class WaveletTransform:
 	"""This class implements a wavelet tansform. It provides thw forwards and
 	backwards wavelet transforms map2wave and wave2map, where map is a normal enmap
-	and the wavelet coefficients are represented as multimaps."""
+	and the wavelet coefficients are represented as multimaps.
+
+	Example usage:
+
+	 from pixell import enmap, uharm, wavelets, enplot
+	 map  = make_some_enmap()
+	 # Construct a UHT object, which handles both flat-sky and curved-sky
+	 # transforms. By default it selects automatically based on the map geometry,
+	 # but it can be forced with the mode="flat" or mode="curved" argument.
+	 uht  = uharm.UHT(map.shape, map.wcs)
+	 # Construct a wavelet transform using the default ButterTrim kernels.
+	 # wt.nlevel will be the number of wavelet scales in use
+	 wt   = wavelets.WaveletTransform(uht)
+	 # Compute the wavelet coefficients for the map. These are multimaps,
+	 # which are conceptually a list of enmaps that can be accessed with
+	 # wmap.maps[i], but are actually stored as a single contiguous array,
+	 # and can be operated on using mathematical operations just like a
+	 # enmap, e.g. wmap *= 2 etc. pixell.multimap has various functions
+	 # that make it easier to work with these, which can often be used
+	 # to avoid needing to loop over .maps[].
+	 #
+	 # The wavelet coefficients have the same units as the alms, so for
+	 # a homogeneous map, the variance of each wavelet map will match the
+	 # power spectrum at that map's typical scale, which can be accessed
+	 # using the .lmids member of the wavelet transform object.
+	 wmap  = wt.map2wave(map)
+	 # Plot the 3rd last (smallest) wavelet scale.
+	 enplot.pshow(wmap.maps[-3])
+	 # Measure the variance for each wavelet scale, and use it
+	 # to inverse-variance weight the map
+	 N = multimap.var(wmap)
+	 for i, w in enumerate(wmap.maps):
+	   w /= N[i]
+	 # Transform back to the map
+	 omap = wt.wave2map(wmap)
+	"""
 	def __init__(self, uht, basis=ButterTrim(), ores=None):
 		"""Initialize the WaveletTransform. Arguments:
 		* uht: An inscance of uharm.UHT, which specifies how to do harmonic transforms
 		  (flat-sky vs. curved sky and what lmax).
 		* basis: A basis-generating function, which provides the definition of the wavelet
 		  filters. Defaults to ButterTrim(), which is fast to evaluate and decently local
-		  both spatially and harmonically.
+		  both spatially and harmonically. The minimum and maximum multipole to use, as well
+		  as the harmonic resolution, are all controlled by this.
+		* ores: The resolution of the wavelet maps. If None, these are automatically
+		  determined, and will be variable-resolution with the low-l maps having lower
+		  resolution. If ores is a single number, then all the wavelet maps will have
+		  this resolution in radians. This is inefficient, but may be useful for plotting
+		  purposes. If ores is an array, then it must have length nlevel, and specifies
+		  the resolution to use for each individual wavelet scale. This can be a bit
+		  tricky to use since nlevel usually is calculated later. Therefore this variant
+		  is probably best used with a fully initialized basis object (one where lmin and
+		  lmax were passed in when the basis was constructed, after which basis.n gives
+		  the number of levels).
 
 		Flat-sky transforms should be exact. Curved-sky transforms become slightly inaccurate
-		on small patches.
-
-		Currently the curved-sky case uses wavelet maps with twice the naively needed resolution
-		to make up for the deficiency of CAR quadrature. In the future better CAR quadrature will
-		be available, but it would also be possible to use gauss-legendre pixelization internally."""
+		(%-level, mainly scales near the Nyquist frequency) at low res and in small patches.
+		I haven't tracked this down, but hopefully it isn't a big issue.
+		"""
 		self.uht   = uht
 		self.basis = basis
 		ires       = np.max(enmap.pixshapebounds(uht.shape, uht.wcs))
@@ -154,22 +207,20 @@ class WaveletTransform:
 			if lmax is None: lmax = min(int(np.ceil(np.pi/ires)),uht.lmax)
 			if lmin is None: lmin = min(int(np.ceil(np.pi/np.max(enmap.extent(uht.shape, uht.wcs)))),lmax)
 			self.basis = basis.with_bounds(lmin, lmax)
+		# Determine the resolution for the wavelet maps, unless the user has
+		# already specified it
+		if ores is None:
+			oress = np.maximum(np.pi/self.basis.lmaxs, ires)
+		else:
+			oress = np.zeros(self.nlevel)+ores
 		# Build the geometries for each wavelet scale
 		if uht.mode == "flat":
-			if ores is None:
-				oress = np.maximum(np.pi/self.basis.lmaxs, ires)
-				self.geometries = [make_wavelet_geometry_flat(uht.shape, uht.wcs, ires, ores) for ores in oress[:-1]] + [(uht.shape, uht.wcs)]
-			else:
-				self.geometries = [make_wavelet_geometry_flat(uht.shape, uht.wcs, ires, ores) for l in self.basis.lmaxs]
+			self.geometries = [make_wavelet_geometry_flat(uht.shape, uht.wcs, ires, ores) for ores in oress[:-1]] + [(uht.shape, uht.wcs)]
 		else:
-			# I thought I would need twice the resolution here, but it doesn't seem necessary
-			# May be solved with ducc0 in the future.
-			if ores is None:
-				oress = np.maximum(np.pi/self.basis.lmaxs, ires)
-				self.geometries = [make_wavelet_geometry_curved(uht.shape, uht.wcs, ores) for ores in oress]
-			else:
-				self.geometries = [make_wavelet_geometry_curved(uht.shape, uht.wcs, ores) for l in self.basis.lmaxs]
-		self.filters, self.norms = self.build_filters()
+			self.geometries = [make_wavelet_geometry_curved(uht.shape, uht.wcs, ores) for ores in oress]
+		# Precompute our filter and normalization. This can be memory-intensive in
+		# flat mode for large maps
+		self.filters, self.norms, self.lmids = self._prepare_filters()
 	@property
 	def shape(self): return self.uht.shape
 	@property
@@ -185,102 +236,84 @@ class WaveletTransform:
 		the .geometries member of this class), and will be overwritten with the result. In
 		any case the resulting wavelet coefficients are returned."""
 		# The half-filter is uncommon, so build it on the fly instead of precomputing to
-		# not waste memory.
-		filters, norms = self.build_filters(True) if half else (self.filters, self.norms)
+		# not waste memory. In fact, I don't even remember what the half-filter is for...
+		filters, norms = self._prepare_filters(True) if half else (self.filters, self.norms)
 		# Output geometry. Can't just use our existing one because it doesn't know about the
 		# map pre-dimensions. There should be an easier way to do this.
 		geos = [(map.shape[:-2]+tuple(shape[-2:]), wcs) for (shape, wcs) in self.geometries]
 		if owave is None: owave = multimap.zeros(geos, map.dtype)
 		if self.uht.mode == "flat":
-			# This normalization is equivalent to True, "pix", True, but avoids the
-			# redundant multiplications
 			fmap = enmap.fft(map, normalize=False)
 			for i, (shape, wcs) in enumerate(self.geometries):
 				fsmall  = enmap.resample_fft(fmap, shape, norm=None, corner=True)
-				fsmall *= filters[i] / (norms[i]**0.5 * fmap.npix)
+				fsmall *= filters[i] / (norms[i]*fmap.npix)
 				owave.maps[i] = enmap.ifft(fsmall, normalize=False).real
 		else:
-			# FIXME: Normalization is broken
 			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
 			alm   = curvedsky.map2alm(map, ainfo=ainfo)
 			for i, (shape, wcs) in enumerate(self.geometries):
 				smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
 				asmall    = curvedsky.transfer_alm(ainfo, alm, smallinfo)
-				smallinfo.lmul(asmall, filters[i]/norms[i]**0.5, asmall)
+				smallinfo.lmul(asmall, filters[i]/norms[i], asmall)
 				curvedsky.alm2map(asmall, owave.maps[i])
 		return owave
-	def wave2map(self, wave, omap=None, half=False, individual=False):
+	def wave2map(self, wave, omap=None, half=False):
 		"""Transform from the wavelet coefficients wave (multimap), to the corresponding enmap.
 		If omap is provided, it must have the correct geometry (the .geometry member of this class),
 		and will be overwritten with the result. In any case the result is returned."""
-		if individual: return self._wave2map_individual(wave, omap=omap)
-		filters, norms = self.build_filters(True) if half else self.filters, self.norms
+		filters, norms = self._prepare_filters(True) if half else self.filters, self.norms
 		if self.uht.mode == "flat":
-			# This normalization is equivalent to True, "pix", True, but avoids the
-			# redundant multiplications
 			fomap = enmap.zeros(wave.pre + self.uht.shape[-2:], self.uht.wcs, np.result_type(wave.dtype,0j))
 			for i, (shape, wcs) in enumerate(self.geometries):
 				fsmall  = enmap.fft(wave.maps[i], normalize=False)
-				fsmall *= filters[i] * (norms[i]**0.5 / fsmall.npix)
+				fsmall *= filters[i] * (norms[i]/fsmall.npix)
 				enmap.resample_fft(fsmall, self.uht.shape, fomap=fomap, norm=None, corner=True, op=np.add)
 			tmp = enmap.ifft(fomap, normalize=False).real
 			if omap is None: omap    = tmp
 			else:            omap[:] = tmp
 			return omap
 		else:
-			# FIXME: Normalization is broken
 			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
 			oalm  = np.zeros(wave.pre + (ainfo.nelem,), dtype=np.result_type(wave.dtype,0j))
 			for i, (shape, wcs) in enumerate(self.geometries):
 				smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
 				asmall    = curvedsky.map2alm(wave.maps[i], ainfo=smallinfo)
-				smallinfo.lmul(asmall, filters[i]*norms[i]**0.5, asmall)
+				smallinfo.lmul(asmall, filters[i]*norms[i], asmall)
 				curvedsky.transfer_alm(smallinfo, asmall, ainfo, oalm, op=np.add)
 			if omap is None:
 				omap = enmap.zeros(wave.pre + self.uht.shape[-2:], self.uht.wcs, wave.dtype)
 			return curvedsky.alm2map(oalm, omap)
-	def _wave2map_individual(self, wave, omap=None):
-		"""Transform from the wavelet coefficients wave (multimap), to a separate enmap for
-		each wavelet scale. If omap is provided, it must have the correct geometry
-		((nlevel,) + the .geometry member of this class), and will be overwritten with the
-		result. In any case the result is returned."""
-		if self.uht.mode == "flat":
-			# This normalization is equivalent to True, "pix", True, but avoids the
-			# redundant multiplications
-			fomap = enmap.zeros((self.nlevel,)+wave.pre + self.uht.shape[-2:], self.uht.wcs, np.result_type(wave.dtype,0j))
-			for i, (shape, wcs) in enumerate(self.geometries):
-				fsmall  = enmap.fft(wave.maps[i], normalize=False)
-				fsmall *= self.filters[i] * (self.norms[i]**0.5 / fsmall.npix)
-				enmap.resample_fft(fsmall, self.uht.shape, fomap=fomap[i], norm=None, corner=True, op=np.add)
-			tmp = enmap.ifft(fomap, normalize=False).real
-			if omap is None: omap    = tmp
-			else:            omap[:] = tmp
-			return omap
-		else:
-			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
-			if omap is None:
-				omap = enmap.zeros((self.nlevel,)+wave.pre + self.uht.shape[-2:], self.uht.wcs, wave.dtype)
-			for i, (shape, wcs) in enumerate(self.geometries):
-				smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
-				asmall    = curvedsky.map2alm(wave.maps[i], ainfo=smallinfo)
-				smallinfo.lmul(asmall, self.filters[i]*self.norms[i]**0.5, asmall)
-				curvedsky.alm2map(asmall, omap[i])
-			return omap
 	def get_ls(self, i):
-		"""Get the multipole indices for wavelet scale i"""
+		"""Get the multipole indices for wavelet scale i. This will be an enmap
+		in if the uht is flat, otherwise it's a 1d array"""
 		if self.uht.mode == "flat":
 			return enmap.resample_fft(self.uht.l, self.geometries[i][0], norm=None, corner=True)
 		else:
 			return self.uht.l
-	def build_filters(self, half=False):
+	# Helper functions
+	def _prepare_filters(self, half=False):
+		"""Evaluate the filter basis functions for for all filter levels,
+		and compute the corresponding normalization factors and average multipoles.
+		Returns filters, norms, lmids"""
+		filters, norms, lmids = zip(*[self._prepare_filter(i,half=half) for i in range(self.nlevel)])
+		return filters, norms, lmids
+	def _prepare_filter(self, i, half=False):
+		"""Evaluate the filter basis function for filter level i,
+		and compute the corresponding normalization factor and average multipole.
+		Returns filter, norm, lmid"""
 		basis = self.basis if not half else self.basis.half
+		ls = self.get_ls(i)
 		if self.uht.mode == "flat":
-			filters = [enmap.ndmap(basis(i, self.get_ls(i)), geo[1]) for i, geo in enumerate(self.geometries)]
-			norms   = np.array([np.sum(f**2)/self.uht.npix for f in filters])
+			shape, wcs = self.geometries[i]
+			F    = enmap.ndmap(basis(i, ls), wcs)
+			W    = F**2/enmap.area(shape, wcs)
 		else:
-			filters = [basis(i, self.get_ls(i)) for i, geo in enumerate(self.geometries)]
-			norms   = [np.sum(f**2*(2*self.uht.l+1)) for f in filters]
-		return filters, norms
+			F    = basis(i, ls)
+			W    = F**2*(2*ls+1)/(4*np.pi)
+		Wtot = np.sum(W)
+		norm = Wtot**0.5
+		lmid = np.sum(W*ls)/Wtot
+		return F, norm, lmid
 
 class HaarTransform:
 	"""A simple 2d Haar-ish wavelet transform. Fast due to not using harmonic space, and
