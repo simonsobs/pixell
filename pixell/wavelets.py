@@ -18,24 +18,24 @@ class Butterworth:
 	have the sharp boundaries in harmonic space that needlets or scale-discrete wavelets do.
 	This is a problem when we want to reduce the resolution of the wavelet maps. With a discrete
 	cutoff this can be done losslessly, but with these Butterworth wavelets there's always some
-	tail of the basis that extneds to arbitrarily high l, making resolution reduction lossy.
+	tail of the basis that extends to arbitrarily high l, making resolution reduction lossy.
 	This loss is controlled with the tol parameter."""
 	# 1+2**a = 1/q => a = log2(1/tol-1)
 	def __init__(self, step=2, shape=7, tol=1e-3, lmin=None, lmax=None):
 		self.step = step; self.shape = shape; self.tol = tol
 		self.lmin = lmin; self.lmax  = lmax
-		if lmax is not None:
-			if lmin is None: lmin = 1
+		if self.lmin is not None and self.lmin is not None:
 			self._finalize()
 	def with_bounds(self, lmin, lmax):
 		"""Return a new instance with the given multipole bounds"""
 		return Butterworth(step=self.step, shape=self.shape, tol=self.tol, lmin=lmin, lmax=lmax)
-	def __call__(self, i, l, half=False):
-		if i == self.n-1:      profile  = np.full(l.shape, 1.0)
-		else:                  profile  = self.kernel(i,   l)
-		if i > 0 and not half: profile -= self.kernel(i-1, l)
+	def __call__(self, i, l):
+		if i == self.n-1: profile  = np.full(l.shape, 1.0)
+		else:             profile  = self.kernel(i,   l)
+		if i > 0:         profile -= self.kernel(i-1, l)
 		return profile**0.5
-	def half(self, i, l): return self(i, l, half=True)
+	def get_variance_basis(self):
+		return VarButter(step=self.step, shape=self.shape, tol=self.tol, lmin=self.lmin, lmax=self.lmax)
 	def kernel(self, i, l):
 		return 1/(1 + (l/(self.lmin*self.step**(i+0.5)))**(self.shape/np.log(self.step)))
 	def _finalize(self):
@@ -53,18 +53,18 @@ class ButterTrim:
 	def __init__(self, step=2, shape=7, trim=1e-2, lmin=None, lmax=None):
 		self.step = step; self.shape = shape; self.trim = trim
 		self.lmin = lmin; self.lmax  = lmax
-		if lmax is not None:
-			if lmin is None: lmin = 1
+		if self.lmin is not None and self.lmin is not None:
 			self._finalize()
 	def with_bounds(self, lmin, lmax):
 		"""Return a new instance with the given multipole bounds"""
 		return ButterTrim(step=self.step, shape=self.shape, trim=self.trim, lmin=lmin, lmax=lmax)
-	def __call__(self, i, l, half=False):
-		if i == self.n-1:      profile  = np.full(l.shape, 1.0)
-		else:                  profile  = self.kernel(i,   l)
-		if i > 0 and not half: profile -= self.kernel(i-1, l)
+	def __call__(self, i, l):
+		if i == self.n-1: profile  = np.full(l.shape, 1.0)
+		else:             profile  = self.kernel(i,   l)
+		if i > 0:         profile -= self.kernel(i-1, l)
 		return profile**0.5
-	def half(self, i, l): return self(i, l, half=True)
+	def get_variance_basis(self):
+		return VarButter(step=self.step, shape=self.shape, lmin=self.lmin, lmax=self.lmax)
 	def kernel(self, i, l):
 		return trim_kernel(1/(1 + (l/(self.lmin*self.step**(i+0.5)))**(self.shape/np.log(self.step))), self.trim)
 	def _finalize(self):
@@ -83,22 +83,22 @@ class DigitalButterTrim:
 	def __init__(self, step=2, shape=7, trim=1e-2, lmin=None, lmax=None):
 		self.step = step; self.shape = shape; self.trim = trim
 		self.lmin = lmin; self.lmax  = lmax
-		if lmax is not None:
-			if lmin is None: lmin = 1
+		if self.lmin is not None and self.lmin is not None:
 			self._finalize()
 	def with_bounds(self, lmin, lmax):
 		"""Return a new instance with the given multipole bounds"""
 		return DigitalButterTrim(step=self.step, shape=self.shape, trim=self.trim, lmin=lmin, lmax=lmax)
 	def __call__(self, i, l):
 		return utils.interpol(self.profiles[i], l[None], order=0)
-	def half(self, i, l): raise NotImplementedError
+	def get_variance_basis(self):
+		raise NotImplementedError
 	def kernel(self, i, l):
 		return trim_kernel(1/(1 + (l/(self.lmin*self.step**(i+0.5)))**(self.shape/np.log(self.step))), self.trim)
 	def _finalize(self):
-		self.n        = int((np.log(self.lmax)-np.log(self.lmin))/np.log(self.step))
+		self.n     = int((np.log(self.lmax)-np.log(self.lmin))/np.log(self.step))
 		# 1/(1+(l/(lmin*(step**(i+0.5))))**a)*(1+2*trim)-trim = 0
 		# => l = ((1+2*trim)/trim-1)**(1/a) * (lmin*(step**(i+0.5)))
-		self.lmaxs    = np.ceil(self.lmin * ((1+2*self.trim)/self.trim-1)**(np.log(self.step)/self.shape) * self.step**(np.arange(self.n)+0.5)).astype(int)
+		self.lmaxs = np.ceil(self.lmin * ((1+2*self.trim)/self.trim-1)**(np.log(self.step)/self.shape) * self.step**(np.arange(self.n)+0.5)).astype(int)
 		self.lmaxs[-1] = self.lmax
 		# Evaluate 1d profiles
 		l        = np.arange(self.lmax)
@@ -106,14 +106,12 @@ class DigitalButterTrim:
 		kernels  = np.sort(kernels,0)
 		self.profiles = kernels[1:]-kernels[:-1] # 0 or 1, so no square root needed
 
-
 class AdriSD:
 	"""Scale-discrete wavelet basis provided by Adri's optweight library.
 	A bit heavy to initialize."""
 	def __init__(self, lamb=2, lmin=None, lmax=None):
 		self.lamb = lamb; self.lmin = lmin; self.lmax = lmax
-		if lmax is not None:
-			if lmin is None: lmin = 1
+		if self.lmin is not None and self.lmin is not None:
 			self._finalize()
 	def with_bounds(self, lmin, lmax):
 		"""Return a new instance with the given multipole bounds"""
@@ -122,10 +120,51 @@ class AdriSD:
 	def n(self): return len(self.profiles)
 	def __call__(self, i, l):
 		return np.interp(l, np.arange(self.profiles[i].size), self.profiles[i])
-	def half(self, i, l): raise NotImplementedError
+	def get_variance_basis(self):
+		raise NotImplementedError
 	def _finalize(self):
 		from optweight import wlm_utils
 		self.profiles, self.lmaxs = wlm_utils.get_sd_kernels(self.lamb, self.lmax, lmin=self.lmin)
+
+##### Variance wavelet basis generators #####
+
+# These are used to implement the variance wavelet transform, which
+# calculates how white noise transforms under a wavelet transform.
+
+class VarButter:
+	"""Variance basis for Butterworth wavelets."""
+	# 1+2**a = 1/q => a = log2(1/tol-1)
+	def __init__(self, step=2, shape=7, tol=1e-3, lmin=None, lmax=None):
+		self.step = step; self.shape = shape; self.tol = tol
+		self.lmin = lmin; self.lmax  = lmax
+		self.basis = None
+		if self.lmin is not None and self.lmin is not None:
+			self._finalize()
+	@property
+	def n(self): return self.basis.n
+	@property
+	def lmaxs(self): return self.basis.lmaxs
+	def with_bounds(self, lmin, lmax):
+		"""Return a new instance with the given multipole bounds"""
+		return VarButter(step=self.step, shape=self.shape, tol=self.tol, lmin=lmin, lmax=lmax)
+	def __call__(self, i, l):
+		return utils.interp(l, self.l, self.kernels[i])
+	def _kernel_helper(self, i, rft):
+		if i < self.basis.n-1:
+			F  = self.basis(i, rft.l)
+		else:
+			# For the final, unbound wavelength scale, add a cutoff at lmax to avoid
+			# summing infinite power that isn't actually present in the map anyway
+			kernel = 1/(1 + (rft.l/self.basis.lmax)**(self.basis.shape/np.log(self.basis.step)))
+			F      = (kernel - self.basis.kernel(i-1, rft.l))**0.5
+		F2 = rft.real2harm(rft.harm2real(F)**2)
+		F2 = rft.unpad(F2)
+		return F2
+	def _finalize(self):
+		self.basis   = Butterworth(step=self.step, shape=self.shape, tol=self.tol, lmin=self.lmin, lmax=self.lmax)
+		rft = utils.RadialFourierTransform()
+		self.kernels = [self._kernel_helper(i, rft) for i in range(self.n)]
+		self.l       = rft.unpad(rft.l)
 
 ##### Wavelet transforms #####
 
@@ -174,7 +213,7 @@ class WaveletTransform:
 	 # Transform back to the map
 	 omap = wt.wave2map(wmap)
 	"""
-	def __init__(self, uht, basis=ButterTrim(), ores=None):
+	def __init__(self, uht, basis=ButterTrim(), ores=None, norms=None, geometries=None):
 		"""Initialize the WaveletTransform. Arguments:
 		* uht: An inscance of uharm.UHT, which specifies how to do harmonic transforms
 		  (flat-sky vs. curved sky and what lmax).
@@ -192,6 +231,7 @@ class WaveletTransform:
 		  is probably best used with a fully initialized basis object (one where lmin and
 		  lmax were passed in when the basis was constructed, after which basis.n gives
 		  the number of levels).
+		* norms: Used to override the wavelet normalization. Usually not used directly.
 
 		Flat-sky transforms should be exact. Curved-sky transforms become slightly inaccurate
 		(%-level, mainly scales near the Nyquist frequency) at low res and in small patches.
@@ -207,20 +247,26 @@ class WaveletTransform:
 			if lmax is None: lmax = min(int(np.ceil(np.pi/ires)),uht.lmax)
 			if lmin is None: lmin = min(int(np.ceil(np.pi/np.max(enmap.extent(uht.shape, uht.wcs)))),lmax)
 			self.basis = basis.with_bounds(lmin, lmax)
-		# Determine the resolution for the wavelet maps, unless the user has
-		# already specified it
-		if ores is None:
-			oress = np.maximum(np.pi/self.basis.lmaxs, ires)
-		else:
-			oress = np.zeros(self.nlevel)+ores
-		# Build the geometries for each wavelet scale
-		if uht.mode == "flat":
-			self.geometries = [make_wavelet_geometry_flat(uht.shape, uht.wcs, ires, ores) for ores in oress[:-1]] + [(uht.shape, uht.wcs)]
-		else:
-			self.geometries = [make_wavelet_geometry_curved(uht.shape, uht.wcs, ores) for ores in oress]
+		# If the user doesn't specify the geometries explicitly (which they normally won't), then
+		# calculate them based on ores
+		self.geometries = geometries
+		if self.geometries is None:
+			# Determine the resolution for the wavelet maps, unless the user has
+			# already specified it
+			if ores is None:
+				oress = np.maximum(np.pi/self.basis.lmaxs, ires)
+			else:
+				oress = np.zeros(self.nlevel)+ores
+			# Build the geometries for each wavelet scale
+			if uht.mode == "flat":
+				self.geometries = [make_wavelet_geometry_flat(uht.shape, uht.wcs, ires, ores) for ores in oress[:-1]] + [(uht.shape, uht.wcs)]
+			else:
+				self.geometries = [make_wavelet_geometry_curved(uht.shape, uht.wcs, ores) for ores in oress]
 		# Precompute our filter and normalization. This can be memory-intensive in
 		# flat mode for large maps
 		self.filters, self.norms, self.lmids = self._prepare_filters()
+		# Override norms if provided. This is used to implement the variance wavelet transform
+		if norms is not None: self.norms[:] = norms
 	@property
 	def shape(self): return self.uht.shape
 	@property
@@ -229,15 +275,14 @@ class WaveletTransform:
 	def geometry(self): return self.shape, self.wcs
 	@property
 	def nlevel(self): return len(self.geometries)
-	def map2wave(self, map, owave=None, half=False):
+	def map2wave(self, map, owave=None):
 		"""Transform from an enmap map[...,ny,nx] to a multimap of wavelet coefficients,
 		which is effectively a group of enmaps with the same pre-dimensions but varying shape.
 		If owave is provided, it should be a multimap with the right shape (compatible with
 		the .geometries member of this class), and will be overwritten with the result. In
-		any case the resulting wavelet coefficients are returned."""
-		# The half-filter is uncommon, so build it on the fly instead of precomputing to
-		# not waste memory. In fact, I don't even remember what the half-filter is for...
-		filters, norms = self._prepare_filters(True) if half else (self.filters, self.norms)
+		any case the resulting wavelet coefficients are returned.
+		"""
+		filters, norms, lmids = self.filters, self.norms, self.lmids
 		# Output geometry. Can't just use our existing one because it doesn't know about the
 		# map pre-dimensions. There should be an easier way to do this.
 		geos = [(map.shape[:-2]+tuple(shape[-2:]), wcs) for (shape, wcs) in self.geometries]
@@ -257,11 +302,11 @@ class WaveletTransform:
 				smallinfo.lmul(asmall, filters[i]/norms[i], asmall)
 				curvedsky.alm2map(asmall, owave.maps[i])
 		return owave
-	def wave2map(self, wave, omap=None, half=False):
+	def wave2map(self, wave, omap=None):
 		"""Transform from the wavelet coefficients wave (multimap), to the corresponding enmap.
 		If omap is provided, it must have the correct geometry (the .geometry member of this class),
 		and will be overwritten with the result. In any case the result is returned."""
-		filters, norms = self._prepare_filters(True) if half else self.filters, self.norms
+		filters, norms, lmids = self.filters, self.norms, self.lmids
 		if self.uht.mode == "flat":
 			fomap = enmap.zeros(wave.pre + self.uht.shape[-2:], self.uht.wcs, np.result_type(wave.dtype,0j))
 			for i, (shape, wcs) in enumerate(self.geometries):
@@ -290,25 +335,28 @@ class WaveletTransform:
 			return enmap.resample_fft(self.uht.l, self.geometries[i][0], norm=None, corner=True)
 		else:
 			return self.uht.l
+	def get_variance_transform(self):
+		return WaveletTransform(self.uht, basis=self.basis.get_variance_basis(), norms=self.norms**2, geometries=self.geometries)
 	# Helper functions
-	def _prepare_filters(self, half=False):
+	def _prepare_filters(self):
 		"""Evaluate the filter basis functions for for all filter levels,
 		and compute the corresponding normalization factors and average multipoles.
 		Returns filters, norms, lmids"""
-		filters, norms, lmids = zip(*[self._prepare_filter(i,half=half) for i in range(self.nlevel)])
+		filters, norms, lmids = zip(*[self._prepare_filter(i) for i in range(self.nlevel)])
+		norms = np.asarray(norms)
+		lmids = np.asarray(lmids)
 		return filters, norms, lmids
-	def _prepare_filter(self, i, half=False):
+	def _prepare_filter(self, i):
 		"""Evaluate the filter basis function for filter level i,
 		and compute the corresponding normalization factor and average multipole.
 		Returns filter, norm, lmid"""
-		basis = self.basis if not half else self.basis.half
 		ls = self.get_ls(i)
 		if self.uht.mode == "flat":
 			shape, wcs = self.geometries[i]
-			F    = enmap.ndmap(basis(i, ls), wcs)
+			F    = enmap.ndmap(self.basis(i, ls), wcs)
 			W    = F**2/enmap.area(shape, wcs)
 		else:
-			F    = basis(i, ls)
+			F    = self.basis(i, ls)
 			W    = F**2*(2*ls+1)/(4*np.pi)
 		Wtot = np.sum(W)
 		norm = Wtot**0.5

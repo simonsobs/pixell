@@ -301,7 +301,7 @@ def map2alm_adjoint(alm, map, lmax=None, spin=[0,2], deriv=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
 		niter=0, epsilon=1e-6, pix_tol=1e-6, weights=None, locinfo=None):
 	"""The adjoint of alm2map. Forwards to map2alm. See its docstring for details"""
-	map2alm(map=map, alm=alm, lmax=lmax, spin=spin, deriv=deriv, adjoint=True,
+	return map2alm(map=map, alm=alm, lmax=lmax, spin=spin, deriv=deriv, adjoint=True,
 		copy=copy, method=method, ainfo=ainfo, verbose=verbose, nthread=nthread,
 		niter=niter, epsilon=epsilon, pix_tol=pix_tol, weights=weights, locinfo=locinfo)
 

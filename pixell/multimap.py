@@ -97,12 +97,29 @@ def empty(geometries, dtype=np.float64):
 	flat = np.empty(geometries[0].shape[:-2]+(ntot,), dtype)
 	return ndmaps(flat, geometries)
 
-def full(geometries, val, dtype=np.float64):
-	"""Construct a multimap with the given geometries and data type initialized with the given value"""
+def full(geometries, val, dtype=None):
+	"""Construct a multimap with the given geometries and data type initialized with the given value.
+	If val is scalar then all maps will be filled with this value. Otherwise it must broadcast with
+	geometries[0].shape[:-2]+(len(geometries),). This allows one to initialize each map with a
+	separate constant.
+	"""
 	if len(geometries) == 0: return ndmaps(np.zeros(0), [(0,0), enmap.zeros(0).wcs])
 	geometries, ntot = _geo_helper(geometries)
-	flat = np.empty(geometries[0].shape[:-2]+(ntot,), dtype)
-	return ndmaps(flat, geometries)
+	# Broadcast val and geometries
+	pre  = geometries[0].shape[:-2]
+	val  = np.asarray(val)
+	nmap = len(geometries)
+	bshape = np.broadcast_shapes(val.shape, pre+(nmap,))
+	val  = np.broadcast_to(val, bshape)
+	pre  = val.shape[:-1]
+	# Allocate the output maps
+	if dtype is None: dtype = val.dtype
+	flat = np.empty(pre+(ntot,), dtype)
+	omaps= ndmaps(flat, geometries)
+	# Fill with target values
+	for i, map in enumerate(omaps.maps):
+		map[:] = val[...,i]
+	return omaps
 
 def posmap(geometries, safe=True, corner=False, separable="auto", dtype=np.float64):
 	"""Return a multimap containing the position map for the given geometries"""
@@ -144,6 +161,10 @@ def samegeos(arr, *args):
 		try: return ndmaps(arr, m.geometries)
 		except AttributeError: pass
 	return arr
+
+def nopre(geometries):
+	"""Return a scalar version of the given geometries"""
+	return tuple([enmap.Geometry(*geo).nopre for geo in geometries])
 
 def map_mul(mat, vec):
 	"""Elementwise matrix multiplication mat*vec. Result will have
