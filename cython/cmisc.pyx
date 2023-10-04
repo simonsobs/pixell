@@ -130,12 +130,15 @@ def transfer_alm(iainfo, ialm, oainfo, oalm=None, op=lambda a,b:b):
 		raise ValueError("ialm and oalm must agree on pre-dimensions")
 	pshape = ialm.shape[:-1]
 	npre = int(np.prod(pshape))
+	# Numpy promotes uint64 to float64, so make an int64 view of mstart
+	imstart = iainfo.mstart.view(np.int64)
+	omstart = oainfo.mstart.view(np.int64)
 	def transfer(dest, src, op): dest[:] = op(dest, src)
 	for i in range(npre):
 		I  = np.unravel_index(i, pshape)
 		ia = ialm[I]; oa = oalm[I]
 		for m in range(0, mmax+1):
-			transfer(oa[oainfo.mstart[m]+m*oainfo.stride:oainfo.mstart[m]+(lmax+1)*oainfo.stride:oainfo.stride], ia[iainfo.mstart[m]+m*iainfo.stride:iainfo.mstart[m]+(lmax+1)*iainfo.stride:iainfo.stride], op)
+			transfer(oa[omstart[m]+m*oainfo.stride:omstart[m]+(lmax+1)*oainfo.stride:oainfo.stride], ia[imstart[m]+m*iainfo.stride:imstart[m]+(lmax+1)*iainfo.stride:iainfo.stride], op)
 	return oalm
 
 def islastcontig(arr):

@@ -78,7 +78,7 @@ def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=
 ### Spherical harmonics transforms ###
 ######################################
 
-def alm2map(alm, map, spin=[0,2], deriv=False, map2alm_adjoint=False,
+def alm2map(alm, map, spin=[0,2], deriv=False, adjoint=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
 		epsilon=1e-6, pix_tol=1e-6, locinfo=None):
 	"""Spherical harmonics synthesis. Transform from harmonic space to real space.
@@ -107,9 +107,8 @@ def alm2map(alm, map, spin=[0,2], deriv=False, map2alm_adjoint=False,
 	 of the map corresponding to the alms. In this case the alm must have
 	 shape [...,nelem] or [nelem] and the map must have shape
 	 [...,2,ny,nx] or [2,ny,nx]. default: False
-	map2alm_adjoint: If true, instead calculates the adjoint of the
-	 map2alm operation. This still reads from alm and writes to map, but
-	 is an integral instead of a sum. Dubious usefulness. default: False
+	adjoint: If true, instead calculates the adjoint of the
+	 alm2map operation. This reads from map and writes to alm. default: False
 	copy: If true, writes to a copy of map instead of overwriting the
 	 map argument. The resulting map is returned.
 	method: Select the spherical harmonics transform method:
@@ -148,35 +147,38 @@ def alm2map(alm, map, spin=[0,2], deriv=False, map2alm_adjoint=False,
 	if   method == "2d":
 		if verbose: print("method: 2d")
 		return alm2map_2d(alm, map, ainfo=ainfo, minfo=minfo, spin=spin, deriv=deriv, copy=copy,
-			verbose=verbose, map2alm_adjoint=map2alm_adjoint, nthread=nthread, pix_tol=pix_tol)
+			verbose=verbose, adjoint=adjoint, nthread=nthread, pix_tol=pix_tol)
 	elif method == "cyl":
 		if verbose: print("method: cyl")
 		return alm2map_cyl(alm, map, ainfo=ainfo, minfo=minfo, spin=spin, deriv=deriv, copy=copy,
-			verbose=verbose, map2alm_adjoint=map2alm_adjoint, nthread=nthread, pix_tol=pix_tol)
-	elif method == "general":
-		if verbose: print("method: general")
+			verbose=verbose, adjoint=adjoint, nthread=nthread, pix_tol=pix_tol)
+	elif method == "pos":
+		if verbose: print("method: pos")
 		return alm2map_general(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, copy=copy,
-			verbose=verbose, map2alm_adjoint=map2alm_adjoint, nthread=nthread, epsilon=epsilon,
+			verbose=verbose, adjoint=adjoint, nthread=nthread, epsilon=epsilon,
 			locinfo=locinfo)
 	else:
 		raise ValueError("Unrecognized alm2map method '%s'" % str(method))
 
-def map2alm_adjoint(alm, map, spin=[0,2], deriv=False,
+def alm2map_adjoint(map, alm, spin=[0,2], deriv=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
 		epsilon=None, pix_tol=1e-6, locinfo=None):
-	"""The adjoint of map2alm. Forwards to alm2map; see its docstring for details"""
-	return alm2map(alm, map, spin=spin, deriv=deriv, map2alm_adjoint=True,
+	"""The adjoint of map2alm. Forwards to map2alm; see its docstring for details"""
+	return alm2map(alm, map, spin=spin, deriv=deriv, adjoint=True,
 		copy=copy, method=method, ainfo=ainfo, verbose=verbose, nthread=nthread,
 		epsilon=epsilon, pix_tol=pix_tol, locinfo=locinfo)
 
-def alm2map_pos(alm, pos=None, loc=None, ainfo=None, map=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, epsilon=None):
+def alm2map_pos(alm, pos=None, loc=None, ainfo=None, map=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, epsilon=None):
 	"""Like alm2map, but operates directly on arbitrary positions instead of an enmap.
 	The positions are given either with the pos argument or the loc argument.
 	 pos: [{dec,ra},...] in radians
 	 loc: [...,{codec,ra}] in radians. codec is pi/2 - dec, ra must be positive
 	The underlying implementation uses loc, so if pos is passed an internal loc will be
 	built. See alm2map for the meaning of the other arguments."""
-	if copy: map = map.copy()
+	if adjoint:
+		if copy and alm is not None: alm = alm.copy()
+	else:
+		if copy and map is not None: map = map.copy()
 	if loc is None:
 		# The disadvantage of passing pos instead of loc is that we end up
 		# making a copy in the convention ducc wants
@@ -195,12 +197,13 @@ def alm2map_pos(alm, pos=None, loc=None, ainfo=None, map=None, spin=[0,2], deriv
 		map = np.zeros(oshape, utils.real_dtype(alm.dtype))
 	for I in utils.nditer(map.shape[:-2]):
 		alm2map_raw_general(alm[I], map[I], loc, ainfo=ainfo, spin=spin, deriv=deriv,
-				verbose=verbose, epsilon=epsilon, map2alm_adjoint=map2alm_adjoint)
+				nthread=nthread, verbose=verbose, epsilon=epsilon, adjoint=adjoint)
 	# Reshape to reflect the dimensions pos/loc
 	map = map.reshape(map.shape[:-1]+lpre)
-	return map
+	if adjoint: return alm
+	else:       return map
 
-def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, alm2map_adjoint=False,
+def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, adjoint=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
 		niter=0, epsilon=None, pix_tol=1e-6, weights=None, locinfo=None):
 	"""Spherical harmonics analysis. Transform from real space to harmonic space.
@@ -229,10 +232,8 @@ def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, alm2map_adjoint=F
 	 of the map corresponding to the alms. In this case the alm must have
 	 shape [...,nelem] or [nelem] and the map must have shape
 	 [...,2,ny,nx] or [2,ny,nx]. default: False
-	alm2map_adjoint: If true, instead calculates the adjoint of the
-	 alm2map operation. This still reads from map and writes to alm, but
-	 is a plain sum instead of an integral. Can be useful in some algorithms.
-	 default: False
+	adjoint: If true, instead calculates the adjoint of the
+	 map2alm operation. This reads from alm and writes to map. default: False
 	copy: If true, writes to a copy of map instead of overwriting the
 	 map argument. The resulting map is returned.
 	method: Select the spherical harmonics transform method:
@@ -282,29 +283,29 @@ def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, alm2map_adjoint=F
 	if   method == "2d":
 		if verbose: print("method: 2d")
 		return map2alm_2d(map, alm, ainfo=ainfo, minfo=minfo, lmax=lmax, spin=spin, deriv=deriv, copy=copy,
-			verbose=verbose, alm2map_adjoint=alm2map_adjoint, nthread=nthread, pix_tol=pix_tol)
+			verbose=verbose, adjoint=adjoint, nthread=nthread, pix_tol=pix_tol)
 	elif method == "cyl":
 		if verbose: print("method: cyl")
 		return map2alm_cyl(map, alm, ainfo=ainfo, minfo=minfo, lmax=lmax, spin=spin, deriv=deriv, copy=copy,
-			verbose=verbose, alm2map_adjoint=alm2map_adjoint, nthread=nthread, niter=niter,
+			verbose=verbose, adjoint=adjoint, nthread=nthread, niter=niter,
 			pix_tol=pix_tol, weights=weights)
 	elif method == "pos":
 		if verbose: print("method: pos")
 		return map2alm_general(map, alm, ainfo=ainfo, lmax=lmax, spin=spin, deriv=deriv, copy=copy,
-			verbose=verbose, alm2map_adjoint=alm2map_adjoint, nthread=nthread, epsilon=epsilon,
+			verbose=verbose, adjoint=adjoint, nthread=nthread, epsilon=epsilon,
 			locinfo=locinfo, weights=weights)
 	else:
 		raise ValueError("Unrecognized alm2map method '%s'" % str(method))
 
-def alm2map_adjoint(map, alm=None, lmax=None, spin=[0,2], deriv=False,
+def map2alm_adjoint(alm, map, lmax=None, spin=[0,2], deriv=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
 		niter=0, epsilon=1e-6, pix_tol=1e-6, weights=None, locinfo=None):
 	"""The adjoint of alm2map. Forwards to map2alm. See its docstring for details"""
-	map2alm(map, alm=alm, lmax=lmax, spin=spin, deriv=deriv, alm2map_adjoint=True,
+	return map2alm(map=map, alm=alm, lmax=lmax, spin=spin, deriv=deriv, adjoint=True,
 		copy=copy, method=method, ainfo=ainfo, verbose=verbose, nthread=nthread,
 		niter=niter, epsilon=epsilon, pix_tol=pix_tol, weights=weights, locinfo=locinfo)
 
-def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, map2alm_adjoint=False,
+def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, adjoint=False,
 		copy=False, ainfo=None, nside=None, theta_min=None, theta_max=None, nthread=None):
 	"""Projects the given alm[...,ncomp,nalm] onto the given healpix map
 	healmap[...,ncomp,npix]."""
@@ -319,8 +320,8 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, map2alm_adjoint=
 		raise ValueError("When deriv is True, alm must have shape [...,nelem] and map shape [...,2,npix]")
 	if not deriv and (alm_full.shape[:-1] != map_full.shape[:-1]):
 		raise ValueError("alm must have shape [...,[ncomp,]nelem] and map shape [...,[ncomp,]npix]")
-	if map2alm_adjoint: raise NotImplementedError("map2alm_adjoint is not implemented in ducc")
-	else: func = ducc0.sht.experimental.synthesis
+	if adjoint: func = ducc0.sht.experimental.adjoint_synthesis
+	else:       func = ducc0.sht.experimental.synthesis
 	nside   = npix2nside(map_full.shape[-1])
 	rinfo   = get_ring_info_healpix(nside)
 	rinfo   = apply_minfo_theta_lim(rinfo, theta_min, theta_max)
@@ -338,11 +339,15 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, map2alm_adjoint=
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full[I].shape[-2]):
 				Ij = I+(slice(j1,j2),)
 				ducc0.sht.experimental.synthesis(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
-	return healmap
+	if adjoint: return alm
+	else:       return healmap
 
-def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, niter=0, theta_min=None, theta_max=None, nthread=None):
+def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, adjoint=False, niter=0, theta_min=None, theta_max=None, nthread=None):
 	"""map2alm for healpix maps. Similar to healpy's map2alm. See the map2alm docstring for details."""
-	if copy and alm is not None: alm = alm.copy()
+	if adjoint:
+		if copy and map is not None: map = map.copy()
+	else:
+		if copy and alm is not None: alm = alm.copy()
 	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=healmap.shape[:-1], dtype=healmap.dtype)
 	alm_full   = utils.atleast_Nd(alm, 2 if deriv else 3)
 	map_full   = utils.atleast_Nd(healmap, 3)
@@ -361,21 +366,25 @@ def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], weight
 	# Iterate over all the predimensions
 	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
-			def forward(alm): return ducc0.sht.experimental.synthesis(alm=alm, mode="DERIV1", spin=1, **kwargs)
-			def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis(map=map, mode="DERIV1", spin=1, **kwargs)
-			def approx_backward(map): return adjoint(wmul(map,weights))
+			def Y(alm):   return ducc0.sht.experimental.synthesis(alm=alm, mode="DERIV1", spin=1, **kwargs)
+			def YT(map):  return ducc0.sht.experimental.adjoint_synthesis(map=map, mode="DERIV1", spin=1, **kwargs)
+			def YTW(map): return YT(wmul(map,weights))
+			def WY(alm):  return wmul(Y(alm),weights)
 			decflip = np.array([-1,1])[:,None,None]
-			if alm2map_adjoint: alm_full[I] = adjoint(map_full[I]*decflip)
-			else:               alm_full[I] = jacobi_inverse(forward, approx_backward, map_full[I]*decflip, niter=niter)
+			if adjoint: map_full[I] = jacobi_inverse(YT, WY, utils.fix_zero_strides(alm_full[I][None]), niter=niter)*decflip
+			# does this need an [0] at the end like the other versions have?
+			else:       alm_full[I] = jacobi_inverse(Y, YTW, map_full[I]*decflip, niter=niter)
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
-				def forward(alm): return ducc0.sht.experimental.synthesis(alm=alm, spin=s, **kwargs)
-				def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis(map=map, spin=s, **kwargs)
-				def approx_backward(map): return adjoint(wmul(map,weights))
-				if alm2map_adjoint: alm_full[Ij] = adjoint(map_full[Ij])
-				else:               alm_full[Ij] = jacobi_inverse(forward, approx_backward, map_full[Ij], niter=niter)
-	return alm
+				def Y(alm):   return ducc0.sht.experimental.synthesis(alm=alm, spin=s, **kwargs)
+				def YT(map):  return ducc0.sht.experimental.adjoint_synthesis(map=map, spin=s, **kwargs)
+				def YTW(map): return YT(wmul(map,weights))
+				def WY(alm):  return wmul(Y(alm),weights)
+				if adjoint: map_full[Ij] = jacobi_inverse(YT, WY, alm_full[Ij], niter=niter)
+				else:       alm_full[Ij] = jacobi_inverse(Y, YTW, map_full[Ij], niter=niter)
+	if adjoint: return healmap
+	else:       return alm
 
 # Class used to specify alm layout. Compatible with the old one from the libsharp-based
 # implementation.
@@ -671,15 +680,17 @@ def transfer_alm(iainfo, ialm, oainfo, oalm=None, op=lambda a,b:b):
 	case oalm is returned. If op is specified, then it defines out oalm
 	is updated: oalm = op(ialm, oalm). For example, if op = lambda a,b:a+b,
 	then ialm would be added to oalm instead of overwriting it."""
-	return cmisc.transfer_alm(ainfo, ialm, oainfo, oalm=oalm, op=op)
+	return cmisc.transfer_alm(iainfo, ialm, oainfo, oalm=oalm, op=op)
 
 ##############################
 ### Implementation details ###
 ##############################
 
-def alm2map_2d(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, pix_tol=1e-6):
+def alm2map_2d(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, pix_tol=1e-6):
 	"""Helper function for alm2map. See its docstring for details"""
-	if copy: map = map.copy()
+	if copy:
+		if adjoint: alm = alm.copy()
+		else:       map = map.copy()
 	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
@@ -687,31 +698,37 @@ def alm2map_2d(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=F
 		# Pad as necessary
 		pad  = ((minfo.ypad[0],minfo.xpad[0]),(minfo.ypad[1],minfo.xpad[1]))
 		tmap = map2buffer(map[I], minfo.flip, pad)
-		alm2map_raw_2d(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, verbose=verbose, map2alm_adjoint=map2alm_adjoint)
+		alm2map_raw_2d(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, nthread=nthread, verbose=verbose, adjoint=adjoint)
 		# Copy out if necessary
-		if not utils.same_array(tmap, map[I]):
+		if not adjoint and not utils.same_array(tmap, map[I]):
 			map[I] = buffer2map(tmap, minfo.flip, pad)
-	return map
+	if adjoint: return alm
+	else:       return map
 
-def alm2map_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, pix_tol=1e-6):
+def alm2map_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, pix_tol=1e-6):
 	"""Helper function for alm2map. See its docstring for details"""
-	if copy: map = map.copy()
+	if copy:
+		if adjoint: alm = alm.copy()
+		else:       map = map.copy()
 	if minfo is None: minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
 	for I in utils.nditer(map.shape[:-3]):
 		# Unlike 2d, cyl is fine with a band around the sky, so y padding is not needed
 		pad  = ((0,minfo.xpad[0]),(0,minfo.xpad[1]))
-		tmap = map2buffer(map[I], minfo.flip, pad)
-		alm2map_raw_cyl(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, verbose=verbose, map2alm_adjoint=map2alm_adjoint)
+		tmap = map2buffer(map[I], minfo.flip, pad, obuf=not adjoint)
+		alm2map_raw_cyl(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, adjoint=adjoint, nthread=nthread, verbose=verbose)
 		# Copy out if necessary
-		if not utils.same_array(tmap, map[I]):
+		if not adjoint and not utils.same_array(tmap, map[I]):
 			map[I] = buffer2map(tmap, minfo.flip, pad)
-	return map
+	if adjoint: return alm
+	else:       return map
 
-def alm2map_general(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, locinfo=None, epsilon=None):
+def alm2map_general(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, locinfo=None, epsilon=None):
 	"""Helper function for alm2map. See its docstring for details"""
-	if copy: map = map.copy()
+	if copy:
+		if adjoint: alm = alm.copy()
+		else:       map = map.copy()
 	if locinfo is None: locinfo = calc_locinfo(map.shape, map.wcs)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
@@ -722,16 +739,22 @@ def alm2map_general(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, v
 		else:
 			tmap = utils.postflat(map[I],2)
 		alm2map_raw_general(alm[I], tmap, locinfo.loc, ainfo=ainfo, spin=spin, deriv=deriv,
-				verbose=verbose, epsilon=epsilon, map2alm_adjoint=map2alm_adjoint)
-		if locinfo.masked:
-			map[I][mslice] = tmap
-		else:
-			map[I] = tmap.reshape(map[I].shape)
-	return map
+				verbose=verbose, epsilon=epsilon, adjoint=adjoint, nthread=nthread)
+		# Copy out map if necessary
+		if not adjoint:
+			if locinfo.masked:
+				map[I][mslice] = tmap
+			else:
+				map[I] = tmap.reshape(map[I].shape)
+	if adjoint: return alm
+	else:       return map
 
-def map2alm_2d(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, pix_tol=1e-6):
+def map2alm_2d(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, pix_tol=1e-6):
 	"""Helper function for map2alm. See its docsctring for details."""
-	if copy and alm is not None: alm = alm.copy()
+	if adjoint:
+		if copy and map is not None: map = map.copy()
+	else:
+		if copy and alm is not None: alm = alm.copy()
 	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=map.dtype)
 	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
@@ -740,17 +763,24 @@ def map2alm_2d(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], der
 		# Pad as necessary
 		pad  = ((minfo.ypad[0],minfo.xpad[0]),(minfo.ypad[1],minfo.xpad[1]))
 		tmap = map2buffer(map[I], minfo.flip, pad)
-		map2alm_raw_2d(tmap, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, deriv=deriv, verbose=verbose)
-	return alm
+		map2alm_raw_2d(tmap, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, deriv=deriv, verbose=verbose, adjoint=adjoint, nthread=nthread)
+		# Copy out if necessary
+		if adjoint and not utils.same_array(tmap, map[I]):
+			map[I] = buffer2map(tmap, minfo.flip, pad)
+	if adjoint: return map
+	else:       return alm
 
-def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, pix_tol=1e-6, niter=0):
+def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, pix_tol=1e-6, niter=0):
 	"""Helper function for map2alm. See its docsctring for details."""
-	if copy and alm is not None: alm = alm.copy()
+	if adjoint:
+		if copy and map is not None: map = map.copy()
+	else:
+		if copy and alm is not None: alm = alm.copy()
 	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=map.dtype)
 	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Get our weights, approximate or not
-	if weights is None and not alm2map_adjoint:
-		if minfo.ducc_geo.name is not None:
+	if weights is None:
+		if minfo.ducc_geo is not None and minfo.ducc_geo.name is not None:
 			ny      = map.shape[-2]+np.sum(minfo.ypad)
 			weights = ducc0.sht.experimental.get_gridweights(minfo.ducc_geo.name, ny)
 			weights = weights[minfo.ypad[0]:len(weights)-minfo.ypad[1]]
@@ -764,12 +794,19 @@ def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], we
 		# Pad as necessary
 		pad  = ((0,minfo.xpad[0]),(0,minfo.xpad[1]))
 		tmap = map2buffer(map[I], minfo.flip, pad)
-		map2alm_raw_cyl(tmap, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, weights=weights, deriv=deriv, niter=niter, verbose=verbose)
-	return alm
+		map2alm_raw_cyl(tmap, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, weights=weights, deriv=deriv, niter=niter, verbose=verbose, adjoint=adjoint, nthread=nthread)
+		# Copy out if necessary
+		if adjoint and not utils.same_array(tmap, map[I]):
+			map[I] = buffer2map(tmap, minfo.flip, pad)
+	if adjoint: return map
+	else:       return alm
 
-def map2alm_general(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, locinfo=None, epsilon=None, niter=0):
+def map2alm_general(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, locinfo=None, epsilon=None, niter=0):
 	"""Helper function for map2alm. See its docsctring for details."""
-	if copy and alm is not None: alm = alm.copy()
+	if adjoint:
+		if copy and map is not None: map = map.copy()
+	else:
+		if copy and alm is not None: alm = alm.copy()
 	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=map.dtype)
 	if locinfo is None: locinfo = calc_locinfo(map.shape, map.wcs)
 	if weights is None: weights = map.pixsizemap()[locinfo.mask].astype(map.dtype)
@@ -779,17 +816,25 @@ def map2alm_general(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2]
 			tmap = np.ascontiguousarray(map[I][mslice])
 		else:
 			tmap = utils.postflat(map[I],2)
-		map2alm_raw_general(tmap, locinfo.loc, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, deriv=deriv, weights=weights,
-				verbose=verbose, niter=niter, epsilon=epsilon)
-	return alm
+		map2alm_raw_general(tmap, locinfo.loc, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, deriv=deriv,
+				weights=weights, adjoint=adjoint, nthread=nthread, verbose=verbose,
+				niter=niter, epsilon=epsilon)
+		# Copy out if necessary
+		if adjoint:
+			if locinfo.masked: map[I][mslice] = tmap
+			else: map[I] = tmap.reshape(map[I].shape)
+	if adjoint: return map
+	else:       return alm
 
-def alm2map_raw_2d(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None):
+def alm2map_raw_2d(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None):
 	"""Helper function for alm2map_2d. Usually not called directly. See the alm2map docstring for details."""
-	if copy: map = map.copy()
+	if copy:
+		if adjoint: alm = alm.copy()
+		else:       map = map.copy()
 	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, deriv=deriv, nthread=nthread)
 	minfo = analyse_geometry(map.shape, map.wcs)
-	if map2alm_adjoint: raise NotImplementedError("map2alm_adjoint_2d is not implemented in ducc")
-	else:               func = ducc0.sht.experimental.synthesis_2d
+	if adjoint: func = ducc0.sht.experimental.adjoint_synthesis_2d
+	else:       func = ducc0.sht.experimental.synthesis_2d
 	# mstart is needed to support a lower lmax than the one actually used in the alm
 	kwargs = {"phi0": minfo.phi0, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
 		"geometry": minfo.ducc_geo.name, "nthreads": nthread, "mstart": ainfo.mstart}
@@ -806,16 +851,19 @@ def alm2map_raw_2d(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, ve
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
 				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
-	return map
+	if adjoint: return alm
+	else:       return map
 
-def alm2map_raw_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None):
+def alm2map_raw_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None):
 	"""Helper function for alm2map_cyl. Usually not called directly. See the alm2map docstring for details."""
-	if copy: map = map.copy()
+	if copy:
+		if adjoint: alm = alm.copy()
+		else:       map = map.copy()
 	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, deriv=deriv, nthread=nthread)
 	map_full = utils.postflat(map_full, 2) # ducc wants just 1 pixel axis
 	rinfo    = get_ring_info(map.shape, map.wcs)
-	if map2alm_adjoint: raise NotImplementedError("map2alm_adjoint is not implemented in ducc")
-	else:               func = ducc0.sht.experimental.synthesis
+	if adjoint: func = ducc0.sht.experimental.adjoint_synthesis
+	else:       func = ducc0.sht.experimental.synthesis
 	kwargs   = {"theta":rinfo.theta, "nphi":rinfo.nphi, "phi0":rinfo.phi0,
 		"ringstart":rinfo.offsets, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
 		"mstart": ainfo.mstart, "nthreads":nthread}
@@ -839,14 +887,46 @@ def alm2map_raw_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, c
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
 				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
-	return map
+	if adjoint: return alm
+	else:       return map
 
-def alm2map_raw_general(alm, map, loc, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, map2alm_adjoint=False, nthread=None, epsilon=1e-6):
+# What about the adjoint?
+# map2alm_adjoint = (Y'W)' = W'Y. So simple provided we have the right quad weights W.
+# What if we only have approximate quad weights? In this case we have
+#  alm0 = Y'W map
+#  alm(n+1) = alm(n) + Y'W (map - Y alm(n)) = (1-Y'WY)alm(n) + Y'W map = (1+(1-Y'WY)^n) Y'W map = K(n) map
+# Hence, the adjoint of K(n) is
+#  K(n)' = W'Y (1+(1-Y'W'Y)^n)
+# So all in all, we have
+#
+#  map2alm
+#  0it  alm0 = asyn(w*map)
+#  1it  alm1 = asyn(w*map) + alm0 - asyn(w*syn(alm0))
+#  2it  alm2 = asyn(w*map) + alm1 - asyn(w*syn(alm1))
+#
+#  map2alm'
+#  0it  map0 = w*syn(alm)
+#  1it  map1 = w*syn(alm) + w*syn(alm) - w*syn(asyn(w*(syn(alm))))
+#            = w*syn(alm) + map0 - w*syn(asyn(map0))
+#  2it  map2 = w*syn(alm) + map1 - w*syn(asyn(map1))
+# etc.
+#
+# So where map2alm uses jacobi with forward = syn and backward = asyn(w()),
+# map2alm' uses jacobi with forward = asyn and backward = w*syn
+#
+# Given this, it might be best to implement map2alm_adjoint for cyl via map2alm instead
+# of via alm2map, since that's where the jacobi and weighting stuff is defined.
+# I didn't do that for the other ones since an adjoint was already avaliable from ducc,
+# and it was more convenient to keep the read/write direction consistent.
+
+def alm2map_raw_general(alm, map, loc, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, epsilon=None):
 	"""Helper function for alm2map_general. Usually not called directly. See the alm2map docstring for details."""
-	if copy: map = map.copy()
+	if copy:
+		if adjoint: alm = alm.copy()
+		else:       map = map.copy()
 	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, deriv=deriv, nthread=nthread, pixdims=1)
-	if map2alm_adjoint: raise NotImplementedError("map2alm_adjoint_general is not implemented in ducc")
-	else:               func = ducc0.sht.experimental.synthesis_general
+	if adjoint: func = ducc0.sht.experimental.adjoint_synthesis_general
+	else:       func = ducc0.sht.experimental.synthesis_general
 	if epsilon is None:
 		if map.dtype == np.float64: epsilon = 1e-10
 		else:                       epsilon = 1e-6
@@ -861,21 +941,25 @@ def alm2map_raw_general(alm, map, loc, ainfo=None, spin=[0,2], deriv=False, copy
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
 				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
-	return map
+	if adjoint: return alm
+	else:       return map
 
-def map2alm_raw_2d(map, alm=None, ainfo=None, lmax=None, spin=[0,2], deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None):
+def map2alm_raw_2d(map, alm=None, ainfo=None, lmax=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None):
 	"""Helper function for map2alm_2d. Usually not called directly. See the map2alm docstring for details."""
-	if copy and alm is not None: alm = alm.copy()
+	if adjoint:
+		if copy and map is not None: map = map.copy()
+	else:
+		if copy and alm is not None: alm = alm.copy()
 	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, lmax=lmax, deriv=deriv, nthread=nthread)
 	minfo = analyse_geometry(map.shape, map.wcs)
 	# Restrict to lmax and mmax that ducc_2d allows. Higher ones will be ignored.
 	lmax  = min(ainfo.lmax, minfo.ducc_geo.lmax)
 	mmax  = min(ainfo.mmax, lmax)
-	if deriv and not alm2map_adjoint:
+	if deriv:
 		# Could fix this by calling adjoint_synthesis_2d with weights myself
 		raise NotImplementedError("ducc does not support derivatives for map2alm operations. Can be worked around if necessary.")
-	if alm2map_adjoint: func = ducc0.sht.experimental.adjoint_synthesis_2d
-	else:               func = ducc0.sht.experimental.analysis_2d
+	if adjoint: func = ducc0.sht.experimental.adjoint_analysis_2d
+	else:       func = ducc0.sht.experimental.analysis_2d
 	# mstart is needed to support a lower lmax than the one actually used in the alm
 	kwargs = {"phi0": minfo.phi0, "lmax":lmax, "mmax":mmax,
 		"geometry": minfo.ducc_geo.name, "nthreads": nthread, "mstart": ainfo.mstart[:mmax+1]}
@@ -889,11 +973,15 @@ def map2alm_raw_2d(map, alm=None, ainfo=None, lmax=None, spin=[0,2], deriv=False
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
 				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
-	return alm
+	if adjoint: return map
+	else:       return alm
 
-def map2alm_raw_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, niter=0, nthread=None):
+def map2alm_raw_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, adjoint=False, niter=0, nthread=None):
 	"""Helper function for map2alm_cyl. Usually not called directly. See the map2alm docstring for details."""
-	if copy and alm is not None: alm = alm.copy()
+	if adjoint:
+		if copy and map is not None: map = map.copy()
+	else:
+		if copy and alm is not None: alm = alm.copy()
 	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, lmax=lmax, deriv=deriv, nthread=nthread)
 	map_full = utils.postflat(map_full, 2) # ducc wants just 1 pixel axis
 	rinfo    = get_ring_info   (map.shape, map.wcs)
@@ -906,46 +994,58 @@ def map2alm_raw_cyl(map, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=No
 	# Iterate over all the predimensions.
 	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
-			def forward(alm): return ducc0.sht.experimental.synthesis(alm=alm, mode="DERIV1", spin=1, **kwargs)
-			def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis(map=map, mode="DERIV1", spin=1, **kwargs)
-			def approx_backward(map): return adjoint(wmul(map,weights))
+			def Y(alm):   return ducc0.sht.experimental.synthesis(alm=alm, mode="DERIV1", spin=1, **kwargs)
+			def YT(map):  return ducc0.sht.experimental.adjoint_synthesis(map=map, mode="DERIV1", spin=1, **kwargs)
+			def YTW(map): return YT(wmul(map,weights))
+			def WY(alm):  return wmul(Y(alm),weights)
 			decflip = np.array([-1,1])[:,None,None]
 			# The with deriv, alm has a shape of [1,nalm]. The [0] reduces this to [nalm]
-			if alm2map_adjoint: alm_full[I] = adjoint(map_full[I]*decflip)[0]
-			else:               alm_full[I] = jacobi_inverse(forward, approx_backward, map_full[I]*decflip, niter=niter)[0]
+			if adjoint: map_full[I] = jacobi_inverse(YT, WY, utils.fix_zero_strides(alm_full[I][None]), niter=niter)*decflip
+			else:       alm_full[I] = jacobi_inverse(Y, YTW, map_full[I]*decflip, niter=niter)[0]
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
-				def forward(alm): return ducc0.sht.experimental.synthesis(alm=alm, spin=s, **kwargs)
-				def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis(map=map, spin=s, **kwargs)
-				def approx_backward(map): return adjoint(wmul(map,weights))
-				if alm2map_adjoint: alm_full[Ij] = adjoint(map_full[Ij])
-				else:               alm_full[Ij] = jacobi_inverse(forward, approx_backward, map_full[Ij], niter=niter)
-	return alm
+				def Y(alm):   return ducc0.sht.experimental.synthesis(alm=alm, spin=s, **kwargs)
+				def YT(map):  return ducc0.sht.experimental.adjoint_synthesis(map=map, spin=s, **kwargs)
+				def YTW(map): return YT(wmul(map,weights))
+				def WY(alm):  return wmul(Y(alm),weights)
+				if adjoint: map_full[Ij] = jacobi_inverse(YT, WY, alm_full[Ij], niter=niter)
+				else:       alm_full[Ij] = jacobi_inverse(Y, YTW, map_full[Ij], niter=niter)
+	if adjoint: return map
+	else:       return alm
 
-def map2alm_raw_general(map, loc, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, alm2map_adjoint=False, nthread=None, niter=0, epsilon=None):
+def map2alm_raw_general(map, loc, alm=None, ainfo=None, lmax=None, spin=[0,2], weights=None, deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, niter=0, epsilon=None):
 	"""Helper function for map2alm_general. Usually not called directly. See the map2alm docstring for details."""
-	if copy and alm is not None: alm = alm.copy()
+	if adjoint:
+		if copy and map is not None: map = map.copy()
+	else:
+		if copy and alm is not None: alm = alm.copy()
+	if epsilon is None:
+		if map.dtype == np.float64: epsilon = 1e-10
+		else:                       epsilon = 1e-6
 	alm_full, map_full, ainfo, nthread = prepare_raw(alm, map, ainfo=ainfo, lmax=lmax, deriv=deriv, nthread=nthread, pixdims=1)
-	kwargs = {"loc":loc, "lmax":ainfo.lmax, "mmax":ainfo.mmax, "nthreads":nthread, "epsilon":epsilon}
+	kwargs = {"loc":loc, "lmax":ainfo.lmax, "mmax":ainfo.mmax, "nthreads":nthread, "epsilon":epsilon, "mstart":ainfo.mstart, "epsilon": epsilon}
 	if weights is None: weights = np.ones(1)
+	def wmul(map, weights): return map*weights
 	# Iterate over all the predimensions.
 	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
-			def forward(alm): return ducc0.sht.experimental.synthesis_general(alm=alm, mode="DERIV1", spin=1, **kwargs)
-			def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis_general(map=map, mode="DERIV1", spin=1, **kwargs)
-			def approx_backward(map): return adjoint(map*weights)
+			def Y(alm):   return ducc0.sht.experimental.synthesis_general(alm=alm, mode="DERIV1", spin=1, **kwargs)
+			def YT(map):  return ducc0.sht.experimental.adjoint_synthesis_general(map=map, mode="DERIV1", spin=1, **kwargs)
+			def YTW(map): return YT(map*weights)
+			def WY(alm):  return wmul(Y(alm),weights)
 			decflip = np.array([-1,1])[:,None,None]
-			if alm2map_adjoint: alm_full[I] = adjoint(map_full[I]*decflip)[0]
-			else:               alm_full[I] = jacobi_inverse(forward, approx_backward, map_full[I]*decflip, niter=niter)[0]
+			if adjoint: map_full[I] = jacobi_inverse(YT, WY, utils.fix_zero_strides(alm_full[I][None]), niter=niter)*decflip
+			else:       alm_full[I] = jacobi_inverse(Y, YTW, map_full[I]*decflip, niter=niter)[0]
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
-				def forward(alm): return ducc0.sht.experimental.synthesis_general(alm=alm, spin=s, **kwargs)
-				def adjoint(map): return ducc0.sht.experimental.adjoint_synthesis_general(map=map, spin=s, **kwargs)
-				def approx_backward(map): return adjoint(map*weights)
-				if alm2map_adjoint: alm_full[Ij] = adjoint(map_full[Ij])
-				else:               alm_full[Ij] = jacobi_inverse(forward, approx_backward, map_full[Ij], niter=niter)
+				def Y(alm):   return ducc0.sht.experimental.synthesis_general(alm=alm, spin=s, **kwargs)
+				def YT(map):  return ducc0.sht.experimental.adjoint_synthesis_general(map=map, spin=s, **kwargs)
+				def YTW(map): return YT(map*weights)
+				def WY(alm):  return wmul(Y(alm),weights)
+				if adjoint: map_full[Ij] = jacobi_inverse(YT, WY, alm_full[Ij], niter=niter)
+				else:       alm_full[Ij] = jacobi_inverse(Y, YTW, map_full[Ij], niter=niter)
 	return alm
 
 def jacobi_inverse(forward, approx_backward, y, niter=0):
@@ -1070,6 +1170,13 @@ def flip_geometry(shape, wcs, flips):
 	return enmap.slice_geometry(shape, wcs, flip2slice(flips))
 def flip_array(arr, flips):
 	return arr[flip2slice(flips)]
+def pad_geometry(shape, wcs, pad):
+	w = int(pad[0,0] + shape[-2] + pad[1,0])
+	h = int(pad[0,1] + shape[-1] + pad[1,1])
+	wcs = wcs.deepcopy()
+	wcs.wcs.crpix += pad[0,::-1]
+	shape = shape[:-2] + (w,h)
+	return shape, wcs
 
 def analyse_geometry(shape, wcs, tol=1e-6):
 	"""
@@ -1203,15 +1310,25 @@ def calc_locinfo(shape, wcs, bsize=1000):
 	masked = off < shape[-2]*shape[-1]
 	return bunch.Bunch(loc=loc, mask=mask, masked=masked)
 
-def map2buffer(map, flip, pad):
+def map2buffer(map, flip, pad, obuf=False):
 	"""Prepare a map for ducc operations by flipping and/or padding it, returning
 	the resulting map."""
-	map = flip_array(map, flip)
-	pad = np.array(pad)
-	if np.any(pad!=0):
-		map = enmap.pad(map, pad)
-	map = enmap.samewcs(np.ascontiguousarray(map),map)
-	return map
+	# First allocate the output buffer
+	pad = np.asarray(pad)
+	geo = enmap.Geometry(*map.geometry)
+	geo = flip_geometry(*geo, flip)
+	geo = pad_geometry(*geo, pad)
+	buf = enmap.zeros(*geo, map.dtype)
+	# Then copy the input map over, unless we're a pure
+	# output buffer
+	if not obuf:
+		buf[...,pad[0,0]:buf.shape[-2]-pad[1,0],pad[0,1]:buf.shape[-1]-pad[1,1]] = flip_array(map, flip)
+	#map = flip_array(map, flip)
+	#pad = np.array(pad)
+	#if np.any(pad!=0):
+	#	map = enmap.pad(map, pad)
+	#map = enmap.samewcs(np.ascontiguousarray(map),map)
+	return buf
 
 def buffer2map(map, flip, pad):
 	"""The inverse of map2buffer. Undoes flipping and padding"""

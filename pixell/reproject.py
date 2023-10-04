@@ -431,6 +431,7 @@ def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
 	can also specify 'cea' or 'gnomonic'
 	rpix -- optional pre-calculated pixel positions from get_rotated_pixels()
 	"""
+	warnings.warn("reproject.centered_map is deprecated. Use reproject.thumbnails instead")
 	if imap.ndim==2: imap = imap[None,:]
 	ncomp = imap.shape[0]
 	proj = proj.strip().lower()
@@ -529,7 +530,7 @@ def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
 	"""
 	from pixell import curvedsky
 	import healpy as hp, warnings
-	warnings.warn("enmap_from_healpix is obsolete. Use healpix2map instead. enmap_from_healpix has not been tested after the port from libsharp to ducc0. It also uses a very inefficient approach for coordinate rotation.")
+	warnings.warn("enmap_from_healpix is deprecated. Use healpix2map instead. enmap_from_healpix has not been tested after the port from libsharp to ducc0. It also uses a very inefficient approach for coordinate rotation.")
 	dtype = np.float64
 	if not(is_alm):
 		assert ncomp == 1 or ncomp == 3, "Only 1 or 3 components supported"
@@ -597,6 +598,7 @@ def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
 		is done.
 
 	"""
+	warnings.warn("enmap_from_healpix_interp is deprecated. Use healpix2map instead.")
 	import healpy as hp
 	from astropy.coordinates import SkyCoord
 	import astropy.units as u
@@ -635,6 +637,7 @@ def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
 def ivar_hp_to_cyl(hmap, shape, wcs, rot=False,do_mask=True,extensive=True):
 	from . import mpi, utils
 	import healpy as hp
+	warnings.warn("ivar_hp_to_cyl is deprecated. Use healpix2map instead. See the example at the bottom of its docstring for how to do this with ivar maps")
 	comm = mpi.COMM_WORLD
 	rstep = 100
 	dtype = np.float32

@@ -53,6 +53,62 @@ def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
     lensed = lensing.rand_map(shape, wcs, ps_lensinput, lmax=lmax, maplmax=None, dtype=dtype, seed=seed, phi_seed=None, spin=[0,2], output="lu", geodesic=True, verbose=False, delta_theta=None)
     return lensed
 
+# Helper functions for adjointness tests
+def zip_alm(alm, ainfo):
+    n = ainfo.lm2ind(1,1)
+    first  = alm[...,:n].real
+    second = alm[...,n:].view(utils.real_dtype(alm.dtype))*2**0.5
+    return np.concatenate([first, second],-1)
+
+def unzip_alm(zalm, ainfo):
+    n = ainfo.lm2ind(1,1)
+    oalm = np.zeros(zalm.shape[:-1] + (ainfo.nelem,), utils.complex_dtype(zalm.dtype))
+    oalm[...,:n] = zalm[...,:n]
+    oalm[...,n:] = zalm[...,n:].view(oalm.dtype)/2**0.5
+    return oalm
+
+def zalm_len(ainfo): return (2*ainfo.nelem-ainfo.lm2ind(1,1)).astype(int)
+def zip_mat(mat):
+    # Mat is ncomp_alm,nzalm,ncomp_map,ny,nx.
+    # Want (ncomp*ncomp*nzalm,ny,nx)
+    mat = np.moveaxis(mat, 2, 1)
+    mat = mat.reshape((-2,)+mat.shape[-2:])
+    return mat
+
+def map_bash(fun, shape, wcs, ncomp, lmax, dtype=np.float64):
+    ctype = utils.complex_dtype(dtype)
+    ainfo = curvedsky.alm_info(lmax)
+    nzalm = zalm_len(ainfo)
+    umap  = enmap.zeros((ncomp,)+shape, wcs, dtype=dtype)
+    oalm  = np.zeros((ncomp,ainfo.nelem), dtype=ctype)
+    mat   = np.zeros((ncomp,nzalm,ncomp)+shape, dtype=dtype)
+    for I in utils.nditer((ncomp,)+shape):
+        umap[I] = 1
+        oalm[:] = 0
+        fun(map=umap, alm=oalm, ainfo=ainfo)
+        mat[(slice(None),slice(None))+I] = zip_alm(oalm, ainfo)
+        umap[I] = 0
+    return zip_mat(mat)
+
+def alm_bash(fun, shape, wcs, ncomp, lmax, dtype=np.float64):
+    ctype = utils.complex_dtype(dtype)
+    ainfo = curvedsky.alm_info(lmax)
+    nzalm = zalm_len(ainfo)
+    zalm  = np.zeros((ncomp,nzalm), dtype)
+    omap  = enmap.zeros((ncomp,)+shape, wcs, dtype)
+    mat   = np.zeros((ncomp,nzalm,ncomp)+shape, dtype)
+    for ci in range(ncomp):
+        for i in range(nzalm):
+            # Why is this 0.5 needed?
+            zalm[ci,i] = 1 #if i < ainfo.lm2ind(1,1) else 0.5
+            omap[:] = 0
+            fun(alm=unzip_alm(zalm,ainfo), map=omap, ainfo=ainfo)
+            mat[ci,i] = omap
+            zalm[ci,i] = 0
+    return zip_mat(mat)
+
+# End of adjointness helpers
+
 class PixelTests(unittest.TestCase):
 
 
@@ -675,6 +731,45 @@ class PixelTests(unittest.TestCase):
             curvedsky.alm2map_healpix(alm, omap, spin=spin)
             alm_out = curvedsky.map2alm_healpix(omap, spin=spin, ainfo=ainfo, niter=niter)
             np.testing.assert_array_almost_equal(alm_out, alm)
+
+    # Disabled for now because the version of ducc currently on pypi
+    # has an adjointness bug. It's fixed in the ducc git repo.
+    #def test_adjointness(self):
+    #    # This tests if alm2map_adjoint is the adjoint of alm2map,
+    #    # and if map2alm_adjoint is the adjoint of map2alm.
+    #    # (This doesn't test if they're correct, just that they're
+    #    # consistent with each other). This test is a bit slow, taking
+    #    # 5 s or so. It would be much faster if we dropped the ncomp=3 case.
+    #    for dtype in [np.float32, np.float64]:
+    #        for ncomp in [1,3]:
+    #            # Define our geometries
+    #            geos = []
+    #            res  = 30*utils.degree
+    #            shape, wcs = enmap.fullsky_geometry(res=res, variant="fejer1")
+    #            geos.append(("fullsky_fejer1", shape, wcs))
+
+    #            shape, wcs = enmap.fullsky_geometry(res=res, variant="cc")
+    #            geos.append(("fullsky_cc", shape, wcs))
+    #            lmax = shape[-2]-2
+
+    #            shape, wcs = enmap.Geometry(shape, wcs)[3:-3,3:-3]
+    #            geos.append(("patch_cc", shape, wcs))
+
+    #            wcs = wcs.deepcopy()
+    #            wcs.wcs.crpix += 0.123
+    #            geos.append(("patch_gen_cyl", shape, wcs))
+
+    #            shape, wcs = enmap.geometry(np.array([[-45,45],[45,-45]])*utils.degree, res=res, proj="tan")
+    #            geos.append(("patch_tan", shape, wcs))
+
+    #            for gi, (name, shape, wcs) in enumerate(geos):
+    #                mat1  = alm_bash(curvedsky.alm2map,         shape, wcs, ncomp, lmax, dtype)
+    #                mat2  = map_bash(curvedsky.alm2map_adjoint, shape, wcs, ncomp, lmax, dtype)
+    #                np.testing.assert_array_almost_equal(mat1, mat2)
+    #                mat1 = map_bash(curvedsky.map2alm,         shape, wcs, ncomp, lmax, dtype)
+    #                mat2 = alm_bash(curvedsky.map2alm_adjoint, shape, wcs, ncomp, lmax, dtype)
+    #                np.testing.assert_array_almost_equal(mat1, mat2)
+
 
     #def test_sharp_alm2map_der1(self):
     #            
