@@ -716,10 +716,10 @@ def alm2map_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=
 	for I in utils.nditer(map.shape[:-3]):
 		# Unlike 2d, cyl is fine with a band around the sky, so y padding is not needed
 		pad  = ((0,minfo.xpad[0]),(0,minfo.xpad[1]))
-		tmap = map2buffer(map[I], minfo.flip, pad, obuf=True)
+		tmap = map2buffer(map[I], minfo.flip, pad, obuf=not adjoint)
 		alm2map_raw_cyl(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, adjoint=adjoint, nthread=nthread, verbose=verbose)
 		# Copy out if necessary
-		if not utils.same_array(tmap, map[I]):
+		if not adjoint and not utils.same_array(tmap, map[I]):
 			map[I] = buffer2map(tmap, minfo.flip, pad)
 	if adjoint: return alm
 	else:       return map
