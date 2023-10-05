@@ -176,7 +176,12 @@ class PixelTests(unittest.TestCase):
         print("Testing enplot...")
         shape,wcs = enmap.geometry(pos=(0,0),shape=(3,100,100),res=0.01)
         a = enmap.ones(shape,wcs)
-        p = enplot.get_plots(a)
+        # basic
+        p = enplot.plot(a)
+        # colorbar
+        p = enplot.plot(a, colorbar=True)
+        # annotation
+        p = enplot.plot(a, annotate=DATA_PREFIX+"annot.txt")
 
     def test_fft(self):
         # Tests that ifft(ifft(imap))==imap, i.e. default normalizations are consistent
