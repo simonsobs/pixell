@@ -3257,7 +3257,7 @@ def setenv(name, value, keep=False):
 	nothing if the variable already has a value."""
 	if   name in os.environ and keep: return
 	elif name in os.environ and value is None: del os.environ[name]
-	else: os.environ[name] = str(value)
+	elif value is not None: os.environ[name] = str(value)
 
 def zip2(*args):
 	"""Variant of python's zip that calls next() the same number of times on
