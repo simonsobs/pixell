@@ -67,7 +67,7 @@ def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=
 	alm = rand_alm_white(ainfo, pre=[wps.shape[0]], seed=seed, dtype=dtype, m_major=m_major)
 	# Scale alms by spectrum, taking into account which alms are complex
 	ps12 = enmap.multi_pow(wps, 0.5)
-	ainfo.lmul(alm, (ps12/2**0.5).astype(rtype), alm)
+	ainfo.lmul(alm, (ps12/2**0.5).astype(rtype, copy=False), alm)
 	alm[:,:ainfo.lmax+1].imag  = 0
 	alm[:,:ainfo.lmax+1].real *= 2**0.5
 	if ps.ndim == 1: alm = alm[0]
@@ -309,8 +309,9 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, adjoint=False,
 		copy=False, ainfo=None, nside=None, theta_min=None, theta_max=None, nthread=None):
 	"""Projects the given alm[...,ncomp,nalm] onto the given healpix map
 	healmap[...,ncomp,npix]."""
-	alm, ainfo = prepare_alm(alm, ainfo)
-	healmap    = prepare_healmap(healmap, nside, alm.shape[:-1], alm.real.dtype)
+	dtype      = utils.native_dtype(utils.real_dtype(alm.dtype))
+	alm, ainfo = prepare_alm(alm, ainfo, dtype=dtype)
+	healmap    = prepare_healmap(healmap, nside, alm.shape[:-1], dtype)
 	alm_full   = utils.atleast_Nd(alm, 2 if deriv else 3)
 	map_full   = utils.atleast_Nd(healmap, 3)
 	alm_full   = utils.fix_zero_strides(alm_full)
@@ -348,7 +349,7 @@ def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], weight
 		if copy and map is not None: map = map.copy()
 	else:
 		if copy and alm is not None: alm = alm.copy()
-	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=healmap.shape[:-1], dtype=healmap.dtype)
+	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=healmap.shape[:-1], dtype=utils.native_dtype(healmap.dtype))
 	alm_full   = utils.atleast_Nd(alm, 2 if deriv else 3)
 	map_full   = utils.atleast_Nd(healmap, 3)
 	alm_full   = utils.fix_zero_strides(alm_full)
@@ -419,7 +420,7 @@ class alm_info:
 		self.nelem = int(np.max(mstart) + (lmax+1)*stride)
 		if nalm is not None:
 			assert self.nelem == nalm, "lmax must be explicitly specified when lmax != mmax"
-		self.mstart= mstart.astype(np.uint64)
+		self.mstart= mstart.astype(np.uint64, copy=False)
 	def lm2ind(self, l, m):
 		return (self.mstart[m].astype(int, copy=False)+l*self.stride).astype(int, copy=False)
 	def get_map(self):
@@ -700,7 +701,7 @@ def alm2map_2d(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=F
 		tmap = map2buffer(map[I], minfo.flip, pad)
 		alm2map_raw_2d(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, nthread=nthread, verbose=verbose, adjoint=adjoint)
 		# Copy out if necessary
-		if not adjoint and not utils.same_array(tmap, map[I]):
+		if not adjoint:
 			map[I] = buffer2map(tmap, minfo.flip, pad)
 	if adjoint: return alm
 	else:       return map
@@ -719,8 +720,8 @@ def alm2map_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=
 		tmap = map2buffer(map[I], minfo.flip, pad, obuf=True)
 		alm2map_raw_cyl(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, adjoint=adjoint, nthread=nthread, verbose=verbose)
 		# Copy out if necessary
-		if not utils.same_array(tmap, map[I]):
-			map[I] = buffer2map(tmap, minfo.flip, pad)
+		#if not utils.same_array(tmap, map[I]):
+		map[I] = buffer2map(tmap, minfo.flip, pad)
 	if adjoint: return alm
 	else:       return map
 
@@ -755,7 +756,7 @@ def map2alm_2d(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], der
 		if copy and map is not None: map = map.copy()
 	else:
 		if copy and alm is not None: alm = alm.copy()
-	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=map.dtype)
+	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=utils.native_dtype(map.dtype))
 	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
@@ -765,7 +766,7 @@ def map2alm_2d(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], der
 		tmap = map2buffer(map[I], minfo.flip, pad)
 		map2alm_raw_2d(tmap, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, deriv=deriv, verbose=verbose, adjoint=adjoint, nthread=nthread)
 		# Copy out if necessary
-		if adjoint and not utils.same_array(tmap, map[I]):
+		if adjoint: #and not utils.same_array(tmap, map[I]):
 			map[I] = buffer2map(tmap, minfo.flip, pad)
 	if adjoint: return map
 	else:       return alm
@@ -776,7 +777,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], we
 		if copy and map is not None: map = map.copy()
 	else:
 		if copy and alm is not None: alm = alm.copy()
-	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=map.dtype)
+	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=utils.native_dtype(map.dtype))
 	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Get our weights, approximate or not
 	if weights is None:
@@ -787,7 +788,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], we
 			weights/= minfo.ducc_geo.nx
 		else:
 			weights = map.pixsizemap(separable=True, broadcastable=True)[:,0]
-		weights = weights.astype(map.dtype)
+		weights = weights.astype(map.dtype, copy=False)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
 	for I in utils.nditer(map.shape[:-3]):
@@ -796,7 +797,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], we
 		tmap = map2buffer(map[I], minfo.flip, pad)
 		map2alm_raw_cyl(tmap, alm[I], ainfo=ainfo, lmax=lmax, spin=spin, weights=weights, deriv=deriv, niter=niter, verbose=verbose, adjoint=adjoint, nthread=nthread)
 		# Copy out if necessary
-		if adjoint and not utils.same_array(tmap, map[I]):
+		if adjoint: # and not utils.same_array(tmap, map[I]):
 			map[I] = buffer2map(tmap, minfo.flip, pad)
 	if adjoint: return map
 	else:       return alm
@@ -807,9 +808,9 @@ def map2alm_general(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2]
 		if copy and map is not None: map = map.copy()
 	else:
 		if copy and alm is not None: alm = alm.copy()
-	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=map.dtype)
+	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=utils.native_dtype(map.dtype))
 	if locinfo is None: locinfo = calc_locinfo(map.shape, map.wcs)
-	if weights is None: weights = map.pixsizemap()[locinfo.mask].astype(map.dtype)
+	if weights is None: weights = map.pixsizemap()[locinfo.mask].astype(map.dtype, copy=False)
 	for I in utils.nditer(map.shape[:-3]):
 		if locinfo.masked:
 			mslice = (mask,) if map.ndim == 2 else (slice(None),locinfo.mask)
@@ -1114,7 +1115,7 @@ def get_ring_info(shape, wcs):
 	assert phi0.ndim < 2, "phi0 must be 0 or 1-dimensional"
 	if phi0.ndim == 0:
 		phi0 = np.zeros(ntheta,dtype=np.float64)+phi0
-	offsets = utils.cumsum(nphi).astype(np.uint64)
+	offsets = utils.cumsum(nphi).astype(np.uint64, copy=False)
 	stride  = np.zeros(ntheta,dtype=np.int32)+1
 	return bunch.Bunch(theta=theta, nphi=nphi, phi0=phi0, offsets=offsets, stride=stride, npix=np.sum(nphi), nrow=len(nphi))
 
@@ -1146,7 +1147,7 @@ def get_ring_info_healpix(nside, rings=None):
 	south       = np.where(northrings != rings)[0]
 	theta[south]= np.pi-theta[south]
 	# Compute the starting point of each ring
-	offsets     = utils.cumsum(nphi).astype(np.uint64)
+	offsets     = utils.cumsum(nphi).astype(np.uint64, copy=False)
 	stride      = np.ones(nring, np.int32)
 	return bunch.Bunch(theta=theta, nphi=nphi, phi0=phi0, offsets=offsets, stride=stride, npix=npix, nrow=nring)
 
@@ -1318,7 +1319,9 @@ def map2buffer(map, flip, pad, obuf=False):
 	geo = enmap.Geometry(*map.geometry)
 	geo = flip_geometry(*geo, flip)
 	geo = pad_geometry(*geo, pad)
-	buf = enmap.zeros(*geo, map.dtype)
+	# Use the same dtype, except force a native dtype since ducc doesn't like
+	# non-native dtypes
+	buf = enmap.zeros(*geo, utils.fix_dtype_mpi4py(map.dtype))
 	# Then copy the input map over, unless we're a pure
 	# output buffer
 	if not obuf:
@@ -1339,18 +1342,20 @@ def buffer2map(map, flip, pad):
 
 def prepare_alm(alm=None, ainfo=None, lmax=None, pre=(), dtype=np.float64):
 	"""Set up alm and ainfo based on which ones of them are available."""
+	ctype = utils.complex_dtype(dtype)
 	if alm is None:
 		if ainfo is None:
 			if lmax is None:
 				raise ValueError("prepare_alm needs either alm, ainfo or lmax to be specified")
 			ainfo = alm_info(lmax)
-		alm = np.zeros(pre+(ainfo.nelem,), dtype=np.result_type(dtype,0j))
+		alm = np.zeros(pre+(ainfo.nelem,), dtype=ctype)
 	if ainfo is None:
 		ainfo = alm_info(nalm=alm.shape[-1])
+	alm = alm.astype(ctype, copy=False)
 	return alm, ainfo
 
 def prepare_raw(alm, map, ainfo=None, lmax=None, deriv=False, verbose=False, nthread=None, pixdims=2):
-	alm, ainfo = prepare_alm(alm, ainfo, lmax=lmax, pre=map.shape[:-pixdims], dtype=map.dtype)
+	alm, ainfo = prepare_alm(alm, ainfo, lmax=lmax, pre=map.shape[:-pixdims], dtype=utils.native_dtype(map.dtype))
 	if deriv:
 		assert map.ndim >= pixdims+1 and map.shape[-pixdims-1] == 2, "map must have shape [...,2,%s] when deriv is True" % ("nloc" if pixdims == 1 else "ny,nx")
 		assert map.shape[:-1-pixdims] == alm.shape[:-1], "map and alm must agree on pre-dimensions"
@@ -1366,3 +1371,6 @@ def prepare_raw(alm, map, ainfo=None, lmax=None, deriv=False, verbose=False, nth
 	alm_full = utils.fix_zero_strides(alm_full)
 	map_full = utils.fix_zero_strides(map_full)
 	return alm_full, map_full, ainfo, nthread
+
+def dangerous_dtype(dtype):
+	return dtype.byteorder != "="

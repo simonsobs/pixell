@@ -981,7 +981,7 @@ def hasoff(val, off, tol=1e-6):
 
 def same_array(a, b):
 	"""Returns true if a and b are the same array"""
-	return a.shape == b.shape and a.dtype == b.dtype and a.data == b.data and a.strides == b.strides
+	return a.shape == b.shape and a.dtype == b.dtype and repr(a.data) == repr(b.data) and a.strides == b.strides
 
 def fix_zero_strides(a):
 	"""Given an array a, return the same array with any zero-stride along
@@ -2829,6 +2829,10 @@ def profile_to_tform_hankel(profile_fun, lmin=0.1, lmax=1e7, n=512, pad=256):
 
 def fix_dtype_mpi4py(dtype):
 	"""Work around mpi4py bug, where it refuses to accept dtypes with endian info"""
+	return np.dtype(np.dtype(dtype).char)
+
+def native_dtype(dtype):
+	"""Return the native version of dtype. E.g. if the input is big-endian float32, returns plain float32"""
 	return np.dtype(np.dtype(dtype).char)
 
 def decode_array_if_necessary(arr):
