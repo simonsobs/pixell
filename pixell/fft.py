@@ -57,7 +57,7 @@ class ducc_FFTW:
 				# Complex to complex
 				ducc0.fft.c2c(a=self.a, axes=self.axes, out=self.b, forward=False, inorm=2 if normalise_idft else 0, nthreads=self.threads)
 			else:
-				ducc0.fft.c2r(a=self.a, axes=self.axes, out=self.b, lastsize=self.b.shape[self.axes[-1]], inorm=2 if normalise_idft else 0, nthreads=self.threads)
+				ducc0.fft.c2r(a=self.a, axes=self.axes, out=self.b, forward=False, lastsize=self.b.shape[self.axes[-1]], inorm=2 if normalise_idft else 0, nthreads=self.threads)
 		elif _check_ducc_r2r(self.direction):
 			# dct and dst are passed with a list with one entry per dimension of the transform,
 			# but ducc doesn't support heterogeneous transforms like this, so just use the first element

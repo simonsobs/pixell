@@ -1,7 +1,7 @@
 """This module provides functions for taking into account the curvature of the
 full sky."""
 from __future__ import print_function, division
-import numpy as np, os
+import numpy as np, os, warnings
 from . import enmap, powspec, wcsutils, utils, bunch, cmisc
 # Initialize DUCC's thread num variable from OMP's if it's not already set.
 # This must be done before importing ducc0 for the first time. Doing this
@@ -80,7 +80,7 @@ def rand_alm(ps, ainfo=None, lmax=None, seed=None, dtype=np.complex128, m_major=
 
 def alm2map(alm, map, spin=[0,2], deriv=False, adjoint=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
-		epsilon=1e-6, pix_tol=1e-6, locinfo=None):
+		epsilon=1e-6, pix_tol=1e-6, locinfo=None, tweak=False):
 	"""Spherical harmonics synthesis. Transform from harmonic space to real space.
 
 	Parameters
@@ -142,6 +142,7 @@ def alm2map(alm, map, spin=[0,2], deriv=False, adjoint=False,
 	-------
 	The resulting map. This will be the same object as the map argument,
 	or a copy if copy == True."""
+	if tweak: warnings.warn("The tweak argument is deprecated and does nothing after the libsharp→ducc transition. It will be removed in a future version")
 	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	if method == "auto": method = get_method(map.shape, map.wcs, minfo=minfo)
 	if   method == "2d":
@@ -205,7 +206,7 @@ def alm2map_pos(alm, pos=None, loc=None, ainfo=None, map=None, spin=[0,2], deriv
 
 def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, adjoint=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
-		niter=0, epsilon=None, pix_tol=1e-6, weights=None, locinfo=None):
+		niter=0, epsilon=None, pix_tol=1e-6, weights=None, locinfo=None, tweak=False):
 	"""Spherical harmonics analysis. Transform from real space to harmonic space.
 
 	Parameters
@@ -278,6 +279,7 @@ def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, adjoint=False,
 	-------
 	The resulting alm. This will be the same object as the alm argument,
 	or a copy if copy == True."""
+	if tweak: warnings.warn("The tweak argument is deprecated and does nothing after the libsharp→ducc transition. It will be removed in a future version")
 	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	if method == "auto": method = get_method(map.shape, map.wcs, minfo=minfo)
 	if   method == "2d":
@@ -717,11 +719,11 @@ def alm2map_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=
 	for I in utils.nditer(map.shape[:-3]):
 		# Unlike 2d, cyl is fine with a band around the sky, so y padding is not needed
 		pad  = ((0,minfo.xpad[0]),(0,minfo.xpad[1]))
-		tmap = map2buffer(map[I], minfo.flip, pad, obuf=True)
+		tmap = map2buffer(map[I], minfo.flip, pad, obuf=not adjoint)
 		alm2map_raw_cyl(alm[I], tmap, ainfo=ainfo, spin=spin, deriv=deriv, adjoint=adjoint, nthread=nthread, verbose=verbose)
 		# Copy out if necessary
-		#if not utils.same_array(tmap, map[I]):
-		map[I] = buffer2map(tmap, minfo.flip, pad)
+		if not adjoint: # and not utils.same_array(tmap, map[I]):
+			map[I] = buffer2map(tmap, minfo.flip, pad)
 	if adjoint: return alm
 	else:       return map
 
