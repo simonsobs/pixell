@@ -2,7 +2,11 @@
 full sky."""
 from __future__ import print_function, division
 import numpy as np, os, warnings
-from . import enmap, powspec, wcsutils, utils, bunch, cmisc
+from . import enmap, powspec, wcsutils, utils, bunch
+if os.getenv('READTHEDOCS') == 'True':
+	cmisc = None
+else:
+	from . import cmisc
 # Initialize DUCC's thread num variable from OMP's if it's not already set.
 # This must be done before importing ducc0 for the first time. Doing this
 # limits wasted memory from ducc allocating too big a thread pool. For computes
