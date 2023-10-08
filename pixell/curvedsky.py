@@ -2,18 +2,13 @@
 full sky."""
 from __future__ import print_function, division
 import numpy as np, os, warnings
-from . import enmap, powspec, wcsutils, utils, bunch
+from . import enmap, powspec, wcsutils, utils, bunch, cmisc
 # Initialize DUCC's thread num variable from OMP's if it's not already set.
 # This must be done before importing ducc0 for the first time. Doing this
 # limits wasted memory from ducc allocating too big a thread pool. For computes
 # with many cores, this can save GBs of memory.
 utils.setenv("DUCC0_NUM_THREADS", utils.getenv("OMP_NUM_THREADS"), keep=True)
-if os.getenv('READTHEDOCS') == 'True':
-	cmisc = None
-	ducc0 = None
-else:
-	from . import cmisc
-	import ducc0
+import ducc0
 
 class ShapeError(Exception): pass
 
