@@ -1,5 +1,9 @@
 from __future__ import division, print_function
-import numpy as np, argparse, time, sys, warnings, os, shlex, glob, PIL.Image, PIL.ImageDraw
+import numpy as np, argparse, time, sys, warnings, os, shlex, glob, 
+if os.getenv('READTHEDOCS') == 'True':
+	pass
+else:
+	import PIL.Image, PIL.ImageDraw
 from scipy import ndimage
 from . import enmap, colorize, mpi, cgrid, utils, memory, bunch, wcsutils
 # Optional dependency array_ops needed for contour drawing
