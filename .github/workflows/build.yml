@@ -38,8 +38,6 @@ jobs:
       CC: gcc-12
       CXX: gcc-12
       FC: gfortran-12
-      gfortran: gfortran-12
-      fcompiler: gfortran-12
 
     steps:
       - uses: actions/checkout@v1
@@ -55,7 +53,7 @@ jobs:
 
       - name: Install Package (MacOS)
         run: |
-          alias gfortran=gfortran-12
+          ln -s $FC $(dirname $(which $FC))/gfortran
           echo "Using FC=$FC CXX=$CXX CC=$CC"
           $FC --version
           python setup.py build_ext -i 
