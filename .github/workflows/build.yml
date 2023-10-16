@@ -66,9 +66,65 @@ jobs:
           pytest pixell/tests/ -s
 
 
-  build_wheels:
-    name: Build wheels on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+  build_wheels_linux:
+    name: Build wheels on Linux
+    runs-on: ubuntu-latest
+    strategy:
+      # Ensure that a wheel builder finishes even if another fails
+      fail-fast: false
+      matrix:
+        os: [ubuntu-20.04]
+        cp: [cp37, cp38, cp39, cp310, cp311]
+        include:
+          - cp: cp37
+            numpyver: "1.20"
+          - cp: cp38
+            numpyver: "1.20"
+          - cp: cp39
+            numpyver: "1.20"
+          - cp: cp310
+            numpyver: "1.22"
+          - cp: cp311
+            numpyver: "1.22"
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v2
+        name: Install Python
+        with:
+          python-version: '3.7'
+
+      - name: Install cibuildwheel and other dependencies
+        run: |
+          python -m pip install -U pip
+          python -m easy_install -U setuptools
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install pytest-cov numpy
+          python -m pip install cibuildwheel
+
+      - name: Test and build wheels
+        run: |
+          ln -s $FC $(dirname $(which $FC))/gfortran
+          bash scripts/build_wheels.sh
+        env:
+          CIBW_ENVIRONMENT: OMP_NUM_THREADS=2
+                            OPENBLAS_NUM_THREADS=2
+          CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy cython"
+          CIBW_BUILD_VERBOSITY: 3
+          CIBW_BUILD: "${{ matrix.cp }}-*x86_64"
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_ARCHS_MACOS: "x86_64 arm64 universal2"
+          PYTHON: "python"
+          PIP: "pip"
+
+      - uses: actions/upload-artifact@v2
+        with:
+          path: ./wheelhouse/*.whl
+
+  build_wheels_macos:
+    name: Build wheels on MacOS
+    runs-on: macos-latest
     env:
       CC: gcc-12
       CXX: gcc-12
@@ -78,7 +134,7 @@ jobs:
       # Ensure that a wheel builder finishes even if another fails
       fail-fast: false
       matrix:
-        os: [ubuntu-20.04, macos-latest]
+        os: [macos-latest]
         cp: [cp37, cp38, cp39, cp310, cp311]
         include:
           - cp: cp37
@@ -152,7 +208,7 @@ jobs:
           path: dist/*.tar.gz
 
   upload_pypi:
-    needs: [build_wheels, build_sdist]
+    needs: [build_wheels_linux, build_wheels_macos, build_sdist]
     runs-on: ubuntu-latest
     # upload to PyPI on every tag starting with 'v'
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
