@@ -109,7 +109,9 @@ jobs:
           python -m pip install cibuildwheel
 
       - name: Test and build wheels
-        run: bash scripts/build_wheels.sh
+        run: |
+          ln -s $FC $(dirname $(which $FC))/gfortran
+          bash scripts/build_wheels.sh
         env:
           CIBW_ENVIRONMENT: OMP_NUM_THREADS=2
                             OPENBLAS_NUM_THREADS=2
