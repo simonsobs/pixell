@@ -11,7 +11,7 @@ import versioneer
 import os, sys
 import subprocess as sp
 import numpy as np
-import glob
+
 build_ext = build_ext.build_ext
 build_src = build_src.build_src
 
@@ -28,8 +28,6 @@ compile_opts = {
 # Windows
 if sys.platform == 'win32':
     raise DistutilsError('Windows is not supported.')
-# Mac OS X - needs gcc (usually via HomeBrew) because the default compiler LLVM (clang) does not support OpenMP
-#          - with gcc -fopenmp option implies -pthread
 elif sys.platform == 'darwin' or sys.platform == 'linux':
     environment = os.environ
 
@@ -53,6 +51,8 @@ elif sys.platform == 'darwin' or sys.platform == 'linux':
             "The built-in Apple clang does not support OpenMP. Use Homebrew to install either gcc or llvm. "
             f"Current value of $CC is {environment['CC']}.",
         )
+    else:
+        print(f"C compiler found ({environment['CC']}) and supports OpenMP.")
     
     
     cxx_return = sp.call([environment["CXX"], *compile_opts["extra_compile_args"], "scripts/omp_hello.c", "-o", "/tmp/pixell-cxx-test"], env=environment)
@@ -65,6 +65,8 @@ elif sys.platform == 'darwin' or sys.platform == 'linux':
              "The built-in Apple clang does not support OpenMP. Use Homebrew to install either gcc or llvm. "
             f"Current value of $CXX is {environment['CXX']}.",
         )
+    else:
+        print(f"CXX compiler found ({environment['CXX']}) and supports OpenMP.")
     
     fc_return = sp.call([environment["FC"], *compile_opts["extra_f90_compile_args"], "scripts/omp_hello.f90", "-o", "/tmp/pixell-fc-test"], env=environment)
 
@@ -75,7 +77,10 @@ elif sys.platform == 'darwin' or sys.platform == 'linux':
             ". Consider setting the value of environment variable FC to a known good gfortran install."
             f"Current value of $FC is {environment['FC']}.",
         )
+    else:
+        print(f"Fortran compiler found ({environment['FC']}) and supports OpenMP.")
 
+    # Why do we remove -fPIC here?
     compile_opts['extra_link_args'] = ['-fopenmp']
 else:
     raise EnvironmentError("Unknown platform. Please file an issue on GitHub.")
@@ -131,6 +136,7 @@ test_requirements = ['pip>=9.0',
                      'coveralls>=1.5',
                      'pytest>=4.6']
 
+# Why are we doing this instead of allowing the environment to do this? We should just use -O3 and -fPIC.
 fcflags = os.getenv('FCFLAGS')
 if fcflags is None or fcflags.strip() == '':
     fcflags = ['-O3','-fPIC']
