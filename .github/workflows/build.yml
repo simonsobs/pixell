@@ -73,7 +73,7 @@ jobs:
       # Ensure that a wheel builder finishes even if another fails
       fail-fast: false
       matrix:
-        os: [ubuntu-20.04]
+        os: [ubuntu-20.04, macos-latest]
         cp: [cp37, cp38, cp39, cp310, cp311]
         include:
           - cp: cp37
