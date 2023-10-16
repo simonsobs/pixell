@@ -4,6 +4,7 @@ on: [push, pull_request]
 
 jobs:
   test-linux:
+    name: "Run tests on Linux"
     runs-on: ubuntu-latest
 
     strategy:
@@ -30,6 +31,7 @@ jobs:
           verbose: true # optional (default = false)
 
   test-macos:
+    name: "Run tests on MacOS"
     runs-on: macos-latest
     env:
       LDFLAGS: "-ld64"
