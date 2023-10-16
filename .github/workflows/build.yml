@@ -55,7 +55,7 @@ jobs:
       - name: Install Package (MacOS)
         run: |
           echo "Using FC=$FC CXX=$CXX CC=$CC"
-          python setup.py build_ext -i
+          python setup.py build_ext --fcompiler=$FC -i 
           python -m pip install .
 
       - name: Run Tests (MacOS)

@@ -174,7 +174,6 @@ def prebuild():
 
 
 class CustomBuild(build_ext):
-    fcompiler: str = os.environ["FC"]
     def run(self):
         print("Running build...")
         prebuild()
