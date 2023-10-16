@@ -38,6 +38,7 @@ jobs:
       CC: gcc-12
       CXX: gcc-12
       FC: gfortran-12
+      DUCC0_NUM_THREADS: 2
 
     steps:
       - uses: actions/checkout@v1
@@ -52,10 +53,11 @@ jobs:
           
 
       - name: Install Package (MacOS)
+        # The built-in fortran compiler does not link to gfortran (just numbered versions)
+        # and build_ext does not play nicely with that. So we link gfortran-X to gfortran.
         run: |
           ln -s $FC $(dirname $(which $FC))/gfortran
           echo "Using FC=$FC CXX=$CXX CC=$CC"
-          $FC --version
           python setup.py build_ext -i 
           python -m pip install .
 
