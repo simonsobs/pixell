@@ -39,6 +39,7 @@ jobs:
       CXX: gcc-12
       FC: gfortran-12
       gfortran: gfortran-12
+      fcompiler: gfortran-12
 
     steps:
       - uses: actions/checkout@v1
