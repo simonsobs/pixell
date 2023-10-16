@@ -34,7 +34,7 @@ jobs:
     name: "Run tests on MacOS"
     runs-on: macos-latest
     env:
-      LDFLAGS: "-ld64"
+      # LDFLAGS: "-ld64" # For MacOS 13 and above (XCode CLT 15 and above.)
       CC: gcc-12
       CXX: gcc-12
       FC: gfortran-12
