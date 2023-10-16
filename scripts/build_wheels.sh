@@ -37,7 +37,7 @@ if [[ $(uname) == "Darwin" ]]; then
 
     # export CC=/usr/bin/clang
     # export CXX=/usr/bin/clang++
-    export CPPFLAGS="$CPPFLAGS -Xpreprocessor -fopenmp"
+    export CPPFLAGS="$CPPFLAGS -fopenmp"
     export CFLAGS="$CFLAGS -I$PREFIX/include"
     export CXXFLAGS="$CXXFLAGS -I$PREFIX/include"
     export LDFLAGS="$LDFLAGS -Wl,-rpath,$PREFIX/lib -L$PREFIX/lib -lomp"
