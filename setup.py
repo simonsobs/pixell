@@ -30,33 +30,55 @@ if sys.platform == 'win32':
     raise DistutilsError('Windows is not supported.')
 # Mac OS X - needs gcc (usually via HomeBrew) because the default compiler LLVM (clang) does not support OpenMP
 #          - with gcc -fopenmp option implies -pthread
-elif sys.platform == 'darwin':
-    try:
-        sp.check_call('scripts/osx.sh', shell=True)
-    except sp.CalledProcessError:
-        raise DistutilsError('Failed to prepare Mac OS X properly. See earlier errors.')
-    # Try to find gcc in /usr/local/bin/ (which is where it's installed by homebrew on
-    # Intel) or, if that fails, /opt/homebrew/bin/ (which is where it's installed by
-    # homebrew on Silicon)
-    gccpath = glob.glob('/usr/local/bin/gcc-*')
-    if not gccpath:
-        gccpath = glob.glob('/opt/homebrew/bin/gcc-*')
-    if gccpath:
-        # Use newest gcc found
-        sint = lambda x: int(x) if x.isdigit() else 0
-        gversion = str(max([sint(os.path.basename(x).split('-')[1]) for x in gccpath]))
-        os.environ['CC'] = 'gcc-' + gversion
-        os.environ['CXX'] = os.environ['CC'].replace("gcc","g++")
-        os.environ['FC'] = os.environ['CC'].replace("gcc","gfortran")
-        rpath = '/usr/local/opt/gcc/lib/gcc/' + gversion + '/'
-    else:
-        os.system("which gcc")
-        os.system("find / -name \'gcc\'")
-        raise Exception('Cannot find gcc in /usr/local/bin. pixell requires gcc to be installed - easily done through the Homebrew package manager (http://brew.sh). Note: gcc with OpenMP support is required.')
-    compile_opts['extra_link_args'] = ['-fopenmp', '-Wl,-rpath,' + rpath]
-# Linux
-elif sys.platform == 'linux':
+elif sys.platform == 'darwin' or sys.platform == 'linux':
+    environment = os.environ
+
+    if not 'CC' in environment:
+        environment["CC"] = "gcc"
+    
+    if not "CXX" in environment:
+        environment["CXX"] = "g++"
+    
+    if not "FC" in environment:
+        environment["FC"] = "gfortran"
+
+    # Now, try out our environment!
+    c_return = sp.call([environment["CC"], *compile_opts["extra_compile_args"], "scripts/omp_hello.c", "-o", "/tmp/pixell-cc-test"], env=environment)
+
+    if c_return != 0:
+        raise EnvironmentError(
+            "Your C compiler does not support the following flags, required by pixell: "
+            f"{' '.join(compile_opts['extra_compile_args'])}"
+            ". Consider setting the value of environment variable CC to a known good gcc install. "
+            "The built-in Apple clang does not support OpenMP. Use Homebrew to install either gcc or llvm. "
+            f"Current value of $CC is {environment['CC']}.",
+        )
+    
+    
+    cxx_return = sp.call([environment["CXX"], *compile_opts["extra_compile_args"], "scripts/omp_hello.c", "-o", "/tmp/pixell-cxx-test"], env=environment)
+
+    if cxx_return != 0:
+        raise EnvironmentError(
+            "Your CXX compiler does not support the following flags, required by pixell: "
+            f"{' '.join(compile_opts['extra_compile_args'])}"
+            ". Consider setting the value of environment variable CXX to a known good gcc install. "
+             "The built-in Apple clang does not support OpenMP. Use Homebrew to install either gcc or llvm. "
+            f"Current value of $CXX is {environment['CXX']}.",
+        )
+    
+    fc_return = sp.call([environment["FC"], *compile_opts["extra_f90_compile_args"], "scripts/omp_hello.f90", "-o", "/tmp/pixell-fc-test"], env=environment)
+
+    if fc_return != 0:
+        raise EnvironmentError(
+            "Your Fortran compiler does not support the following flags, required by pixell: "
+            f"{' '.join(compile_opts['extra_f90_compile_args'])}"
+            ". Consider setting the value of environment variable FC to a known good gfortran install."
+            f"Current value of $FC is {environment['FC']}.",
+        )
+
     compile_opts['extra_link_args'] = ['-fopenmp']
+else:
+    raise EnvironmentError("Unknown platform. Please file an issue on GitHub.")
 
 def pip_install(package):
     import pip
