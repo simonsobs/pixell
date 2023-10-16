@@ -69,6 +69,11 @@ jobs:
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      CC: gcc-12
+      CXX: gcc-12
+      FC: gfortran-12
+      DUCC0_NUM_THREADS: 2
     strategy:
       # Ensure that a wheel builder finishes even if another fails
       fail-fast: false
