@@ -55,9 +55,10 @@ jobs:
 
       - name: Install Package (MacOS)
         run: |
+          alias gfortran=gfortran-12
           echo "Using FC=$FC CXX=$CXX CC=$CC"
           $FC --version
-          python setup.py build_ext --fcompiler=$FC -i 
+          python setup.py build_ext -i 
           python -m pip install .
 
       - name: Run Tests (MacOS)
