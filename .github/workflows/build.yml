@@ -98,7 +98,7 @@ jobs:
       - name: Install cibuildwheel and other dependencies
         run: |
           python -m pip install -U pip
-          python -m easy_install -U setuptools
+          python -m pip install -U setuptools
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install pytest-cov numpy
           python -m pip install cibuildwheel
@@ -113,7 +113,7 @@ jobs:
           CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy cython"
           CIBW_BUILD_VERBOSITY: 3
           # If users are still on 32 bit systems or PPC they should build from source.
-          CIBW_BUILD: "${{ matrix.cp }}-*linux_{x86_64,aarch64}"
+          CIBW_BUILD: "${{ matrix.cp }}-manylinux_{x86_64,aarch64}"
           PYTHON: "python"
           PIP: "pip"
 
@@ -157,7 +157,7 @@ jobs:
       - name: Install cibuildwheel and other dependencies
         run: |
           python -m pip install -U pip
-          python -m easy_install -U setuptools
+          python -m pip install -U setuptools
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install pytest-cov numpy
           python -m pip install cibuildwheel
