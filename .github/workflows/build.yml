@@ -173,6 +173,8 @@ jobs:
           CIBW_BUILD_VERBOSITY: 3
           CIBW_BUILD: "${{ matrix.cp }}-macosx_{x86_64,arm64}"
           CIBW_ARCHS_MACOS: "x86_64 arm64"
+          # Cannot test arm64 on non-native runner
+          CIBW_TEST_SKIP: "*_arm64"
           PYTHON: "python"
           PIP: "pip"
 
