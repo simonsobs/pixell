@@ -37,11 +37,13 @@ On MacOS, and other systems with non-traditional environments, you should specif
 
 We recommend using ``gcc`` installed from Homebrew to access these compilers.
 
-You will also need to specify the environment variable ``DUCC0_NUM_THREADS``, the number
-of threads to run certain parallel operations with, on MacOS. This should typically be set
-to the number of physical cores on your machine. If you recieve an error saying 
-``Assertion failure no thread pool active``, it is likely that this variable is either
-unset or set to a garbage value that cannot be interpreted by the ``ducc0`` library.
+You will also need to specify the environment variable ``DUCC0_NUM_THREADS`` for
+correct runtime behaviour on MacOS (e.g. running the test suite), specifying the
+number of threads to run certain parallel operations with. This should typically
+be set to the number of physical cores on your machine. If you recieve an error
+saying ``Assertion failure no thread pool active``, it is likely that this
+variable is either unset or set to a garbage value that cannot be interpreted by
+the ``ducc0`` library.
 
 Installing
 ----------
