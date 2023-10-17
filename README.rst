@@ -35,7 +35,9 @@ On MacOS, and other systems with non-traditional environments, you should specif
 * ``CXX``: C++ compiler (example: ``g++``)
 * ``FC``: Fortran compiler (example: ``gfortran``)
 
-We recommend using ``gcc`` installed from Homebrew to access these compilers.
+We recommend using ``gcc`` installed from Homebrew to access these compilers on
+MacOS, and you should make sure to point e.g. `$CC` to the full path of your gcc installation,
+as the `gcc` name usually points to the Apple `clang` install by default.
 
 You will also need to specify the environment variable ``DUCC0_NUM_THREADS`` for
 correct runtime behaviour on MacOS (e.g. running the test suite), specifying the
