@@ -10,6 +10,9 @@ import multiprocessing
 max_threads = multiprocessing.cpu_count()
 assert max_threads>=1
 
+# On MacOS default values of `DUCC0_NUM_THREADS` (used for run-time thread number selection
+# as ducc0 uses pthreads not OMP) are not correctly handled, we must set it to a valid 
+# integer value.
 if sys.platform == "darwin":
     if "DUCC0_NUM_THREADS" not in os.environ:
         os.environ["DUCC0_NUM_THREADS"] = str(max_threads)
