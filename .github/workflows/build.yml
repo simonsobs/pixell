@@ -114,7 +114,8 @@ jobs:
           CIBW_BUILD_VERBOSITY: 3
           # If users are still on 32 bit systems or PPC they should build from source.
           CIBW_BUILD: "${{ matrix.cp }}-manylinux_{x86_64,aarch64}"
-          CIBW_TEST_COMMAND: "python -m pytest pixell/tests"
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: "python -m pytest {project}/pixell/tests"
           PYTHON: "python"
           PIP: "pip"
 
@@ -179,7 +180,8 @@ jobs:
           CIBW_BUILD: "${{ matrix.cp }}-macosx_x86_64"
           #CIBW_ARCHS_MACOS: "x86_64 arm64"
           CIBW_ARCHS_MACOS: "x86_64"
-          CIBW_TEST_COMMAND: "python -m pytest pixell/tests"
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: "python -m pytest {project}/pixell/tests"
           # Cannot test arm64 on non-native runner
           CIBW_TEST_SKIP: "*_arm64"
           PYTHON: "python"
