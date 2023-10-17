@@ -135,10 +135,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest]
-        cp: [cp37, cp38, cp39, cp310, cp311]
+        # We don't build 3.7 wheels for MacOS because that's x86 only.
+        cp: [cp38, cp39, cp310, cp311]
         include:
-          - cp: cp37
-            numpyver: "1.20"
           - cp: cp38
             numpyver: "1.20"
           - cp: cp39
@@ -154,7 +153,7 @@ jobs:
       - uses: actions/setup-python@v2
         name: Install Python
         with:
-          python-version: '3.7'
+          python-version: '3.9'
 
       - name: Install cibuildwheel and other dependencies
         run: |
@@ -173,9 +172,8 @@ jobs:
                             OPENBLAS_NUM_THREADS=2
           CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy cython"
           CIBW_BUILD_VERBOSITY: 3
-          CIBW_BUILD: "${{ matrix.cp }}-*x86_64"
-          CIBW_SKIP: "*-musllinux_*"
-          CIBW_ARCHS_MACOS: "x86_64 arm64 universal2"
+          CIBW_BUILD: "${{ matrix.cp }}-macosx-{x86_64,arm64}"
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
           PYTHON: "python"
           PIP: "pip"
 
