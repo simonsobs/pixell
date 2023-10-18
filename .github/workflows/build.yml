@@ -239,22 +239,24 @@ jobs:
           # To test: repository_url: https://test.pypi.org/legacy/
 
 
-  upload_pypi_test:
-    needs: [build_wheels_linux, build_wheels_macos, build_sdist]
-    runs-on: ubuntu-latest
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/pixell
+  # Automatically upload builds to PyPI test when all tests pass.
+  # Requires some thought about versioning before activating.
+  # upload_pypi_test:
+  #   needs: [build_wheels_linux, build_wheels_macos, build_sdist]
+  #   runs-on: ubuntu-latest
+  #   environment:
+  #     name: testpypi
+  #     url: https://test.pypi.org/p/pixell
     
-    # Upload to pypi testing on every successful test run and build generation
-    steps:
-      - uses: actions/download-artifact@v2
-        with:
-          name: artifact
-          path: dist
+  #   # Upload to pypi testing on every successful test run and build generation
+  #   steps:
+  #     - uses: actions/download-artifact@v2
+  #       with:
+  #         name: artifact
+  #         path: dist
 
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          user: __token__
-          password: ${{ secrets.PYPI_TEST_TOKEN }}
+  #     - uses: pypa/gh-action-pypi-publish@release/v1
+  #       with:
+  #         repository-url: https://test.pypi.org/legacy/
+  #         user: __token__
+  #         password: ${{ secrets.PYPI_TEST_TOKEN }}
