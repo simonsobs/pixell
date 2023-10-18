@@ -87,7 +87,9 @@ autodoc_mock_imports = []
 for missing in [
         'scipy', 'matplotlib', 'healpy', 'astropy',
         'h5py', 'sharp', 'pyfftw',
-        'pixell.sharp',
+        'pixell.sharp', 'ducc0', 'PIL.Image',
+        'PIL.ImageDraw', 'pixell.cmisc', 'PIL',
+        'pixell.srcsim'
 ]:
     autodoc_mock_imports.append(missing)
 

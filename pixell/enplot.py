@@ -535,7 +535,7 @@ def draw_colorbar(crange, width, args):
 	labels, boxes = [], []
 	for val in crange:
 		labels.append(fmt % val)
-		boxes.append(font.getsize(labels[-1]))
+		boxes.append(font.getbbox(labels[-1])[-2:])
 	boxes = np.array(boxes,int)
 	lw, lh = np.max(boxes,0)
 	img    = PIL.Image.new("RGBA", (width, lh))
@@ -817,7 +817,7 @@ def draw_annotations(map, annots, args):
 			if font is None or size != font_size_prev:
 				font = cgrid.get_font(size)
 				font_size_prev = size
-			tbox = font.getsize(text)
+			tbox = font.getbbox(text)[-2:]
 			draw.text((x-tbox[0]/2, y-tbox[1]/2), text, color, font=font)
 		else:
 			raise NotImplementedError

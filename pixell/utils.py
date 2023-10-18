@@ -981,7 +981,7 @@ def hasoff(val, off, tol=1e-6):
 
 def same_array(a, b):
 	"""Returns true if a and b are the same array"""
-	return a.shape == b.shape and a.dtype == b.dtype and a.data == b.data and a.strides == b.strides
+	return a.shape == b.shape and a.dtype == b.dtype and repr(a.data) == repr(b.data) and a.strides == b.strides
 
 def fix_zero_strides(a):
 	"""Given an array a, return the same array with any zero-stride along
@@ -2831,6 +2831,10 @@ def fix_dtype_mpi4py(dtype):
 	"""Work around mpi4py bug, where it refuses to accept dtypes with endian info"""
 	return np.dtype(np.dtype(dtype).char)
 
+def native_dtype(dtype):
+	"""Return the native version of dtype. E.g. if the input is big-endian float32, returns plain float32"""
+	return np.dtype(np.dtype(dtype).char)
+
 def decode_array_if_necessary(arr):
 	"""Given an arbitrary numpy array arr, decode it if it is of type S and we're in a
 	version of python that doesn't like that"""
@@ -3257,7 +3261,7 @@ def setenv(name, value, keep=False):
 	nothing if the variable already has a value."""
 	if   name in os.environ and keep: return
 	elif name in os.environ and value is None: del os.environ[name]
-	else: os.environ[name] = str(value)
+	elif value is not None: os.environ[name] = str(value)
 
 def zip2(*args):
 	"""Variant of python's zip that calls next() the same number of times on

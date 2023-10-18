@@ -50,7 +50,7 @@ class UHT:
 	  - flat:   An enmap[...,ny,nx] corresponding to the multipoles self.l
 	  - curved: A 1d array [...,self.lmax+1]
 	"""
-	def __init__(self, shape, wcs, mode="auto", lmax=None, max_distortion=0.1):
+	def __init__(self, shape, wcs, mode="auto", lmax=None, max_distortion=0.1, niter=0):
 		"""Initialize a UHT object.
 		Arguments:
 			shape, wcs: The geometry of the enmaps the UHT object will be used on.
@@ -69,6 +69,7 @@ class UHT:
 			else:                      mode = "curved"
 		self.mode = mode
 		self.quad = None
+		self.niter= niter
 		if mode == "flat":
 			self.l    = enmap.modlmap(shape, wcs)
 			self.lmax = utils.nint(np.max(self.l))
@@ -93,7 +94,7 @@ class UHT:
 		if self.mode == "flat":
 			return enmap.map2harm(map, spin=spin, normalize="phys")
 		else:
-			return curvedsky.map2alm(map, ainfo=self.ainfo, spin=spin)
+			return curvedsky.map2alm(map, ainfo=self.ainfo, spin=spin, niter=self.niter)
 	def harm2map(self, harm, spin=0):
 		if self.mode == "flat":
 			return enmap.harm2map(harm, spin=spin, normalize="phys").real
@@ -112,7 +113,7 @@ class UHT:
 		else:
 			rtype= np.zeros(1, harm.dtype).real.dtype
 			omap = enmap.zeros(harm.shape[:-1]+self.shape, self.wcs, rtype)
-			return curvedsky.map2alm_adjoint(harm, omap, ainfo=self.ainfo, spin=spin)
+			return curvedsky.map2alm_adjoint(harm, omap, ainfo=self.ainfo, spin=spin, niter=self.niter)
 	def quad_weights(self):
 		"""Returns the quadrature weights array W. This will broadcast correctly
 		with maps, but may not have the same dimensions due to symmetries.
