@@ -20,7 +20,7 @@ jobs:
       - name: Run Tests (Linux)
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install pytest-cov numpy Cython<3.0.4
+          python -m pip install pytest-cov numpy "Cython<3.0.4"
           python setup.py build_ext -i
           python -m pip install .
           pytest --cov-report html --cov-report xml --cov-report annotate --cov=pixell pixell/tests/ -s
@@ -49,7 +49,7 @@ jobs:
       - name: Install Dependencies (MacOS)
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install numpy Cython<3.0.4
+          python -m pip install numpy "Cython<3.0.4"
           
 
       - name: Install Package (MacOS)
@@ -110,7 +110,7 @@ jobs:
         env:
           CIBW_ENVIRONMENT: OMP_NUM_THREADS=2
                             OPENBLAS_NUM_THREADS=2
-          CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy cython<3.0.4"
+          CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy 'cython<3.0.4'"
           CIBW_BUILD_VERBOSITY: 3
           # If users are still on 32 bit systems or PPC they should build from source.
           CIBW_BUILD: "${{ matrix.cp }}-manylinux_{x86_64,aarch64}"
@@ -173,7 +173,7 @@ jobs:
         env:
           CIBW_ENVIRONMENT: OMP_NUM_THREADS=2
                             OPENBLAS_NUM_THREADS=2
-          CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy cython<3.0.4"
+          CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy 'cython<3.0.4'"
           CIBW_BUILD_VERBOSITY: 3
           # To build for both x86_64 and arm64, uncomment the following lines.
           # That would require a fortran compiler that can cross-comile from
