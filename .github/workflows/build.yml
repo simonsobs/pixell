@@ -100,7 +100,7 @@ jobs:
           python -m pip install -U pip
           python -m pip install -U setuptools
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install pytest-cov numpy
+          python -m pip install pytest-cov numpy "Cython<3.0.4"
           python -m pip install cibuildwheel
 
       - name: Test and build wheels
@@ -163,7 +163,7 @@ jobs:
           python -m pip install -U pip
           python -m pip install -U setuptools
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install pytest-cov numpy
+          python -m pip install pytest-cov numpy "Cython<3.0.4"
           python -m pip install cibuildwheel
 
       - name: Test and build wheels
