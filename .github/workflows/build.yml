@@ -3,26 +3,24 @@ name: Build
 on: [push, pull_request]
 
 jobs:
-  test:
-    runs-on: ${{ matrix.os }}
+  test-linux:
+    name: "Run tests on Linux"
+    runs-on: ubuntu-latest
+
     strategy:
       matrix:
-        os: [ubuntu-latest]
         python: ["3.11", "3.10", "3.9", "3.8", "3.7"]
+
     steps:
       - uses: actions/checkout@v1
       - uses: actions/setup-python@v1
         with:
           python-version: ${{ matrix.python }}
-      - name: Install OS Packages
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install gfortran
-      - name: Run tests
+      
+      - name: Run Tests (Linux)
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install pytest-cov numpy Cython
+          python -m pip install pytest-cov numpy "Cython<3.0.4"
           python setup.py build_ext -i
           python -m pip install .
           pytest --cov-report html --cov-report xml --cov-report annotate --cov=pixell pixell/tests/ -s
@@ -31,11 +29,46 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
           verbose: true # optional (default = false)
+
+  test-macos:
+    name: "Run tests on MacOS"
+    runs-on: macos-latest
+    env:
+      # LDFLAGS: "-ld64" # For MacOS 13 and above (XCode CLT 15 and above.)
+      CC: gcc-12
+      CXX: gcc-12
+      FC: gfortran-12
+      DUCC0_NUM_THREADS: 2
+
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-python@v1
+        with:
+          python-version: "3.9"
+
+      - name: Install Dependencies (MacOS)
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install numpy "Cython<3.0.4"
           
 
-  build_wheels:
-    name: Build wheels on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+      - name: Install Package (MacOS)
+        # The built-in fortran compiler does not link to gfortran (just numbered versions)
+        # and build_ext does not play nicely with that. So we link gfortran-X to gfortran.
+        run: |
+          ln -s $FC $(dirname $(which $FC))/gfortran
+          echo "Using FC=$FC CXX=$CXX CC=$CC"
+          python setup.py build_ext -i 
+          python -m pip install .
+
+      - name: Run Tests (MacOS)
+        run: |
+          pytest pixell/tests/ -s
+
+
+  build_wheels_linux:
+    name: Build wheels on Linux
+    runs-on: ubuntu-latest
     strategy:
       # Ensure that a wheel builder finishes even if another fails
       fail-fast: false
@@ -65,21 +98,96 @@ jobs:
       - name: Install cibuildwheel and other dependencies
         run: |
           python -m pip install -U pip
-          python -m easy_install -U setuptools
+          python -m pip install -U setuptools
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install pytest-cov numpy
+          python -m pip install pytest-cov numpy "Cython<3.0.4"
           python -m pip install cibuildwheel
 
       - name: Test and build wheels
-        run: bash scripts/build_wheels.sh
+        run: |
+          ln -s $FC $(dirname $(which $FC))/gfortran
+          bash scripts/build_wheels.sh
         env:
           CIBW_ENVIRONMENT: OMP_NUM_THREADS=2
                             OPENBLAS_NUM_THREADS=2
-          CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy cython"
+          CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy 'cython<3.0.4'"
           CIBW_BUILD_VERBOSITY: 3
-          CIBW_BUILD: "${{ matrix.cp }}-*x86_64"
-          CIBW_SKIP: "*-musllinux_*"
-          CIBW_ARCHS_MACOS: "x86_64 arm64 universal2"
+          # If users are still on 32 bit systems or PPC they should build from source.
+          CIBW_BUILD: "${{ matrix.cp }}-manylinux_{x86_64,aarch64}"
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: >
+            cd /
+            pytest {project}/pixell/tests -s
+          PYTHON: "python"
+          PIP: "pip"
+
+      - uses: actions/upload-artifact@v2
+        with:
+          path: ./wheelhouse/*.whl
+
+  build_wheels_macos:
+    name: Build wheels on MacOS
+    runs-on: macos-latest
+    env:
+      CC: gcc-12
+      CXX: gcc-12
+      FC: gfortran-12
+      DUCC0_NUM_THREADS: 2
+    strategy:
+      # Ensure that a wheel builder finishes even if another fails
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+        # We don't build 3.7 wheels for MacOS because that's x86 only.
+        cp: [cp38, cp39, cp310, cp311]
+        include:
+          - cp: cp38
+            numpyver: "1.20"
+          - cp: cp39
+            numpyver: "1.20"
+          - cp: cp310
+            numpyver: "1.22"
+          - cp: cp311
+            numpyver: "1.22"
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v2
+        name: Install Python
+        with:
+          python-version: '3.9'
+
+      - name: Install cibuildwheel and other dependencies
+        run: |
+          python -m pip install -U pip
+          python -m pip install -U setuptools
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install pytest-cov numpy "Cython<3.0.4"
+          python -m pip install cibuildwheel
+
+      - name: Test and build wheels
+        run: |
+          ln -s $FC $(dirname $(which $FC))/gfortran
+          bash scripts/build_wheels.sh
+        env:
+          CIBW_ENVIRONMENT: OMP_NUM_THREADS=2
+                            OPENBLAS_NUM_THREADS=2
+          CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy 'cython<3.0.4'"
+          CIBW_BUILD_VERBOSITY: 3
+          # To build for both x86_64 and arm64, uncomment the following lines.
+          # That would require a fortran compiler that can cross-comile from
+          # x86_64 to arm64, as well as an OMP library that's cross-compiled.
+          # CIBW_BUILD: "${{ matrix.cp }}-macosx_{x86_64,arm64}"
+          CIBW_BUILD: "${{ matrix.cp }}-macosx_x86_64"
+          #CIBW_ARCHS_MACOS: "x86_64 arm64"
+          CIBW_ARCHS_MACOS: "x86_64"
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: >
+            cd /
+            pytest {project}/pixell/tests -s
+          # Cannot test arm64 on non-native runner
+          CIBW_TEST_SKIP: "*_arm64"
           PYTHON: "python"
           PIP: "pip"
 
@@ -104,6 +212,7 @@ jobs:
           python -m pip install -U pip
           python -m easy_install -U setuptools
           python -m pip install --upgrade pip setuptools wheel
+          python -m pip install "Cython<3.0.4"
           python -m pip install numpy
           python setup.py sdist
 
@@ -112,7 +221,7 @@ jobs:
           path: dist/*.tar.gz
 
   upload_pypi:
-    needs: [build_wheels, build_sdist]
+    needs: [build_wheels_linux, build_wheels_macos, build_sdist]
     runs-on: ubuntu-latest
     # upload to PyPI on every tag starting with 'v'
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
@@ -124,8 +233,31 @@ jobs:
           name: artifact
           path: dist
 
-      - uses: pypa/gh-action-pypi-publish@master
+      - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
           password: ${{ secrets.PYPI_TOKEN }}
           # To test: repository_url: https://test.pypi.org/legacy/
+
+
+  # Automatically upload builds to PyPI test when all tests pass.
+  # Requires some thought about versioning before activating.
+  # upload_pypi_test:
+  #   needs: [build_wheels_linux, build_wheels_macos, build_sdist]
+  #   runs-on: ubuntu-latest
+  #   environment:
+  #     name: testpypi
+  #     url: https://test.pypi.org/p/pixell
+    
+  #   # Upload to pypi testing on every successful test run and build generation
+  #   steps:
+  #     - uses: actions/download-artifact@v2
+  #       with:
+  #         name: artifact
+  #         path: dist
+
+  #     - uses: pypa/gh-action-pypi-publish@release/v1
+  #       with:
+  #         repository-url: https://test.pypi.org/legacy/
+  #         user: __token__
+  #         password: ${{ secrets.PYPI_TEST_TOKEN }}

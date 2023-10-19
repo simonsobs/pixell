@@ -29,6 +29,24 @@ Dependencies
 * gcc/gfortran or Intel compilers (clang might not work out of the box), if compiling from source
 * ducc0_, healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py, Pillow (Python Image Library)
 
+On MacOS, and other systems with non-traditional environments, you should specify the following standard environment variables:
+
+* ``CC``: C compiler (example: ``gcc``)
+* ``CXX``: C++ compiler (example: ``g++``)
+* ``FC``: Fortran compiler (example: ``gfortran``)
+
+We recommend using ``gcc`` installed from Homebrew to access these compilers on
+MacOS, and you should make sure to point e.g. `$CC` to the full path of your gcc installation,
+as the `gcc` name usually points to the Apple `clang` install by default.
+
+You will also need to specify the environment variable ``DUCC0_NUM_THREADS`` for
+correct runtime behaviour on MacOS (e.g. running the test suite), specifying the
+number of threads to run certain parallel operations with. This should typically
+be set to the number of physical cores on your machine. If you recieve an error
+saying ``Assertion failure no thread pool active``, it is likely that this
+variable is either unset or set to a garbage value that cannot be interpreted by
+the ``ducc0`` library.
+
 Installing
 ----------
 
@@ -68,20 +86,12 @@ You may now test the installation:
 		
    $ py.test pixell/tests/
    
-If the tests pass, either add the cloned directory to your ``$PYTHONPATH``, if you want the ability for changes made to Python source files to immediately reflect in your installation, e.g., in your ``.bashrc`` file,
-
-.. code-block:: bash
-		
-   export PYTHONPATH=$PYTHONPATH:/path/to/cloned/pixell/directory
-
-
-or alternatively, install the package  
+If the tests pass, you can install the package (optionally with ``-e`` if you would like to edit the files after installation)
    
 .. code-block:: console
 
    $ python setup.py install --user
 
-which requires you to reinstall every time changes are made to any files in your repository directory.
    
 Intel compilers
 ~~~~~~~~~~~~~~~
