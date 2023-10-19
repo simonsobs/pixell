@@ -212,6 +212,7 @@ jobs:
           python -m pip install -U pip
           python -m easy_install -U setuptools
           python -m pip install --upgrade pip setuptools wheel
+          python -m pip install "Cython<3.0.4"
           python -m pip install numpy
           python setup.py sdist
 
