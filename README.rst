@@ -36,8 +36,8 @@ On MacOS, and other systems with non-traditional environments, you should specif
 * ``FC``: Fortran compiler (example: ``gfortran``)
 
 We recommend using ``gcc`` installed from Homebrew to access these compilers on
-MacOS, and you should make sure to point e.g. `$CC` to the full path of your gcc installation,
-as the ``gcc`` name usually points to the Apple ```clang``` install by default.
+MacOS, and you should make sure to point e.g. ``$CC`` to the full path of your gcc installation,
+as the ``gcc`` name usually points to the Apple ``clang`` install by default.
 
 Runtime threading behaviour
 ---------------------------
