@@ -36,16 +36,25 @@ On MacOS, and other systems with non-traditional environments, you should specif
 * ``FC``: Fortran compiler (example: ``gfortran``)
 
 We recommend using ``gcc`` installed from Homebrew to access these compilers on
-MacOS, and you should make sure to point e.g. `$CC` to the full path of your gcc installation,
-as the `gcc` name usually points to the Apple `clang` install by default.
+MacOS, and you should make sure to point e.g. ``$CC`` to the full path of your gcc installation,
+as the ``gcc`` name usually points to the Apple ``clang`` install by default.
 
-You will also need to specify the environment variable ``DUCC0_NUM_THREADS`` for
-correct runtime behaviour on MacOS (e.g. running the test suite), specifying the
-number of threads to run certain parallel operations with. This should typically
-be set to the number of physical cores on your machine. If you recieve an error
-saying ``Assertion failure no thread pool active``, it is likely that this
-variable is either unset or set to a garbage value that cannot be interpreted by
-the ``ducc0`` library.
+Runtime threading behaviour
+---------------------------
+
+Certain parts of ``pixell`` are parallelized using OpenMP, with the underlying ``ducc0``
+library using pthreads. By default, these libraries use the number of cores on your
+system to determine the number of threads to use. If you wish to override this behaviour,
+you can use two environment variables:
+
+- ``OMP_NUM_THREADS`` will set both the number of ``pixell`` threads and ``ducc0`` threads.
+- ``DUCC0_NUM_THREADS`` will set the number of threads for the ``ducc0`` library to use,
+  overwriting ``OMP_NUM_THREADS`` if both are set. ``pixell`` behaviour is not affected.
+
+If you are using a modern chip (e.g. Apple M series chips, Intel 12th Gen or newer) that
+have both efficiency and performance cores, you may wish to set ``OMP_NUM_THREADS`` to
+the number of performance cores in your system. This will ensure that the efficiency cores
+are not used for the parallelized parts of ``pixell`` and ``ducc0``.
 
 Installing
 ----------
