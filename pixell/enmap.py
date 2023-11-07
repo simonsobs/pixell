@@ -1404,8 +1404,10 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 
 def fullsky_geometry(res=None, shape=None, dims=(), proj="car", variant="CC"):
 	"""Build an enmap covering the full sky, with the outermost pixel centers
-	at the poles and wrap-around points. Assumes a CAR (clenshaw curtis variant)
-	projection for now."""
+	at the poles and wrap-around points. Only the car projection is
+	supported for now, but the variants CC and fejer1 can be selected using
+	the variant keyword. This currently defaults to CC, but will likely
+	change to fejer1 in the future."""
 	assert proj == "car", "Only CAR fullsky geometry implemented"
 	# Handle the CAR variants
 	if   variant.lower() == "cc":     yo = 1

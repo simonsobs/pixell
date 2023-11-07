@@ -161,7 +161,7 @@ def alm2map(alm, map, spin=[0,2], deriv=False, adjoint=False,
 	else:
 		raise ValueError("Unrecognized alm2map method '%s'" % str(method))
 
-def alm2map_adjoint(map, alm, spin=[0,2], deriv=False,
+def alm2map_adjoint(map, alm=None, spin=[0,2], deriv=False,
 		copy=False, method="auto", ainfo=None, verbose=False, nthread=None,
 		epsilon=None, pix_tol=1e-6, locinfo=None):
 	"""The adjoint of map2alm. Forwards to map2alm; see its docstring for details"""
@@ -692,8 +692,9 @@ def transfer_alm(iainfo, ialm, oainfo, oalm=None, op=lambda a,b:b):
 def alm2map_2d(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, pix_tol=1e-6):
 	"""Helper function for alm2map. See its docstring for details"""
 	if copy:
-		if adjoint: alm = alm.copy()
+		if adjoint and alm is not None: alm = alm.copy()
 		else:       map = map.copy()
+	if adjoint: alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, pre=map.shape[:-2], dtype=utils.native_dtype(map.dtype))
 	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
@@ -711,8 +712,9 @@ def alm2map_2d(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=F
 def alm2map_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, pix_tol=1e-6):
 	"""Helper function for alm2map. See its docstring for details"""
 	if copy:
-		if adjoint: alm = alm.copy()
+		if adjoint and alm is not None: alm = alm.copy()
 		else:       map = map.copy()
+	if adjoint: alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, pre=map.shape[:-2], dtype=utils.native_dtype(map.dtype))
 	if minfo is None: minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
@@ -730,8 +732,9 @@ def alm2map_cyl(alm, map, ainfo=None, minfo=None, spin=[0,2], deriv=False, copy=
 def alm2map_general(alm, map, ainfo=None, spin=[0,2], deriv=False, copy=False, verbose=False, adjoint=False, nthread=None, locinfo=None, epsilon=None):
 	"""Helper function for alm2map. See its docstring for details"""
 	if copy:
-		if adjoint: alm = alm.copy()
+		if adjoint and alm is not None: alm = alm.copy()
 		else:       map = map.copy()
+	if adjoint: alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, pre=map.shape[:-2], dtype=utils.native_dtype(map.dtype))
 	if locinfo is None: locinfo = calc_locinfo(map.shape, map.wcs)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
@@ -1358,16 +1361,17 @@ def prepare_alm(alm=None, ainfo=None, lmax=None, pre=(), dtype=np.float64):
 
 def prepare_raw(alm, map, ainfo=None, lmax=None, deriv=False, verbose=False, nthread=None, pixdims=2):
 	alm, ainfo = prepare_alm(alm, ainfo, lmax=lmax, pre=map.shape[:-pixdims], dtype=utils.native_dtype(map.dtype))
-	if deriv:
-		assert map.ndim >= pixdims+1 and map.shape[-pixdims-1] == 2, "map must have shape [...,2,%s] when deriv is True" % ("nloc" if pixdims == 1 else "ny,nx")
-		assert map.shape[:-1-pixdims] == alm.shape[:-1], "map and alm must agree on pre-dimensions"
-	else:
-		assert map.shape[:-pixdims] == alm.shape[:-1], "map and alm must agree on pre-dimensions"
 	# Maybe this should be a part of map_info too
 	nthread  = int(utils.fallback(utils.getenv("OMP_NUM_THREADS", nthread),0))
 	# Massage to the shape the general ducc interface wants.
 	alm_full = utils.atleast_Nd(alm, 2 if deriv else 3)
 	map_full = utils.atleast_Nd(map, pixdims+2)
+	# Wait until here to do this test, to allow some minor broadcasting support
+	if deriv:
+		assert map_full.ndim >= pixdims+1 and map_full.shape[-pixdims-1] == 2, "map must have shape [...,2,%s] when deriv is True" % ("nloc" if pixdims == 1 else "ny,nx")
+		assert map_full.shape[:-1-pixdims] == alm_full.shape[:-1], "map and alm must agree on pre-dimensions"
+	else:
+		assert map_full.shape[:-pixdims] == alm_full.shape[:-1], "map and alm must agree on pre-dimensions"
 	map_full = np.asarray(map_full)              # ducc doesn't accept subclasses
 	# Work around ducc bug
 	alm_full = utils.fix_zero_strides(alm_full)
