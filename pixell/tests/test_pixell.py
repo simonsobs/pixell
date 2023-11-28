@@ -112,6 +112,10 @@ def alm_bash(fun, shape, wcs, ncomp, lmax, dtype=np.float64):
 class PixelTests(unittest.TestCase):
 
 
+    def test_enplot(self):
+        a = enmap.ones((3,3))
+        enplot.show(enplot.get_plots(a))
+
     def test_almxfl(self):
         import healpy as hp
 
