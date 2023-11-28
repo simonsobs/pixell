@@ -112,9 +112,6 @@ def alm_bash(fun, shape, wcs, ncomp, lmax, dtype=np.float64):
 class PixelTests(unittest.TestCase):
 
 
-    def test_enplot(self):
-        a = enmap.ones((3,3))
-        enplot.show(enplot.get_plots(a))
 
     def test_almxfl(self):
         import healpy as hp
@@ -186,6 +183,12 @@ class PixelTests(unittest.TestCase):
         p = enplot.plot(a, colorbar=True)
         # annotation
         p = enplot.plot(a, annotate=DATA_PREFIX+"annot.txt")
+
+    def test_enplot_show(self):
+        print("Testing enplot show... An empty image should be displayed in a window. Close the window to proceed.")
+        a = enmap.ones((300,300))
+        enplot.show(enplot.get_plots(a))
+        
 
     def test_fft(self):
         # Tests that ifft(ifft(imap))==imap, i.e. default normalizations are consistent
