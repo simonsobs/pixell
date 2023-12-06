@@ -15,6 +15,13 @@ import numpy as np
 build_ext = build_ext.build_ext
 build_src = build_src.build_src
 
+CYTHON_NOT_FOUND_MSG = """Cython not found.
+Please run either one of the following commands to install Cython first
+    mamba install cython
+    conda install cython
+    pip install cython
+"""
+
 
 compile_opts = {
     #'extra_compile_args': ['-std=c99','-fopenmp', '-Wno-strict-aliasing', '-g', '-O0', '-fPIC', '-fsanitize=address', '-fsanitize=undefined'],
@@ -85,13 +92,6 @@ elif sys.platform == 'darwin' or sys.platform == 'linux':
 else:
     raise EnvironmentError("Unknown platform. Please file an issue on GitHub.")
 
-def pip_install(package):
-    import pip
-    if hasattr(pip, 'main'):
-        pip.main(['install', package])
-    else:
-        pip._internal.main(['install', package])
-
 with open('README.rst') as readme_file:
     readme = readme_file.read()
 
@@ -158,17 +158,8 @@ def prebuild():
     # Handle cythonization
     no_cython = sp.call('cython --version',shell=True)
     if no_cython:
-        try:
-            print("Cython not found. Attempting a conda install first.")
-            import conda.cli
-            conda.cli.main('conda', 'install',  '-y', 'cython')
-        except:
-            try:
-                print("conda install of cython failed. Attempting a pip install.")
-                pip_install("cython")
-            except:
-                raise DistutilsError('Cython not found and all attempts at installing it failed. User intervention required.')
-        
+        raise DistutilsError(CYTHON_NOT_FOUND_MSG)
+
     if sp.call('make -C cython',  shell=True) != 0:
         raise DistutilsError('Failure in the cython pre-build step.')
 
