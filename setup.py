@@ -40,6 +40,9 @@ elif sys.platform == 'darwin' or sys.platform == 'linux':
     if not "FC" in environment:
         environment["FC"] = "gfortran"
 
+    if sys.platform == 'darwin' and "CONDA_BUILD_SYSROOT" in environment:
+        compile_opts['extra_compile_args'] += ['-isysroot', environment["CONDA_BUILD_SYSROOT"]]
+
     # Now, try out our environment!
     c_return = sp.call([environment["CC"], *compile_opts["extra_compile_args"], "scripts/omp_hello.c", "-o", "/tmp/pixell-cc-test"], env=environment)
 
