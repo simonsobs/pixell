@@ -119,6 +119,26 @@ def find_any(array, vals):
 	res = find(array, vals, default=-1)
 	return res[res >= 0]
 
+def nearest_ind(arr, vals, sorted=False):
+	"""Given array arr and values vals, return the index of the entry in
+	arr with value closest to each entry in val"""
+	arr = np.asarray(arr)
+	if not sorted:
+		order = np.argsort(arr)
+		arr   = arr[order]
+	inds = np.searchsorted(arr, vals)
+	# The closest one will be either arr[i-1] or arr[i]. Simply check both.
+	# Cap to 1 below to handle edge case. Still correct.
+	inds = np.clip(inds, 1, len(arr)-1)
+	diff1= np.abs(arr[inds-1]-vals)
+	diff2= np.abs(arr[inds  ]-vals)
+	# Entries where diff1 is smallest should point one earlier
+	inds -= diff1 <= diff2
+	# Undo sorting if necessary
+	if not sorted:
+		inds = order[inds]
+	return inds
+
 def contains(array, vals):
 	"""Given an array[n], returns a boolean res[n], which is True
 	for any element in array that is also in vals, and False otherwise."""
@@ -181,6 +201,11 @@ def dict_apply_listfun(dict, function):
 	vals = [dict[key] for key in keys]
 	res  = function(vals)
 	return {key: res[i] for i, key in enumerate(keys)}
+
+def fallback(*args):
+	for arg in args:
+		if arg is not None: return arg
+	return None
 
 def unwind(a, period=2*np.pi, axes=[-1], ref=0, refmode="left", mask_nan=False):
 	"""Given a list of angles or other cyclic coordinates
@@ -521,7 +546,7 @@ def bin_multi(pix, shape, weights=None):
 	returning map[shape]."""
 	pix  = np.maximum(np.minimum(pix, (np.array(shape)-1)[:,None]),0)
 	inds = np.ravel_multi_index(tuple(pix), tuple(shape))
-	size = np.product(shape)
+	size = np.prod(shape)
 	if weights is not None: weights = inds*0+weights
 	return np.bincount(inds, weights=weights, minlength=size).reshape(shape)
 
@@ -913,6 +938,12 @@ def atleast_3d(a):
 	elif a.ndim == 2: return a.reshape((1,)+a.shape)
 	else: return a
 
+def atleast_Nd(a, n):
+	"""Prepend length-1 dimensions to array a to make it n-dimensional"""
+	a = np.asanyarray(a)
+	if a.ndim >= n: return a
+	else: return a[(None,)*(n-a.ndim)]
+
 def to_Nd(a, n, axis=0, return_inverse=False):
 	a    = np.asanyarray(a)
 	if n >= a.ndim:
@@ -924,9 +955,53 @@ def to_Nd(a, n, axis=0, return_inverse=False):
 		res  = a.reshape(a.shape[:axis]+(-1,)+a.shape[axis+1+a.ndim-n:])
 	return (res, a.shape) if return_inverse else res
 
+def preflat(a, n):
+	"""Flatten the first n dimensions of a. If n is negative,
+	flatten all but the last -n dimensions."""
+	a = np.asanyarray(a)
+	if n < 0: n = a.ndim-n
+	return a.reshape((-1,)+a.shape[n:])
+
+def postflat(a, n):
+	"""Flatten the last n dimensions of a. If n is negative,
+	flatten all but the last -n dimensions."""
+	a = np.asanyarray(a)
+	if n < 0: n = a.ndim-n
+	return a.reshape(a.shape[:a.ndim-n]+(-1,))
+
 def between_angles(a, range, period=2*np.pi):
 	a = rewind(a, np.mean(range), period=period)
 	return (a>=range[0])&(a<range[1])
+
+def hasoff(val, off, tol=1e-6):
+	"""Return True if val's deviation from an integer value
+	equals off to the given tolerance (default: 1e-6). Example.
+	hasoff(17.3, 0.3) == True"""
+	return np.abs((val-off+0.5)%1-0.5)<tol
+
+def same_array(a, b):
+	"""Returns true if a and b are the same array"""
+	return a.shape == b.shape and a.dtype == b.dtype and repr(a.data) == repr(b.data) and a.strides == b.strides
+
+def fix_zero_strides(a):
+	"""Given an array a, return the same array with any zero-stride along
+	an axis with length one, such as those introduced by None-indexing,
+	replaced with an equivalent value"""
+	# Find last non-zero stride
+	good_strides = [s for s in a.strides if s != 0]
+	last = good_strides[-1] if len(good_strides) > 0 else a.itemsize
+	ostrides = []
+	for i in range(a.ndim-1,-1,-1):
+		s = a.strides[i]
+		n = a.shape[i]
+		if s == 0 and n == 1:
+			if i == a.ndim-1: s = last
+			else: s = last * a.shape[i+1]
+		ostrides.append(s)
+		last = s
+	ostrides = tuple(ostrides[::-1])
+	oarr = np.lib.stride_tricks.as_strided(a, strides=ostrides)
+	return oarr
 
 def greedy_split(data, n=2, costfun=max, workfun=lambda w,x: x if w is None else x+w):
 	"""Given a list of elements data, return indices that would
@@ -1072,7 +1147,7 @@ def box_slice(a, b):
 
 def box_area(a):
 	"""Compute the area of a [{from,to},ndim] box, or an array of such boxes."""
-	return np.abs(np.product(a[...,1,:]-a[...,0,:],-1))
+	return np.abs(np.prod(a[...,1,:]-a[...,0,:],-1))
 
 def box_overlap(a, b):
 	"""Given two boxes/boxarrays, compute the overlap of each box with each other
@@ -1089,6 +1164,16 @@ def widen_box(box, margin=1e-3, relative=True):
 	margin = np.asarray(margin) # Support 1d case
 	margin[box[0]>box[1]] *= -1
 	return np.array([box[0]-margin/2, box[1]+margin/2])
+
+def pad_box(box, padding):
+	"""How I should have implemented widen_box from the beginning.
+	Simply pads a box by an absolute amount. The only complication
+	is the sign stuff that handles descending axes in the box."""
+	box  = np.array(box, copy=True)
+	sign = np.sign(box[...,1,:]-box[...,0,:])
+	box[...,0,:] -= padding*sign
+	box[...,1,:] += padding*sign
+	return box
 
 def unwrap_range(range, nwrap=2*np.pi):
 	"""Given a logically ordered range[{from,to},...] that
@@ -1136,13 +1221,13 @@ def pole_wrap(pos):
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result
 	rather than needing an output argument."""
-	res = a.copy()
+	res = np.zeros_like(a)
 	if op is None: comm.Allreduce(a, res)
 	else:          comm.Allreduce(a, res, op)
 	return res
 
 def reduce(a, comm, root=0, op=None):
-	res = a.copy() if comm.rank == root else None
+	res = np.zeros_like(a) if comm.rank == root else None
 	if op is None: comm.Reduce(a, res, root=root)
 	else:          comm.Reduce(a, res, op, root=root)
 	return res
@@ -1174,7 +1259,7 @@ def allgatherv(a, comm, axis=0):
 	# Put the axis first, as that's what Allgatherv wants
 	fa = np.moveaxis(a, axis, 0)
 	# Do the same for the shapes, to figure out what the non-gather dimensions should be
-	shapes = [shape[1:] for shape in comm.allgather(fa.shape) if np.product(shape) != 0]
+	shapes = [shape[1:] for shape in comm.allgather(fa.shape) if np.prod(shape) != 0]
 	# All arrays are empty, so just return what we had
 	if len(shapes) == 0: return a
 	# otherwise make sure we have the right shape
@@ -1185,7 +1270,7 @@ def allgatherv(a, comm, axis=0):
 	if must_fix:
 		fa = fa.view(dtype=np.uint8)
 	#print(comm.rank, "fa.shape", fa.shape)
-	ra = fa.reshape(fa.shape[0],-1) if fa.size > 0 else fa.reshape(0,np.product(fa.shape[1:],dtype=int))
+	ra = fa.reshape(fa.shape[0],-1) if fa.size > 0 else fa.reshape(0,np.prod(fa.shape[1:],dtype=int))
 	N  = ra.shape[1]
 	n  = allgather([len(ra)],comm)
 	o  = cumsum(n)
@@ -1252,7 +1337,7 @@ def redistribute(iarrs, iboxes, oboxes, comm, wrap=0):
 	preshape = iarrs[0].shape[:-2]
 	oshapes= [tuple(sbox_size(b)) for b in oboxes]
 	oarrs  = [np.zeros(preshape+oshape,dtype) for oshape in oshapes]
-	presize= np.product(preshape,dtype=int)
+	presize= np.prod(preshape,dtype=int)
 	# Find out what we must send to and receive from each other task.
 	# rboxes will contain slices into oarr and sboxes into iarr.
 	# Due to wrapping, a single pair of boxes can have multiple intersections,
@@ -1275,7 +1360,7 @@ def redistribute(iarrs, iboxes, oboxes, comm, wrap=0):
 		for i2 in range(rboxes.shape[1]):
 			rboxes[i1,i2] = safe_div(rboxes[i1,i2], oboxes[i2])
 			for box in rboxes[i1,i2]:
-				count += np.product(sbox_size(box))
+				count += np.prod(sbox_size(box))
 		nrecv[nimap[i1]] += count*presize
 	recvbuf = np.empty(np.sum(nrecv), dtype)
 
@@ -1289,7 +1374,7 @@ def redistribute(iarrs, iboxes, oboxes, comm, wrap=0):
 		for i2 in range(sboxes.shape[1]):
 			sboxes[i1,i2] = safe_div(sboxes[i1,i2], iboxes[i2])
 			for box in sboxes[i1,i2]:
-				count += np.product(sbox_size(box))
+				count += np.prod(sbox_size(box))
 				sendbuf.append(iarrs[i2][sbox2slice(box)].reshape(-1))
 		nsend[nomap[i1]] += count*presize
 	sendbuf = np.concatenate(sendbuf) if len(sendbuf) > 0 else np.zeros(0,dtype)
@@ -1306,7 +1391,7 @@ def redistribute(iarrs, iboxes, oboxes, comm, wrap=0):
 		for i2 in range(rboxes.shape[1]):
 			for rbox in rboxes[i1,i2]:
 				rshape = tuple(sbox_size(rbox))
-				data   = recvbuf[off:off+np.product(rshape)*presize]
+				data   = recvbuf[off:off+np.prod(rshape)*presize]
 				oarrs[i2][sbox2slice(rbox)] = data.reshape(preshape + rshape)
 				off += data.size
 	return oarrs
@@ -1333,7 +1418,7 @@ def sbox_intersect(a,b,wrap=0):
 			peraxis = [sbox_intersect_1d(a1[d],b1[d],wrap=wrap[d]) for d in range(ndim)]
 			# Get the outer product of these
 			nper    = tuple([len(p) for p in peraxis])
-			iflat   = np.arange(np.product(nper))
+			iflat   = np.arange(np.prod(nper))
 			ifull   = np.array(np.unravel_index(iflat, nper)).T
 			subres  = [[p[i] for i,p in zip(inds,peraxis)] for inds in ifull]
 			res[ai,bi] = subres
@@ -1531,7 +1616,7 @@ def sbox_wrap(sbox, wrap=0, cap=0):
 		dim_boxes.append(boxes_1d)
 	# Now create the outer product of all the individual dimensions' box sets
 	nper    = tuple([len(p) for p in dim_boxes])
-	iflat   = np.arange(np.product(nper))
+	iflat   = np.arange(np.prod(nper))
 	ifull   = np.array(np.unravel_index(iflat, nper)).T
 	res     = [[[p[i][io] for i,p in zip(inds,dim_boxes)] for io in [0,1]] for inds in ifull]
 	return res
@@ -1652,7 +1737,7 @@ def label_unique(a, axes=(), rtol=1e-5, atol=1e-8):
 
 	# First reshape into a doubly-flattened 2d array [nelem,ndim]
 	fa = partial_flatten(a, axes, 0)
-	fa = fa.reshape(np.product(rest),-1)
+	fa = fa.reshape(np.prod(rest),-1)
 	# Can't use lexsort, as it has no tolerance. This
 	# is O(N^2) instead of O(NlogN)
 	id = 0
@@ -1769,7 +1854,7 @@ def label_multi(valss):
 	labels[i] == labels[j]. The purpose of this is to go from having a heterogenous
 	label like (1, "foo", 1.24) to having a single integer as the label.
 
-	Example: label_multi([0,0,1,1,2],["a","b","b","b","b"]) → [0,1,2,2,3]"""
+	Example: label_multi([[0,0,1,1,2],["a","b","b","b","b"]]) → [0,1,2,2,3]"""
 	oinds = 0
 	nprev = 1
 	for vals in valss:
@@ -1777,6 +1862,9 @@ def label_multi(valss):
 		uvals, inds = np.unique(vals, return_inverse=True)
 		oinds = oinds*nprev + inds
 		nprev = len(uvals)
+	# At this point oinds has unique indices, but there could be gaps.
+	# Remove those
+	oinds = np.unique(oinds, return_inverse=True)[1]
 	return oinds
 
 def pathsplit(path):
@@ -2222,15 +2310,20 @@ def edges2bins(edges):
 def bins2edges(bins):
 	return np.concatenate([bins[:,0],bins[1,-1:]])
 
-def linbin(n, nbin=None, nmin=None):
+def linbin(n, nbin=None, nmin=None, bsize=None):
 	"""Given a number of points to bin and the number of approximately
 	equal-sized bins to generate, returns [nbin_out,{from,to}].
 	nbin_out may be smaller than nbin. The nmin argument specifies
 	the minimum number of points per bin, but it is not implemented yet.
 	nbin defaults to the square root of n if not specified."""
-	if not nbin: nbin = int(np.round(n**0.5))
-	tmp  = np.arange(nbin+1)*n//nbin
-	return np.vstack((tmp[:-1],tmp[1:])).T
+	if bsize is not None:
+		if nbin is None: nbin = ceil(n/bsize)
+		edges = np.arange(nbin+1)*bsize
+	else:
+		if nbin is None: nbin = nint(n**0.5)
+		edges = np.arange(nbin+1)*n//nbin
+	edges = np.arange(nbin+1)*bsize
+	return np.vstack((edges[:-1],edges[1:])).T
 
 def expbin(n, nbin=None, nmin=8, nmax=0):
 	"""Given a number of points to bin and the number of exponentially spaced
@@ -2721,6 +2814,8 @@ class RadialFourierTransform:
 		if self.pad == 0: res = arrs
 		else: res = tuple([arr[...,self.pad:-self.pad] for arr in arrs])
 		return res[0] if len(arrs) == 1 else res
+	def lind(self, l): return (np.log(l)-np.log(self.l[0]))/self.dlog
+	def rind(self, r): return (np.log(r)-np.log(self.r[0]))/self.dlog
 
 def profile_to_tform_hankel(profile_fun, lmin=0.1, lmax=1e7, n=512, pad=256):
 	"""Transform a radial profile given by the function profile_fun(r) to
@@ -2737,6 +2832,10 @@ def profile_to_tform_hankel(profile_fun, lmin=0.1, lmax=1e7, n=512, pad=256):
 
 def fix_dtype_mpi4py(dtype):
 	"""Work around mpi4py bug, where it refuses to accept dtypes with endian info"""
+	return np.dtype(np.dtype(dtype).char)
+
+def native_dtype(dtype):
+	"""Return the native version of dtype. E.g. if the input is big-endian float32, returns plain float32"""
 	return np.dtype(np.dtype(dtype).char)
 
 def decode_array_if_necessary(arr):
@@ -2954,7 +3053,7 @@ class CG:
 		dot argument. This is useful for MPI-parallelization, for example."""
 		# Init parameters
 		self.A   = A
-		self.b   = b
+		self.b   = b # not necessary to store this. Delete?
 		self.M   = M
 		self.dot = dot
 		if x0 is None:
@@ -2976,10 +3075,13 @@ class CG:
 		and .err being updated. To solve the system, call step() in
 		a loop until you are satisfied with the accuracy. The result
 		can then be read off from .x."""
+		# Full vectors: p, Ap, x, r, z. Ap and z not in memory at the
+		# same time. Total memory cost: 4 vectors + 1 temporary = 5 vectors
 		Ap = self.A(self.p)
 		alpha = self.rz/self.dot(self.p, Ap)
 		self.x += alpha*self.p
 		self.r -= alpha*Ap
+		del Ap
 		z       = self.M(self.r)
 		next_rz = self.dot(self.r, z)
 		self.err = next_rz/self.rz0
@@ -3002,6 +3104,55 @@ class CG:
 		with h5py.File(fname, "r") as hfile:
 			for key in ["i","rz","rz0","x","r","p","err"]:
 				setattr(self, key, hfile[key][()])
+
+class Minres:
+	"""A simple Minres solver. Solves the equation system Ax=b."""
+	def __init__(self, A, b, x0=None, dot=default_dot):
+		"""Initialize a solver for the system Ax=b, with a starting guess of x0 (0
+		if not provided). Vectors b and x0 must provide addition and multiplication,
+		as well as the .copy() method, such as provided by numpy arrays. The
+		preconditioner is given by M. A and M must be functors acting on vectors
+		and returning vectors. The dot product may be manually specified using the
+		dot argument. This is useful for MPI-parallelization, for example."""
+		# Init parameters
+		self.A   = A
+		self.dot = dot
+		if x0 is None:
+			self.x = b*0
+			self.r = b*1
+		else:
+			self.x  = x0.copy()
+			self.r  = b-self.A(self.x)
+		# Internal work variables
+		z       = self.A(self.r)
+		self.rz = self.dot(self.r,z)
+		self.rz0= self.rz
+		self.p  = self.r.copy()
+		self.q  = z
+		self.i  = 0
+		self.err= 1
+		self.abserr = self.rz/len(self.x)
+	def step(self):
+		"""Take a single step in the iteration. Results in .x, .i
+		and .err being updated. To solve the system, call step() in
+		a loop until you are satisfied with the accuracy. The result
+		can then be read off from .x."""
+		# Vectors: x, r, z, p, q. All in use at the same time.
+		# So memory cost = 5 vectors + 1 temporary = 6 vectors
+		alpha   = self.rz/self.dot(self.q,self.q)
+		self.x += alpha*self.p
+		self.r -= alpha*self.q
+		z       = self.A(self.r)
+		next_rz = self.dot(self.r,z)
+		beta    = next_rz/self.rz
+		self.rz = next_rz
+		self.q *= beta; self.q += z; del z
+		self.p *= beta; self.p += self.r
+		self.i += 1
+		# Estimate of variance of Ax-b relative to starting point
+		self.err    = self.rz/self.rz0
+		# Estimate of variance of Ax-b
+		self.abserr = self.rz/len(self.x)
 
 def nditer(shape):
 	ndim = len(shape)
@@ -3100,3 +3251,33 @@ def split_esc(string, delim, esc='\\'):
 			ostr += c
 	if len(ostr) > 0:
 		yield ostr
+
+def getenv(name, default=None):
+	"""Return the value of the named environment variable, or default if it's not set"""
+	try: return os.environ[name]
+	except KeyError: return default
+
+def setenv(name, value, keep=False):
+	"""Set the named environment variable to the given value. If keep==False
+	(the default), existing values are overwritten. If the value is None, then
+	it's deleted from the environment. If keep==True, then this function does
+	nothing if the variable already has a value."""
+	if   name in os.environ and keep: return
+	elif name in os.environ and value is None: del os.environ[name]
+	elif value is not None: os.environ[name] = str(value)
+
+def zip2(*args):
+	"""Variant of python's zip that calls next() the same number of times on
+	all arguments. This means that it doesn't give up immediately after getting
+	the first StopIteration exception, but continues on until the end of the row.
+	This can be useful for iterators that want to do cleanup after hte last yield."""
+	done = False
+	while not done:
+		res = []
+		for arg in args:
+			try:
+				res.append(next(arg))
+			except StopIteration:
+				done = True
+		if not done:
+			yield tuple(res)

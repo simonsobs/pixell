@@ -37,11 +37,12 @@ class ndmaps(np.ndarray):
 	@property
 	def maps(self):
 		return _map_view(self)
-	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
-	def pixmap(self): return pixmap(self.shape, self.wcs)
-	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
-	def modlmap(self, oversample=1): return modlmap(self.shape, self.wcs, oversample=oversample)
-	def modrmap(self, ref="center", safe=True, corner=False): return modrmap(self.shape, self.wcs, ref=ref, safe=safe, corner=corner)
+	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.geometries, corner=corner, separable=separable, dtype=dtype)
+	def pixmap(self, dtype=np.float64): return pixmap(self.geometries, dtype=dtype)
+	def pixsize(self, dtype=np.float64): return pixsize(self.geometries, dtype=dtype)
+	def lmap(self, oversample=1, dtype=np.float64): return lmap(self.geometries, oversample=oversample, dtype=dtype)
+	def modlmap(self, oversample=1, dtype=np.float64): return modlmap(self.geometries, oversample=oversample)
+	def modrmap(self, ref="center", safe=True, corner=False, dtype=np.float64): return modrmap(self.geometries, ref=ref, safe=safe, corner=corner, dtype=dtype)
 
 class _map_view:
 	"""Helper class used to implement access to the individual enmaps that make up an ndmaps object"""
@@ -96,16 +97,33 @@ def empty(geometries, dtype=np.float64):
 	flat = np.empty(geometries[0].shape[:-2]+(ntot,), dtype)
 	return ndmaps(flat, geometries)
 
-def full(geometries, val, dtype=np.float64):
-	"""Construct a multimap with the given geometries and data type initialized with the given value"""
+def full(geometries, val, dtype=None):
+	"""Construct a multimap with the given geometries and data type initialized with the given value.
+	If val is scalar then all maps will be filled with this value. Otherwise it must broadcast with
+	geometries[0].shape[:-2]+(len(geometries),). This allows one to initialize each map with a
+	separate constant.
+	"""
 	if len(geometries) == 0: return ndmaps(np.zeros(0), [(0,0), enmap.zeros(0).wcs])
 	geometries, ntot = _geo_helper(geometries)
-	flat = np.empty(geometries[0].shape[:-2]+(ntot,), dtype)
-	return ndmaps(flat, geometries)
+	# Broadcast val and geometries
+	pre  = geometries[0].shape[:-2]
+	val  = np.asarray(val)
+	nmap = len(geometries)
+	bshape = np.broadcast_shapes(val.shape, pre+(nmap,))
+	val  = np.broadcast_to(val, bshape)
+	pre  = val.shape[:-1]
+	# Allocate the output maps
+	if dtype is None: dtype = val.dtype
+	flat = np.empty(pre+(ntot,), dtype)
+	omaps= ndmaps(flat, geometries)
+	# Fill with target values
+	for i, map in enumerate(omaps.maps):
+		map[:] = val[...,i]
+	return omaps
 
-def posmap(geometries, dtype=np.float64):
+def posmap(geometries, safe=True, corner=False, separable="auto", dtype=np.float64):
 	"""Return a multimap containing the position map for the given geometries"""
-	return multimap([enmap.posmap(*geo, dtype=dtype) for geo in geometries])
+	return multimap([enmap.posmap(*geo, safe=safe, corner=corner, separable=separable, dtype=dtype) for geo in geometries])
 
 def pixmap(geometries, dtype=np.float64):
 	"""Return a multimap containing the pixel map for the given geometries"""
@@ -127,6 +145,12 @@ def modrmap(geometries, ref="center", safe=True, corner=False, dtype=np.float64)
 	(default), then sharp coordinate edges will be avoided."""
 	return multimap([enmap.modrmap(*geo, ref=ref, safe=safe).astype(dtype) for geo in geometries])
 
+def pixsize(geometries, dtype=np.float64):
+	return np.array([enmap.pixsize(*geo).astype(dtype) for geo in geometries])
+
+def pixsizemap(geometries, dtype=np.float64):
+	return multimap([enmap.pixsizemap(*geo).astype(dtype) for geo in geometries])
+
 def samegeos(arr, *args):
 	"""Returns arr with the same geometries information as the first multimap among
 	args.  If no matches are found, arr is returned as is.  Will
@@ -138,6 +162,10 @@ def samegeos(arr, *args):
 		except AttributeError: pass
 	return arr
 
+def nopre(geometries):
+	"""Return a scalar version of the given geometries"""
+	return tuple([enmap.Geometry(*geo).nopre for geo in geometries])
+
 def map_mul(mat, vec):
 	"""Elementwise matrix multiplication mat*vec. Result will have
 	the same shape as vec. Multiplication happens along the last non-pixel
@@ -148,6 +176,30 @@ def map_mul(mat, vec):
 	# Otherwise we do a matrix product along the last axes
 	ovec = samegeos(np.einsum("...abi,...bi->...ai", mat, vec), mat, vec)
 	return ovec
+
+def mean(mmap):
+	"""Return the mean along the pixel direction for all maps in the multimap."""
+	return np.array([np.mean(m,(-2,-1)) for m in mmap.maps])
+
+def median(mmap):
+	"""Return the median along the pixel direction for all maps in the multimap."""
+	return np.array([np.median(m,(-2,-1)) for m in mmap.maps])
+
+def max(mmap):
+	"""Return the max along the pixel direction for all maps in the multimap."""
+	return np.array([np.max(m,(-2,-1)) for m in mmap.maps])
+
+def min(mmap):
+	"""Return the min along the pixel direction for all maps in the multimap."""
+	return np.array([np.min(m,(-2,-1)) for m in mmap.maps])
+
+def var(mmap):
+	"""Return the variance along the pixel direction for all maps in the multimap."""
+	return np.array([np.var(m,(-2,-1)) for m in mmap.maps])
+
+def std(mmap):
+	"""Return the standard deviation along the pixel direction for all maps in the multimap."""
+	return np.array([np.std(m,(-2,-1)) for m in mmap.maps])
 
 def fft(mmap, omap=None, nthread=0, normalize=True, adjoint_ifft=False, dct=False):
 	if omap is None: omap = mmap*0j

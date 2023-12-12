@@ -84,7 +84,7 @@ class ndmap(np.ndarray):
 		"""Returns a view of the map with the non-pixel dimensions flattened."""
 		return self.reshape(-1, self.shape[-2], self.shape[-1])
 	@property
-	def npix(self): return np.product(self.shape[-2:])
+	def npix(self): return np.prod(self.shape[-2:])
 	@property
 	def geometry(self): return self.shape, self.wcs
 	def resample(self, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3): return resample(self, oshape, off=off, method=method, mode=mode, corner=corner, order=order)
@@ -672,27 +672,24 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 		rpix = r/pixsize(shape, wcs)
 		centers = sky2pix(poss.T).T
 		return np.moveaxis([centers-rpix,center+rpix+1],0,1)
-	poss   = np.asarray(poss)
-	ishape = poss.shape
-	poss   = poss.reshape(-1,2)
-	res  = np.zeros([len(poss),2,2])
-	for i, pos in enumerate(poss):
+	poss, r = utils.broadcast_arrays(poss, r, npost=(1,0))
+	res     = np.zeros(poss.shape[:-1]+(2,2))
+	for I in utils.nditer(poss.shape[:-1]):
+		pos, r_ = poss[I], r[I]
 		# Find the coordinate box we need
 		dec, ra = pos[:2]
-		dec1, dec2 = max(dec-r,-np.pi/2), min(dec+r,np.pi/2)
+		dec1, dec2 = max(dec-r_,-np.pi/2), min(dec+r_,np.pi/2)
 		with utils.nowarn():
 			scale = 1/min(np.cos(dec1), np.cos(dec2))
-		dra        = min(r*scale, np.pi)
+		dra        = min(r_*scale, np.pi)
 		ra1, ra2   = ra-dra, ra+dra
 		box        = np.array([[dec1,ra1],[dec2,ra2]])
 		# And get the corresponding pixbox
-		res[i]     = skybox2pixbox(shape, wcs, box)
+		res[I]     = skybox2pixbox(shape, wcs, box)
 	# Turn ranges into from-inclusive, to-exclusive integers.
 	res = utils.nint(res)
-	res = np.sort(res, 1)
-	res[:,1] += 1
-	# Recover pre-dimensions
-	res = res.reshape(ishape[:-1]+res.shape[-2:])
+	res = np.sort(res, -2)
+	res[...,1,:] += 1
 	return res
 
 def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=False, safe=True):
@@ -954,7 +951,7 @@ def area_contour(shape, wcs, nsamp=1000):
 
 def pixsize(shape, wcs):
 	"""Returns the average pixel area, in steradians."""
-	return area(shape, wcs)/np.product(shape[-2:])
+	return area(shape, wcs)/np.prod(shape[-2:])
 
 def pixshape(shape, wcs, signed=False):
 	"""Returns the average pixel height and width, in radians."""
@@ -1050,14 +1047,14 @@ def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000):
 	if broadcastable is True.
 	"""
 	if separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
-		psize = np.product(pixshapes_cyl(shape, wcs),0)[:,None]
+		psize = np.prod(pixshapes_cyl(shape, wcs),0)[:,None]
 		# Expand to full shape unless we are willing to accept an array
 		# with smaller size that is still broadcastable to the right result
 		if not broadcastable:
 			psize = np.broadcast_to(psize, shape[-2:])
 		return ndmap(psize, wcs)
 	else:
-		return np.product(pixshapemap(shape, wcs, bsize=bsize, separable=separable),0)
+		return np.prod(pixshapemap(shape, wcs, bsize=bsize, separable=separable),0)
 
 def pixshapebounds(shape, wcs, separable="auto"):
 	"""Return the minimum and maximum pixel height and width for the given
@@ -1127,7 +1124,7 @@ def lrmap(shape, wcs, oversample=1):
 	return lmap(shape, wcs, oversample=oversample)[...,:shape[-1]//2+1]
 
 def lpixsize(shape, wcs, signed=False, method="auto"):
-	return np.product(lpixshape(shape, wcs, signed=signed, method=method))
+	return np.prod(lpixshape(shape, wcs, signed=signed, method=method))
 
 def lpixshape(shape, wcs, signed=False, method="auto"):
 	return 2*np.pi/extent(shape,wcs, signed=signed, method=method)
@@ -1368,6 +1365,17 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	To force the geometry to exactly match the corners provided you can pass force=True.
 	It is also possible to manually choose the reference point via the ref argument, which
 	must be a dec,ra coordinate pair (in radians)."""
+	# TODO: This function should be generalized to support fejer1.
+	# This is problematic because we can't assume that ra=0,dec=0 will be a pixel
+	# center in a Fejer1 geometry. Actually we can't even assume that for CC.
+	# For both cases it will happen for odd ny, but odd ny is normal for CC but
+	# rare for fejer1. For fejer1 the norm will instead be to have a pixel edge
+	# at ra=0,dec=0. In general the safest approach is to at least conceptually
+	# start from a standardized fullsky geometry and then crop it to the target,
+	# rather than to start from a standard point on the sky and then grow it
+	# to the required size. This will require a complete rework of this function
+	# though.
+
 	# We use radians by default, while wcslib uses degrees, so need to rescale.
 	# The exception is when we are using a plain, non-spherical wcs, in which case
 	# both are unitless. So undo the scaling in this case.
@@ -1399,16 +1407,18 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 
 def fullsky_geometry(res=None, shape=None, dims=(), proj="car", variant="CC"):
 	"""Build an enmap covering the full sky, with the outermost pixel centers
-	at the poles and wrap-around points. Assumes a CAR (clenshaw curtis variant)
-	projection for now."""
+	at the poles and wrap-around points. Only the car projection is
+	supported for now, but the variants CC and fejer1 can be selected using
+	the variant keyword. This currently defaults to CC, but will likely
+	change to fejer1 in the future."""
 	assert proj == "car", "Only CAR fullsky geometry implemented"
 	# Handle the CAR variants
-	if   variant == "CC":     yo = 1
-	elif variant == "fejer1": yo = 0
+	if   variant.lower() == "cc":     yo = 1
+	elif variant.lower() == "fejer1": yo = 0
 	else: raise ValueError("Unrecognized CAR variant '%s'" % str(variant))
 	# Set up the shape/resolution
-	res = np.zeros(2)+res
 	if shape is None:
+		res   = np.zeros(2)+res
 		shape = utils.nint(([1*np.pi,2*np.pi]/res) + (yo,0))
 	else:
 		res = np.array([1*np.pi,2*np.pi])/(np.array(shape)-(yo,0))
@@ -1501,8 +1511,20 @@ def thumbnail_geometry(r=None, res=None, shape=None, dims=(), proj="tan"):
 		res_ratio = (shape-1)/(2*rpix)*dirs
 		wcs.wcs.cdelt /= res_ratio[::-1]
 		wcs.wcs.crpix  = shape[::-1]//2+1
-	shape = tuple(shape)
+	shape = dims+tuple(shape)
 	return shape, wcs
+
+def union_geometry(geometries):
+	"""Given a list of compatible geometries, return a new geometry that's the union
+	if the inputs, in the sense that it contains all the pixels that the individual ones
+	contain"""
+	ref      = geometries[0]
+	pixboxes = [pixbox_of(ref[1],shape,wcs) for shape, wcs in geometries]
+	bbox     = utils.bounding_box(pixboxes)
+	oshape   = tuple(bbox[1]-bbox[0])
+	owcs     = ref[1].deepcopy()
+	owcs.wcs.crpix -= bbox[0,::-1]
+	return oshape, owcs
 
 def create_wcs(shape, box=None, proj="cea"):
 	if box is None:
@@ -1573,7 +1595,7 @@ def spec2flat_corr(shape, wcs, cov, exp=1.0, mode="constant"):
 	corr2d = np.roll(corr2d, -corr2d.shape[-2]//2, -2)
 	corr2d = np.roll(corr2d, -corr2d.shape[-1]//2, -1)
 	corr2d = ndmap(corr2d, wcs)
-	return fft(corr2d).real * np.product(shape[-2:])**0.5
+	return fft(corr2d).real * np.prod(shape[-2:])**0.5
 
 def smooth_spectrum(ps, kernel="gauss", weight="mode", width=1.0):
 	"""Smooth the spectrum ps with the given kernel, using the given weighting."""
@@ -1645,7 +1667,7 @@ def calc_ps2d(harm, harm2=None):
 	# I used to flatten here to make looping simple, but that caused a copy to be made
 	# when combined with np.broadcast. So instead I will use manual raveling
 	pshape = harm.shape[:-2]
-	npre   = int(np.product(pshape))
+	npre   = int(np.prod(pshape))
 	# A common use case is to compute TEBxTEB auto-cross spectra, where
 	# e.g. TE === ET since harm1 is the same array as harm2. To avoid duplicate
 	# calculations in this case we use a cache, which skips computing the
@@ -1929,7 +1951,7 @@ def find_blank_edges(m, value="auto"):
 		# Find the median value along each edge
 		medians = [np.median(m[...,:,i],-1) for i in [0,-1]] + [np.median(m[...,i,:],-1) for i in [0,-1]]
 		bs = [find_blank_edges(m, med) for med in medians]
-		nb = [np.product(np.sum(b,0)) for b in bs]
+		nb = [np.prod(np.sum(b,0)) for b in bs]
 		blanks = bs[np.argmax(nb)]
 		return blanks
 	elif value == "none":
@@ -2106,7 +2128,7 @@ def _bin_helper(map, r, bsize, return_nhit=False, return_bins=False):
 	functions on this one."""
 	# Get the number of bins
 	n     = int(np.max(r/bsize))
-	rinds = utils.nint((r/bsize).reshape(-1))
+	rinds = utils.floor((r/bsize).reshape(-1))
 	# Ok, rebin the map. We do this using bincount, which can be a bit slow
 	mflat = map.reshape((-1,)+map.shape[-2:])
 	mout = np.zeros((len(mflat),n))
@@ -2183,6 +2205,7 @@ def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000, destroy_input=Fa
 	tradeoff of the function. Higher values use more memory, and might (and might not)
 	give higher speed. If destroy_input is True, then the input map will be prefiltered
 	in-place, which saves memory but modifies its values."""
+	warnings.warn("enmap.to_healpix is deprecated. Reprojecting this way is error-prone due to the potential loss of information, and the (very small) loss of high-l power due to the use of spline interpolation. Use reproject.map2healpix instead. And read its docstring!")
 	import healpy
 	if not destroy_input and order > 1: imap = imap.copy()
 	if order > 1:
@@ -2669,7 +2692,7 @@ def shift(map, off, inplace=False, keepwcs=False):
 		if o != 0:
 			map[:] = np.roll(map, o, -len(off)+i)
 	if not keepwcs:
-		map.wcs.wcs.crval -= map.wcs.wcs.cdelt*off[::-1]
+		map.wcs.wcs.crpix += off[::-1]
 	return map
 
 def fractional_shift(map, off, keepwcs=False, nofft=False):
@@ -2677,7 +2700,6 @@ def fractional_shift(map, off, keepwcs=False, nofft=False):
 	omap = samewcs(enfft.shift(map, off, nofft=nofft), map)
 	if not keepwcs:
 		omap.wcs.wcs.crpix += off[::-1]
-		#omap.wcs.wcs.crval -= omap.wcs.wcs.cdelt*off[::-1]
 	return omap
 
 def fftshift(map, inplace=False):
@@ -2773,3 +2795,157 @@ def spin_helper(spin, n):
 		if i2 == n: break
 		i1 = i2
 		ci = (ci+1)%len(spin)
+
+# It's often useful to be able to loop over padded tiles, do some operation on them,
+# and then stitch them back together with crossfading. If would be handy to have a way to
+# hide all this complexity. How about an iterator that iterates over padded tiles?
+# E.g.
+#  for itile, otile in zip(ipadtiles(imap), opadtiles(omap)):
+#    otile[:] = fancy_stuff(itile)
+# The input tile iterator is straightforward. The output iterator would
+# zero out omap at the start, and then at the start of each next()
+# would paste the previously yielded tile back into omap with crossfading weights applied.
+# A problem with this formulation where ipadtiles and opadtiles are separate
+# functions, though, is that padding arguments need to be duplicated, which can get
+# tedious. Padding argument must always be consistent when iterating over input
+# and output maps, so probably better to have a single function that processes
+# multiple maps.
+#
+#  for itile, otile in padtiles(imap, omap, tshape=512, pad=30, apod=30):
+#    otile[:] = foo(itile[:])
+#
+# When multiple maps are involved, how should it know which ones
+# are output and input maps? Default:
+#  1 map: input
+#  2 maps: input, output
+#  N maps: input, input, input, ..., output
+# But have an optional argument that lets us specify the types.
+#
+# 3rd alternative which is cleaner but less convenient:
+#  padtile = Padtiler(tshape=512, pad=30, apod=30)
+#  for itile, otile in zip(padtile.in(imap), padtile.out(omap)):
+#   otile[:] = foo(itile)
+# This one has the advantage that it can be built once and then
+# passed to other functions as a single argument. It can easily be used to
+# implement #2, so can get both cheaply. #3 is less convenient in
+# most cases, so #2 would be the typcial interface.
+
+def padtiles(*maps, tshape=600, pad=60, margin=60, mode="auto", start=0, step=1):
+	"""Iterate over padded tiles in one or more maps. The tiling
+	will have a logical tile shape of tshape, but each yielded tile
+	will be expanded with some data from its neighbors. The extra
+	area consists of two parts: The padding and the margin. For
+	a read-iterator these are equivalent, but for a write-iterator
+	the margin will be ignored (and so can be used for apodization),
+	while the padding will be used for crossfading when mergin the
+	tiles together.
+
+	Typical usage:
+
+		for itile, otile in padtiles(imap, imap, margin=60):
+			itile    = apod(itile, 60)
+			otile[:] = some_filter(itile)
+
+	This would iterate over tiles of imap and omap, with the default
+	padding and a margin of 60 pixels. The margin region is used for
+	apodization, and some filter is then applied to the tile, writing
+	the result to the output tile. Note the use of [:] to actually write
+	to otile instead of just rebinding the variable name!
+
+	It's also possible to iterate over fewer or more maps at once.
+	See the "mode" argument.
+
+	If the tile shape does not evenly divide the map shape, then the
+	last tile in each row and column will extend beyond the edge of the
+	map. These pixels will be treated as enmap.extract does, with the
+	potential of sky wrapping. Warning: Write-iterators for a map that
+	goes all the way around the sky while the tile shape does not divide
+	the map shape will incorrectly weight the wrapped tiles, so avoid this.
+
+	Arguments:
+	 * *maps: The maps to iterate over. Must have the same pixel dimensions.
+	 * tshape: The tile shape. Either an integer or a (yshape,xshape) tuple.
+	   Default: 600 pixels.
+	 * pad: The padding. Either an integer or a (ypad,xpad) tuple. Used to
+	   implement context and crossfading. Cannot be larger than half of tshape.
+	   Default: 60 pixels.
+	 * margin: The margin size. Either an integer or a (ymargin,xmargin) tuple.
+	   Ignored in write-iterators, so suitable for apodization.
+	   Default 60 pixels.
+	 * mode: Specifies which maps should be read-iterated vs. write-iterated.
+	   A read-iterated map will yield padded tiles from the corresponding map.
+	   Writes to these tiles are discarded. A write-iterated map yields zeroed
+	   tiles of the same shape as the read-iterator. Writes to these tiles are
+	   used to update the corresponding map, including crossfading the overlapping
+	   regions (due to the padding) such that there aren't any sharp tile boundaries
+	   in the output map. mode can be either "auto" or a string of the same length
+	   as maps consisting of "r" and "w" characters. If the nth character is r/w
+	   then the corresponding map will be read/write-iterated. If the string is
+	   "auto", then the last map will be output-iterated and all the others input-
+	   iterated, unless there's only a single map in which case it will be input-
+	   iterated. Default: "auto".
+	 * start: Flattened tile offset to start at. Useful for mpi loops. Default: 0.
+	 * step:  Flattened tile stride. Useful for mpi loops. Default: 1
+	"""
+	if mode == "auto":
+		if   len(maps) == 0: mode = ""
+		elif len(maps) == 1: mode = "r"
+		else:                mode = "r"*(len(maps)-1)+"w"
+	tiler = Padtiler(tshape=tshape, pad=pad, margin=margin)
+	iters = []
+	for map, io in zip(maps, mode):
+		if   io == "r": iters.append(tiler.read (map))
+		elif io == "w": iters.append(tiler.write(map))
+		else: raise ValueError("Invalid mode character '%s'" % str(io))
+	# Can't just return zip(*iters) because zip gives up when just
+	# one iterator raises StopIteration. This doesn't allow the other
+	# iterators to finish. Maybe this is hacky
+	return utils.zip2(*iters)
+
+class Padtiler:
+	"""Helper class used to implement padtiles. See its docstring for details."""
+	def __init__(self, tshape=600, pad=60, margin=60, start=0, step=1):
+		self.tshape = tuple(np.broadcast_to(tshape, 2).astype(int))
+		self.pad    = tuple(np.broadcast_to(pad,    2).astype(int))
+		self.margin = tuple(np.broadcast_to(margin, 2).astype(int))
+		oly, olx    = 2*np.array(self.pad,int) # overlap region size
+		self.wy     = (np.arange(oly)+1)/(oly+1)
+		self.wx     = (np.arange(olx)+1)/(olx+1)
+		self.start  = start
+		self.step   = step
+	def _tbound(self, tile, tsize, n):
+		pix1 = tile*tsize
+		pix2 = (tile+1)*tsize
+		return pix1, pix2
+	def read (self, imap): return self._it_helper(imap, mode="read")
+	def write(self, omap): return self._it_helper(omap, mode="write")
+	def _it_helper(self, map, mode):
+		# Loop over tiles
+		nty, ntx = (np.array(map.shape[-2:],int)+self.tshape-1)//self.tshape
+		growy, growx = np.array(self.pad) + self.margin
+		oly, olx = 2*np.array(self.pad) # overlap region size
+		for ti in range(self.start, nty*ntx, self.step):
+			ty = ti // ntx
+			tx = ti %  ntx
+			y1, y2 = self._tbound(ty, self.tshape[-2], map.shape[-2])
+			x1, x2 = self._tbound(tx, self.tshape[-1], map.shape[-1])
+			# Construct padded pixel box and extract it
+			pixbox = np.array([[y1-growy,x1-growx],[y2+growy,x2+growx]])
+			tile   = map.extract_pixbox(pixbox).copy()
+			if mode == "read":
+				yield tile
+			else:
+				tile[:] = 0
+				yield tile
+				# Before the next iteration, take the changes the user
+				# made to tile, cop off the margin, and apply crossfading
+				# weights so the overlapping pad regions add up to 1, and
+				# then add to the output map
+				tile = tile[...,self.margin[-2]:tile.shape[-2]-self.margin[-2],self.margin[-1]:tile.shape[-1]-self.margin[-1]]
+				# Apply crossfade weights
+				if ty > 0: tile[...,:oly,:] *= self.wy[:,None]
+				if tx > 0: tile[...,:,:olx] *= self.wx[None,:]
+				if ty < nty-1: tile[...,tile.shape[-2]-oly:,:] *= self.wy[::-1,None]
+				if tx < ntx-1: tile[...,:,tile.shape[-1]-olx:] *= self.wx[None,::-1]
+				# And add into output map
+				map.insert(tile, op=lambda a,b:a+b)

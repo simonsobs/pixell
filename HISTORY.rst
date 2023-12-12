@@ -2,6 +2,34 @@
 History
 =======
 
+0.21.0 (2023-10-19)
+-------------------
+
+Changes relative to 0.19.2 include:
+
+* More miscellaneous fixes after transition to ducc0
+* More work on wavelets
+* We now provide MacOS x86_64 wheels
+* Improved build system that respects choices of CC, CXX, and FC
+
+0.19.2 (2023-08-18)
+-------------------
+
+Changes relative to 0.19.0 include:
+
+* Important bugfixes for the migration from libsharp2 to ducc0
+* Improved SHT unit tests
+
+
+0.19.0 (2023-07-14)
+-------------------
+
+Changes relative to 0.17.3 include:
+
+* Migrate fully from libsharp2 to ducc0 (for curved sky functions)
+* Temporary suspension of MacOS pip binaries (use `pip install pixell==0.17.3` for Macs in the meantime)
+* Miscellaneous fixes
+
 0.17.3 (2023-03-17)
 -------------------
 

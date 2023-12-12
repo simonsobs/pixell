@@ -15,7 +15,7 @@ pixell
 .. image:: https://badge.fury.io/py/pixell.svg
 		       :target: https://badge.fury.io/py/pixell
 
-``pixell`` is a library for loading, manipulating and analyzing maps stored in rectangular pixelization. It is mainly targeted for use with maps of the sky (e.g. CMB intensity and polarization maps, stacks of 21 cm intensity maps, binned galaxy positions or shear) in cylindrical projection, but its core functionality is more general. It extends numpy's ``ndarray`` to an ``ndmap`` class that associates a World Coordinate System (WCS) with a numpy array.  It includes tools for Fourier transforms  (through numpy or pyfft) and spherical harmonic transforms (through libsharp2) of such maps and tools for visualization (through the Python Image Library). 
+``pixell`` is a library for loading, manipulating and analyzing maps stored in rectangular pixelization. It is mainly targeted for use with maps of the sky (e.g. CMB intensity and polarization maps, stacks of 21 cm intensity maps, binned galaxy positions or shear) in cylindrical projection, but its core functionality is more general. It extends numpy's ``ndarray`` to an ``ndmap`` class that associates a World Coordinate System (WCS) with a numpy array.  It includes tools for Fourier transforms  (through numpy or pyfft) and spherical harmonic transforms (through ducc0_) of such maps and tools for visualization (through the Python Image Library). 
 
 
 * Free software: BSD license
@@ -27,9 +27,34 @@ Dependencies
 
 * Python>=3.7
 * gcc/gfortran or Intel compilers (clang might not work out of the box), if compiling from source
-* libsharp2 (downloaded and installed, if compiling from source)
-* automake (for libsharp2 compilation, if compiling from source)
-* healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py, Pillow (Python Image Library)
+* ducc0_, healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py, Pillow (Python Image Library)
+
+On MacOS, and other systems with non-traditional environments, you should specify the following standard environment variables:
+
+* ``CC``: C compiler (example: ``gcc``)
+* ``CXX``: C++ compiler (example: ``g++``)
+* ``FC``: Fortran compiler (example: ``gfortran``)
+
+We recommend using ``gcc`` installed from Homebrew to access these compilers on
+MacOS, and you should make sure to point e.g. ``$CC`` to the full path of your gcc installation,
+as the ``gcc`` name usually points to the Apple ``clang`` install by default.
+
+Runtime threading behaviour
+---------------------------
+
+Certain parts of ``pixell`` are parallelized using OpenMP, with the underlying ``ducc0``
+library using pthreads. By default, these libraries use the number of cores on your
+system to determine the number of threads to use. If you wish to override this behaviour,
+you can use two environment variables:
+
+- ``OMP_NUM_THREADS`` will set both the number of ``pixell`` threads and ``ducc0`` threads.
+- ``DUCC0_NUM_THREADS`` will set the number of threads for the ``ducc0`` library to use,
+  overwriting ``OMP_NUM_THREADS`` if both are set. ``pixell`` behaviour is not affected.
+
+If you are using a modern chip (e.g. Apple M series chips, Intel 12th Gen or newer) that
+have both efficiency and performance cores, you may wish to set ``OMP_NUM_THREADS`` to
+the number of performance cores in your system. This will ensure that the efficiency cores
+are not used for the parallelized parts of ``pixell`` and ``ducc0``.
 
 Installing
 ----------
@@ -43,7 +68,7 @@ Make sure your ``pip`` tool is up-to-date. To install ``pixell``, run:
 
 This will install a pre-compiled binary suitable for your system (only Linux and Mac OS X with Python>=3.7 are supported). Note that you need ``~/.local/bin`` to be in your ``PATH`` for the latter ``test-pixell`` to work.
 
-If you require more control over your installation, e.g. using your own installation of ``libsharp2``, using Intel compilers or enabling tuning of the ``libsharp2`` installation to your CPU, please see the section below on compiling from source.  The ``test-pixell`` command will run a suite of unit tests.
+If you require more control over your installation, e.g. using Intel compilers, please see the section below on compiling from source.  The ``test-pixell`` command will run a suite of unit tests.
 
 Compiling from source (advanced / development workflow)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -54,19 +79,6 @@ For all other, below are general instructions.
 
 First, download the source distribution or ``git clone`` this repository. You can work from ``master`` or checkout one of the released version tags (see the Releases section on Github). Then change into the cloned/source directory.
 
-Existing ``libsharp`` installation (optional)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``libsharp2`` is installed automatically by the setup.py you will execute below. The installation script will
-attempt to automatically git clone the latest version of ``libsharp2`` and compile it.  If
-instead you want to use an existing ``libsharp2`` installation, you can do so by
-symlinking the ``libsharp2`` directory into a directory called ``_deps`` in the
-root directory, such that ``pixell/_deps/libsharp2/build/include/libsharp2/sharp.h`` and 
-``pixell/_deps/libsharp2/build/lib/libsharp2.so`` exist. If
-you are convinced that the libsharp2 library is successfully
-compiled,  add an empty file named
-``pixell/_deps/libsharp2/success.txt`` to ensure pixell's setup.py
-knows of your existing installation.
 
 Run ``setup.py``
 ~~~~~~~~~~~~~~~~
@@ -83,20 +95,12 @@ You may now test the installation:
 		
    $ py.test pixell/tests/
    
-If the tests pass, either add the cloned directory to your ``$PYTHONPATH``, if you want the ability for changes made to Python source files to immediately reflect in your installation, e.g., in your ``.bashrc`` file,
-
-.. code-block:: bash
-		
-   export PYTHONPATH=$PYTHONPATH:/path/to/cloned/pixell/directory
-
-
-or alternatively, install the package  
+If the tests pass, you can install the package (optionally with ``-e`` if you would like to edit the files after installation)
    
 .. code-block:: console
 
    $ python setup.py install --user
 
-which requires you to reinstall every time changes are made to any files in your repository directory.
    
 Intel compilers
 ~~~~~~~~~~~~~~~
@@ -127,6 +131,7 @@ If you have write access to this repository, please:
 
 If you do not have write access, create a fork of this repository and proceed as described above. For more details, see Contributing_.
   
+.. _ducc0: https://pypi.org/project/ducc0/
 .. _Tutorials: https://github.com/simonsobs/pixell_tutorials/
 .. _Contributing: https://pixell.readthedocs.io/en/latest/contributing.html
 .. _NERSC: https://pixell.readthedocs.io/en/latest/nersc.html

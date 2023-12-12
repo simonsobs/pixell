@@ -273,7 +273,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("--mpl-dpi", type=float, default=75, help="The resolution to use for the mpl driver.")
 	add_argument("--mpl-pad", type=float, default=1.6, help="The padding to use for the mpl driver.")
 	add_argument("--rgb", action="store_true", help="Enable RGB mode. The input maps must have 3 components, which will be interpreted as red, green and blue channels of a single image instead of 3 separate images as would be the case without this option. The color scheme is overriden in this case.")
-	add_argument("--rgb-mode", type=str, default="direct_colorcap", help="The rgb mode to use. Can be direct or direct_colorcap. These only differ in whether colors are preserved when too high or low colors are capped. direct_colorcap preserves colors, at the cost of noise from one noisy component leaking into others during capping.")
+	add_argument("--rgb-mode", type=str, default="direct", help="The rgb mode to use. Can be direct or direct_colorcap. These only differ in whether colors are preserved when too high or low colors are capped. direct_colorcap preserves colors, at the cost of noise from one noisy component leaking into others during capping.")
 	add_argument("--reverse-color",  action="store_true", help="Reverse the color scale. For example, a black-to-white scale will become a white-to-black sacle.")
 	add_argument("-a", "--autocrop", action="store_true", help="Automatically crop the image by removing expanses of uniform color around the edges. This is done jointly for all components in a map, making them directly comparable, but is done independently for each input file.")
 	add_argument("-A", "--autocrop-each", action="store_true", help="As --autocrop, but done individually for each component in each map.")
@@ -535,7 +535,7 @@ def draw_colorbar(crange, width, args):
 	labels, boxes = [], []
 	for val in crange:
 		labels.append(fmt % val)
-		boxes.append(font.getsize(labels[-1]))
+		boxes.append(font.getbbox(labels[-1])[-2:])
 	boxes = np.array(boxes,int)
 	lw, lh = np.max(boxes,0)
 	img    = PIL.Image.new("RGBA", (width, lh))
@@ -817,7 +817,7 @@ def draw_annotations(map, annots, args):
 			if font is None or size != font_size_prev:
 				font = cgrid.get_font(size)
 				font_size_prev = size
-			tbox = font.getsize(text)
+			tbox = font.getbbox(text)[-2:]
 			draw.text((x-tbox[0]/2, y-tbox[1]/2), text, color, font=font)
 		else:
 			raise NotImplementedError
@@ -952,7 +952,7 @@ def show(img, title=None, method="auto"):
 		# do. Try them one by one in priority order
 		try:
 			# Only use ipython for graphical notebooks
-			if "ZMQ" in get_ipython().__class__.__name__:
+			if get_ipython().__class__.__name__ in ["ZMQInteractiveShell", "Shell"]:
 				return show_ipython(img, title=title)
 		except (ImportError, NameError): pass
 		try: return show_tk(img, title=title)

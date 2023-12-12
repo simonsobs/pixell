@@ -2,10 +2,33 @@
 
 import os,sys
 import unittest
+
+# Must do the thread setup before we import pixell tests, otherwise those
+# dependent on the threadpool will fail.
+
+import multiprocessing
+max_threads = multiprocessing.cpu_count()
+assert max_threads>=1
+
+# On MacOS default values of `DUCC0_NUM_THREADS` (used for run-time thread number selection
+# as ducc0 uses pthreads not OMP) are not correctly handled, we must set it to a valid 
+# integer value.
+if sys.platform == "darwin":
+    if "DUCC0_NUM_THREADS" not in os.environ:
+        os.environ["DUCC0_NUM_THREADS"] = str(max_threads)
+        print(f"Setting DUCC0_NUM_THREADS (not present) to {max_threads}.")
+
+    try:
+        ducc0_num_threads = int(os.environ["DUCC0_NUM_THREADS"])
+    except ValueError:
+        # We have a non-integer value for this environment variable.
+        # Ducc0 does not currently (2023-10-16) have error handling for this
+        # (at least on MacOS 13), so we need to set it to a valid value.
+        os.environ["DUCC0_NUM_THREADS"] = str(max_threads)
+
 from pixell.tests import *
 
 unittest.main(exit=False)
-
 
 def run_alm_benchmark(nthreads):
     os.system(f"""OMP_NUM_THREADS={nthreads} python -c 'from pixell import curvedsky,enmap,utils ;
@@ -27,10 +50,6 @@ total = t1-t0;
 print(f"{{total:.4f}} seconds.");
 '
     """)
-
-import multiprocessing
-max_threads = multiprocessing.cpu_count()
-assert max_threads>=1
 
 print("Single threaded alm test:")
 run_alm_benchmark(1)

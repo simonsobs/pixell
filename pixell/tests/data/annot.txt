@@ -1,0 +1,2 @@
+text 0 0 0 0 "hello world"
+circle 0 0 0 20 30 2 red

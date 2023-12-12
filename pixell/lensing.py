@@ -93,8 +93,8 @@ def phi_to_kappa(phi_alm,phi_ainfo=None):
 	from . import curvedsky
 	return curvedsky.almxfl(alm=phi_alm,lfilter=lambda x: x*(x+1)/2,ainfo=phi_ainfo)
 
-def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, dtype=np.float64, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
-	from . import curvedsky, sharp
+def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, dtype=np.float64, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
+	from . import curvedsky
 	# Restrict to target number of components
 	oshape  = shape[-3:]
 	if len(oshape) == 2: shape = (1,)+tuple(shape)
@@ -136,7 +136,7 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 			if verbose: print("Computing unlensed map")
 			curvedsky.alm2map(cmb_alm, cmb_raw[...,i1:i2,:], spin=spin)
 		if verbose: print("Computing lensed map")
-		cmb_obs[...,i1:i2,:] = curvedsky.alm2map_pos(cmb_alm, raw_pos[:2], oversample=oversample, spin=spin)
+		cmb_obs[...,i1:i2,:] = curvedsky.alm2map_pos(cmb_alm, raw_pos[:2], spin=spin)
 		if raw_pos.shape[0] > 2 and np.any(raw_pos[2]):
 			if verbose: print("Rotating polarization")
 			cmb_obs[...,i1:i2,:] = enmap.rotate_pol(cmb_obs[...,i1:i2,:], raw_pos[2])
@@ -154,7 +154,7 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 	return tuple(res)
 
 def rand_alm(ps_lensinput, lmax=None, dtype=np.float64, seed=None, phi_seed=None, verbose=False, ncomp=None):
-	from . import curvedsky, sharp
+	from . import curvedsky
 	ctype   = np.result_type(dtype,0j)
 	if ncomp is not None: ps_lensinput = ps_lensinput[:1+ncomp,:1+ncomp]
 	# First draw a random lensing field, and use it to compute the undeflected positions
@@ -177,15 +177,13 @@ def rand_alm(ps_lensinput, lmax=None, dtype=np.float64, seed=None, phi_seed=None
 	return alm[0], alm[1:], ainfo
 
 
-def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64, seed=None, phi_seed=None, oversample=2.0, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
+def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64, seed=None, phi_seed=None, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
 	# Restrict to target number of components
 	oshape  = shape[-3:]
 	if len(oshape) == 2: shape = (1,)+tuple(shape)
 	ncomp   = shape[-3]
-	phi_alm, cmb_alm, ainfo = rand_alm(ps_lensinput=ps_lensinput, 
-									   lmax=lmax, dtype=dtype, seed=seed, 
-									   phi_seed=phi_seed, verbose=verbose,
-									   ncomp=ncomp)
+	phi_alm, cmb_alm, ainfo = rand_alm(ps_lensinput=ps_lensinput,
+		lmax=lmax, dtype=dtype, seed=seed, phi_seed=phi_seed, verbose=verbose, ncomp=ncomp)
 
 	# Truncate alm if we want a smoother map. In taylens, it was necessary to truncate
 	# to a lower lmax for the map than for phi, to avoid aliasing. The appropriate lmax
@@ -193,7 +191,7 @@ def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64
 	#if maplmax: cmb_alm = cmb_alm[:,:maplmax]
 	return lens_map_curved(shape=shape, wcs=wcs, phi_alm=phi_alm,
 		cmb_alm=cmb_alm, phi_ainfo=ainfo, maplmax=maplmax,
-		dtype=dtype, oversample=oversample, spin=spin,
+		dtype=dtype, spin=spin,
 		output=output, geodesic=geodesic, verbose=verbose,
 		delta_theta=delta_theta)
 
@@ -257,7 +255,10 @@ def offset_by_grad_helper(ipos, grad, pol):
 	if not pol:
 		return np.array([np.arccos(ocost), ophi]), None
 	# Compute the induced polarization rotation.
-	A      = grad[1]/(sind*cost/sint+grad[0]*cosd)
+	with utils.nowarn():
+		# If sint is zero then we get a divide by zero here, but
+		# the final result is still finite
+		A    = grad[1]/(sind*cost/sint+grad[0]*cosd)
 	nom1   = grad[0]+grad[1]*A
 	denom  = 1+A**2
 	cosgam = 2*nom1**2/denom-1
