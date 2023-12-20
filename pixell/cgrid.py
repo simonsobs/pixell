@@ -55,6 +55,14 @@ def prune_bad_segs(segs, shape, tol=10000):
 
 class Gridinfo: pass
 
+def fix_wcs(wcs):
+	"""Ad-hoc function that returns a wcs approprirate for drawing grid lines
+	while leaving the original unchanged. This has hard-coded special cases for
+	problematic projections"""
+	partial_sky = wcs.wcs.ctype[0][-3:] == "TAN"
+	if partial_sky: return wcs
+	else: return wcsutils.nobcheck(wcs)
+
 def calc_gridinfo(shape, wcs, steps=[2,2], nstep=[200,200], zenith=False, unit=1):
 	"""Return an array of line segments representing a coordinate grid
 	for the given shape and wcs. the steps argument describes the
@@ -87,13 +95,13 @@ def calc_gridinfo(shape, wcs, steps=[2,2], nstep=[200,200], zenith=False, unit=1
 	# Draw lines of longitude
 	for phi in start[1] + np.arange(nline[1])*steps[1]:
 		# Loop over theta
-		pixs = np.array(wcsutils.nobcheck(wcs).wcs_world2pix(phi, np.linspace(box[0,0],box[1,0],nstep[0],endpoint=True), 0)).T
+		pixs = np.array(fix_wcs(wcs).wcs_world2pix(phi, np.linspace(box[0,0],box[1,0],nstep[0],endpoint=True), 0)).T
 		if not wcsutils.is_plain(wcs): phi = utils.rewind(phi, 0, 360)
 		gridinfo.lon.append((phi/unit,prune_bad_segs(calc_line_segs(pixs),shape)))
 	# Draw lines of latitude
 	for theta in start[0] + np.arange(nline[0])*steps[0]:
 		# Loop over phi
-		pixs = np.array(wcsutils.nobcheck(wcs).wcs_world2pix(np.linspace(box[0,1],box[1,1]+0.9,nstep[1],endpoint=True), theta, 0)).T # [:,{x,y}]
+		pixs = np.array(fix_wcs(wcs).wcs_world2pix(np.linspace(box[0,1],box[1,1]+0.9,nstep[1],endpoint=True), theta, 0)).T # [:,{x,y}]
 		if zenith: theta = 90-theta
 		gridinfo.lat.append((theta/unit,prune_bad_segs(calc_line_segs(pixs),shape)))
 	return gridinfo
