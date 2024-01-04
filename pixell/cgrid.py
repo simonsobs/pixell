@@ -59,7 +59,7 @@ def fix_wcs(wcs):
 	"""Ad-hoc function that returns a wcs approprirate for drawing grid lines
 	while leaving the original unchanged. This has hard-coded special cases for
 	problematic projections"""
-	partial_sky = wcs.wcs.ctype[0][-3:] == "TAN"
+	partial_sky = wcs.wcs.ctype[0][-3:] in ["TAN","SIN"]
 	if partial_sky: return wcs
 	else: return wcsutils.nobcheck(wcs)
 
