@@ -887,12 +887,13 @@ def combine_beams(irads_array):
 		Ctot = B.dot(Ctot).dot(B.T)
 	return np.array([Ctot[0,0],Ctot[1,1],Ctot[0,1]])
 
-def regularize_beam(beam, cutoff=1e-2, nl=None):
+def regularize_beam(beam, cutoff=1e-2, nl=None, normalize=False):
 	"""Given a beam transfer function beam[...,nl], replace
 	small values with an extrapolation that has the property
 	that the ratio of any pair of such regularized beams is
 	constant in the extrapolated region."""
 	beam  = np.asarray(beam)
+	if normalize: beam /= np.max(beam)
 	# Get the length of the output beam, and the l to which both exist
 	if nl is None: nl = beam.shape[-1]
 	nl_both = min(nl, beam.shape[-1])
