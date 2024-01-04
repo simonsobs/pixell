@@ -29,6 +29,33 @@ Dependencies
 * gcc/gfortran or Intel compilers (clang might not work out of the box), if compiling from source
 * ducc0_, healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py, Pillow (Python Image Library)
 
+On MacOS, and other systems with non-traditional environments, you should specify the following standard environment variables:
+
+* ``CC``: C compiler (example: ``gcc``)
+* ``CXX``: C++ compiler (example: ``g++``)
+* ``FC``: Fortran compiler (example: ``gfortran``)
+
+We recommend using ``gcc`` installed from Homebrew to access these compilers on
+MacOS, and you should make sure to point e.g. ``$CC`` to the full path of your gcc installation,
+as the ``gcc`` name usually points to the Apple ``clang`` install by default.
+
+Runtime threading behaviour
+---------------------------
+
+Certain parts of ``pixell`` are parallelized using OpenMP, with the underlying ``ducc0``
+library using pthreads. By default, these libraries use the number of cores on your
+system to determine the number of threads to use. If you wish to override this behaviour,
+you can use two environment variables:
+
+- ``OMP_NUM_THREADS`` will set both the number of ``pixell`` threads and ``ducc0`` threads.
+- ``DUCC0_NUM_THREADS`` will set the number of threads for the ``ducc0`` library to use,
+  overwriting ``OMP_NUM_THREADS`` if both are set. ``pixell`` behaviour is not affected.
+
+If you are using a modern chip (e.g. Apple M series chips, Intel 12th Gen or newer) that
+have both efficiency and performance cores, you may wish to set ``OMP_NUM_THREADS`` to
+the number of performance cores in your system. This will ensure that the efficiency cores
+are not used for the parallelized parts of ``pixell`` and ``ducc0``.
+
 Installing
 ----------
 
@@ -68,20 +95,12 @@ You may now test the installation:
 		
    $ py.test pixell/tests/
    
-If the tests pass, either add the cloned directory to your ``$PYTHONPATH``, if you want the ability for changes made to Python source files to immediately reflect in your installation, e.g., in your ``.bashrc`` file,
-
-.. code-block:: bash
-		
-   export PYTHONPATH=$PYTHONPATH:/path/to/cloned/pixell/directory
-
-
-or alternatively, install the package  
+If the tests pass, you can install the package (optionally with ``-e`` if you would like to edit the files after installation)
    
 .. code-block:: console
 
    $ python setup.py install --user
 
-which requires you to reinstall every time changes are made to any files in your repository directory.
    
 Intel compilers
 ~~~~~~~~~~~~~~~

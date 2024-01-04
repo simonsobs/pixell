@@ -1855,7 +1855,7 @@ def label_multi(valss):
 	labels[i] == labels[j]. The purpose of this is to go from having a heterogenous
 	label like (1, "foo", 1.24) to having a single integer as the label.
 
-	Example: label_multi([0,0,1,1,2],["a","b","b","b","b"]) → [0,1,2,2,3]"""
+	Example: label_multi([[0,0,1,1,2],["a","b","b","b","b"]]) → [0,1,2,2,3]"""
 	oinds = 0
 	nprev = 1
 	for vals in valss:
@@ -1863,6 +1863,9 @@ def label_multi(valss):
 		uvals, inds = np.unique(vals, return_inverse=True)
 		oinds = oinds*nprev + inds
 		nprev = len(uvals)
+	# At this point oinds has unique indices, but there could be gaps.
+	# Remove those
+	oinds = np.unique(oinds, return_inverse=True)[1]
 	return oinds
 
 def pathsplit(path):

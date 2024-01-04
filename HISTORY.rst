@@ -2,6 +2,16 @@
 History
 =======
 
+0.21.0 (2023-10-19)
+-------------------
+
+Changes relative to 0.19.2 include:
+
+* More miscellaneous fixes after transition to ducc0
+* More work on wavelets
+* We now provide MacOS x86_64 wheels
+* Improved build system that respects choices of CC, CXX, and FC
+
 0.19.2 (2023-08-18)
 -------------------
 
