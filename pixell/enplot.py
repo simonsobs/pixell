@@ -752,7 +752,7 @@ def parse_annotations(afile):
 	try:
 		with open(afile,"r") as f:
 			return [shlex.split(line) for line in f]
-	except IOError: return afile
+	except (IOError, TypeError): return afile
 
 def draw_annotations(map, annots, args):
 	"""Draw a set of annotations on the map. These are specified
