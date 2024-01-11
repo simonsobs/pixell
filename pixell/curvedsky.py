@@ -534,6 +534,29 @@ def harm2profile(bl, r):
 				ringstart=rinfo.offsets, spin=0, lmax=bl.shape[-1]-1, mmax=0)[0]
 	return br
 
+def prof2alm(profile, dir=[0, np.pi/2], spin=0, geometry="CC", nthread=None):
+	"""Calculate the alms for a 1d equispaced profile[...,n] oriented along the
+	given [ra,dec] on the sky."""
+	nthread= int(utils.fallback(utils.getenv("OMP_NUM_THREADS",nthread),0))
+	profile= np.asarray(profile)
+	dtype  = profile.dtype
+	lmax   = get_ducc_maxlmax(geometry, profile.shape[-1])
+	# Set up output arrays
+	iainfo = alm_info(lmax=lmax, mmax=0)
+	oainfo = alm_info(lmax=lmax, mmax=lmax)
+	ctype  = utils.complex_dtype(dtype)
+	oalm   = np.zeros(profile.shape[:-1]+(oainfo.nelem,), ctype)
+	for s, I in enmap.spin_pre_helper(spin, profile.shape[:-1]):
+		# ducc has problems with None-axes, so fix that
+		prof   = utils.fix_zero_strides(profile[I][...,None])
+		alm    = ducc0.sht.experimental.analysis_2d(map=prof, spin=s, lmax=lmax, mmax=0, geometry=geometry, nthreads=nthread)
+		# Expand to full mmax to prepare for rotation
+		alm    = transfer_alm(iainfo, alm, oainfo)
+		# Rotate to target coordinate system
+		alm    = rotate_alm(alm, 0, np.pi/2-dir[1], dir[0], nthread=nthread)
+		oalm[I] = alm
+	return oalm
+
 #####################
 ###### Helpers ######
 #####################
