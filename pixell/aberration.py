@@ -269,6 +269,7 @@ def aber_angle(theta, beta):
 	gamma = (1-beta**2)**-0.5
 	c = (c+(gamma-1)*c+gamma*beta)/(gamma*(1+c*beta))
 	#c = (c+beta)/(1+beta*c)
+	np.clip(c, -1, 1, out=c)
 	return np.arccos(c)
 
 def mod_amplitude(theta, beta):
