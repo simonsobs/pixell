@@ -3282,3 +3282,16 @@ def zip2(*args):
 				done = True
 		if not done:
 			yield tuple(res)
+
+def call_help(fun, *args, **kwargs):
+	for ai, arg in enumerate(args):
+		print("arg %d %s" % (ai, arg_help(arg)))
+	for name, arg in kwargs.items():
+		print("kwarg %s %s" % (name, arg_help(arg)))
+	return fun(*args, **kwargs)
+
+def arg_help(arg):
+	if isinstance(arg, np.ndarray):
+		return "np.ndarray %s %s %s %s" % (str(arg.shape), str(arg.dtype), str(arg.strides), "contig" if arg.flags["C_CONTIGUOUS"] else "noncontig")
+	else:
+		return "value %s" % (str(arg))

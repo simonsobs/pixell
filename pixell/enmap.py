@@ -2802,6 +2802,31 @@ def spin_helper(spin, n):
 		i1 = i2
 		ci = (ci+1)%len(spin)
 
+def spin_pre_helper(spin, pre):
+	"""Like spin_helper, but also handles looping over pre-dimensions"""
+	# Make spin a 1d array. This will be used to
+	# interpret the last axis in pre
+	spin  = np.array(spin).reshape(-1)
+	scomp = 1+(spin!=0)
+	# Make pre an array that's at least 1d
+	pre   = np.array(pre).reshape(-1)
+	# Handle empty pre-dimentions
+	if len(pre) == 0:
+		yield 0, (None,)
+		return
+	n     = pre[-1]
+	# Loop over pre-dimensions
+	for Ipre in utils.nditer(pre[:-1]):
+		ci, i1 = 0, 0
+		while True:
+			i2 = min(i1+scomp[ci],n)
+			if i2-i1 != scomp[ci]: raise IndexError("Unpaired component in spin transform")
+			Itot = Ipre + (slice(i1,i2),)
+			yield spin[ci], Itot
+			if i2 == n: break
+			i1 = i2
+			ci = (ci+1)%len(spin)
+
 # It's often useful to be able to loop over padded tiles, do some operation on them,
 # and then stitch them back together with crossfading. If would be handy to have a way to
 # hide all this complexity. How about an iterator that iterates over padded tiles?
