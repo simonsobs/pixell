@@ -9,7 +9,7 @@ jobs:
 
     strategy:
       matrix:
-        python: ["3.11", "3.10", "3.9", "3.8", "3.7"]
+        python: ["3.11", "3.10", "3.9", "3.8"]
 
     steps:
       - uses: actions/checkout@v1
@@ -74,10 +74,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-20.04]
-        cp: [cp37, cp38, cp39, cp310, cp311]
+        cp: [cp38, cp39, cp310, cp311]
         include:
-          - cp: cp37
-            numpyver: "1.20"
           - cp: cp38
             numpyver: "1.20"
           - cp: cp39
@@ -93,7 +91,7 @@ jobs:
       - uses: actions/setup-python@v2
         name: Install Python
         with:
-          python-version: '3.7'
+          python-version: '3.8'
 
       - name: Install cibuildwheel and other dependencies
         run: |
@@ -205,7 +203,7 @@ jobs:
       - uses: actions/setup-python@v2
         name: Install Python
         with:
-          python-version: '3.7'
+          python-version: '3.8'
 
       - name: Build sdist
         run: |
