@@ -48,6 +48,7 @@ def aberrate_map(map, dir=dir_equ, beta=beta, spin=[0,2],
 		nthread=None, coord_dtype=None):
 	"""Perform the aberration part of the doppler boost. See
 	boost_map for details."""
+	if coord_dtype is None: coord_dtype = map.dtype
 	return Aberrator(map.shape, map.wcs, dir=dir, beta=beta, spin=spin,
 		nthread=nthread, coord_dtype=coord_dtype)(map)
 
@@ -83,16 +84,18 @@ class Aberrator:
 		nthread = int(utils.fallback(utils.getenv("OMP_NUM_THREADS",nthread),0))
 		# 1. Calculate the aberration field. These are tiny
 		alm_dpos = calc_boost_field(-beta, dir, nthread=nthread)
-		# 2. Evaluate these on our target geometry
-		deflect = enmap.zeros(alm_dpos.shape[:-1]+shape[-2:], wcs, coord_dtype)
+		# 2. Evaluate these on our target geometry. Hardcoded float64 because of get_deflected_angles
+		deflect = enmap.zeros(alm_dpos.shape[:-1]+shape[-2:], wcs, np.float64)
 		curvedsky.alm2map(alm_dpos.astype(coord_ctype, copy=False), deflect, spin=1, nthread=nthread)
-		# 3. Calculate the offset angles
+		# 3. Calculate the offset angles.
+		# get_deflected_angles only supports float64 :(
 		rinfo = curvedsky.get_ring_info(shape, wcs)
 		dphi  = np.full(shape[-2], wcs.wcs.cdelt[0]*utils.degree)
 		tmp   = ducc0.misc.get_deflected_angles(theta=rinfo.theta, phi0=rinfo.phi0,
 			nphi=rinfo.nphi, dphi=dphi, ringstart=rinfo.offsets, nthreads=nthread, calc_rotation=True,
 			deflect=np.asarray(deflect).reshape(2,-1).T).T
 		del deflect
+		# We drop down to the target precision as early as possible
 		odec, ora, gamma = tmp.astype(coord_dtype, copy=False)
 		odec = np.pi/2-odec
 		gamma= enmap.ndmap(gamma.reshape(shape[-2:]), wcs)
@@ -101,6 +104,8 @@ class Aberrator:
 		# enmap.sky2pix, but that's slow. Much faster for our typical projections.
 		# Probably worth it to make overrides.
 		pix = sky2pix(shape, wcs, [odec, ora]).astype(coord_dtype, copy=False)
+		# Make the x pixel 0:nphi, assuming it's at most one period away
+		fast_rewind(pix[1].reshape(-1), rinfo.nphi[0])
 		del odec, ora
 		# 5. Evaluate the map at these locations using nufft
 		if scale_pix:
@@ -229,7 +234,7 @@ def interpol_map(imap, pixs, epsilon=None, nthread=None, scaled=False):
 		pixs[1] *= imap.shape[-1]
 	return oarr
 
-@numba.jit(nopython=True, nogil=True)
+@numba.njit((numba.float32[:,:,:],numba.float32[:,:],numba.float32), nogil=True)
 def rotate_pol(pmap, gamma, spin):
 	if spin == 0: return
 	qarr, uarr = pmap
@@ -256,7 +261,7 @@ def apply_modulation(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, mode="th
 	else: raise ValueError("Urecognized modulation mode '%s'" % mode)
 	return map
 
-@numba.jit(nopython=True)
+@numba.njit
 def _apply_modulation_thermo(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, spin=0, dipole=False, tiny=False):
 	xh   = 0.5*utils.h*freq/(utils.k*T0)
 	f    = xh/np.tanh(xh)-1
@@ -271,6 +276,16 @@ def _apply_modulation_thermo(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, 
 			if dipole: oval  += (a-1)*t0             # dipole: 2.7K*1e-3 ~ 1000 uK (b^1)
 			if tiny:   oval  += f*a**2*ival**2/t0_T  # tiny: ~100 uK*(100uK/2.7K) ~ 0.01 uK
 			map[y,x] = oval
+
+@numba.njit
+def fast_rewind(arr, period, ref=None):
+	if ref is None: ref = period/2
+	ref2 = ref - period/2
+	for i, a in enumerate(arr):
+		# Try to make it branchless
+		off     = a-ref
+		arr[i] -= period*(off>=period)
+		arr[i] += period*(off< 0)
 
 # Should move this to enmap
 

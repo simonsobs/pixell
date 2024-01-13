@@ -315,3 +315,14 @@ def fix_wcs(wcs, axis=0):
 	res.wcs.crpix[axis] += delta_pix
 	repr(res.wcs) # wcs not properly updated if I don't do this
 	return res
+
+def fix_cdelt(wcs):
+	"""Return a new wcs with pc and cd replaced by cdelt"""
+	owcs = wcs.deepcopy()
+	if wcs.wcs.has_cd():
+		del owcs.wcs.cd, owcs.wcs.pc
+		owcs.wcs.cdelt *= np.diag(wcs.wcs.cd)
+	elif wcs.wcs.has_pc():
+		del owcs.wcs.cd, owcs.wcs.pc
+		owcs.wcs.cdelt *= np.diag(wcs.wcs.pc)
+	return owcs

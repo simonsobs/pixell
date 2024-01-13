@@ -1125,13 +1125,13 @@ def minres_inverse(forward, approx_backward, y, epsilon=1e-6, maxiter=100, zip=N
 def nalm2lmax(nalm):
 	return int((-1+(1+8*nalm)**0.5)/2)-1
 
-def get_ring_info(shape, wcs):
+def get_ring_info(shape, wcs, dtype=np.float64):
 	"""Return information about the horizontal rings of pixels in a cylindrical pixelization.
 	Used in map2alm and alm2map with the "cyl" method."""
 	y = np.arange(shape[-2])
 	x = y*0
 	dec, ra = enmap.pix2sky(shape, wcs, [y,x])
-	theta   = np.asarray(np.pi/2-dec, dtype=np.float64)
+	theta   = np.asarray(np.pi/2-dec, dtype=dtype)
 	assert theta.ndim == 1, "theta must be one-dimensional!"
 	ntheta = len(theta)
 	nphi   = np.asarray(shape[-1], dtype=np.uint64)
@@ -1139,10 +1139,10 @@ def get_ring_info(shape, wcs):
 	if nphi.ndim == 0:
 		nphi = np.zeros(ntheta,dtype=np.uint64)+(nphi or 2*ntheta)
 	assert len(nphi) == ntheta, "theta and nphi arrays do not agree on number of rings"
-	phi0 = np.asarray(ra, dtype=np.float64)
+	phi0 = np.asarray(ra, dtype=dtype)
 	assert phi0.ndim < 2, "phi0 must be 0 or 1-dimensional"
 	if phi0.ndim == 0:
-		phi0 = np.zeros(ntheta,dtype=np.float64)+phi0
+		phi0 = np.zeros(ntheta,dtype=dtype)+phi0
 	offsets = utils.cumsum(nphi).astype(np.uint64, copy=False)
 	stride  = np.zeros(ntheta,dtype=np.int32)+1
 	return bunch.Bunch(theta=theta, nphi=nphi, phi0=phi0, offsets=offsets, stride=stride, npix=np.sum(nphi), nrow=len(nphi))

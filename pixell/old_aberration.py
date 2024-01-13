@@ -130,7 +130,6 @@ def apply_modulation(imap, A, T0=T_cmb, freq=150e9, map_unit=1e-6, mode="thermo"
 		# We're in linearized thermodynamic units. We assume that the map doesn't contain the
 		# monopole, so we can treat it as a perturbation around the monopole. If the map
 		# contains the monopole, then linearized units probably isn't the best choice
-		print("dipole", dipole, "pol", pol, "T0", T0, "freq", freq, "map_unit",map_unit)
 		iflat = imap.preflat
 		t0 = np.zeros([len(iflat),1,1])
 		if pol: t0[0] = T0/map_unit
