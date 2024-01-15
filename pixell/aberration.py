@@ -230,6 +230,8 @@ def interpol_map(imap, pixs, epsilon=None, nthread=None, scaled=False, ydouble=F
 		dmap = enmap.zeros(imap.shape[:-2]+(2*ny,nx), imap.wcs, imap.dtype)
 		dmap[:,:ny,:] = imap
 		dmap[:,ny:,:] = np.roll(imap[:,::-1], nx//2, -1)
+	else:
+		dmap = imap
 	if not scaled:
 		pixs[0] /= imap.shape[-2]
 		pixs[1] /= imap.shape[-1]
