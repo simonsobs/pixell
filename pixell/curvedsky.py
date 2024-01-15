@@ -130,11 +130,11 @@ def alm2map(alm, map, spin=[0,2], deriv=False, adjoint=False,
 	verbose: If True, prints information about what's being done
 	nthread: Number of threads to use. Defaults to OMP_NUM_THREADS.
 	epsilon: The desired fractional accuracy. Used for interpolation
-	 in the "pos" method. Default: 1e-6.
+	 in the "general" method. Default: 1e-6.
 	pix_tol: Tolerance for matching a pixel layout with a predefined one,
 	 in fractions of a pixel. Default: 1e-6.
 	locinfo: Information about the coordinates and validity of each pixel.
-	 Only relevant for the "pos" method. Computed via calc_locinfo if missing.
+	 Only relevant for the "general" method. Computed via calc_locinfo if missing.
 	 If you're doing multiple transforms with the same geometry, you can
 	 speed things up by precomputing this and passing it in here.
 
@@ -153,8 +153,8 @@ def alm2map(alm, map, spin=[0,2], deriv=False, adjoint=False,
 		if verbose: print("method: cyl")
 		return alm2map_cyl(alm, map, ainfo=ainfo, minfo=minfo, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, adjoint=adjoint, nthread=nthread, pix_tol=pix_tol)
-	elif method == "pos":
-		if verbose: print("method: pos")
+	elif method == "general":
+		if verbose: print("method: general")
 		return alm2map_general(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, adjoint=adjoint, nthread=nthread, epsilon=epsilon,
 			locinfo=locinfo)
@@ -248,31 +248,31 @@ def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, adjoint=False,
 	  projection where pixels are equi-spaced and evenly divide the sky
 	  along each horizontal line. Maps with partial sky coverage will be
 	  temporarily padded horizontally as necessary.
-	 "pos": Use ducc's general transforms. These work for any pixelization,
+	 "general": Use ducc's general transforms. These work for any pixelization,
 	  but are significantly more expensive, both in terms of time and memory.
-	 "auto": Automatically choose "2d", "cyl" or "pos". This is the default.,
+	 "auto": Automatically choose "2d", "cyl" or "general". This is the default.,
 	ainfo: alm_info object containing information about the alm layout.
 	 default: standard triangular layout,
 	verbose: If True, prints information about what's being done
 	nthread: Number of threads to use. Defaults to OMP_NUM_THREADS.
 	niter: The number of Jacobi iteration steps to perform when
 	 estimating the map2alm integral. Should ideally be controlled via epsilon,
-	 but is manual for now. Only relevant for the "cyl" and "pos" methods.
+	 but is manual for now. Only relevant for the "cyl" and "general" methods.
 	 Time proportional to 1+2*niter. For a flat spectrum, niter=0 typically results in
 	 std(alm-alm_true)/std(alm_true) ≈ 1e-5, improving to 1e-8 by niter=3.
 	 Default: 0
 	epsilon: The desired fractional accuracy. Used for interpolation
-	 in the "pos" method. Default: 1e-6.
+	 in the "general" method. Default: 1e-6.
 	pix_tol: Tolerance for matching a pixel layout with a predefined one,
 	 in fractions of a pixel. Default: 1e-6.
-	weights: Integration weights to use. Only used for methods "cyl" and "pos".
+	weights: Integration weights to use. Only used for methods "cyl" and "general".
 	 Defaults to ducc's grid weights if available, otherwise the pixel area.
-	 Somewhat heavy to compute and store for the "pos" method, so if you're
+	 Somewhat heavy to compute and store for the "general" method, so if you're
 	 performing multiple map2alm operations with the same geometry, consider
 	 precomputing them and passing them with this argument. Must have the
-	 same shape as locinfo.loc for the "pos" method.
+	 same shape as locinfo.loc for the "general" method.
 	locinfo: Information about the coordinates and validity of each pixel.
-	 Only relevant for the "pos" method. Computed via calc_locinfo if missing.
+	 Only relevant for the "general" method. Computed via calc_locinfo if missing.
 	 If you're doing multiple transforms with the same geometry, you can
 	 speed things up by precomputing this and passing it in here.
 	Returns
@@ -291,7 +291,7 @@ def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, adjoint=False,
 		return map2alm_cyl(map, alm, ainfo=ainfo, minfo=minfo, lmax=lmax, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, adjoint=adjoint, nthread=nthread, niter=niter,
 			pix_tol=pix_tol, weights=weights)
-	elif method == "pos":
+	elif method == "general":
 		if verbose: print("method: pos")
 		return map2alm_general(map, alm, ainfo=ainfo, lmax=lmax, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, adjoint=adjoint, nthread=nthread, epsilon=epsilon,
@@ -456,12 +456,12 @@ class alm_info:
 
 def get_method(shape, wcs, minfo=None, pix_tol=1e-6):
 	"""Return which method map2alm and alm2map will use for the given
-	enmap geometry. Returns either "2d", "cyl" or "pos"."""
+	enmap geometry. Returns either "2d", "cyl" or "general"."""
 	if minfo is None: minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Decide which method to use. Some cyl cases can be handled with 2d.
 	# Consider doing that in the future. Not that important for alm2map,
 	# but could help for map2alm.
-	if   minfo.case == "general": method = "pos"
+	if   minfo.case == "general": method = "general"
 	elif minfo.case == "2d":      method = "2d"
 	else:                         method = "cyl"
 	return method
