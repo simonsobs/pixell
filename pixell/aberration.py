@@ -1,4 +1,4 @@
-import numpy as np, numba, ducc0
+import numpy as np, numba, ducc0, time
 from . import coordinates, enmap, utils, curvedsky, wcsutils
 
 beta    = 0.001235
@@ -33,6 +33,9 @@ def boost_map(map, dir=dir_equ, beta=beta, modulation="thermo", T0=utils.T_cmb, 
 	* "auto": Choose fullsky if map covers close to the full sky in the y direction,
 	  otherwise periodic. This is the default.
 
+	If dipole is True, then monopole-related terms will be included in the modulation.
+	This is mainly the CMB dipole.
+
 	If return_modulation == True, then a tuple of (omap, A) will be returned, where
 	A is the modulation as returned from calc_boost. This can be useful if one wants
 	to compute the same map modulated at several different frequencies.
@@ -44,7 +47,7 @@ def boost_map(map, dir=dir_equ, beta=beta, modulation="thermo", T0=utils.T_cmb, 
 	if aberrate:
 		map    = aberrate_map(map, dir=dir, beta=beta, spin=spin, nthread=nthread, boundary=boundary)
 	if modulate:
-		map, A = modulate_map(map, dir=dir, beta=beta, spin=spin, nthread=nthread,
+		map, A = modulate_map(map, dir=dir, beta=beta, spin=spin, nthread=nthread, dipole=dipole,
 			modulation=modulation, T0=T0, freq=freq, map_unit=map_unit, return_modulation=True)
 	if return_modulation: return map, A
 	else: return map
@@ -144,7 +147,7 @@ class Aberrator:
 
 class Modulator:
 	def __init__(self, shape, wcs, dir=dir_equ, beta=beta,
-			modulation="thermo", T0=utils.T_cmb, freq=150e9, dipole=False, tiny=False,
+			modulation="thermo", T0=utils.T_cmb, freq=150e9, dipole=False,
 			map_unit=1e-6, spin=[0,2], dtype=np.float64, nthread=None):
 		"""Construct a Modulator object, that can be used to more efficiently
 		modulate a map. E.g.
@@ -166,14 +169,13 @@ class Modulator:
 		# Store for __call__
 		self.nthread = nthread;  self.A     = A;     self.modulation = modulation
 		self.T0      = T0;       self.freq  = freq;  self.dipole     = dipole
-		self.tiny    = tiny;     self.dtype = dtype; self.spin       = spin
-		self.map_unit= map_unit; self.dtype = dtype
+		self.dtype   = dtype;    self.spin  = spin;  self.map_unit   = map_unit
 	def __call__(self, map, spin=None):
 		if spin is None: spin = self.spin
 		if map.dtype != self.dtype:
 			warnings.warn("Modulator dtype does not match argument dtype")
 		return apply_modulation(map, self.A, spin=spin, T0=self.T0, freq=self.freq,
-			map_unit=self.map_unit, mode=self.modulation, dipole=self.dipole, tiny=self.tiny)
+			map_unit=self.map_unit, mode=self.modulation, dipole=self.dipole)
 
 def calc_boost_1d(z, beta):
 	"""Given the z, the cosine of the angle from the direction of travel in
@@ -196,9 +198,11 @@ def fully(shape, wcs, tol=0.1):
 	return yfrac > 1-tol
 
 def beta2lmax(beta):
-	# Infer lmax from beta. Empirical formula
+	# Infer lmax from beta. Empirical formula, valid to high boost factors.
+	beta  = np.abs(beta)
 	gamma = (1-beta**2)**-0.5
-	return utils.ceil(7*gamma*(beta+1))
+	lmax  = utils.ceil(1/(4e-3+1/gamma)**0.62*14+3.5)
+	return lmax
 
 def calc_boost_field(beta, dir, lmax=None, nthread=None, modulation=False, mod_exp=1):
 	if lmax is None:
@@ -259,7 +263,7 @@ def interpol_map(imap, pixs, epsilon=None, nthread=None, scaled=False, ydouble=F
 		pixs[0] *= 2
 	return oarr
 
-@numba.njit((numba.float32[:,:,:],numba.float32[:,:],numba.float32), nogil=True)
+@numba.njit(nogil=True)
 def rotate_pol(pmap, gamma, spin):
 	if spin == 0: return
 	qarr, uarr = pmap
@@ -273,34 +277,46 @@ def rotate_pol(pmap, gamma, spin):
 			uarr[i,j] = u
 
 def apply_modulation(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, mode="thermo",
-		dipole=False, spin=[0,2], tiny=False):
+		dipole=False, spin=[0,2]):
 	if    mode is None: pass
-	elif  mode == "plain": map *= A
+	elif  mode == "plain":
+		map *= A
+		if dipole:
+			utils.atleast_Nd(map,3)[...,0,:,:] += (A-1)*(T0/map_unit)
 	elif  mode == "thermo":
 		# We're in linearized thermodynamic units. We assume that the map doesn't contain the
 		# monopole, so we can treat it as a perturbation around the monopole. If the map
 		# contains the monopole, then linearized units probably isn't the best choice
 		for s, I in enmap.spin_pre_helper(spin, map.shape[:-2]):
 			for comp in map[I]:
-				_apply_modulation_thermo(comp, A, T0, freq, map_unit, spin=s, dipole=dipole, tiny=tiny)
+				_apply_modulation_thermo(comp, A, T0, freq, map_unit, spin=s, dipole=dipole)
 	else: raise ValueError("Urecognized modulation mode '%s'" % mode)
 	return map
 
+planck  = numba.njit(utils.planck)
+dplanck = numba.njit(utils.dplanck)
+
+# This is 4x as slow as the old one, but handles any value of beta, and also non-buggy :)
+# This isn't the bottleneck anyway - aberration is - so I think it's worth it to just use this.
+# In the future I can easily gain back af actor 4x with an implementation in C
 @numba.njit
-def _apply_modulation_thermo(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, spin=0, dipole=False, tiny=False):
+def _apply_modulation_thermo(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, spin=0, dipole=False):
 	xh   = 0.5*utils.h*freq/(utils.k*T0)
 	f    = xh/np.tanh(xh)-1
-	t0_T = T0/map_unit
-	t0   = t0_T if spin == 0 else 0
+	scale= dplanck(freq, T=T0)
+	off  = planck(freq,T0)/scale
 	for y in range(map.shape[0]):
 		for x in range(map.shape[1]):
-			a    = A[y,x]
-			ival = map[y,x]
-			oval = a*ival                            # basic modulation: ~100 uK*1e-3 = 0.1 uK (b^1)
-			oval+= f*((a-1)**2*t0 + 2*a*(a-1)*ival)  # quad: 2.7K*1e-6*f ~ 1 uK (b^2); + ~100 uK*1e-3 ~ 0.1 uK (b^1)
-			if dipole: oval  += (a-1)*t0             # dipole: 2.7K*1e-3 ~ 1000 uK (b^1)
-			if tiny:   oval  += f*a**2*ival**2/t0_T  # tiny: ~100 uK*(100uK/2.7K) ~ 0.01 uK
-			map[y,x] = oval
+			ival = np.float64(map[y,x])
+			a    = np.float64(A[y,x])
+			# This eats up at around 6 digits of precision for polarization, so
+			# we need double precision
+			oval = planck(freq, a*(ival*map_unit+T0))/scale
+			if spin == 0 and dipole:
+				oval -= off
+			else:
+				oval -= planck(freq, a*T0)/scale
+			map[y,x] = oval/map_unit
 
 @numba.njit
 def fast_rewind(arr, period, ref=None):
