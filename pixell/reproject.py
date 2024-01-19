@@ -112,7 +112,7 @@ def thumbnails_ivar(imap, coords, r=5*utils.arcmin, res=None, proj=None,
 			order=order, oversample=1, pol=False, extensive=extensive, verbose=verbose,
 			pixwin=False)
 
-def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, nside_mode="pow2", boundary="constant", verbose=False):
+def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, nside_mode="pow2", boundary="constant", verbose=False, niter=0):
 	"""Reproject from an enmap to healpix, optionally including a rotation.
 
 	imap:  The input enmap[...,ny,nx]. Stokes along the -3rd axis if
@@ -208,7 +208,7 @@ def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], met
 		# Harmonic interpolation preserves the power spectrum, but can introduce ringing.
 		# Probably not a good choice for positive-only quantities like hitcounts.
 		# Coordinate rotation is slow.
-		alm = curvedsky.map2alm(imap, lmax=lmax, spin=spin)
+		alm = curvedsky.map2alm(imap, lmax=lmax, spin=spin, niter=niter)
 		if rot is not None:
 			curvedsky.rotate_alm(alm, *rot2euler(rot), inplace=True)
 		curvedsky.alm2map_healpix(alm, out, spin=spin)
@@ -243,7 +243,7 @@ def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], met
 		raise ValueError("Map reprojection method '%s' not recognized" % str(method))
 	return out
 
-def healpix2map(iheal, shape=None, wcs=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, verbose=False):
+def healpix2map(iheal, shape=None, wcs=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, verbose=False, niter=0):
 	"""Reproject from healpix to an enmap, optionally including a rotation.
 
 	iheal: The input healpix map [...,npix]. Stokes along the -2nd axis if
@@ -316,7 +316,7 @@ def healpix2map(iheal, shape=None, wcs=None, lmax=None, out=None, rot=None, spin
 		# Harmonic interpolation preserves the power spectrum, but can introduce ringing.
 		# Probably not a good choice for positive-only quantities like hitcounts.
 		# Coordinate rotation is slow.
-		alm = curvedsky.map2alm_healpix(iheal, lmax=lmax, spin=spin)
+		alm = curvedsky.map2alm_healpix(iheal, lmax=lmax, spin=spin, niter=niter)
 		if rot is not None:
 			curvedsky.rotate_alm(alm, *rot2euler(rot), inplace=True)
 		curvedsky.alm2map(alm, out, spin=spin)
