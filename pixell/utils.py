@@ -190,6 +190,13 @@ def inverse_order(order):
 	invorder[order] = np.arange(len(order))
 	return invorder
 
+def complement_inds(inds, n):
+	"""Given a subset of range(0,n), return the missing values.
+	E.g. complement_inds([0,2,4],7) => [1,3,5,6]"""
+	mask = np.ones(n, bool)
+	mask[inds] = False
+	return np.where(mask)[0]
+
 def dict_apply_listfun(dict, function):
 	"""Applies a function that transforms one list to another
 	with the same number of elements to the values in a dictionary,
@@ -603,7 +610,9 @@ def pixwin_1d(f, order=0):
 	to standard nearest-neighbor mapmking. order = 1 corresponds to linear interpolation.
 	For a multidimensional (e.g. 2d) image, the full pixel window will be the outer
 	product of this pixel window along each axis."""
-	if order == 0:
+	if order is None:
+		return f*0+1
+	elif order == 0:
 		return np.sinc(f)
 	elif order == 1:
 		return np.sinc(f)**2/(1/3*(2+np.cos(2*np.pi*f)))
