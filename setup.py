@@ -43,6 +43,8 @@ elif sys.platform == 'darwin' or sys.platform == 'linux':
     # Now, try out our environment!
     c_return = sp.call([environment["CC"], *compile_opts["extra_compile_args"], "scripts/omp_hello.c", "-o", "/tmp/pixell-cc-test"], env=environment)
 
+    os.remove("/tmp/pixell-cc-test")
+
     if c_return != 0:
         raise EnvironmentError(
             "Your C compiler does not support the following flags, required by pixell: "
@@ -57,6 +59,8 @@ elif sys.platform == 'darwin' or sys.platform == 'linux':
     
     cxx_return = sp.call([environment["CXX"], *compile_opts["extra_compile_args"], "scripts/omp_hello.c", "-o", "/tmp/pixell-cxx-test"], env=environment)
 
+    os.remove("/tmp/pixell-cxx-test")
+
     if cxx_return != 0:
         raise EnvironmentError(
             "Your CXX compiler does not support the following flags, required by pixell: "
@@ -69,6 +73,8 @@ elif sys.platform == 'darwin' or sys.platform == 'linux':
         print(f"CXX compiler found ({environment['CXX']}) and supports OpenMP.")
     
     fc_return = sp.call([environment["FC"], *compile_opts["extra_f90_compile_args"], "scripts/omp_hello.f90", "-o", "/tmp/pixell-fc-test"], env=environment)
+
+    os.remove("/tmp/pixell-fc-test")
 
     if fc_return != 0:
         raise EnvironmentError(
