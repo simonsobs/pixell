@@ -2149,6 +2149,10 @@ def planck(f, T=T_cmb):
 	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
 blackbody = planck
 
+def iplanck_T(f, I):
+	"""The inverse of planck with respect to temperature"""
+	return h*f/k/np.log(1+1/(I/1e26*c**2/(2*h*f**3)))
+
 def dplanck(f, T=T_cmb):
 	"""The derivative of the planck spectrum with respect to temperature, evaluated
 	at frequencies f and temperature T, in units of Jy/sr/K."""
@@ -2323,7 +2327,6 @@ def linbin(n, nbin=None, nmin=None, bsize=None):
 	else:
 		if nbin is None: nbin = nint(n**0.5)
 		edges = np.arange(nbin+1)*n//nbin
-	edges = np.arange(nbin+1)*bsize
 	return np.vstack((edges[:-1],edges[1:])).T
 
 def expbin(n, nbin=None, nmin=8, nmax=0):

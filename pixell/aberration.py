@@ -7,7 +7,7 @@ dir_gal = np.array([263.986, 48.247])*np.pi/180
 dir_ecl = np.array([171.640,-11.154])*np.pi/180
 from .utils import T_cmb, h, c, k
 
-def boost_map(map, dir=dir_equ, beta=beta, modulation="thermo", T0=utils.T_cmb, freq=150e9,
+def boost_map(map, dir=dir_equ, beta=beta, modulation="T2lin", T0=utils.T_cmb, freq=150e9,
 		return_modulation=False, dipole=False, map_unit=1e-6, spin=[0,2], aberrate=True,
 		modulate=True, nthread=None, coord_dtype=None, boundary="auto"):
 	"""Doppler-boost (aberrate and modulate) the given input map map. The doppler boost
@@ -17,13 +17,15 @@ def boost_map(map, dir=dir_equ, beta=beta, modulation="thermo", T0=utils.T_cmb, 
 	first entry is scalar and the next pair is spin-2. So this works for a [TQU,ny,nx]
 	map. It is safe to pass [0,2] even when the map is just scalar.
 
-	If modulation == "thermo", then the input map is assumed to be in
-	differential thermodynamic units, e.g. what CMB maps usually have, and a
-	frequency-dependent gain factor is applied. In this case the T0 and freq
-	arguments will be used to compute the gain factor using the thermo_boost function.
-	If modulation == "plain", then the temperature modulation is directly multiplied
-	with the map.
-	If modulation == None, then no modulation is applied at all.
+	The modulation argument covers five cases. The default is "T2lin".
+	* None: No modulation or unit conversion is performed at all.
+	* "plain" or "T2T": The input and output maps are in real temperature units.
+	* "T2lin": The input map is real temperature, but the output map is in
+	  linearized temperature units, which are proportional to the flux density.
+	  This is appropriate for simulating observed CMB maps.
+	* "lin2T": The opposite of T2lin. Appropriate for deaberration.
+	* "lin2lin": Both input and output maps are in linearized units. Probably
+	  not very useful.
 
 	The boundary conditions are always periodic along the x axis. For the y axis
 	they are controlled by the boundary argument, which has the following values:
@@ -52,6 +54,16 @@ def boost_map(map, dir=dir_equ, beta=beta, modulation="thermo", T0=utils.T_cmb, 
 	if return_modulation: return map, A
 	else: return map
 
+def deboost_map(map, dir=dir_equ, beta=beta, modulation="lin2T", T0=utils.T_cmb, freq=150e9,
+		return_modulation=False, dipole=False, map_unit=1e-6, spin=[0,2], aberrate=True,
+		modulate=True, nthread=None, coord_dtype=None, boundary="auto"):
+	"""The inverse of boost_map. Simply calls boost map with the sign of beta flipped, and
+	with a default modulation of lin2T instead of T2lin."""
+	return boost_map(map, dir=dir, beta=-beta, modulation=modulation, T0=T0, freq=freq,
+		return_modulation=return_modulation, dipole=dipole, map_unit=map_unit, spin=spin,
+		aberrate=aberrate, modulate=modulate, nthread=nthread, coord_dtype=coord_dtype,
+		boundary=boundary)
+
 def aberrate_map(map, dir=dir_equ, beta=beta, spin=[0,2],
 		nthread=None, coord_dtype=None, boundary="auto"):
 	"""Perform the aberration part of the doppler boost. See
@@ -60,8 +72,13 @@ def aberrate_map(map, dir=dir_equ, beta=beta, spin=[0,2],
 	return Aberrator(map.shape, map.wcs, dir=dir, beta=beta, spin=spin,
 		nthread=nthread, coord_dtype=coord_dtype, boundary=boundary)(map)
 
+def deaberrate_map(map, dir=dir_equ, beta=beta, spin=[0,2],
+		nthread=None, coord_dtype=None, boundary="auto"):
+	return aberrate_map(map, dir=dir, beta=-beta, spin=spin,
+		nthread=nthread, coord_dtype=coord_dtype, boundary=boundary)
+
 def modulate_map(map, dir=dir_equ, beta=beta,
-		modulation="thermo", T0=utils.T_cmb, freq=150e9, return_modulation=False,
+		modulation="T2lin", T0=utils.T_cmb, freq=150e9, return_modulation=False,
 		dipole=False, map_unit=1e-6, spin=[0,2], nthread=None):
 	"""Perform the modulation part of the doppler boost. See boost_map
 	for details."""
@@ -71,6 +88,13 @@ def modulate_map(map, dir=dir_equ, beta=beta,
 	map = modulator(map)
 	if return_modulation: return map, modulator.A
 	else: return map
+
+def demodulate_map(map, dir=dir_equ, beta=beta,
+		modulation="lin2T", T0=utils.T_cmb, freq=150e9, return_modulation=False,
+		dipole=False, map_unit=1e-6, spin=[0,2], nthread=None):
+	return modulate_map(map, dir=dir, beta=-beta, modulation=modulation,
+		T0=T0, freq=freq, return_modulation=return_modulation, dipole=dipole,
+		map_unit=map_unit, spin=spin, nthread=nthread)
 
 # Classes for repeat calcuations with similar maps
 
@@ -147,7 +171,7 @@ class Aberrator:
 
 class Modulator:
 	def __init__(self, shape, wcs, dir=dir_equ, beta=beta,
-			modulation="thermo", T0=utils.T_cmb, freq=150e9, dipole=False,
+			modulation="T2lin", T0=utils.T_cmb, freq=150e9, dipole=False,
 			map_unit=1e-6, spin=[0,2], dtype=np.float64, nthread=None):
 		"""Construct a Modulator object, that can be used to more efficiently
 		modulate a map. E.g.
@@ -232,8 +256,8 @@ def interpol_map(imap, pixs, epsilon=None, nthread=None, scaled=False, ydouble=F
 		# Make y doubled map. This is necessary for the correct boundary condition for
 		# fullsky maps, but makes less sense for partial sky maps
 		dmap = enmap.zeros(imap.shape[:-2]+(2*ny,nx), imap.wcs, imap.dtype)
-		dmap[:,:ny,:] = imap
-		dmap[:,ny:,:] = np.roll(imap[:,::-1], nx//2, -1)
+		dmap[...,:ny,:] = imap
+		dmap[...,ny:,:] = np.roll(imap[...,::-1], nx//2, -1)
 	else:
 		dmap = imap
 	if not scaled:
@@ -276,31 +300,39 @@ def rotate_pol(pmap, gamma, spin):
 			qarr[i,j] = q
 			uarr[i,j] = u
 
-def apply_modulation(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, mode="thermo",
+def apply_modulation(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, mode="T2lin",
 		dipole=False, spin=[0,2]):
 	if    mode is None: pass
-	elif  mode == "plain":
+	elif  mode in ["plain", "T2T"]:
 		map *= A
 		if dipole:
 			utils.atleast_Nd(map,3)[...,0,:,:] += (A-1)*(T0/map_unit)
-	elif  mode == "thermo":
+	elif  mode in ["T2lin", "lin2T", "lin2lin"]:
 		# We're in linearized thermodynamic units. We assume that the map doesn't contain the
 		# monopole, so we can treat it as a perturbation around the monopole. If the map
 		# contains the monopole, then linearized units probably isn't the best choice
 		for s, I in enmap.spin_pre_helper(spin, map.shape[:-2]):
 			for comp in map[I]:
-				_apply_modulation_thermo(comp, A, T0, freq, map_unit, spin=s, dipole=dipole)
+				if mode == "T2lin":
+					_modulate_T2lin(comp, A, T0, freq, map_unit, spin=s, dipole=dipole)
+				elif mode == "lin2T":
+					_modulate_lin2T(comp, A, T0, freq, map_unit, spin=s, dipole=dipole)
+				else:
+					# This case probably isn't necessary
+					_modulate_lin2T(comp, A*0+1, T0, freq, map_unit, spin=s, dipole=dipole)
+					_modulate_T2lin(comp, A, T0, freq, map_unit, spin=s, dipole=dipole)
 	else: raise ValueError("Urecognized modulation mode '%s'" % mode)
 	return map
 
 planck  = numba.njit(utils.planck)
 dplanck = numba.njit(utils.dplanck)
+iplanck = numba.njit(utils.iplanck_T)
 
 # This is 4x as slow as the old one, but handles any value of beta, and also non-buggy :)
 # This isn't the bottleneck anyway - aberration is - so I think it's worth it to just use this.
 # In the future I can easily gain back af actor 4x with an implementation in C
 @numba.njit
-def _apply_modulation_thermo(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, spin=0, dipole=False):
+def _modulate_T2lin(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, spin=0, dipole=False):
 	xh   = 0.5*utils.h*freq/(utils.k*T0)
 	f    = xh/np.tanh(xh)-1
 	scale= dplanck(freq, T=T0)
@@ -316,6 +348,31 @@ def _apply_modulation_thermo(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, 
 				oval -= off
 			else:
 				oval -= planck(freq, a*T0)/scale
+			map[y,x] = oval/map_unit
+
+@numba.njit
+def _modulate_lin2T(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, spin=0, dipole=False):
+	xh   = 0.5*utils.h*freq/(utils.k*T0)
+	f    = xh/np.tanh(xh)-1
+	scale= dplanck(freq, T=T0) # Jy/sr/K'
+	off  = planck(freq,T0)     # Jy/sr
+	for y in range(map.shape[0]):
+		for x in range(map.shape[1]):
+			a     = np.float64(A[y,x])
+			ival  = np.float64(map[y,x]) # µK'
+			# lin = P(T)/(dP/dT|T0) => T = P"(lin*(dP/dT|T0))
+			oval  = ival*map_unit*scale # Jy/sr
+			if spin == 0 and dipole:
+				oval += off
+			else:
+				# Pre-emptively add a dipole that will be cancelled
+				# when we apply the modulation below
+				oval += planck(freq, 1/a*T0)
+			# Go to full T units
+			oval  = iplanck(freq, oval)
+			# Apply modulation
+			oval *= a
+			oval -= utils.T_cmb
 			map[y,x] = oval/map_unit
 
 @numba.njit

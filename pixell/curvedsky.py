@@ -457,7 +457,7 @@ class alm_info:
 def get_method(shape, wcs, minfo=None, pix_tol=1e-6):
 	"""Return which method map2alm and alm2map will use for the given
 	enmap geometry. Returns either "2d", "cyl" or "general"."""
-	if minfo is None: minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
+	if minfo is None: minfo = analyse_geometry(shape, wcs, tol=pix_tol)
 	# Decide which method to use. Some cyl cases can be handled with 2d.
 	# Consider doing that in the future. Not that important for alm2map,
 	# but could help for map2alm.
