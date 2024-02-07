@@ -302,7 +302,7 @@ def rotate_pol(pmap, gamma, spin):
 
 def apply_modulation(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, mode="T2lin",
 		dipole=False, spin=[0,2]):
-	if    mode is None: pass
+	if    mode in [None, "none"]: pass
 	elif  mode in ["plain", "T2T"]:
 		map *= A
 		if dipole:
