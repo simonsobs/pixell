@@ -656,6 +656,11 @@ def mkdir(path):
 		if exception.errno != errno.EEXIST:
 			raise
 
+def symlink(src, dest):
+	try: os.remove(dest)
+	except FileNotFoundError: pass
+	os.symlink(os.path.relpath(src, os.path.dirname(dest)), dest)
+
 def decomp_basis(basis, vec):
 	return np.linalg.solve(basis.dot(basis.T),basis.dot(vec.T)).T
 
