@@ -445,7 +445,8 @@ class alm_info:
 		To get the same TEB,TEB spectra crossed with a different map it would
 		be
 		 cl = ainfo.alm2cl(alm1[:,None,:], alm2[None,:,:])
-		In both these cases the output will be [{T,E,B},{T,E,B},nl]"""
+		In both these cases the output will be [{T,E,B},{T,E,B},nl].
+        The returned cls start at ell=0."""
 		return cmisc.alm2cl(self, alm, alm2=alm2)
 	def lmul(self, alm, lmat, out=None):
 		"""Computes res[a,lm] = lmat[a,b,l]*alm[b,lm], where lm is the position of the
