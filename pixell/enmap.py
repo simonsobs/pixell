@@ -400,7 +400,7 @@ def full(shape, wcs, val, dtype=None):
 	"""
 	return enmap(np.full(shape, val, dtype=dtype), wcs, copy=False)
 
-def posmap(shape, wcs, safe=True, corner=False, separable="auto", dtype=np.float64, bsize=1e6):
+def posmap(shape, wcs, safe=True, corner=False, separable="auto", dtype=np.float64, bsize=1e6, bcheck=False):
 	"""Return an enmap where each entry is the coordinate of that entry,
 	such that posmap(shape,wcs)[{0,1},j,k] is the {y,x}-coordinate of
 	pixel (j,k) in the map. Results are returned in radians, and
@@ -421,7 +421,7 @@ def posmap(shape, wcs, safe=True, corner=False, separable="auto", dtype=np.float
 		# If posmap could return a (dec,ra) tuple instead of an ndmap,
 		# we could have returned np.broadcast_arrays(dec, ra) instead.
 		# That would have been as fast and memory-saving as broadcast-arrays.
-		dec, ra = posaxes(shape, wcs, safe=safe, corner=corner)
+		dec, ra = posaxes(shape, wcs, safe=safe, corner=corner, bcheck=bcheck)
 		res[0] = dec[:,None]
 		res[1] = ra[None,:]
 	else:
@@ -429,18 +429,18 @@ def posmap(shape, wcs, safe=True, corner=False, separable="auto", dtype=np.float
 		for i1 in range(0, shape[-2], rowstep):
 			i2  = min(i1+rowstep, shape[-2])
 			pix = np.mgrid[i1:i2,:shape[-1]]
-			res[:,i1:i2,:] = pix2sky(shape, wcs, pix, safe, corner)
+			res[:,i1:i2,:] = pix2sky(shape, wcs, pix, safe, corner, bcheck=bcheck)
 	return res
 
 def posmap_old(shape, wcs, safe=True, corner=False):
 		pix    = np.mgrid[:shape[-2],:shape[-1]]
 		return ndmap(pix2sky(shape, wcs, pix, safe, corner), wcs)
 
-def posaxes(shape, wcs, safe=True, corner=False, dtype=np.float64):
+def posaxes(shape, wcs, safe=True, corner=False, dtype=np.float64, bcheck=False):
 	y = np.arange(shape[-2])
 	x = np.arange(shape[-1])
-	dec = pix2sky(shape, wcs, np.array([y,y*0]), safe=safe, corner=corner)[0].astype(dtype, copy=False)
-	ra  = pix2sky(shape, wcs, np.array([x*0,x]), safe=safe, corner=corner)[1].astype(dtype, copy=False)
+	dec = pix2sky(shape, wcs, np.array([y,y*0]), safe=safe, corner=corner, bcheck=bcheck)[0].astype(dtype, copy=False)
+	ra  = pix2sky(shape, wcs, np.array([x*0,x]), safe=safe, corner=corner, bcheck=bcheck)[1].astype(dtype, copy=False)
 	return dec, ra
 
 def pixmap(shape, wcs=None):
@@ -448,19 +448,20 @@ def pixmap(shape, wcs=None):
 	res = np.mgrid[:shape[-2],:shape[-1]]
 	return res if wcs is None else ndmap(res,wcs)
 
-def pix2sky(shape, wcs, pix, safe=True, corner=False):
+def pix2sky(shape, wcs, pix, safe=True, corner=False, bcheck=False):
 	"""Given an array of pixel coordinates [{y,x},...],
 	return sky coordinates in the same ordering."""
 	pix = np.asarray(pix).astype(float)
 	if corner: pix -= 0.5
 	pflat = pix.reshape(pix.shape[0], -1)
-	coords = np.asarray(wcsutils.nobcheck(wcs).wcs_pix2world(*(tuple(pflat)[::-1]+(0,)))[::-1])*get_unit(wcs)
+	if not bcheck: wcs = wcsutils.nobcheck(wcs)
+	coords = np.asarray(wcs.wcs_pix2world(*(tuple(pflat)[::-1]+(0,)))[::-1])*get_unit(wcs)
 	coords = coords.reshape(pix.shape)
 	if safe and not wcsutils.is_plain(wcs):
 		coords = utils.unwind(coords, refmode="middle")
 	return coords
 
-def sky2pix(shape, wcs, coords, safe=True, corner=False):
+def sky2pix(shape, wcs, coords, safe=True, corner=False, bcheck=False):
 	"""Given an array of coordinates [{dec,ra},...], return
 	pixel coordinates with the same ordering. The corner argument
 	specifies whether pixel coordinates start at pixel corners
@@ -470,7 +471,8 @@ def sky2pix(shape, wcs, coords, safe=True, corner=False):
 	coords = np.asarray(coords)/get_unit(wcs)
 	cflat  = coords.reshape(coords.shape[0], -1)
 	# Quantities with a w prefix are in wcs ordering (ra,dec)
-	wpix = np.asarray(wcsutils.nobcheck(wcs).wcs_world2pix(*tuple(cflat)[::-1]+(0,)))
+	if not bcheck: wcs = wcsutils.nobcheck(wcs)
+	wpix = np.asarray(wcs.wcs_world2pix(*tuple(cflat)[::-1]+(0,)))
 	if corner: wpix += 0.5
 	if safe and not wcsutils.is_plain(wcs):
 		wshape = shape[-2:][::-1]
@@ -954,7 +956,7 @@ def pixshape(shape, wcs, signed=False):
 	"""Returns the average pixel height and width, in radians."""
 	return extent(shape, wcs, signed=signed)/shape[-2:]
 
-def pixshapemap(shape, wcs, bsize=1000, separable="auto", signed=False):
+def pixshapemap(shape, wcs, bsize=1000, separable="auto", signed=False, bcheck=False):
 	"""Returns the physical width and heigh of each pixel in the map in radians.
 	Heavy for big maps. Much faster approaches are possible for known pixelizations."""
 	if wcsutils.is_plain(wcs):
@@ -966,7 +968,7 @@ def pixshapemap(shape, wcs, bsize=1000, separable="auto", signed=False):
 		pshape  = np.broadcast_to(pshape[:,None,None], (2,)+shape[-2:])
 		return ndmap(pshape, wcs)
 	elif separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
-		pshape = pixshapes_cyl(shape, wcs, signed=signed)
+		pshape = pixshapes_cyl(shape, wcs, signed=signed, bcheck=bcheck)
 		pshape = np.broadcast_to(pshape[:,:,None], (2,)+shape[-2:])
 		return ndmap(pshape, wcs)
 	else:
@@ -976,7 +978,7 @@ def pixshapemap(shape, wcs, bsize=1000, separable="auto", signed=False):
 			i2 = min(i1+bsize, shape[-2])
 			pix  = np.mgrid[i1:i2+1,:shape[-1]+1]
 			with utils.nowarn():
-				y, x = pix2sky(shape, wcs, pix, safe=True, corner=True)
+				y, x = pix2sky(shape, wcs, pix, safe=True, corner=True, bcheck=bcheck)
 			del pix
 			dy = y[1:,1:]-y[:-1,:-1]
 			dx = x[1:,1:]-x[:-1,:-1]
@@ -999,7 +1001,7 @@ def pixshapemap(shape, wcs, bsize=1000, separable="auto", signed=False):
 			del dx, dy
 		return pshape
 
-def pixshapes_cyl(shape, wcs, signed=False):
+def pixshapes_cyl(shape, wcs, signed=False, bcheck=False):
 	"""Returns the physical width and height of pixels for each row of a cylindrical
 	map with the given shape, wcs, in radians, as an array [{height,width},ny]. All
 	pixels in a row have the same shape in a cylindrical projection."""
@@ -1008,7 +1010,7 @@ def pixshapes_cyl(shape, wcs, signed=False):
 	# Get the dec of all the pixel edges, and use that to get the heights.
 	y   = np.arange(ny+1)-0.5
 	x   = y*0
-	dec, ra = pix2sky(shape, wcs, [y,x], safe=False)
+	dec, ra = pix2sky(shape, wcs, [y,x], safe=False, bcheck=bcheck)
 	if not np.isfinite(dec[0]):  dec[0]  = -np.pi/2 if wcs.wcs.cdelt[1] >= 0 else  np.pi/2
 	if not np.isfinite(dec[-1]): dec[-1] =  np.pi/2 if wcs.wcs.cdelt[1] >= 0 else -np.pi/2
 	dec = np.clip(dec, -np.pi/2, np.pi/2)
@@ -1026,7 +1028,7 @@ def pixshapes_cyl(shape, wcs, signed=False):
 		res = np.abs(res)
 	return res
 
-def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000):
+def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000, bcheck=False):
 	"""Returns the physical area of each pixel in the map in steradians.
 
 	If separable is True, then the map will be assumed to be in a cylindircal
@@ -1042,16 +1044,23 @@ def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000):
 	if one is going to be doing additional manipulation of the pixel size
 	before using it. For a cylindrical map, the result would have shape [ny,1]
 	if broadcastable is True.
+
+	BUG: This function assumes parallelogram-shaped pixels. This breaks for
+	non-cylindrical projections!
 	"""
 	if separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
-		psize = np.prod(pixshapes_cyl(shape, wcs),0)[:,None]
+		psize = np.prod(pixshapes_cyl(shape, wcs, bcheck=bcheck),0)[:,None]
 		# Expand to full shape unless we are willing to accept an array
 		# with smaller size that is still broadcastable to the right result
 		if not broadcastable:
 			psize = np.broadcast_to(psize, shape[-2:])
 		return ndmap(psize, wcs)
 	else:
-		return np.prod(pixshapemap(shape, wcs, bsize=bsize, separable=separable),0)
+		# FIXME: This doesn't work for pixels that aren't parallelogram-shaped.
+		# For example, it gives totally wrong results for Mollweide.
+		if not (wcsutils.is_cyl(wcs) or wcsutils.is_plain(wcs)):
+			warnings.warn("pixsizemap is buggy for non-cylindrical projections!")
+		return np.prod(pixshapemap(shape, wcs, bsize=bsize, separable=separable, bcheck=bcheck),0)
 
 def pixshapebounds(shape, wcs, separable="auto"):
 	"""Return the minimum and maximum pixel height and width for the given
@@ -2792,6 +2801,31 @@ def spin_helper(spin, n):
 		if i2 == n: break
 		i1 = i2
 		ci = (ci+1)%len(spin)
+
+def spin_pre_helper(spin, pre):
+	"""Like spin_helper, but also handles looping over pre-dimensions"""
+	# Make spin a 1d array. This will be used to
+	# interpret the last axis in pre
+	spin  = np.array(spin).reshape(-1)
+	scomp = 1+(spin!=0)
+	# Make pre an array that's at least 1d
+	pre   = np.array(pre).reshape(-1)
+	# Handle empty pre-dimentions
+	if len(pre) == 0:
+		yield 0, (None,)
+		return
+	n     = pre[-1]
+	# Loop over pre-dimensions
+	for Ipre in utils.nditer(pre[:-1]):
+		ci, i1 = 0, 0
+		while True:
+			i2 = min(i1+scomp[ci],n)
+			if i2-i1 != scomp[ci]: raise IndexError("Unpaired component in spin transform")
+			Itot = Ipre + (slice(i1,i2),)
+			yield spin[ci], Itot
+			if i2 == n: break
+			i1 = i2
+			ci = (ci+1)%len(spin)
 
 # It's often useful to be able to loop over padded tiles, do some operation on them,
 # and then stitch them back together with crossfading. If would be handy to have a way to

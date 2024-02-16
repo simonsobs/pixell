@@ -112,7 +112,8 @@ requirements =  ['numpy>=1.20.0',
                  'pytest-cov>=2.6',
                  'coveralls>=1.5',
                  'pytest>=4.6',
-                 'ducc0>=0.31.0']
+                 'ducc0>=0.33.0',
+                 'numba>=0.54.0']
 
 
 test_requirements = ['pip>=9.0',
