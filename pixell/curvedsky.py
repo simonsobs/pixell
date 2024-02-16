@@ -445,7 +445,8 @@ class alm_info:
 		To get the same TEB,TEB spectra crossed with a different map it would
 		be
 		 cl = ainfo.alm2cl(alm1[:,None,:], alm2[None,:,:])
-		In both these cases the output will be [{T,E,B},{T,E,B},nl]"""
+		In both these cases the output will be [{T,E,B},{T,E,B},nl].
+        The returned cls start at ell=0."""
 		return cmisc.alm2cl(self, alm, alm2=alm2)
 	def lmul(self, alm, lmat, out=None):
 		"""Computes res[a,lm] = lmat[a,b,l]*alm[b,lm], where lm is the position of the
@@ -457,7 +458,7 @@ class alm_info:
 def get_method(shape, wcs, minfo=None, pix_tol=1e-6):
 	"""Return which method map2alm and alm2map will use for the given
 	enmap geometry. Returns either "2d", "cyl" or "general"."""
-	if minfo is None: minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
+	if minfo is None: minfo = analyse_geometry(shape, wcs, tol=pix_tol)
 	# Decide which method to use. Some cyl cases can be handled with 2d.
 	# Consider doing that in the future. Not that important for alm2map,
 	# but could help for map2alm.
