@@ -1236,16 +1236,12 @@ def pole_wrap(pos):
 def allreduce(a, comm, op=None):
     """Convenience wrapper for Allreduce that returns the result
     rather than needing an output argument."""
-    data_to_reduce = a.copy()
-    if isinstance(a, np.generic):
-        data_to_reduce = np.array([data_to_reduce])
-    res = np.zeros_like(data_to_reduce)
+    a = np.asarray(a)
+    res = np.zeros_like(a)
     if op is None:
-        comm.Allreduce(data_to_reduce, res)
+        comm.Allreduce(a, res)
     else:
-        comm.Allreduce(data_to_reduce, res, op)
-    if isinstance(a, np.generic):
-        res = res[0]
+        comm.Allreduce(a, res, op)
     return res
 
 def reduce(a, comm, root=0, op=None):
