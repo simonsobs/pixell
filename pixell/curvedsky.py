@@ -606,7 +606,7 @@ def rand_alm_white(ainfo, pre=None, alm=None, seed=None, dtype=np.complex128, m_
 	if m_major: ainfo.transpose_alm(alm,alm)
 	return alm
 
-def almxfl(alm,lfilter=None,ainfo=None):
+def almxfl(alm,lfilter=None,ainfo=None,out=None):
 	"""Filter alms isotropically. Unlike healpy (at time of writing),
 	this function allows leading dimensions in the alm, and also allows
 	the filter to be specified as a function instead of an array.
@@ -627,7 +627,7 @@ def almxfl(alm,lfilter=None,ainfo=None):
 	if callable(lfilter):
 		l = np.arange(ainfo.lmax+1.0)
 		lfilter = lfilter(l)
-	return ainfo.lmul(alm, lfilter)
+	return ainfo.lmul(alm, lfilter, out=out)
 
 def filter(imap,lfilter,ainfo=None,lmax=None):
 	"""Filter a map isotropically by a function.
