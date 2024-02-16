@@ -42,6 +42,11 @@ elif sys.platform == 'darwin' or sys.platform == 'linux':
 
     # Now, try out our environment!
     c_return = sp.call([environment["CC"], *compile_opts["extra_compile_args"], "scripts/omp_hello.c", "-o", "/tmp/pixell-cc-test"], env=environment)
+    
+    try:
+        os.remove("/tmp/pixell-cc-test")
+    except OSError:
+        pass
 
     if c_return != 0:
         raise EnvironmentError(
@@ -54,8 +59,12 @@ elif sys.platform == 'darwin' or sys.platform == 'linux':
     else:
         print(f"C compiler found ({environment['CC']}) and supports OpenMP.")
     
-    
     cxx_return = sp.call([environment["CXX"], *compile_opts["extra_compile_args"], "scripts/omp_hello.c", "-o", "/tmp/pixell-cxx-test"], env=environment)
+
+    try:
+        os.remove("/tmp/pixell-cxx-test")
+    except OSError:
+        pass
 
     if cxx_return != 0:
         raise EnvironmentError(
@@ -69,7 +78,12 @@ elif sys.platform == 'darwin' or sys.platform == 'linux':
         print(f"CXX compiler found ({environment['CXX']}) and supports OpenMP.")
     
     fc_return = sp.call([environment["FC"], *compile_opts["extra_f90_compile_args"], "scripts/omp_hello.f90", "-o", "/tmp/pixell-fc-test"], env=environment)
-
+    
+    try:
+        os.remove("/tmp/pixell-fc-test")
+    except OSError:
+        pass
+    
     if fc_return != 0:
         raise EnvironmentError(
             "Your Fortran compiler does not support the following flags, required by pixell: "
