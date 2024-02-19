@@ -1236,6 +1236,7 @@ def pole_wrap(pos):
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result
 	rather than needing an output argument."""
+	a   = np.asanyarray(a)
 	res = np.zeros_like(a)
 	if op is None: comm.Allreduce(a, res)
 	else:          comm.Allreduce(a, res, op)
@@ -2160,7 +2161,9 @@ def calc_beam_area(beam_profile):
 
 def planck(f, T=T_cmb):
 	"""Return the Planck spectrum at the frequency f and temperature T in Jy/sr"""
-	return 2*h*f**3/c**2/(np.exp(h*f/(k*T))-1) * 1e26
+	# Was 2*h*f**3, but writing it out like this is more robust to people sending
+	# in huge integers for f, which causes overflow if this function is numba-ized
+	return 2*h*f*f*f/c**2/(np.exp(h*f/(k*T))-1) * 1e26
 blackbody = planck
 
 def iplanck_T(f, I):
