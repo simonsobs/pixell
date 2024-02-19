@@ -37,7 +37,8 @@ def map_coordinates(idata, points, odata=None, mode="spline", order=3, border="c
 	The interpolation performed by map_coordinates is a linear operation,
 	and can hence be expressed as out = A*data, where A is a matrix.
 	If trans is true, then what will instead be performed is data = A.T*in.
-	For this to work, the odata argument must be specified.
+	For this to work, the odata argument must be specified. This will be
+	read from, while idata will be written to.
 
 	Normally idata is read and odata is written to, but when trans=True,
 	idata is written to and odata is read from.
