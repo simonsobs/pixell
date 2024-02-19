@@ -1056,11 +1056,33 @@ def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000, bc
 			psize = np.broadcast_to(psize, shape[-2:])
 		return ndmap(psize, wcs)
 	else:
-		# FIXME: This doesn't work for pixels that aren't parallelogram-shaped.
-		# For example, it gives totally wrong results for Mollweide.
-		if not (wcsutils.is_cyl(wcs) or wcsutils.is_plain(wcs)):
-			warnings.warn("pixsizemap is buggy for non-cylindrical projections!")
-		return np.prod(pixshapemap(shape, wcs, bsize=bsize, separable=separable, bcheck=bcheck),0)
+		return pixsizemap_contour(shape, wcs, bsize=bsize, bcheck=bcheck)
+
+def pixsizemap_contour(shape, wcs, bsize=1000, bcheck=False):
+	# Loop to save memory. Numba-candidate?
+	psizes = zeros(shape[-2:], wcs)
+	for y1 in range(0, shape[-2], bsize):
+		y2   = min(y1+bsize, shape[-2])
+		# Get the pixel coordinates our pixels' corners, and
+		# turn them into dec,ra
+		pixs = np.mgrid[y1:y2+1,:shape[-1]+1]-0.5
+		poss = pix2sky(shape, wcs, pixs, bcheck=bcheck)
+		del pixs
+		# Avoid impossible coordinates
+		poss[0] = np.clip(poss[0], -np.pi/2, np.pi/2)
+		dec, ra = poss
+		# Integrate (1-sin(dec))*dRA from [0,0] to [1,0], using the
+		# average msin value along this path
+		msin   = 1-np.sin(dec)
+		areas  = (ra[ 1:,:-1]-ra[:-1,:-1])*(msin[ 1:,:-1]+msin[:-1,:-1])/2
+		# [1,0] to [1,1]
+		areas += (ra[ 1:, 1:]-ra[ 1:,:-1])*(msin[ 1:, 1:]+msin[ 1:,:-1])/2
+		# [1,1] to [0,1]
+		areas += (ra[:-1, 1:]-ra[ 1:, 1:])*(msin[:-1, 1:]+msin[ 1:, 1:])/2
+		# [0,1] to [0,0]
+		areas += (ra[:-1,:-1]-ra[:-1, 1:])*(msin[:-1,:-1]+msin[:-1, 1:])/2
+		psizes[y1:y2] = np.abs(areas)
+	return psizes
 
 def pixshapebounds(shape, wcs, separable="auto"):
 	"""Return the minimum and maximum pixel height and width for the given

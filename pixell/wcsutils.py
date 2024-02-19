@@ -104,7 +104,7 @@ def is_plain(wcs):
 
 def is_cyl(wcs):
 	"""Returns True if the wcs represents a cylindrical coordinate system"""
-	return get_proj(wcs) in ["cyp","cea","car","mer"]
+	return get_proj(wcs) in ["cyp","cea","car","mer"] and wcs.wcs.crval[1] == 0
 
 def get_proj(wcs):
 	if isinstance(wcs, str): return wcs
