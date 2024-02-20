@@ -1236,6 +1236,7 @@ def pole_wrap(pos):
 def allreduce(a, comm, op=None):
 	"""Convenience wrapper for Allreduce that returns the result
 	rather than needing an output argument."""
+	a   = np.asanyarray(a)
 	res = np.zeros_like(a)
 	if op is None: comm.Allreduce(a, res)
 	else:          comm.Allreduce(a, res, op)
