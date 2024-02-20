@@ -2652,6 +2652,7 @@ def fix_endian(map):
 	Returns the result."""
 	if map.dtype.byteorder not in ['=','<' if sys.byteorder == 'little' else '>']:
 		map = map.byteswap(True).newbyteorder()
+	map.dtype = utils.fix_dtype_mpi4py(map.dtype)
 	return map
 
 def get_stokes_flips(hdu):
