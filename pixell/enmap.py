@@ -1048,7 +1048,9 @@ def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000, bc
 	BUG: This function assumes parallelogram-shaped pixels. This breaks for
 	non-cylindrical projections!
 	"""
-	if separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
+	if wcsutils.is_plain(wcs):
+		return full(shape[-2:], wcs, np.abs(wcs.wcs.cdelt[0]*wcs.wcs.cdelt[1])*utils.degree**2)
+	elif separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
 		psize = np.prod(pixshapes_cyl(shape, wcs, bcheck=bcheck),0)[:,None]
 		# Expand to full shape unless we are willing to accept an array
 		# with smaller size that is still broadcastable to the right result
