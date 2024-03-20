@@ -676,8 +676,12 @@ def alm2cl(alm, alm2=None, ainfo=None):
 	ainfo = alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
 	return ainfo.alm2cl(alm, alm2=alm2)
 
+euler_angs={}
+euler_angs[("gal","equ")] = np.array([57.06793215,  62.87115487, -167.14056929])*utils.degree
+euler_angs[("equ","gal")] = -euler_angs[("gal","equ")][::-1]
 def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=None, inplace=False):
-	"""Rotate the given alm[...,:] via the zyz rotations given by psi, theta and phi.
+	"""Rotate the given alm[...,:] via the zyz rotations given by euler angles
+	psi, theta and phi. See curvedsky.euler_angs for some predefined angles.
 	The underlying implementation is provided by ducc0 or healpy. This is controlled
 	with the "method" argument, which can be "ducc0", "healpy" or "auto". For "auto"
 	it uses ducc0 if available, otherwise healpy. The resulting alm is returned.

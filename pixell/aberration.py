@@ -100,7 +100,7 @@ def demodulate_map(map, dir=dir_equ, beta=beta,
 
 class Aberrator:
 	def __init__(self, shape, wcs, dir=dir_equ, beta=beta, spin=[0,2],
-			nthread=None, coord_dtype=np.float64, scale_pix=True, boundary="auto"):
+			nthread=None, coord_dtype=np.float64, boundary="auto"):
 		"""Construct an Aberrator object, that can be used to more efficiently
 		aberrate a map. E.g.
 
@@ -140,16 +140,12 @@ class Aberrator:
 		fast_rewind(pix[1].reshape(-1), rinfo.nphi[0])
 		del odec, ora
 		# 5. Evaluate the map at these locations using nufft
-		if scale_pix:
-			pix[0] /= shape[-2]
-			pix[1] /= shape[-1]
 		# Boundary condition
 		if boundary == "auto": boundary = "fullsky" if fully(shape, wcs) else "periodic"
 		if boundary not in ["periodic", "fullsky"]:
 			raise ValueError("Unrecognized boundary '%s'" % str(boundary))
 		# 6. Store for when the map is passed in later
 		self.pix       = pix
-		self.scale_pix = scale_pix
 		self.gamma     = gamma
 		self.nthread   = nthread
 		self.spin      = spin
@@ -159,7 +155,7 @@ class Aberrator:
 		if spin    is None: spin    = self.spin
 		shape, wcs = map.shape, map.wcs
 		ydouble    = self.boundary == "fullsky"
-		map = interpol_map(map, self.pix, nthread=nthread, scaled=self.scale_pix, ydouble=ydouble)
+		map = interpol_map(map, self.pix, nthread=nthread, ydouble=ydouble)
 		map = enmap.ndmap (map.reshape(shape), wcs)
 		# 6. Apply polarization rotation. ducc0.misc.lensing_rotate can do this,
 		# but for some reason it operates on complex numbers instead of a QU field.
@@ -250,7 +246,7 @@ def calc_boost_field(beta, dir, lmax=None, nthread=None, modulation=False, mod_e
 	else:
 		return alm
 
-def interpol_map(imap, pixs, epsilon=None, nthread=None, scaled=False, ydouble=False):
+def interpol_map(imap, pixs, epsilon=None, nthread=None, ydouble=False):
 	ny, nx = imap.shape[-2:]
 	if ydouble:
 		# Make y doubled map. This is necessary for the correct boundary condition for
@@ -260,11 +256,7 @@ def interpol_map(imap, pixs, epsilon=None, nthread=None, scaled=False, ydouble=F
 		dmap[...,ny:,:] = np.roll(imap[...,::-1], nx//2, -1)
 	else:
 		dmap = imap
-	if not scaled:
-		pixs[0] /= imap.shape[-2]
-		pixs[1] /= imap.shape[-1]
-	elif ydouble:
-		pixs[0] /= 2
+	periodicity = np.array(dmap.shape[-2:])
 	nthread = int(utils.fallback(utils.getenv("OMP_NUM_THREADS",nthread),0))
 	pflat   = pixs.reshape(2,-1).T
 	if epsilon is None:
@@ -273,18 +265,11 @@ def interpol_map(imap, pixs, epsilon=None, nthread=None, scaled=False, ydouble=F
 	for I in utils.nditer(imap.shape[:-2]):
 		fmap = enmap.fft(dmap[I], normalize=False)
 		oarr[I] = ducc0.nufft.u2nu(grid=np.asarray(fmap), coord=pflat, forward=False,
-			epsilon=epsilon, nthreads=nthread, periodicity=1.0, fft_order=True).real
+			epsilon=epsilon, nthreads=nthread, periodicity=periodicity, fft_order=True).real
 		del fmap
 	# Restore predims
 	oarr = oarr.reshape(imap.shape[:-2]+oarr.shape[-1:])
 	oarr/= dmap.npix
-	# Scale back. Could have worked on a copy instead, but that would
-	# use more memory
-	if not scaled:
-		pixs[0] *= imap.shape[-2]
-		pixs[1] *= imap.shape[-1]
-	elif ydouble:
-		pixs[0] *= 2
 	return oarr
 
 @numba.njit(nogil=True)
