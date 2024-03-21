@@ -117,21 +117,17 @@ class Aberrator:
 		# 1. Calculate the aberration field. These are tiny
 		alm_dpos = calc_boost_field(-beta, dir, nthread=nthread)
 		# 2. Evaluate these on our target geometry. Hardcoded float64 because of get_deflected_angles
-		deflect = enmap.zeros(alm_dpos.shape[:-1]+shape[-2:], wcs, np.float64)
+		deflect = enmap.zeros(alm_dpos.shape[:-1]+shape[-2:], wcs, coord_dtype)
 		curvedsky.alm2map(alm_dpos.astype(coord_ctype, copy=False), deflect, spin=1, nthread=nthread)
 		# 3. Calculate the offset angles.
-		# get_deflected_angles only supports float64 :(
 		rinfo = curvedsky.get_ring_info(shape, wcs)
 		dphi  = np.full(shape[-2], wcs.wcs.cdelt[0]*utils.degree)
-		tmp   = ducc0.misc.get_deflected_angles(theta=rinfo.theta, phi0=rinfo.phi0,
+		odec, ora, gamma = ducc0.misc.get_deflected_angles(theta=rinfo.theta, phi0=rinfo.phi0,
 			nphi=rinfo.nphi, dphi=dphi, ringstart=rinfo.offsets, nthreads=nthread, calc_rotation=True,
 			deflect=np.asarray(deflect).reshape(2,-1).T).T
 		del deflect
-		# We drop down to the target precision as early as possible
-		odec, ora, gamma = tmp.astype(coord_dtype, copy=False)
 		odec = np.pi/2-odec
 		gamma= enmap.ndmap(gamma.reshape(shape[-2:]), wcs)
-		del tmp
 		# 4. Calculate pixel coordinates of offset angles. In general this would use
 		# enmap.sky2pix, but that's slow. Much faster for our typical projections.
 		# Probably worth it to make overrides.
@@ -182,10 +178,11 @@ class Modulator:
 		compute it from scratch each time."""
 		nthread = int(utils.fallback(utils.getenv("OMP_NUM_THREADS",nthread),0))
 		# 1. Calculate the aberration field. These are tiny
-		alm_dpos, alm_mod = calc_boost_field(-beta, dir, nthread=nthread, modulation=True, mod_exp=-1)
+		alm_mod = calc_boost_field(-beta, dir, nthread=nthread, modulation=True, mod_exp=-1)[1]
+		alm_mod = alm_mod.astype(utils.complex_dtype(dtype), copy=False)
 		# 2: Apply modulation
 		A = enmap.zeros(alm_mod.shape[:-1]+shape[-2:], wcs, dtype)
-		curvedsky.alm2map(alm_mod.astype(utils.complex_dtype(dtype)), A, spin=0, nthread=nthread)
+		curvedsky.alm2map(alm_mod, A, spin=0, nthread=nthread)
 		# Store for __call__
 		self.nthread = nthread;  self.A     = A;     self.modulation = modulation
 		self.T0      = T0;       self.freq  = freq;  self.dipole     = dipole
