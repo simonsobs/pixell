@@ -250,6 +250,9 @@ def slice_geometry(shape, wcs, sel, nowrap=False):
 	return tuple(pre)+tuple(oshape), wcs
 
 def scale_geometry(shape, wcs, scale):
+	"""Scale the geometry so that the number of pixels is scaled 
+	by the factor `scale`.
+	"""
 	scale  = np.zeros(2)+scale
 	oshape = tuple(shape[:-2])+tuple(utils.nint(shape[-2:]*scale))
 	owcs   = wcsutils.scale(wcs, scale, rowmajor=True)
