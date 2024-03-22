@@ -7,7 +7,7 @@ from . import wcsutils, utils, enmap, coordinates, fft, curvedsky
 try: basestring
 except NameError: basestring = str
 
-def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*utils.arcmin,
+def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj=None, apod=2*utils.arcmin,
 		order=3, oversample=4, pol=None, oshape=None, owcs=None, extensive=False, verbose=False,
 		filter=None,pixwin=False,pixwin_order=0):
 	"""Given an enmap [...,ny,nx] and a set of coordinates in a numpy array
@@ -21,7 +21,8 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 	If oshape, owcs are specified, then the thumbnails will have this geometry,
 	which should be centered on [0,0]. Otherwise, a geometry with the given
 	projection (defaults to "tan" = gnomonic projection) will be constructed,
-	going up to a maximum radius of r.
+	going up to a maximum radius of r. FIXME: Defaults to "car" instead while
+	enmap.pixsizemap is buggy for non-cylindrical projections.
 
 	The reprojection involved in this operation implies interpolation. The default
 	is to use fft rescaling to oversample the input pixels by the given pixel, and
@@ -50,6 +51,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 	If pixwin is True, the pixel window will be deconvolved."""
 	# FIXME: Specifying a geometry manually is broken - see usage of r in neighborhood_pixboxes below
 	# Handle arbitrary coords shape
+	if proj is None: proj = "car"
 	coords = np.asarray(coords)
 	ishape = coords.shape[:-1]
 	coords = coords.reshape(-1, coords.shape[-1])
@@ -99,7 +101,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj="tan", apod=2*util
 	omaps = omaps.reshape(ishape + omaps.shape[1:])
 	return omaps
 
-def thumbnails_ivar(imap, coords, r=5*utils.arcmin, res=None, proj="tan",
+def thumbnails_ivar(imap, coords, r=5*utils.arcmin, res=None, proj=None,
 		oshape=None, owcs=None, order=1, extensive=True, verbose=False):
 	"""Like thumbnails, but for hitcounts, ivars, masks, and other quantities that
 	should stay positive and local. Remember to set extensive to True if you have an
@@ -110,7 +112,7 @@ def thumbnails_ivar(imap, coords, r=5*utils.arcmin, res=None, proj="tan",
 			order=order, oversample=1, pol=False, extensive=extensive, verbose=verbose,
 			pixwin=False)
 
-def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, nside_mode="pow2", boundary="constant", verbose=False):
+def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, nside_mode="pow2", boundary="constant", verbose=False, niter=0):
 	"""Reproject from an enmap to healpix, optionally including a rotation.
 
 	imap:  The input enmap[...,ny,nx]. Stokes along the -3rd axis if
@@ -206,7 +208,7 @@ def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], met
 		# Harmonic interpolation preserves the power spectrum, but can introduce ringing.
 		# Probably not a good choice for positive-only quantities like hitcounts.
 		# Coordinate rotation is slow.
-		alm = curvedsky.map2alm(imap, lmax=lmax, spin=spin)
+		alm = curvedsky.map2alm(imap, lmax=lmax, spin=spin, niter=niter)
 		if rot is not None:
 			curvedsky.rotate_alm(alm, *rot2euler(rot), inplace=True)
 		curvedsky.alm2map_healpix(alm, out, spin=spin)
@@ -241,7 +243,7 @@ def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], met
 		raise ValueError("Map reprojection method '%s' not recognized" % str(method))
 	return out
 
-def healpix2map(iheal, shape=None, wcs=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, verbose=False):
+def healpix2map(iheal, shape=None, wcs=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, verbose=False, niter=0):
 	"""Reproject from healpix to an enmap, optionally including a rotation.
 
 	iheal: The input healpix map [...,npix]. Stokes along the -2nd axis if
@@ -314,7 +316,7 @@ def healpix2map(iheal, shape=None, wcs=None, lmax=None, out=None, rot=None, spin
 		# Harmonic interpolation preserves the power spectrum, but can introduce ringing.
 		# Probably not a good choice for positive-only quantities like hitcounts.
 		# Coordinate rotation is slow.
-		alm = curvedsky.map2alm_healpix(iheal, lmax=lmax, spin=spin)
+		alm = curvedsky.map2alm_healpix(iheal, lmax=lmax, spin=spin, niter=niter)
 		if rot is not None:
 			curvedsky.rotate_alm(alm, *rot2euler(rot), inplace=True)
 		curvedsky.alm2map(alm, out, spin=spin)
