@@ -51,6 +51,14 @@ class ndmap(np.ndarray):
 	def __array_wrap__(self, arr, context=None):
 		if arr.ndim < 2: return arr
 		return ndmap(arr, self.wcs)
+	def __reduce__(self):
+		reconstructor, args, state = super(ndmap, self).__reduce__()
+		state += (self.wcs.to_header_string(),)
+		return reconstructor, args, state
+	def __setstate__(self, state):
+		wcs = wcsutils.WCS(header=state[-1])
+		super(ndmap, self).__setstate__(state[:-1])
+		self.wcs = wcs
 	def copy(self, order='K'):
 		return ndmap(np.copy(self,order), self.wcs)
 	def sky2pix(self, coords, safe=True, corner=False): return sky2pix(self.shape, self.wcs, coords, safe, corner)
