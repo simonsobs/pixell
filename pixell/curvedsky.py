@@ -1245,7 +1245,7 @@ def analyse_geometry(shape, wcs, tol=1e-6):
 	# Flipped geometry
 	wshape, wwcs = flip_geometry(shape, wcs, flip)
 	# Get phi0 for the flipped geo
-	phi0 = wwcs.wcs_pix2world(0, 0, 0)[0]*utils.degree
+	phi0 = wcsutils.nobcheck(wwcs).wcs_pix2world(0, wshape[-2]//2, 0)[0]*utils.degree
 	# Check how we fit with a predefined ducc geometry
 	ducc_geo  = get_ducc_geo(wwcs, shape=wshape, tol=tol)
 	# If ducc_geo exists, then this map can either be used directly in
