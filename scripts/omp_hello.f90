@@ -1,7 +1,7 @@
 ! Hello world test program for fortran.
 
 program example
-    use, intrinsic :: omp_lib
+    use :: omp_lib
     implicit none
 
     ! Set number of threads to use.
