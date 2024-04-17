@@ -637,6 +637,16 @@ def insert_at(omap, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
 	extract_pixbox(omap, pixbox, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=True)
 	return omap
 
+def map_union(map1, map2):
+	"""Given two maps with compatible wcs but possibly covering different
+	parts of the sky, return a new map that contains all pixels of both maps.
+	If the input maps overlap, then those pixels will have the sum of the two maps"""
+	oshape, owcs = union_geometry([map1.geometry, map2.geometry])
+	omap = enmap.zeros(map1.shape[:-2]+oshape[-2:], owcs, map1.dtype)
+	omap.insert(map1)
+	omap.insert(map2, op=lambda a,b:a+b)
+	return omap
+
 def overlap(shape, wcs, shape2_or_pixbox, wcs2=None, wrap="auto"):
 	"""Compute the overlap between the given geometry (shape, wcs) and another *compatible*
 	geometry. This can be either another shape, wcs pair or a pixbox[{from,to},{y,x}].
@@ -1840,6 +1850,7 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 	if omap is None: omap = empty(shape[-2:], wcs)
 	if domains and odomains is None: odomains = empty(shape[-2:], wcs, np.int32)
 	points = np.asarray(points)
+	if points.ndim == 1: points = points[:,None]
 	assert points.ndim == 2 and len(points) == 2, "points must be [{dec,ra},npoint]"
 	# Handle case where no points are specified
 	if points.size == 0:
