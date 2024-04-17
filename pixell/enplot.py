@@ -250,6 +250,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("--sub",   type=str, help="Slice a map based on dec1:dec2,ra1:ra2.")
 	add_argument("-H", "--hdu",  type=int, default=0, help="Header unit of the fits file to use")
 	add_argument("--op", type=str, help="Apply this general operation to the map before plotting. For example, 'log(abs(m))' would give you a lograithmic plot.")
+	add_argument("--op2", type=str, help="Like op, but allows multiple statements")
 	add_argument("-d", "--downgrade", type=str, default="1", help="Downsacale the map by this factor before plotting. This is done by averaging nearby pixels. See --upgrade for syntax.")
 	add_argument("--prefix", type=str, default="", help="Specify a prefix for the output file. See --oname.")
 	add_argument("--suffix", type=str, default="", help="Specify a suffix for the output file. See --oname.")
@@ -404,6 +405,11 @@ def get_map(ifile, args, return_info=False, name=None):
 			m1 = m
 			if args.op is not None:
 				m = eval(args.op, {"m":m,"enmap":enmap,"utils":utils,"np":np},np.__dict__)
+			if args.op2 is not None:
+				loc  = {"m":m}
+				glob = {"enmap":enmap,"utils":utils,"np":np}
+				exec(args.op2, glob, loc)
+				m = loc["m"]
 			# Scale if requested
 			scale = parse_list(args.upgrade, int)
 			if np.any(np.array(scale)>1):
