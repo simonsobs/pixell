@@ -332,6 +332,18 @@ def medmean(x, axis=None, frac=0.5):
 	i = int(x.shape[-1]*frac)//2
 	return np.mean(x[...,i:-i],-1)
 
+def medmean2(x, axis=None, frac=0.1, bsize=None):
+	"""This is what medmean should have bean. This should be faster and have
+	less bias. Consider replacing medmean with this, as medmean doen't seem
+	to have been used much"""
+	x = np.asarray(x)
+	if axis is None:
+		x    = x.reshape(-1)
+		axis = 0
+	if bsize is None: bsize = nint(x.shape[axis]*frac)
+	means = block_reduce(x, bsize, axis=axis)
+	return np.median(means, axis=axis)
+
 def maskmed(arr, mask=None, axis=-1, maskval=0):
 	"""Median of array along the given axis, but ignoring
 	entries with the given mask value."""
