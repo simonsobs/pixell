@@ -197,6 +197,15 @@ def complement_inds(inds, n):
 	mask[inds] = False
 	return np.where(mask)[0]
 
+def unmask(arr, mask, axis=0, fill=0):
+	"""Pseudoinverse of operation arr=result[mask]. That is, it undoes a
+	numpy mask-indexing operation, returning an array with the shape of
+	mask. Values that were not selected by mask in the first place will be
+	filled with the fill value."""
+	result = np.full(arr.shape[:axis]+mask.shape, fill, arr.dtype)
+	result[(slice(None),)*axis+(mask,)] = arr
+	return result
+
 def dict_apply_listfun(dict, function):
 	"""Applies a function that transforms one list to another
 	with the same number of elements to the values in a dictionary,
