@@ -130,11 +130,11 @@ def alm2map(alm, map, spin=[0,2], deriv=False, adjoint=False,
 	verbose: If True, prints information about what's being done
 	nthread: Number of threads to use. Defaults to OMP_NUM_THREADS.
 	epsilon: The desired fractional accuracy. Used for interpolation
-	 in the "pos" method. Default: 1e-6.
+	 in the "general" method. Default: 1e-6.
 	pix_tol: Tolerance for matching a pixel layout with a predefined one,
 	 in fractions of a pixel. Default: 1e-6.
 	locinfo: Information about the coordinates and validity of each pixel.
-	 Only relevant for the "pos" method. Computed via calc_locinfo if missing.
+	 Only relevant for the "general" method. Computed via calc_locinfo if missing.
 	 If you're doing multiple transforms with the same geometry, you can
 	 speed things up by precomputing this and passing it in here.
 
@@ -153,8 +153,8 @@ def alm2map(alm, map, spin=[0,2], deriv=False, adjoint=False,
 		if verbose: print("method: cyl")
 		return alm2map_cyl(alm, map, ainfo=ainfo, minfo=minfo, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, adjoint=adjoint, nthread=nthread, pix_tol=pix_tol)
-	elif method == "pos":
-		if verbose: print("method: pos")
+	elif method == "general":
+		if verbose: print("method: general")
 		return alm2map_general(alm, map, ainfo=ainfo, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, adjoint=adjoint, nthread=nthread, epsilon=epsilon,
 			locinfo=locinfo)
@@ -248,31 +248,31 @@ def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, adjoint=False,
 	  projection where pixels are equi-spaced and evenly divide the sky
 	  along each horizontal line. Maps with partial sky coverage will be
 	  temporarily padded horizontally as necessary.
-	 "pos": Use ducc's general transforms. These work for any pixelization,
+	 "general": Use ducc's general transforms. These work for any pixelization,
 	  but are significantly more expensive, both in terms of time and memory.
-	 "auto": Automatically choose "2d", "cyl" or "pos". This is the default.,
+	 "auto": Automatically choose "2d", "cyl" or "general". This is the default.,
 	ainfo: alm_info object containing information about the alm layout.
 	 default: standard triangular layout,
 	verbose: If True, prints information about what's being done
 	nthread: Number of threads to use. Defaults to OMP_NUM_THREADS.
 	niter: The number of Jacobi iteration steps to perform when
 	 estimating the map2alm integral. Should ideally be controlled via epsilon,
-	 but is manual for now. Only relevant for the "cyl" and "pos" methods.
+	 but is manual for now. Only relevant for the "cyl" and "general" methods.
 	 Time proportional to 1+2*niter. For a flat spectrum, niter=0 typically results in
 	 std(alm-alm_true)/std(alm_true) ≈ 1e-5, improving to 1e-8 by niter=3.
 	 Default: 0
 	epsilon: The desired fractional accuracy. Used for interpolation
-	 in the "pos" method. Default: 1e-6.
+	 in the "general" method. Default: 1e-6.
 	pix_tol: Tolerance for matching a pixel layout with a predefined one,
 	 in fractions of a pixel. Default: 1e-6.
-	weights: Integration weights to use. Only used for methods "cyl" and "pos".
+	weights: Integration weights to use. Only used for methods "cyl" and "general".
 	 Defaults to ducc's grid weights if available, otherwise the pixel area.
-	 Somewhat heavy to compute and store for the "pos" method, so if you're
+	 Somewhat heavy to compute and store for the "general" method, so if you're
 	 performing multiple map2alm operations with the same geometry, consider
 	 precomputing them and passing them with this argument. Must have the
-	 same shape as locinfo.loc for the "pos" method.
+	 same shape as locinfo.loc for the "general" method.
 	locinfo: Information about the coordinates and validity of each pixel.
-	 Only relevant for the "pos" method. Computed via calc_locinfo if missing.
+	 Only relevant for the "general" method. Computed via calc_locinfo if missing.
 	 If you're doing multiple transforms with the same geometry, you can
 	 speed things up by precomputing this and passing it in here.
 	Returns
@@ -291,7 +291,7 @@ def map2alm(map, alm=None, lmax=None, spin=[0,2], deriv=False, adjoint=False,
 		return map2alm_cyl(map, alm, ainfo=ainfo, minfo=minfo, lmax=lmax, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, adjoint=adjoint, nthread=nthread, niter=niter,
 			pix_tol=pix_tol, weights=weights)
-	elif method == "pos":
+	elif method == "general":
 		if verbose: print("method: pos")
 		return map2alm_general(map, alm, ainfo=ainfo, lmax=lmax, spin=spin, deriv=deriv, copy=copy,
 			verbose=verbose, adjoint=adjoint, nthread=nthread, epsilon=epsilon,
@@ -445,7 +445,8 @@ class alm_info:
 		To get the same TEB,TEB spectra crossed with a different map it would
 		be
 		 cl = ainfo.alm2cl(alm1[:,None,:], alm2[None,:,:])
-		In both these cases the output will be [{T,E,B},{T,E,B},nl]"""
+		In both these cases the output will be [{T,E,B},{T,E,B},nl].
+        The returned cls start at ell=0."""
 		return cmisc.alm2cl(self, alm, alm2=alm2)
 	def lmul(self, alm, lmat, out=None):
 		"""Computes res[a,lm] = lmat[a,b,l]*alm[b,lm], where lm is the position of the
@@ -456,12 +457,12 @@ class alm_info:
 
 def get_method(shape, wcs, minfo=None, pix_tol=1e-6):
 	"""Return which method map2alm and alm2map will use for the given
-	enmap geometry. Returns either "2d", "cyl" or "pos"."""
-	if minfo is None: minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
+	enmap geometry. Returns either "2d", "cyl" or "general"."""
+	if minfo is None: minfo = analyse_geometry(shape, wcs, tol=pix_tol)
 	# Decide which method to use. Some cyl cases can be handled with 2d.
 	# Consider doing that in the future. Not that important for alm2map,
 	# but could help for map2alm.
-	if   minfo.case == "general": method = "pos"
+	if   minfo.case == "general": method = "general"
 	elif minfo.case == "2d":      method = "2d"
 	else:                         method = "cyl"
 	return method
@@ -534,6 +535,30 @@ def harm2profile(bl, r):
 				ringstart=rinfo.offsets, spin=0, lmax=bl.shape[-1]-1, mmax=0)[0]
 	return br
 
+def prof2alm(profile, dir=[0, np.pi/2], spin=0, geometry="CC", nthread=None, norot=False):
+	"""Calculate the alms for a 1d equispaced profile[...,n] oriented along the
+	given [ra,dec] on the sky."""
+	nthread= int(utils.fallback(utils.getenv("OMP_NUM_THREADS",nthread),0))
+	profile= np.asarray(profile)
+	dtype  = profile.dtype
+	lmax   = get_ducc_maxlmax(geometry, profile.shape[-1])
+	# Set up output arrays
+	iainfo = alm_info(lmax=lmax, mmax=0)
+	oainfo = alm_info(lmax=lmax, mmax=lmax if not norot else 0)
+	ctype  = utils.complex_dtype(dtype)
+	oalm   = np.zeros(profile.shape[:-1]+(oainfo.nelem,), ctype)
+	for s, I in enmap.spin_pre_helper(spin, profile.shape[:-1]):
+		# ducc has problems with None-axes, so fix that
+		prof   = utils.fix_zero_strides(profile[I][...,None])
+		alm    = ducc0.sht.experimental.analysis_2d(map=prof, spin=s, lmax=lmax, mmax=0, geometry=geometry, nthreads=nthread)
+		if not norot:
+			# Expand to full mmax to prepare for rotation
+			alm    = transfer_alm(iainfo, alm, oainfo)
+			# Rotate to target coordinate system
+			alm    = rotate_alm(alm, 0, np.pi/2-dir[1], dir[0], nthread=nthread)
+		oalm[I] = alm
+	return oalm
+
 #####################
 ###### Helpers ######
 #####################
@@ -582,7 +607,7 @@ def rand_alm_white(ainfo, pre=None, alm=None, seed=None, dtype=np.complex128, m_
 	if m_major: ainfo.transpose_alm(alm,alm)
 	return alm
 
-def almxfl(alm,lfilter=None,ainfo=None):
+def almxfl(alm,lfilter=None,ainfo=None,out=None):
 	"""Filter alms isotropically. Unlike healpy (at time of writing),
 	this function allows leading dimensions in the alm, and also allows
 	the filter to be specified as a function instead of an array.
@@ -603,7 +628,7 @@ def almxfl(alm,lfilter=None,ainfo=None):
 	if callable(lfilter):
 		l = np.arange(ainfo.lmax+1.0)
 		lfilter = lfilter(l)
-	return ainfo.lmul(alm, lfilter)
+	return ainfo.lmul(alm, lfilter, out=out)
 
 def filter(imap,lfilter,ainfo=None,lmax=None):
 	"""Filter a map isotropically by a function.
@@ -1102,13 +1127,13 @@ def minres_inverse(forward, approx_backward, y, epsilon=1e-6, maxiter=100, zip=N
 def nalm2lmax(nalm):
 	return int((-1+(1+8*nalm)**0.5)/2)-1
 
-def get_ring_info(shape, wcs):
+def get_ring_info(shape, wcs, dtype=np.float64):
 	"""Return information about the horizontal rings of pixels in a cylindrical pixelization.
 	Used in map2alm and alm2map with the "cyl" method."""
 	y = np.arange(shape[-2])
 	x = y*0
 	dec, ra = enmap.pix2sky(shape, wcs, [y,x])
-	theta   = np.asarray(np.pi/2-dec, dtype=np.float64)
+	theta   = np.asarray(np.pi/2-dec, dtype=dtype)
 	assert theta.ndim == 1, "theta must be one-dimensional!"
 	ntheta = len(theta)
 	nphi   = np.asarray(shape[-1], dtype=np.uint64)
@@ -1116,10 +1141,10 @@ def get_ring_info(shape, wcs):
 	if nphi.ndim == 0:
 		nphi = np.zeros(ntheta,dtype=np.uint64)+(nphi or 2*ntheta)
 	assert len(nphi) == ntheta, "theta and nphi arrays do not agree on number of rings"
-	phi0 = np.asarray(ra, dtype=np.float64)
+	phi0 = np.asarray(ra, dtype=dtype)
 	assert phi0.ndim < 2, "phi0 must be 0 or 1-dimensional"
 	if phi0.ndim == 0:
-		phi0 = np.zeros(ntheta,dtype=np.float64)+phi0
+		phi0 = np.zeros(ntheta,dtype=dtype)+phi0
 	offsets = utils.cumsum(nphi).astype(np.uint64, copy=False)
 	stride  = np.zeros(ntheta,dtype=np.int32)+1
 	return bunch.Bunch(theta=theta, nphi=nphi, phi0=phi0, offsets=offsets, stride=stride, npix=np.sum(nphi), nrow=len(nphi))
@@ -1216,7 +1241,7 @@ def analyse_geometry(shape, wcs, tol=1e-6):
 	# Flipped geometry
 	wshape, wwcs = flip_geometry(shape, wcs, flip)
 	# Get phi0 for the flipped geo
-	phi0 = wwcs.wcs_pix2world(0, 0, 0)[0]*utils.degree
+	phi0 = wcsutils.nobcheck(wwcs).wcs_pix2world(0, wshape[-2]//2, 0)[0]*utils.degree
 	# Check how we fit with a predefined ducc geometry
 	ducc_geo  = get_ducc_geo(wwcs, shape=wshape, tol=tol)
 	# If ducc_geo exists, then this map can either be used directly in
