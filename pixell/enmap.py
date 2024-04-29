@@ -2405,6 +2405,19 @@ def read_map_geometry(fname, fmt=None, hdu=None, address=None):
 		shape, wcs = slice_geometry(shape, wcs, sel)
 	return shape, wcs
 
+def read_map_dtype(fname, fmt=None, hdu=None, address=None):
+	toks = fname.split(":")
+	fname = toks[0]
+	if fmt == None:
+		if   fname.endswith(".hdf"):     fmt = "hdf"
+		elif fname.endswith(".fits"):    fmt = "fits"
+		elif fname.endswith(".fits.gz"): fmt = "fits.gz"
+		else: fmt = "fits"
+	if   fmt == "fits":    return read_fits_dtype(fname, hdu=hdu)
+	elif fmt == "fits.gz": return read_fits_dtype(fname, hdu=hdu, quick=False)
+	elif fmt == "hdf":     return read_hdf_dtype (fname, address=address)
+	else: raise ValueError
+
 def write_map_geometry(fname, shape, wcs, fmt=None):
 	"""Write an enmap geometry to file. The file type is inferred
 	from the file extension, unless fmt is passed.
@@ -2474,11 +2487,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, w
 	proxy = ndmap_proxy_fits(hdu, wcs, fname=fname, threshold=sel_threshold, verbose=verbose)
 	return read_helper(proxy, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, delayed=delayed)
 
-def read_fits_geometry(fname, hdu=None, quick=True):
-	"""Read an enmap wcs from the specified fits file. By default,
-	the map and coordinate system will be read from HDU 0. Use
-	the hdu argument to change this. The map must be stored as
-	a fits image."""
+def read_fits_header(fname, hdu=None, quick=True):
 	if hdu is None: hdu = 0
 	if hdu == 0 and quick:
 		# Read header only, without body
@@ -2491,12 +2500,28 @@ def read_fits_geometry(fname, hdu=None, quick=True):
 	else:
 		with utils.nowarn():
 			header = astropy.io.fits.open(fname)[hdu].header
+	return header
+
+def read_fits_geometry(fname, hdu=None, quick=True):
+	"""Read an enmap wcs from the specified fits file. By default,
+	the map and coordinate system will be read from HDU 0. Use
+	the hdu argument to change this. The map must be stored as
+	a fits image."""
+	header = read_fits_header(fname, hdu=hdu, quick=quick)
 	if header["NAXIS"] < 2:
 		raise ValueError("%s is not an enmap (only %d axes)" % (str(fname), header["NAXIS"]))
 	with warnings.catch_warnings():
 		wcs = wcsutils.WCS(header).sub(2)
 	shape = tuple([header["NAXIS%d"%(i+1)] for i in range(header["NAXIS"])[::-1]])
 	return shape, wcs
+
+def read_fits_dtype(fname, hdu=None, quick=True):
+	header = read_fits_header(fname, hdu=hdu, quick=quick)
+	if "BITPIX" not in header: raise KeyError("BITPIX not defined in fits file")
+	bitpix = header["BITPIX"]
+	table  = {-32:np.float32, -64:np.float64, 8:np.int8, 16:np.int16, 32:np.int32, 64:np.int64}
+	if bitpix not in table: raise ValueError("Unrecognized BITPIX %d" % bitpix)
+	return table[bitpix]
 
 def write_hdf(fname, emap, address=None, extra={}):
 	"""Write an enmap as an hdf file, preserving all the WCS
@@ -2581,6 +2606,13 @@ def read_hdf_geometry(fname, address=None):
 		wcs   = wcsutils.WCS(header).sub(2)
 		shape = hfile["data"].shape
 	return shape, wcs
+
+def read_hdf_dtype(fname, address=None):
+	import h5py
+	with h5py.File(fname,"r") as hfile:
+		if address is not None:
+			hfile = hfile[address]
+		return hfile["data"].dtype
 
 def read_npy(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None):
 	"""Read an enmap from the specified npy file. Only minimal support.
@@ -2966,7 +2998,7 @@ def padtiles(*maps, tshape=600, pad=60, margin=60, mode="auto", start=0, step=1)
 		if   len(maps) == 0: mode = ""
 		elif len(maps) == 1: mode = "r"
 		else:                mode = "r"*(len(maps)-1)+"w"
-	tiler = Padtiler(tshape=tshape, pad=pad, margin=margin)
+	tiler = Padtiler(tshape=tshape, pad=pad, margin=margin, start=start, step=step)
 	iters = []
 	for map, io in zip(maps, mode):
 		if   io == "r": iters.append(tiler.read (map))
