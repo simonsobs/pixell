@@ -2638,6 +2638,24 @@ def build_cossin(x, nmax):
 		if i % 2 == 1: res[i] = res[i-2]*res[1] - res[i-3]*res[0]
 	return res
 
+def uvec(n, i, dtype=np.float64):
+	"""Return a vector with length n with all elements equal to zero except for
+	the i'th. Useful for unit vector bashing"""
+	u = np.zeros(n, dtype=dtype)
+	u[i] = 1
+	return u
+
+def unit_vector_bash(Afun, n, dtype=np.float64):
+	"""Find the matrix representation Amat of linear operator Afun by
+	repeatedly applying it unit vectors with length n."""
+	v = Afun(uvec(n,0), dtype=dtype)
+	m = len(v)
+	Amat = np.zeros((m,n), dtype=dtype)
+	Amat[:,0] = v
+	for i in range(1,n):
+		Amat[:,i] = op(uvec(n,i,dtype=dtype))
+	return Amat
+
 def load_ascii_table(fname, desc, sep=None, dsep=None):
 	"""Load an ascii table with heterogeneous columns.
 	fname: Path to file
