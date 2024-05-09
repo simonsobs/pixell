@@ -822,6 +822,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], we
 			weights/= minfo.ducc_geo.nx
 		else:
 			weights = map.pixsizemap(separable=True, broadcastable=True)[:,0]
+			if minfo.flip: weights = weights[::-1]
 		weights = weights.astype(map.dtype, copy=False)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
@@ -1115,7 +1116,7 @@ def minres_inverse(forward, approx_backward, y, epsilon=1e-6, maxiter=100, zip=N
 	not the fastest choice when only moderate accuracy is needed.
 	"""
 	rhs   = approx_backward(y)
-	rtype = utils.real_dtype(rhs)
+	rtype = utils.real_dtype(rhs.dtype)
 	if zip is None:
 		def zip(a): return a.view(rtype).reshape(-1)
 	if unzip is None:
