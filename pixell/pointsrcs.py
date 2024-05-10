@@ -541,7 +541,9 @@ def read_dory_fits(fname, hdu=1):
 def read_dory_txt(fname):
 	try:
 		d = np.loadtxt(fname, usecols=[0,1,3,5,7], dtype=[("ra","d"),("dec","d"),("I","d"),("Q","d"),("U","d")]).view(np.recarray).reshape(-1)
-		d.I *= 1e3; d.Q *= 1e3; d.U *= 1e3
+		d.I   *= 1e3; d.Q *= 1e3; d.U *= 1e3
+		d.ra  *= utils.degree
+		d.dec *= utils.degree
 		return d
 	except (ValueError, IndexError) as e:
 		raise IOError(e.args[0])
