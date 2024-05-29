@@ -32,7 +32,7 @@ jobs:
 
   test-macos:
     name: "Run tests on MacOS"
-    runs-on: macos-latest
+    runs-on: macos-12
     env:
       # LDFLAGS: "-ld64" # For MacOS 13 and above (XCode CLT 15 and above.)
       CC: gcc-12
@@ -125,7 +125,7 @@ jobs:
 
   build_wheels_macos:
     name: Build wheels on MacOS
-    runs-on: macos-latest
+    runs-on: macos-12
     env:
       CC: gcc-12
       CXX: gcc-12
@@ -135,7 +135,7 @@ jobs:
       # Ensure that a wheel builder finishes even if another fails
       fail-fast: false
       matrix:
-        os: [macos-latest]
+        os: [macos-12]
         # We don't build 3.7 wheels for MacOS because that's x86 only.
         cp: [cp38, cp39, cp310, cp311]
         include:

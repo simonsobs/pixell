@@ -25,7 +25,7 @@ pixell
 Dependencies
 ------------
 
-* Python>=3.7
+* Python>=3.7 but Python 3.12 is not currently supported
 * gcc/gfortran or Intel compilers (clang might not work out of the box), if compiling from source
 * ducc0_, healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py, Pillow (Python Image Library)
 
