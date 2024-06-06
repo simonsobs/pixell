@@ -202,6 +202,7 @@ def unmask(arr, mask, axis=0, fill=0):
 	numpy mask-indexing operation, returning an array with the shape of
 	mask. Values that were not selected by mask in the first place will be
 	filled with the fill value."""
+	axis  %= arr.ndim
 	result = np.full(arr.shape[:axis]+mask.shape, fill, arr.dtype)
 	result[(slice(None),)*axis+(mask,)] = arr
 	return result
@@ -2645,15 +2646,15 @@ def uvec(n, i, dtype=np.float64):
 	u[i] = 1
 	return u
 
-def unit_vector_bash(Afun, n, dtype=np.float64):
+def ubash(Afun, n, dtype=np.float64):
 	"""Find the matrix representation Amat of linear operator Afun by
 	repeatedly applying it unit vectors with length n."""
-	v = Afun(uvec(n,0), dtype=dtype)
+	v = Afun(uvec(n,0,dtype=dtype))
 	m = len(v)
 	Amat = np.zeros((m,n), dtype=dtype)
 	Amat[:,0] = v
 	for i in range(1,n):
-		Amat[:,i] = op(uvec(n,i,dtype=dtype))
+		Amat[:,i] = Afun(uvec(n,i,dtype=dtype))
 	return Amat
 
 def load_ascii_table(fname, desc, sep=None, dsep=None):
@@ -3354,3 +3355,20 @@ def arg_help(arg):
 		return "np.ndarray %s %s %s %s" % (str(arg.shape), str(arg.dtype), str(arg.strides), "contig" if arg.flags["C_CONTIGUOUS"] else "noncontig")
 	else:
 		return "value %s" % (str(arg))
+
+def dicedist(N,D):
+	"""Calculate the distribution of the dice roll NdD"""
+	dist     = np.zeros(D+1)
+	dist[1:] = 1/D
+	return distpow(dist,N)
+
+def distpow(dist, N):
+	"""Given discrete probability distribution dist[:], calculate
+	its N'th convolution with itself"""
+	res     = np.ones(1)
+	while N > 0:
+		if N & 1 == 1:
+			res = np.convolve(res,dist)
+		dist = np.convolve(dist,dist)
+		N >>= 1
+	return res

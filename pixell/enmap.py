@@ -74,7 +74,7 @@ class ndmap(np.ndarray):
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def laxes(self, oversample=1, method="auto"): return laxes(self.shape, self.wcs, oversample=oversample, method=method)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
-	def lform(self, shift=True): return lform(self, shift=shift)
+	def lform(self): return lform(self)
 	def modlmap(self, oversample=1, min=0): return modlmap(self.shape, self.wcs, oversample=oversample, min=min)
 	def modrmap(self, ref="center", safe=True, corner=False): return modrmap(self.shape, self.wcs, ref=ref, safe=safe, corner=corner)
 	def lbin(self, bsize=None, brel=1.0, return_nhit=False, return_bins=False): return lbin(self, bsize=bsize, brel=brel, return_nhit=return_nhit, return_bins=return_bins)
@@ -2134,7 +2134,7 @@ def apod_mask(mask, width=1*utils.degree, edge=True, profile=apod_profile_cos):
 	r = mask.distance_transform(rmax=width)
 	return profile(r/width)
 
-def lform(map, shift=True):
+def lform(map):
 	"""Given an enmap, return a new enmap that has been fftshifted (unless shift=False),
 	and which has had the wcs replaced by one describing fourier space. This is mostly
 	useful for plotting or writing 2d power spectra.
