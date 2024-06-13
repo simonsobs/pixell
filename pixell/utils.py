@@ -197,6 +197,16 @@ def complement_inds(inds, n):
 	mask[inds] = False
 	return np.where(mask)[0]
 
+def unmask(arr, mask, axis=0, fill=0):
+	"""Pseudoinverse of operation arr=result[mask]. That is, it undoes a
+	numpy mask-indexing operation, returning an array with the shape of
+	mask. Values that were not selected by mask in the first place will be
+	filled with the fill value."""
+	axis  %= arr.ndim
+	result = np.full(arr.shape[:axis]+mask.shape, fill, arr.dtype)
+	result[(slice(None),)*axis+(mask,)] = arr
+	return result
+
 def dict_apply_listfun(dict, function):
 	"""Applies a function that transforms one list to another
 	with the same number of elements to the values in a dictionary,
@@ -322,6 +332,18 @@ def medmean(x, axis=None, frac=0.5):
 	x = np.sort(x, -1)
 	i = int(x.shape[-1]*frac)//2
 	return np.mean(x[...,i:-i],-1)
+
+def medmean2(x, axis=None, frac=0.1, bsize=None):
+	"""This is what medmean should have bean. This should be faster and have
+	less bias. Consider replacing medmean with this, as medmean doen't seem
+	to have been used much"""
+	x = np.asarray(x)
+	if axis is None:
+		x    = x.reshape(-1)
+		axis = 0
+	if bsize is None: bsize = nint(x.shape[axis]*frac)
+	means = block_reduce(x, bsize, axis=axis)
+	return np.median(means, axis=axis)
 
 def maskmed(arr, mask=None, axis=-1, maskval=0):
 	"""Median of array along the given axis, but ignoring
@@ -2617,6 +2639,24 @@ def build_cossin(x, nmax):
 		if i % 2 == 1: res[i] = res[i-2]*res[1] - res[i-3]*res[0]
 	return res
 
+def uvec(n, i, dtype=np.float64):
+	"""Return a vector with length n with all elements equal to zero except for
+	the i'th. Useful for unit vector bashing"""
+	u = np.zeros(n, dtype=dtype)
+	u[i] = 1
+	return u
+
+def ubash(Afun, n, dtype=np.float64):
+	"""Find the matrix representation Amat of linear operator Afun by
+	repeatedly applying it unit vectors with length n."""
+	v = Afun(uvec(n,0,dtype=dtype))
+	m = len(v)
+	Amat = np.zeros((m,n), dtype=dtype)
+	Amat[:,0] = v
+	for i in range(1,n):
+		Amat[:,i] = Afun(uvec(n,i,dtype=dtype))
+	return Amat
+
 def load_ascii_table(fname, desc, sep=None, dsep=None):
 	"""Load an ascii table with heterogeneous columns.
 	fname: Path to file
@@ -3315,3 +3355,20 @@ def arg_help(arg):
 		return "np.ndarray %s %s %s %s" % (str(arg.shape), str(arg.dtype), str(arg.strides), "contig" if arg.flags["C_CONTIGUOUS"] else "noncontig")
 	else:
 		return "value %s" % (str(arg))
+
+def dicedist(N,D):
+	"""Calculate the distribution of the dice roll NdD"""
+	dist     = np.zeros(D+1)
+	dist[1:] = 1/D
+	return distpow(dist,N)
+
+def distpow(dist, N):
+	"""Given discrete probability distribution dist[:], calculate
+	its N'th convolution with itself"""
+	res     = np.ones(1)
+	while N > 0:
+		if N & 1 == 1:
+			res = np.convolve(res,dist)
+		dist = np.convolve(dist,dist)
+		N >>= 1
+	return res

@@ -74,7 +74,7 @@ class ndmap(np.ndarray):
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def laxes(self, oversample=1, method="auto"): return laxes(self.shape, self.wcs, oversample=oversample, method=method)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
-	def lform(self, shift=True): return lform(self, shift=shift)
+	def lform(self): return lform(self)
 	def modlmap(self, oversample=1, min=0): return modlmap(self.shape, self.wcs, oversample=oversample, min=min)
 	def modrmap(self, ref="center", safe=True, corner=False): return modrmap(self.shape, self.wcs, ref=ref, safe=safe, corner=corner)
 	def lbin(self, bsize=None, brel=1.0, return_nhit=False, return_bins=False): return lbin(self, bsize=bsize, brel=brel, return_nhit=return_nhit, return_bins=return_bins)
@@ -638,6 +638,16 @@ def insert_at(omap, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
 	pixbox = np.array(pix)
 	if pixbox.ndim == 1: pixbox = np.array([pixbox,pixbox+imap.shape[-2:]])
 	extract_pixbox(omap, pixbox, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=True)
+	return omap
+
+def map_union(map1, map2):
+	"""Given two maps with compatible wcs but possibly covering different
+	parts of the sky, return a new map that contains all pixels of both maps.
+	If the input maps overlap, then those pixels will have the sum of the two maps"""
+	oshape, owcs = union_geometry([map1.geometry, map2.geometry])
+	omap = enmap.zeros(map1.shape[:-2]+oshape[-2:], owcs, map1.dtype)
+	omap.insert(map1)
+	omap.insert(map2, op=lambda a,b:a+b)
 	return omap
 
 def overlap(shape, wcs, shape2_or_pixbox, wcs2=None, wrap="auto"):
@@ -1843,6 +1853,7 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 	if omap is None: omap = empty(shape[-2:], wcs)
 	if domains and odomains is None: odomains = empty(shape[-2:], wcs, np.int32)
 	points = np.asarray(points)
+	if points.ndim == 1: points = points[:,None]
 	assert points.ndim == 2 and len(points) == 2, "points must be [{dec,ra},npoint]"
 	# Handle case where no points are specified
 	if points.size == 0:
@@ -2123,7 +2134,7 @@ def apod_mask(mask, width=1*utils.degree, edge=True, profile=apod_profile_cos):
 	r = mask.distance_transform(rmax=width)
 	return profile(r/width)
 
-def lform(map, shift=True):
+def lform(map):
 	"""Given an enmap, return a new enmap that has been fftshifted (unless shift=False),
 	and which has had the wcs replaced by one describing fourier space. This is mostly
 	useful for plotting or writing 2d power spectra.
@@ -2397,6 +2408,19 @@ def read_map_geometry(fname, fmt=None, hdu=None, address=None):
 		shape, wcs = slice_geometry(shape, wcs, sel)
 	return shape, wcs
 
+def read_map_dtype(fname, fmt=None, hdu=None, address=None):
+	toks = fname.split(":")
+	fname = toks[0]
+	if fmt == None:
+		if   fname.endswith(".hdf"):     fmt = "hdf"
+		elif fname.endswith(".fits"):    fmt = "fits"
+		elif fname.endswith(".fits.gz"): fmt = "fits.gz"
+		else: fmt = "fits"
+	if   fmt == "fits":    return read_fits_dtype(fname, hdu=hdu)
+	elif fmt == "fits.gz": return read_fits_dtype(fname, hdu=hdu, quick=False)
+	elif fmt == "hdf":     return read_hdf_dtype (fname, address=address)
+	else: raise ValueError
+
 def write_map_geometry(fname, shape, wcs, fmt=None):
 	"""Write an enmap geometry to file. The file type is inferred
 	from the file extension, unless fmt is passed.
@@ -2466,11 +2490,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, w
 	proxy = ndmap_proxy_fits(hdu, wcs, fname=fname, threshold=sel_threshold, verbose=verbose)
 	return read_helper(proxy, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, delayed=delayed)
 
-def read_fits_geometry(fname, hdu=None, quick=True):
-	"""Read an enmap wcs from the specified fits file. By default,
-	the map and coordinate system will be read from HDU 0. Use
-	the hdu argument to change this. The map must be stored as
-	a fits image."""
+def read_fits_header(fname, hdu=None, quick=True):
 	if hdu is None: hdu = 0
 	if hdu == 0 and quick:
 		# Read header only, without body
@@ -2483,12 +2503,28 @@ def read_fits_geometry(fname, hdu=None, quick=True):
 	else:
 		with utils.nowarn():
 			header = astropy.io.fits.open(fname)[hdu].header
+	return header
+
+def read_fits_geometry(fname, hdu=None, quick=True):
+	"""Read an enmap wcs from the specified fits file. By default,
+	the map and coordinate system will be read from HDU 0. Use
+	the hdu argument to change this. The map must be stored as
+	a fits image."""
+	header = read_fits_header(fname, hdu=hdu, quick=quick)
 	if header["NAXIS"] < 2:
 		raise ValueError("%s is not an enmap (only %d axes)" % (str(fname), header["NAXIS"]))
 	with warnings.catch_warnings():
 		wcs = wcsutils.WCS(header).sub(2)
 	shape = tuple([header["NAXIS%d"%(i+1)] for i in range(header["NAXIS"])[::-1]])
 	return shape, wcs
+
+def read_fits_dtype(fname, hdu=None, quick=True):
+	header = read_fits_header(fname, hdu=hdu, quick=quick)
+	if "BITPIX" not in header: raise KeyError("BITPIX not defined in fits file")
+	bitpix = header["BITPIX"]
+	table  = {-32:np.float32, -64:np.float64, 8:np.int8, 16:np.int16, 32:np.int32, 64:np.int64}
+	if bitpix not in table: raise ValueError("Unrecognized BITPIX %d" % bitpix)
+	return table[bitpix]
 
 def write_hdf(fname, emap, address=None, extra={}):
 	"""Write an enmap as an hdf file, preserving all the WCS
@@ -2573,6 +2609,13 @@ def read_hdf_geometry(fname, address=None):
 		wcs   = wcsutils.WCS(header).sub(2)
 		shape = hfile["data"].shape
 	return shape, wcs
+
+def read_hdf_dtype(fname, address=None):
+	import h5py
+	with h5py.File(fname,"r") as hfile:
+		if address is not None:
+			hfile = hfile[address]
+		return hfile["data"].dtype
 
 def read_npy(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None):
 	"""Read an enmap from the specified npy file. Only minimal support.
@@ -2958,7 +3001,7 @@ def padtiles(*maps, tshape=600, pad=60, margin=60, mode="auto", start=0, step=1)
 		if   len(maps) == 0: mode = ""
 		elif len(maps) == 1: mode = "r"
 		else:                mode = "r"*(len(maps)-1)+"w"
-	tiler = Padtiler(tshape=tshape, pad=pad, margin=margin)
+	tiler = Padtiler(tshape=tshape, pad=pad, margin=margin, start=start, step=step)
 	iters = []
 	for map, io in zip(maps, mode):
 		if   io == "r": iters.append(tiler.read (map))
