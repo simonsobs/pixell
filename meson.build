@@ -13,15 +13,18 @@ omp_dep = dependency('openmp')
 library_install_dir = py.get_install_dir() / 'pixell'
 
 # Includes
+
+# Need to massage these into relative paths to keep meson happy.
+# It does not allow for absolute paths.
 incdir_numpy = run_command(
     py,
-    ['-c', 'import numpy; print(numpy.get_include())'],
+    ['-c', 'import numpy; import os; print(os.path.relpath(numpy.get_include()))'],
     check: true
 ).stdout().strip()
 
 incdir_f2py = run_command(
     py,
-    ['-c', 'import numpy.f2py; print(numpy.f2py.get_include())'],
+    ['-c', 'import numpy.f2py; import os; print(os.path.relpath(numpy.f2py.get_include()))'],
     check: true
 ).stdout().strip()
 
