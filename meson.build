@@ -9,6 +9,13 @@ py = import('python').find_installation(pure: false)
 py_dep = py.dependency()
 omp_dep = dependency('openmp')
 
+# Libraries
+cc = meson.get_compiler('c')
+c_m_dep = cc.find_library('m', required: true)
+
+fc = meson.get_compiler('fortran')
+fortran_m_dep = fc.find_library('m', required: true)
+
 # Directories
 library_install_dir = py.get_install_dir() / 'pixell'
 
@@ -57,7 +64,7 @@ foreach source_name, module_name : fortran_sources
         [source_name, f2py_output],
         incdir_f2py / 'fortranobject.c',
         include_directories: fortran_include,
-        dependencies: [py_dep, omp_dep],
+        dependencies: [py_dep, omp_dep, c_m_dep, fortran_m_dep],
         install: true,
         install_dir: library_install_dir
     )
@@ -84,7 +91,7 @@ foreach source_name, module_name : helper_sources
         install: true,
         install_dir: library_install_dir,
         include_directories: [incdir_numpy],
-        dependencies: [omp_dep],
+        dependencies: [omp_dep, c_m_dep],
     )
 endforeach
 
@@ -101,7 +108,7 @@ foreach source_name, module_name : cython_sources
         module_name,
         source_name,
         include_directories: ['cython', incdir_numpy],
-        dependencies: [py_dep, omp_dep],
+        dependencies: [py_dep, omp_dep, c_m_dep],
         link_with: linkables,
         install: true,
         install_dir: library_install_dir
