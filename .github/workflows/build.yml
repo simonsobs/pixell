@@ -93,14 +93,12 @@ jobs:
         run: |
           python -m pip install -U pip
           python -m pip install -U setuptools
-          python -m pip install --upgrade pip setuptools wheel
-          python -m pip install pytest-cov numpy "Cython<3.0.4"
-          python -m pip install cibuildwheel
+          python -m pip install --upgrade pip setuptools wheel build meson
 
       - name: Test and build wheels
         run: |
           ln -s $FC $(dirname $(which $FC))/gfortran
-          bash scripts/build_wheels.sh
+          python3 -m build
         env:
           CIBW_ENVIRONMENT: OMP_NUM_THREADS=2
                             OPENBLAS_NUM_THREADS=2
@@ -156,14 +154,11 @@ jobs:
         run: |
           python -m pip install -U pip
           python -m pip install -U setuptools
-          python -m pip install --upgrade pip setuptools wheel
-          python -m pip install pytest-cov numpy "Cython<3.0.4"
-          python -m pip install cibuildwheel
-
+          python -m pip install --upgrade pip setuptools wheel build
       - name: Test and build wheels
         run: |
           ln -s $FC $(dirname $(which $FC))/gfortran
-          bash scripts/build_wheels.sh
+          python3 -m build
         env:
           CIBW_ENVIRONMENT: OMP_NUM_THREADS=2
                             OPENBLAS_NUM_THREADS=2
