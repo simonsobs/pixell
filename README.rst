@@ -25,14 +25,13 @@ pixell
 Dependencies
 ------------
 
-* Python>=3.7 but Python 3.12 is not currently supported
+* Python>=3.9.
 * gcc/gfortran or Intel compilers (clang might not work out of the box), if compiling from source
 * ducc0_, healpy, Cython, astropy, numpy, scipy, matplotlib, pyyaml, h5py, Pillow (Python Image Library)
 
 On MacOS, and other systems with non-traditional environments, you should specify the following standard environment variables:
 
 * ``CC``: C compiler (example: ``gcc``)
-* ``CXX``: C++ compiler (example: ``g++``)
 * ``FC``: Fortran compiler (example: ``gfortran``)
 
 We recommend using ``gcc`` installed from Homebrew to access these compilers on
@@ -64,59 +63,33 @@ Make sure your ``pip`` tool is up-to-date. To install ``pixell``, run:
 .. code-block:: console
 		
    $ pip install pixell --user
-   $ test-pixell
 
-This will install a pre-compiled binary suitable for your system (only Linux and Mac OS X with Python>=3.7 are supported). Note that you need ``~/.local/bin`` to be in your ``PATH`` for the latter ``test-pixell`` to work.
+This will install a pre-compiled binary suitable for your system (only Linux and Mac OS X with Python>=3.9 are supported). 
 
-If you require more control over your installation, e.g. using Intel compilers, please see the section below on compiling from source.  The ``test-pixell`` command will run a suite of unit tests.
+If you require more control over your installation, e.g. using Intel compilers, please see the section below on compiling from source.
 
 Compiling from source (advanced / development workflow)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For compilation instructions specific to NERSC/cori, see NERSC_.
 
-For all other, below are general instructions.
+The easiest way to install from source is to use the ``pip`` tool,
+with the ``--no-binary`` flag. This will download the source distribution
+and compile it for you. Don't forget to make sure you have CC and FC set
+if you have any problems.
 
-First, download the source distribution or ``git clone`` this repository. You can work from ``master`` or checkout one of the released version tags (see the Releases section on Github). Then change into the cloned/source directory.
+For all other cases, below are general instructions.
 
+First, download the source distribution or ``git clone`` this repository. You
+can work from ``master`` or checkout one of the released version tags (see the
+Releases section on Github). Then change into the cloned/source directory.
 
-Run ``setup.py``
-~~~~~~~~~~~~~~~~
+Once downloaded, you can install using ``pip install .`` inside the project
+directory. We use the ``meson`` build system, which should be understood by
+``pip`` (it will build in an isolated environment).
 
-If not using Intel compilers (see below), build the package using 
-
-.. code-block:: console
-		
-   $ python setup.py build_ext -i
-
-You may now test the installation:
-
-.. code-block:: console
-		
-   $ py.test pixell/tests/
-   
-If the tests pass, you can install the package (optionally with ``-e`` if you would like to edit the files after installation)
-   
-.. code-block:: console
-
-   $ python setup.py install --user
-
-   
-Intel compilers
-~~~~~~~~~~~~~~~
-
-Intel compilers require you to modify the build step above as follows
-
-.. code-block:: console
-		
-   $ python setup.py build_ext -i --fcompiler=intelem --compiler=intelem
-
-On some systems, further specification might be required (make sure to get a fresh copy of the repository before trying out a new install method), e.g.:
-
-.. code-block:: console
-
-   $ LDSHARED="icc -shared" LD=icc LINKCC=icc CC=icc python setup.py build_ext -i --fcompiler=intelem --compiler=intelem
-
+We suggest you then test the installation by running the unit tests. You
+can do this by running ``pytest``.
 
 
 Contributions
