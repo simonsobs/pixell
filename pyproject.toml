@@ -67,5 +67,5 @@ testpaths = [
 
 [tool.cibuildwheel]
 test-requires = "pytest"
-test-command = "pytest"
+test-command = "pytest {project}/tests"
 build = "cp39-* cp310-* cp311-* cp312-*"
