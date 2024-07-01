@@ -66,7 +66,7 @@ foreach source_name, module_name : fortran_sources
         include_directories: fortran_include,
         dependencies: [py_dep, omp_dep, c_m_dep, fortran_m_dep],
         install: true,
-        install_dir: library_install_dir
+        subdir: 'pixell'
     )
 endforeach
 
@@ -111,7 +111,7 @@ foreach source_name, module_name : cython_sources
         dependencies: [py_dep, omp_dep, c_m_dep],
         link_with: linkables,
         install: true,
-        install_dir: library_install_dir
+        subdir: 'pixell',
     )
 endforeach
 

@@ -3,7 +3,7 @@ build-backend = 'mesonpy'
 requires = ['meson-python', 'numpy', 'cython', 'versioneer[toml]', 'build']
 
 [project]
-name = 'mytestlib'
+name = 'pixell'
 # TODO: Versioneer
 version = '1.0.0'
 description = "A rectangular pixel map manipulation and harmonic analysis library derived from Sigurd Naess' enlib."
@@ -57,4 +57,9 @@ test = [
     'pytest-cov>=2.6',
     'coveralls>=1.5',
     'pytest>=4.6'
+]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
 ]

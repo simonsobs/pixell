@@ -28,6 +28,8 @@ python_sources = [
     'utils.py',
     'wavelets.py',
     'wcsutils.py',
+    # Not technically a python source file, but is required for pixell
+    'arial.ttf',
 ]
 
 py.install_sources(
