@@ -19,8 +19,8 @@ jobs:
       
       - name: Run Tests (Linux)
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          python -m pip install -e '.[test]'
+          python -m pip install --upgrade pip setuptools wheel meson ninja meson-python
+          python -m pip install --no-build-isolation --editable '.[test]'
           pytest --cov-report html --cov-report xml --cov-report annotate -s
           
       - uses: codecov/codecov-action@v2
