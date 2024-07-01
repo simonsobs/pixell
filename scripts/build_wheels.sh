@@ -15,7 +15,7 @@ set -x
 python -m pip install --upgrade pip setuptools wheel build
 python -m build
 python -m pip install .
-py.test --cov=pixell pixell/tests/ -s
+py.test --cov=pixell -s
 find . -type f -iname '*.so' -print -delete
 rm -rf _deps/
 python -m cibuildwheel --output-dir wheelhouse
