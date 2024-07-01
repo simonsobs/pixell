@@ -22,7 +22,7 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install pytest-cov numpy "Cython<3.0.4"
           python -m pip install .
-          pytest --cov-report html --cov-report xml --cov-report annotate --cov=pixell pixell/tests/ -s
+          pytest --cov-report html --cov-report xml --cov-report annotate --cov=pixell -s
           
       - uses: codecov/codecov-action@v2
         with:
@@ -61,7 +61,7 @@ jobs:
 
       - name: Run Tests (MacOS)
         run: |
-          pytest pixell/tests/ -s
+          pytest -s
 
 
   build_wheels_linux:
@@ -111,7 +111,7 @@ jobs:
           CIBW_TEST_REQUIRES: pytest
           CIBW_TEST_COMMAND: >
             cd /
-            pytest {project}/pixell/tests -s
+            pytest {project}/tests -s
           PYTHON: "python"
           PIP: "pip"
 
@@ -179,7 +179,7 @@ jobs:
           CIBW_TEST_REQUIRES: pytest
           CIBW_TEST_COMMAND: >
             cd /
-            pytest {project}/pixell/tests -s
+            pytest {project}/tests -s
           # Cannot test arm64 on non-native runner
           CIBW_TEST_SKIP: "*_arm64"
           PYTHON: "python"
