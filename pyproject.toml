@@ -63,3 +63,9 @@ test = [
 testpaths = [
     "tests",
 ]
+
+
+[tool.cibuildwheel]
+test-requires = "pytest"
+test-command = "pytest"
+build = "cp39-* cp310-* cp311-* cp312-*"

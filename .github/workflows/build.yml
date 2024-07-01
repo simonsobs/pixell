@@ -64,6 +64,24 @@ jobs:
           pytest -s
 
 
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        # macos-13 is an intel runner, macos-14 is apple silicon
+        os: [ubuntu-latest, windows-latest, macos-13, macos-14]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.19.1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./wheelhouse/*.whl
   build_wheels_linux:
     name: Build wheels on Linux
     runs-on: ubuntu-latest
@@ -158,11 +176,10 @@ jobs:
       - name: Test and build wheels
         run: |
           ln -s $FC $(dirname $(which $FC))/gfortran
-          python3 -m build
+          python -m build
         env:
           CIBW_ENVIRONMENT: OMP_NUM_THREADS=2
                             OPENBLAS_NUM_THREADS=2
-          CIBW_BEFORE_BUILD: "python -m pip install numpy==${{ matrix.numpyver }} scipy 'cython<3.0.4'"
           CIBW_BUILD_VERBOSITY: 3
           # To build for both x86_64 and arm64, uncomment the following lines.
           # That would require a fortran compiler that can cross-comile from
@@ -183,7 +200,6 @@ jobs:
       - uses: actions/upload-artifact@v2
         with:
           path: ./wheelhouse/*.whl
-      
 
   build_sdist:
     name: Build source distribution
