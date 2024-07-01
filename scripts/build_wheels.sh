@@ -12,9 +12,8 @@ set -x
 # in the pyproject.toml file, while the tests are run
 # against the most recent version of the dependencies
 
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install cibuildwheel
-python setup.py build_ext -i
+python -m pip install --upgrade pip setuptools wheel build
+python -m pip build
 python -m pip install .
 py.test --cov=pixell pixell/tests/ -s
 find . -type f -iname '*.so' -print -delete
