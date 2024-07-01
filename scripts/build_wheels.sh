@@ -13,7 +13,7 @@ set -x
 # against the most recent version of the dependencies
 
 python -m pip install --upgrade pip setuptools wheel build
-python -m pip build
+python -m build
 python -m pip install .
 py.test --cov=pixell pixell/tests/ -s
 find . -type f -iname '*.so' -print -delete
