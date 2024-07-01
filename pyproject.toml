@@ -1,6 +1,6 @@
 [build-system]
 build-backend = 'mesonpy'
-requires = ['meson-python', 'numpy', 'cython', 'versioneer[toml]']
+requires = ['meson-python', 'numpy', 'cython', 'versioneer[toml]', 'build']
 
 [project]
 name = 'mytestlib'
