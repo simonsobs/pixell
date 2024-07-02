@@ -55,6 +55,13 @@ have both efficiency and performance cores, you may wish to set ``OMP_NUM_THREAD
 the number of performance cores in your system. This will ensure that the efficiency cores
 are not used for the parallelized parts of ``pixell`` and ``ducc0``.
 
+You can check the threading behaviour (and the installation of ``pixell``) by running
+the benchmark script:
+
+.. code-block:: console
+
+   $ benchmark-pixell-runner
+
 Installing
 ----------
 

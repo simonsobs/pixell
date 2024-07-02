@@ -35,6 +35,11 @@ dependencies = [
     'numba>=0.54.0'
 ]
 
+[project.scripts]
+# See scripts/meson.build for installation
+benchmark-pixell-runner = "pixell.scripts.benchmark_pixell_runner:main"
+benchmark-pixell = "pixell.scripts.benchmark_pixell:main"
+
 [project.optional-dependencies]
 test = [
     'pip>=9.0',

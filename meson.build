@@ -118,3 +118,4 @@ endforeach
 # The actual python install itself is left up to a helper build
 # script deifned in pixell/
 subdir('pixell')
+subdir('scripts')
