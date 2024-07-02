@@ -2,6 +2,9 @@
 NERSC Installation
 ==================
 
+NOTE: This documentation is severely out of date. Pixell requires python 3.9.
+If you are using pixell on NERSC for SO, you should use one of the pre-prepared envs.
+
 If you have not set a Python environment already, we recommend using this module:
 
 .. code:: shell
