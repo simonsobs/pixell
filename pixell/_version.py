@@ -518,3 +518,7 @@ def get_versions():
     return {"version": "0+unknown", "full-revisionid": None,
             "dirty": None,
             "error": "unable to compute version", "date": None}
+
+
+if __name__ == "__main__":
+    print(get_versions()["version"])
