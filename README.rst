@@ -102,7 +102,7 @@ perform micro-builds on usage in this case):
 
 .. code-block:: console
    
-   $ pip install --editable --no-build-isolation .
+   $ pip install  --no-build-isolation --editable.
 
 
 Contributions
