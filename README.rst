@@ -78,8 +78,6 @@ If you require more control over your installation, e.g. using Intel compilers, 
 Compiling from source (advanced / development workflow)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For compilation instructions specific to NERSC/cori, see NERSC_.
-
 The easiest way to install from source is to use the ``pip`` tool,
 with the ``--no-binary`` flag. This will download the source distribution
 and compile it for you. Don't forget to make sure you have CC and FC set
