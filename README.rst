@@ -102,6 +102,7 @@ perform micro-builds on usage in this case):
 
 .. code-block:: console
    
+   $ pip install --upgrade pip meson ninja meson-python cython numpy
    $ pip install  --no-build-isolation --editable .
 
 
