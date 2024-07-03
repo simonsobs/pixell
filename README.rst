@@ -96,6 +96,14 @@ directory. We use the ``meson`` build system, which should be understood by
 We suggest you then test the installation by running the unit tests. You
 can do this by running ``pytest``.
 
+To run an editable install, you will need to do so in a way that does not
+have build isolation (as the backend build system, `meson` and `ninja`, actually
+perform micro-builds on usage in this case):
+
+.. code-block:: console
+   
+   $ pip install --editable --no-build-isolation .
+
 
 Contributions
 -------------
