@@ -1121,7 +1121,3 @@ class PixelTests(unittest.TestCase):
         assert m1c.geometry.nactive == 2
         assert np.allclose(m1c, 1)
 
-
-if __name__ == '__main__':
-    unittest.main()
-    test_sim_slice()
