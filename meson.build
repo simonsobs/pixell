@@ -19,7 +19,8 @@ py = import('python').find_installation(pure: false)
 
 # Dependencies
 py_dep = py.dependency()
-omp_dep = dependency('openmp')
+# message('Machine', host_machine.system(), 'CPU type', host_machine.cpu_family())
+omp_dep = dependency('openmp', required : false)
 
 # Libraries
 cc = meson.get_compiler('c')
@@ -27,7 +28,10 @@ c_m_dep = cc.find_library('m', required: true)
 
 fc = meson.get_compiler('fortran')
 fortran_m_dep = fc.find_library('m', required: true)
-
+if not omp_dep.found()
+    warning('It seems this is a Macbook with M type processor, moving forward without openmp.')
+    add_project_arguments(['-D_NOOPENMP','-Wno-error=incompatible-function-pointer-types'], language : ['c', 'cpp'])
+endif
 # Directories
 library_install_dir = py.get_install_dir() / 'pixell'
 

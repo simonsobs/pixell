@@ -3,7 +3,14 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include <omp.h>
+
+#ifdef _NOOPENMP
+    typedef int omp_int_t;
+    inline omp_int_t omp_get_thread_num() { return 0;}
+    inline omp_int_t omp_get_max_threads() { return 1;}
+#else
+    #include <omp.h>
+#endif
 
 int min(int a, int b) { return a < b ? a : b; }
 int max(int a, int b) { return a > b ? a : b; }
