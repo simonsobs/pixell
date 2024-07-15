@@ -3,16 +3,6 @@
 project(
     'pixell',
     ['c', 'fortran', 'cython'],
-    version: run_command(
-        [
-            # Note that _version.py doesn't actually 'dynamically' set the
-            # version number. We call it at build time and set it as a meson
-            # property.
-            'python',
-            'pixell/_version.py'
-        ],
-        check: true,
-    ).stdout().strip()
 )
 
 py = import('python').find_installation(pure: false)

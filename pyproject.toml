@@ -3,8 +3,8 @@ build-backend = 'mesonpy'
 requires = ['meson-python', 'numpy', 'cython', 'versioneer[toml]', 'build']
 
 [project]
-dynamic = ["version"]
 name = 'pixell'
+version = "0.26.0"
 description = "A rectangular pixel map manipulation and harmonic analysis library derived from Sigurd Naess' enlib."
 readme = 'README.rst'
 requires-python = '>=3.9'
@@ -82,11 +82,3 @@ source = [
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover"]
 exclude_also = ["if TYPE_CHECKING:"]
-
-[tool.versioneer]
-VCS = "git"
-style = "pep440"
-versionfile_source = "pixell/_version.py"
-versionfile_build = "pixell/_version.py"
-tag_prefix = "v"
-parentdir_prefix = "pixell-"
