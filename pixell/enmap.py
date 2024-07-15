@@ -48,7 +48,10 @@ class ndmap(np.ndarray):
 	def __repr__(self):
 		return "ndmap(%s,%s)" % (np.asarray(self), wcsutils.describe(self.wcs))
 	def __str__(self): return repr(self)
-	def __array_wrap__(self, arr, context=None):
+	def __array_wrap__(self, arr, context=None, return_scalar=False):
+		# In the future need to support `return_scalar`, but that is seemingly
+		# undocumented and not actually supported in numpy 2.0? So for now we
+		# just ignore it.
 		if arr.ndim < 2: return arr
 		return ndmap(arr, self.wcs)
 	def __reduce__(self):
@@ -2729,7 +2732,9 @@ def fix_endian(map):
 	"""Make endianness of array map match the current machine.
 	Returns the result."""
 	if map.dtype.byteorder not in ['=','<' if sys.byteorder == 'little' else '>']:
-		map = map.byteswap(True).newbyteorder()
+		# Compatibility to numpy 2.0
+		map = map.byteswap(True)
+		map = map.view(map.dtype.newbyteorder())
 	map.dtype = utils.fix_dtype_mpi4py(map.dtype)
 	return map
 
