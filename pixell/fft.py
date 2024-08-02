@@ -397,6 +397,7 @@ def resample_fft(fa, n, out=None, axes=-1, norm=1, op=lambda a,b:b):
 			c = min(fa.shape[ax], oshape[ax])
 			if I[ai] == 0: sel[ax] = slice(0,c//2)
 			else:          sel[ax] = slice(-(c-c//2),None)
+	sel = tuple(sel)
 	transfer(out[sel], fa[sel], norm, op)
 	return out
 

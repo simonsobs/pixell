@@ -2729,7 +2729,7 @@ def fix_endian(map):
 	"""Make endianness of array map match the current machine.
 	Returns the result."""
 	if map.dtype.byteorder not in ['=','<' if sys.byteorder == 'little' else '>']:
-		map = map.byteswap(True).newbyteorder()
+		map = map.byteswap(True).view(map.dtype.newbyteorder())
 	map.dtype = utils.fix_dtype_mpi4py(map.dtype)
 	return map
 
