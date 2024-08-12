@@ -1,6 +1,5 @@
 python_sources = [
     '__init__.py',
-    '_version.py',
     'aberration.py',
     'analysis.py',
     'array_ops.py',

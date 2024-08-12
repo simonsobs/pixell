@@ -315,8 +315,6 @@ iplanck = numba.njit(utils.iplanck_T)
 # In the future I can easily gain back af actor 4x with an implementation in C
 @numba.njit
 def _modulate_T2lin(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, spin=0, dipole=False):
-	xh   = 0.5*utils.h*freq/(utils.k*T0)
-	f    = xh/np.tanh(xh)-1
 	scale= dplanck(freq, T=T0)
 	off  = planck(freq,T0)/scale
 	for y in range(map.shape[0]):
@@ -334,8 +332,6 @@ def _modulate_T2lin(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, spin=0, d
 
 @numba.njit
 def _modulate_lin2T(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, spin=0, dipole=False):
-	xh   = 0.5*utils.h*freq/(utils.k*T0)
-	f    = xh/np.tanh(xh)-1
 	scale= dplanck(freq, T=T0) # Jy/sr/K'
 	off  = planck(freq,T0)     # Jy/sr
 	for y in range(map.shape[0]):
