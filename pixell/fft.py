@@ -138,7 +138,8 @@ def fft(tod, ft=None, nthread=0, axes=[-1], flags=None, _direction="FFTW_FORWARD
 	use in the fft. The default (0) uses the value specified by the
 	OMP_NUM_THREAD environment varible if that is specified, or the total number
 	of cores on the computer otherwise."""
-	tod = asfcarray(tod)
+	tod  = asfcarray(tod)
+	axes = utils.astuple(axes)
 	if tod.size == 0: return
 	nt = nthread or nthread_fft
 	if flags is None: flags = default_flags
@@ -164,7 +165,8 @@ def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None, engine=
 	meaning that fft followed by ifft will multiply the data by the length of the
 	transform. By specifying the normalize argument, you can turn normalization
 	on, though the normalization step will not use paralellization."""
-	ft = asfcarray(ft)
+	ft   = asfcarray(ft)
+	axes = utils.astuple(axes)
 	if ft.size == 0: return
 	nt = nthread or nthread_ifft
 	if flags is None: flags = default_flags
@@ -184,7 +186,8 @@ def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None, engine=
 def rfft(tod, ft=None, nthread=0, axes=[-1], flags=None, engine="auto"):
 	"""Equivalent to fft, except that if ft is not passed, it is allocated with
 	appropriate shape and data type for a real-to-complex transform."""
-	tod = asfcarray(tod)
+	tod  = asfcarray(tod)
+	axes = utils.astuple(axes)
 	if ft is None:
 		oshape = list(tod.shape)
 		oshape[axes[-1]] = oshape[axes[-1]]//2+1
@@ -198,7 +201,8 @@ def irfft(ft, tod=None, n=None, nthread=0, normalize=False, axes=[-1], flags=Non
 	is specified, that is used as the length of the last transform axis
 	of the output array. Otherwise, the length of this axis is computed
 	assuming an even original array."""
-	ft = asfcarray(ft)
+	ft   = asfcarray(ft)
+	axes = utils.astuple(axes)
 	if tod is None:
 		oshape = list(ft.shape)
 		oshape[axes[-1]] = n or (oshape[axes[-1]]-1)*2
@@ -221,8 +225,9 @@ def dct(tod, dt=None, nthread=0, normalize=False, axes=[-1], flags=None, type="D
 	Note that DCTs and DSTs were only added to pyfftw in version 13.0. The function will
 	fail with an Invalid scheme error for older versions.
 	"""
-	tod = asfcarray(tod)
-	type= _dct_names[type]
+	tod  = asfcarray(tod)
+	type = _dct_names[type]
+	axes = utils.astuple(axes)
 	if dt is None:
 		dt = empty(tod.shape, tod.dtype)
 	return fft(tod, dt, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes), engine=engine)
@@ -256,6 +261,7 @@ def idct(dt, tod=None, nthread=0, normalize=False, axes=[-1], flags=None, type="
 	dt   = asfcarray(dt)
 	type = _dct_inverses[_dct_names[type]]
 	off  = _dct_sizes[type]
+	axes = utils.astuple(axes)
 	if tod is None:
 		tod = empty(dt.shape, dt.dtype)
 	fft(dt, tod, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes), engine=engine)
@@ -290,6 +296,7 @@ def redft00(a, b=None, nthread=0, normalize=False, flags=None, engine="auto"):
 	a = asfcarray(a)
 	if b is None: b = empty(a.shape, a.dtype)
 	n = a.shape[-1]
+	axes   = utils.astuple(axes)
 	tshape = a.shape[:-1] + (2*(n-1),)
 	itmp = empty(tshape, a.dtype)
 	itmp[...,:n] = a[...,:n]
@@ -341,6 +348,7 @@ def shift(a, shift, axes=None, nofft=False, deriv=None, engine="auto"):
 	ca     = a+0j
 	shift  = np.atleast_1d(shift)
 	if axes is None: axes = range(-len(shift),0)
+	axes   = utils.astuple(axes)
 	fa = fft(ca, axes=axes, engine=engine) if not nofft else ca
 	for i, ax in enumerate(axes):
 		ax   %= ca.ndim
@@ -352,6 +360,24 @@ def shift(a, shift, axes=None, nofft=False, deriv=None, engine="auto"):
 	if not nofft: ifft(fa, ca, axes=axes, normalize=True, engine=engine)
 	else:	      ca = fa
 	return ca if np.iscomplexobj(a) else ca.real
+
+def resample(a, n, axes=None, nthread=0, engine="auto"):
+	"""Given an array a, resize the given axes (defaulting to the last ones) to
+	length n (tuple or int) using Fourier resampling. For example, if a has shape
+	(2,3,4), then resample(a, 10, -1) has shape (2,3,10), and resample(a, (20,10), (0,2))
+	has shape (20,3,10)."""
+	a    = np.asarray(a)
+	n    = utils.astuple(n)
+	if axes is None:
+		axes = [-len(n)+i for i in range(len(n))]
+	if len(n) != len(axes):
+		raise ValueError("Resize size n = %s does not match axes = %s" % (str(n),str(axes)))
+	fa   = fft(a, axes=axes, nthread=nthread, engine=engine)
+	norm = 1/np.prod([a.shape[ax] for ax in axes])
+	fa   = resample_fft(fa, n, axes=axes, norm=norm)
+	out  = ifft(fa, axes=axes, normalize=False, nthread=nthread, engine=engine)
+	if not np.iscomplexobj(a): out = out.real
+	return out
 
 def resample_fft(fa, n, out=None, axes=-1, norm=1, op=lambda a,b:b):
 	"""Given array fa[{dims}] which is the fourier transform of some array a,
@@ -372,9 +398,8 @@ def resample_fft(fa, n, out=None, axes=-1, norm=1, op=lambda a,b:b):
 	fa = np.asanyarray(fa)
 	# Support n and axes being either tuples or a single number,
 	# and broadcast n to match axes
-	try: axes = tuple(axes)
-	except TypeError: axes = (axes,)
-	n  = np.zeros(len(axes),int)+n
+	axes = utils.astuple(axes)
+	n    = np.zeros(len(axes),int)+n
 	# Determine the shape of the output array
 	oshape = list(fa.shape)
 	for i, ax in enumerate(axes):

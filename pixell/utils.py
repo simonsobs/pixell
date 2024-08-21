@@ -3091,6 +3091,10 @@ def ascomplex(arr):
 	arr = np.asanyarray(arr)
 	return arr.astype(complex_dtype(arr.dtype))
 
+def astuple(num_or_list):
+	try: return tuple(num_or_list)
+	except TypeError: return (num_or_list,)
+
 # Conjugate gradients
 
 def default_M(x):     return np.copy(x)
@@ -3326,6 +3330,10 @@ def setenv(name, value, keep=False):
 	if   name in os.environ and keep: return
 	elif name in os.environ and value is None: del os.environ[name]
 	elif value is not None: os.environ[name] = str(value)
+
+def getaddr(a):
+	"""Get the address of the start of a"""
+	return a.__array_interface__["data"][0]
 
 def zip2(*args):
 	"""Variant of python's zip that calls next() the same number of times on
