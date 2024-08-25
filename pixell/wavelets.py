@@ -24,7 +24,7 @@ class Butterworth:
 	def __init__(self, step=2, shape=7, tol=1e-3, lmin=None, lmax=None):
 		self.step = step; self.shape = shape; self.tol = tol
 		self.lmin = lmin; self.lmax  = lmax
-		if self.lmin is not None and self.lmin is not None:
+		if self.lmin is not None and self.lmax is not None:
 			self._finalize()
 	def with_bounds(self, lmin, lmax):
 		"""Return a new instance with the given multipole bounds"""
@@ -53,7 +53,7 @@ class ButterTrim:
 	def __init__(self, step=2, shape=7, trim=1e-2, lmin=None, lmax=None):
 		self.step = step; self.shape = shape; self.trim = trim
 		self.lmin = lmin; self.lmax  = lmax
-		if self.lmin is not None and self.lmin is not None:
+		if self.lmin is not None and self.lmax is not None:
 			self._finalize()
 	def with_bounds(self, lmin, lmax):
 		"""Return a new instance with the given multipole bounds"""
@@ -83,7 +83,7 @@ class DigitalButterTrim:
 	def __init__(self, step=2, shape=7, trim=1e-2, lmin=None, lmax=None):
 		self.step = step; self.shape = shape; self.trim = trim
 		self.lmin = lmin; self.lmax  = lmax
-		if self.lmin is not None and self.lmin is not None:
+		if self.lmin is not None and self.lmax is not None:
 			self._finalize()
 	def with_bounds(self, lmin, lmax):
 		"""Return a new instance with the given multipole bounds"""
@@ -126,6 +126,34 @@ class AdriSD:
 		from optweight import wlm_utils
 		self.profiles, self.lmaxs = wlm_utils.get_sd_kernels(self.lamb, self.lmax, lmin=self.lmin)
 
+
+
+class CosineNeedlet:
+	"""From Coulton et al 2023 arxiv:2307.01258"""
+	def __init__(self, lpeaks):
+		"""
+		Cosine-shaped needlets. lpeaks is a list of multipoles
+		where each needlet peaks.
+		"""
+		self.lpeaks = lpeaks
+		self.lmaxs = np.append(self.lpeaks[1:],self.lpeaks[-1])
+		self.lmin = self.lpeaks[0]
+		self.lmax = self.lpeaks[-1]
+	@property
+	def n(self): return len(self.lpeaks)
+	def __call__(self, i, l):
+		lpeaki = self.lpeaks[i]
+		out = l*0.
+		if i>0:
+			lpeakim1 = self.lpeaks[i-1]
+			sel1 = np.logical_and(l>=lpeakim1,l<lpeaki)
+			out[sel1] = np.cos(np.pi*(lpeaki-l[sel1])/(lpeaki-lpeakim1)/2.)
+		if i<(self.n-1):
+			lpeakip1 = self.lpeaks[i+1]
+			sel2 = np.logical_and(l>=lpeaki,l<lpeakip1)
+			out[sel2] = np.cos(np.pi*(l[sel2]-lpeaki)/(lpeakip1-lpeaki)/2.)
+		return out
+		
 ##### Variance wavelet basis generators #####
 
 # These are used to implement the variance wavelet transform, which
