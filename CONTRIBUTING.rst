@@ -115,23 +115,11 @@ Deploying
 ---------
 
 Only maintainers, who have access to the master branch, are able to
-deploy the package.  This is accomplished by associating a tag, of the
-form vX.y.z, to the relevant commit in the master branch.  We use
-bumpversion for this, in a way that is compatible with versioneer.
-Before initiating the release, be sure to update HISTORY.rst with the
-differences since last version (not required while we're still in
-0.y.z) and commit the changes.  Then run::
-
-$ bumpversion patch # possible: major / minor / patch
-$ git push
-$ git push --tags
-
-Github Actions will then deploy to PyPI if tests pass.
-
-The role of versioneer is to automatically embed version information
-in the distributed source code or installed package, based on the
-github tags.  The role of bumpversion (in our configuration) is to
-generate sequential version numbers and create github corresponding
-git tags.  The bumpversion and versioneer configurations are in
-``setup.cfg``.
-
+deploy the package. To 'bump' the version of the package, you will need
+to change the value of `version` in `pyproject.toml`. Pushing this new
+verison, along with associated wheels for all supported platforms,
+is handled through GitHub Actions, which is triggered when a new
+release is made. To make a new release, create a new git tag with
+the name of your new version (i.e. vX.Y.Z, e.g. v21.0.2), and push
+it. This is easily accomplished using the `Releases` section on
+GitHub: https://github.com/simonsobs/pixell/releases.

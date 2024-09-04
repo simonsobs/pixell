@@ -41,7 +41,10 @@ def sim_objects(shape, wcs, poss, amps, profile, prof_ids=None, omap=None, vmin=
 	  is used. amps determines the pre-dimensions
 	* poss: The positions of the objects. [{dec,ra},nobj] in radians.
 	* amps: The central amplitudes of the objects. [...,nobj]. Not the same as the flux.
-	* profile: The profiles to use. Either [{r,b(r)},nsamp] or a list of such.
+	* profile: The profiles to use. Either [{r,b(r)},nsamp] (with shape (2,nsamp)) or a
+	  list of such, where nsamp is the size of r and b(r).  If providing a list for
+	  nobj objects, the shape of the array passed is (nobj,2,nsamp) and prof_ids
+	  should be np.arange(nobj).
 
 	Optional arguments:
 	* prof_ids: Which profile to use for each source. Defaults to use
