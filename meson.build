@@ -89,7 +89,7 @@ helper_sources = {
 linkables = []
 
 foreach source_name, module_name : helper_sources
-    linkables += shared_library(
+    linkables += static_library(
         module_name,
         source_name,
         install: true,
