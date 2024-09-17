@@ -735,6 +735,19 @@ class PixelTests(unittest.TestCase):
         self.assertEqual(ainfo_out.mmax, ainfo_in.mmax)
         self.assertEqual(ainfo_out.nelem, ainfo_in.nelem)
 
+
+    def test_lens_alms(self):
+        # We generate phi alms and convert them to kappa and back
+        lmax = 100
+        ps = np.zeros(lmax+1)
+        ls = np.arange(lmax+1)
+        ps[ls>=2] = 1./ls[ls>=2]
+        phi_alm = curvedsky.rand_alm(ps,lmax=lmax)
+        kappa_alm = lensing.phi_to_kappa(phi_alm)
+        phi_alm2 = lensing.kappa_to_phi(kappa_alm)
+        np.testing.assert_array_almost_equal(phi_alm, phi_alm2)
+
+        
     def test_almxfl(self):
         # We try to filter alms of shape (nalms,) and (ncomp,nalms) with
         # a filter of shape (nells,)

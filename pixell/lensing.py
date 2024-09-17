@@ -91,7 +91,7 @@ def phi_to_kappa(phi_alm,phi_ainfo=None):
 	    kappa_alm: The filtered alms phi_alm * l * (l+1) / 2
 	"""
 	from . import curvedsky
-	return curvedsky.almxfl(alm=phi_alm,lfilter=lambda x: x*(x+1)/2,ainfo=phi_ainfo)
+	return curvedsky.almxfl(alm=phi_alm,lfilter=lambda l: l*(l+1)/2,ainfo=phi_ainfo)
 
 def kappa_to_phi(kappa_alm,kappa_ainfo=None):
 	"""Convert lensing convergence alms kappa_alm to
@@ -107,9 +107,9 @@ def kappa_to_phi(kappa_alm,kappa_ainfo=None):
 	    phi_alm: The filtered alms kappa_alm / ( l * (l+1) / 2 )
 	"""
 	from . import curvedsky
-	oalm = curvedsky.almxfl(alm=kappa_alm,lfilter=lambda x: 1./(x*(x+1)/2) ,ainfo=kappa_ainfo)
-	oalm[~np.isfinite(oalm)] = 0
-	return oalm
+	with utils.nowarn():
+		oalm = curvedsky.almxfl(alm=kappa_alm,lfilter=lambda l: 1./(l*(l+1)/2) ,ainfo=kappa_ainfo)
+	return utils.remove_nan(oalm)
 
 
 def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, dtype=np.float64, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
