@@ -747,6 +747,17 @@ class PixelTests(unittest.TestCase):
         phi_alm2 = lensing.kappa_to_phi(kappa_alm)
         np.testing.assert_array_almost_equal(phi_alm, phi_alm2)
 
+    def test_downgrade(self):
+        shape,wcs = enmap.geometry(pos=(0,0),shape=(100,100),res=0.01)
+        imap = enmap.ones(shape,wcs)
+        for dfact in [None,1]:
+            omap = enmap.downgrade(imap,dfact)
+            np.testing.assert_equal(imap,omap)
+
+        dfact = 2
+        omap = enmap.downgrade(imap,dfact,op=np.sum)
+        np.testing.assert_equal(omap,np.ones(enmap.scale_geometry(shape,wcs,1./dfact)[0])*4)
+
         
     def test_almxfl(self):
         # We try to filter alms of shape (nalms,) and (ncomp,nalms) with
@@ -914,43 +925,44 @@ class PixelTests(unittest.TestCase):
             alm_out = curvedsky.map2alm_healpix(omap, spin=spin, ainfo=ainfo, niter=niter)
             np.testing.assert_array_almost_equal(alm_out, alm)
 
-    # Disabled for now because the version of ducc currently on pypi
-    # has an adjointness bug. It's fixed in the ducc git repo.
-    #def test_adjointness(self):
-    #    # This tests if alm2map_adjoint is the adjoint of alm2map,
-    #    # and if map2alm_adjoint is the adjoint of map2alm.
-    #    # (This doesn't test if they're correct, just that they're
-    #    # consistent with each other). This test is a bit slow, taking
-    #    # 5 s or so. It would be much faster if we dropped the ncomp=3 case.
-    #    for dtype in [np.float32, np.float64]:
-    #        for ncomp in [1,3]:
-    #            # Define our geometries
-    #            geos = []
-    #            res  = 30*utils.degree
-    #            shape, wcs = enmap.fullsky_geometry(res=res, variant="fejer1")
-    #            geos.append(("fullsky_fejer1", shape, wcs))
+    # MM: Re-enabled 09/17/2024
+    # --Disabled for now because the version of ducc currently on pypi
+    # has an adjointness bug. It's fixed in the ducc git repo.--
+    def test_adjointness(self):
+       # This tests if alm2map_adjoint is the adjoint of alm2map,
+       # and if map2alm_adjoint is the adjoint of map2alm.
+       # (This doesn't test if they're correct, just that they're
+       # consistent with each other). This test is a bit slow, taking
+       # 5 s or so. It would be much faster if we dropped the ncomp=3 case.
+       for dtype in [np.float32, np.float64]:
+           for ncomp in [1,3]:
+               # Define our geometries
+               geos = []
+               res  = 30*utils.degree
+               shape, wcs = enmap.fullsky_geometry(res=res, variant="fejer1")
+               geos.append(("fullsky_fejer1", shape, wcs))
 
-    #            shape, wcs = enmap.fullsky_geometry(res=res, variant="cc")
-    #            geos.append(("fullsky_cc", shape, wcs))
-    #            lmax = shape[-2]-2
+               shape, wcs = enmap.fullsky_geometry(res=res, variant="cc")
+               geos.append(("fullsky_cc", shape, wcs))
+               lmax = shape[-2]-2
 
-    #            shape, wcs = enmap.Geometry(shape, wcs)[3:-3,3:-3]
-    #            geos.append(("patch_cc", shape, wcs))
+               shape, wcs = enmap.Geometry(shape, wcs)[3:-3,3:-3]
+               geos.append(("patch_cc", shape, wcs))
 
-    #            wcs = wcs.deepcopy()
-    #            wcs.wcs.crpix += 0.123
-    #            geos.append(("patch_gen_cyl", shape, wcs))
+               wcs = wcs.deepcopy()
+               wcs.wcs.crpix += 0.123
+               geos.append(("patch_gen_cyl", shape, wcs))
 
-    #            shape, wcs = enmap.geometry(np.array([[-45,45],[45,-45]])*utils.degree, res=res, proj="tan")
-    #            geos.append(("patch_tan", shape, wcs))
+               shape, wcs = enmap.geometry(np.array([[-45,45],[45,-45]])*utils.degree, res=res, proj="tan")
+               geos.append(("patch_tan", shape, wcs))
 
-    #            for gi, (name, shape, wcs) in enumerate(geos):
-    #                mat1  = alm_bash(curvedsky.alm2map,         shape, wcs, ncomp, lmax, dtype)
-    #                mat2  = map_bash(curvedsky.alm2map_adjoint, shape, wcs, ncomp, lmax, dtype)
-    #                np.testing.assert_array_almost_equal(mat1, mat2)
-    #                mat1 = map_bash(curvedsky.map2alm,         shape, wcs, ncomp, lmax, dtype)
-    #                mat2 = alm_bash(curvedsky.map2alm_adjoint, shape, wcs, ncomp, lmax, dtype)
-    #                np.testing.assert_array_almost_equal(mat1, mat2)
+               for gi, (name, shape, wcs) in enumerate(geos):
+                   mat1  = alm_bash(curvedsky.alm2map,         shape, wcs, ncomp, lmax, dtype)
+                   mat2  = map_bash(curvedsky.alm2map_adjoint, shape, wcs, ncomp, lmax, dtype)
+                   np.testing.assert_array_almost_equal(mat1, mat2)
+                   mat1 = map_bash(curvedsky.map2alm,         shape, wcs, ncomp, lmax, dtype)
+                   mat2 = alm_bash(curvedsky.map2alm_adjoint, shape, wcs, ncomp, lmax, dtype)
+                   np.testing.assert_array_almost_equal(mat1, mat2)
 
 
     #def test_sharp_alm2map_der1(self):
