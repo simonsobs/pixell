@@ -137,6 +137,7 @@ class CosineNeedlet:
 		"""
 		self.lpeaks = lpeaks
 		self.lmaxs = np.append(self.lpeaks[1:],self.lpeaks[-1])
+		self.lmins = np.append(self.lpeaks[0],self.lpeaks[:-1])
 		self.lmin = self.lpeaks[0]
 		self.lmax = self.lpeaks[-1]
 	@property
