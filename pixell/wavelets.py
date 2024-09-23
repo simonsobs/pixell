@@ -303,7 +303,7 @@ class WaveletTransform:
 	def geometry(self): return self.shape, self.wcs
 	@property
 	def nlevel(self): return len(self.geometries)
-	def map2wave(self, map, owave=None, fl = None, skip_coeffs=[]):
+	def map2wave(self, map, owave=None, fl = None, scales=None, fill_value=None):
 		"""Transform from an enmap map[...,ny,nx] to a multimap of wavelet coefficients,
 		which is effectively a group of enmaps with the same pre-dimensions but varying shape.
 		If owave is provided, it should be a multimap with the right shape (compatible with
@@ -314,10 +314,11 @@ class WaveletTransform:
 		provided that pre-filters the map in spherical harmonic space, e.g. to
 		convolve maps to a common beam.
 
-		A list of the indices of wavelet coefficients to be skipped can be provided
-		in skip_coeffs.  For these wavelet coefficients, a map of nans wil be
-		provided instead of performing the corresponding harmonic to real
-		space transform.
+		A list of the indices of wavelet coefficients to be calculated can be provided
+		in scales; None defaults to all scales.  For wavelet coefficients that are not
+		calculated, a map of zeros wil be provided instead of performing the corresponding
+		harmonic to real space transform. Alternatively, a fill_value different from zero
+		can be specified.
 		"""
 		filters, norms, lmids = self.filters, self.norms, self.lmids
 		# Output geometry. Can't just use our existing one because it doesn't know about the
@@ -329,13 +330,13 @@ class WaveletTransform:
 			if not(fl is None):
 				raise NotImplementedError("Pre-filtering not yet implemented for flat-sky wavelets.")				
 			for i, (shape, wcs) in enumerate(self.geometries):
-				if not(i in skip_coeffs):
+				if i in scales:
 					fsmall  = enmap.resample_fft(fmap, shape, norm=None, corner=True)
 					fsmall *= filters[i] / (norms[i]*fmap.npix)
 					owave.maps[i] = enmap.ifft(fsmall, normalize=False).real
 				else:
-					owave.maps[i] = enmap.empty(shape,wcs)
-					owave.maps[i][:] = np.nan
+					owave.maps[i] = enmap.zeros(shape,wcs)
+					if fill_value is not None: owave.maps[i][:] = np.nan
 					
 		else:
 			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
@@ -343,14 +344,14 @@ class WaveletTransform:
 			if not(fl is None):
 				alm = curvedsky.almxfl(alm,fl)
 			for i, (shape, wcs) in enumerate(self.geometries):
-				if not(i in skip_coeffs):
+				if i in scales:
 					smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
 					asmall    = curvedsky.transfer_alm(ainfo, alm, smallinfo)
 					smallinfo.lmul(asmall, filters[i]/norms[i], asmall)
 					curvedsky.alm2map(asmall, owave.maps[i])
 				else:
-					owave.maps[i] = enmap.empty(shape,wcs)
-					owave.maps[i][:] = np.nan
+					owave.maps[i] = enmap.zeros(shape,wcs)
+					if fill_value is not None: owave.maps[i][:] = fill_value
 		return owave
 	def wave2map(self, wave, omap=None):
 		"""Transform from the wavelet coefficients wave (multimap), to the corresponding enmap.
