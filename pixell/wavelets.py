@@ -328,7 +328,7 @@ class WaveletTransform:
 		if owave is None: owave = multimap.zeros(geos, map.dtype)
 		if self.uht.mode == "flat":
 			fmap = enmap.fft(map, normalize=False)
-			if not(fl is None):
+			if fl is not None:
 				raise NotImplementedError("Pre-filtering not yet implemented for flat-sky wavelets.")				
 			for i, (shape, wcs) in enumerate(self.geometries):
 				if i in scales:
@@ -342,7 +342,7 @@ class WaveletTransform:
 		else:
 			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
 			alm   = curvedsky.map2alm(map, ainfo=ainfo)
-			if not(fl is None):
+			if fl is not None:
 				alm = curvedsky.almxfl(alm,fl)
 			for i, (shape, wcs) in enumerate(self.geometries):
 				if i in scales:
