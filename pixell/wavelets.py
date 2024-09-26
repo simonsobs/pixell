@@ -321,6 +321,7 @@ class WaveletTransform:
 		harmonic to real space transform. Alternatively, a fill_value different from zero
 		can be specified.
 		"""
+		scales = range(len(self.geometries)) if scales is None else scales
 		filters, norms, lmids = self.filters, self.norms, self.lmids
 		# Output geometry. Can't just use our existing one because it doesn't know about the
 		# map pre-dimensions. There should be an easier way to do this.
