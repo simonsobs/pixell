@@ -1804,7 +1804,7 @@ def downgrade_geometry(shape, wcs, factor):
 	supports integer factors."""
 	factor = np.full(2, 1, dtype=int)*factor
 	oshape = tuple(shape[-2:]//factor)
-	owcs   = wcsutils.scale(wcs, 1.0/factor)
+	owcs   = wcsutils.scale(wcs, 1.0/factor, rowmajor=True)
 	return oshape, owcs
 
 def upgrade_geometry(shape, wcs, factor):

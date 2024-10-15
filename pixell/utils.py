@@ -306,6 +306,12 @@ def deslope(d, w=1, inplace=False, axis=-1, avg=np.mean):
 			di -= np.arange(di.size)*(avg(di[-w:])-avg(di[:w]))/(di.size-1)+avg(di[:w])
 	return d
 
+def argmax(arr):
+	"""Multidimensional argmax. Returns a tuple indexing the full array
+	instead of just a number indexing the flattened array like np.argmax does"""
+	arr = np.asanyarray(arr)
+	return np.unravel_index(np.argmax(arr), arr.shape)
+
 def ctime2mjd(ctime):
 	"""Converts from unix time to modified julian date."""
 	return np.asarray(ctime)/86400. + 40587.0
