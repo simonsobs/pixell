@@ -1,4 +1,4 @@
-import numpy as np, scipy.ndimage, os, errno, scipy.optimize, time, datetime, warnings, re, sys
+import numpy as np, scipy.ndimage, os, errno, scipy.optimize, time, datetime, warnings, re, sys, scipy.special
 try: xrange
 except: xrange = range
 try: basestring
@@ -193,8 +193,9 @@ def inverse_order(order):
 def complement_inds(inds, n):
 	"""Given a subset of range(0,n), return the missing values.
 	E.g. complement_inds([0,2,4],7) => [1,3,5,6]"""
+	if inds is None: inds = np.arange(n)
 	mask = np.ones(n, bool)
-	mask[inds] = False
+	mask[np.array(inds)] = False
 	return np.where(mask)[0]
 
 def unmask(arr, mask, axis=0, fill=0):
@@ -515,44 +516,128 @@ def dedup(a):
 	The original is not modified."""
 	return a[np.concatenate([[True],a[1:]!=a[:-1]])]
 
-def interpol(a, inds, order=3, mode="nearest", mask_nan=False, cval=0.0, prefilter=True):
-	"""Given an array a[{x},{y}] and a list of float indices into a,
-	inds[len(y),{z}], returns interpolated values at these positions as [{x},{z}]."""
-	a    = np.asanyarray(a)
+def interpol(arr, inds, out=None, mode="spline", border="nearest",
+		order=3, cval=0.0, epsilon=None):
+	"""Given an array arr[{x},{y}] and a list of float indices into a,
+	inds[len(y),{z}], returns interpolated values at these positions as [{x},{z}].
+
+	The mode and order arguments control the interpolation type. These can be:
+	* mode=="nn"  or (mode=="spline" and order==0): Nearest neighbor interpolation
+	* mode=="lin" or (mode=="spline" and order==1): Linear interpolation
+	* mode=="cub" or (mode=="spline" and order==3): Cubic interpolation
+	* mode=="fourier": Non-uniform fourier interpolation
+
+	The border argument controls the boundary condition. This does not apply
+	for fourier interpolation, which always assumes periodic boundary.
+	Valid values are:
+	* "nearest": Indices outside the array use the value from the nearest
+	  point on the edge.
+	* "cyclic": Periodic boundary conditions
+	* "mirrored": Mirrored boundary conditions
+	* "constant": Use a constant value, given by the cval argument
+
+	Epsilon controls the target relative accuracy of the interpolation.
+	Only applies to fourier interpolation. Spline interpolation is
+	overall much less accurate (assuming a band-limited true signal),
+	and its accuracy can't be controlled, but roughly corresponds to 1e-3.
+	Defaults to 1e-6 for single precision and 1e-15 for double precision
+	arrays.
+
+	Compatibility notes:
+	* mask_nan is no longer supported. You must implement this yourself
+	  if you need it. Do this something like
+	   mask = ~np.isfinite(arr)
+	   out  = interpol(arr, inds, ...)
+	   omask= interpol(mask, inds, mode="nn")
+	   out[omask!=0] = np.nan
+	* prefilter is no longer supported. This argument let the interpolation
+	  skip a heavy prefiltering step if the array was already filtered.
+	  This was useful, but assumed that the precomputed array was the same
+	  shape and data type as the array to be implemented, which is not the
+	  case for fourier interpolation. This functionality was replaced by
+	  interpolator objects returned by utils.interpolator, which are what's
+	  used to implement this function.
+	"""
+	arr  = np.asanyarray(arr)
 	inds = np.asanyarray(inds)
-	inds_orig_nd = inds.ndim
-	if inds.ndim == 1: inds = inds[:,None]
+	npre = arr.ndim - len(inds)
+	ip   = interpolator(arr, npre, mode=mode, border=border, order=order,
+			cval=cval, epsilon=epsilon)
+	return ip(inds, out=out)
 
-	npre = a.ndim - inds.shape[0]
-	res = np.empty(a.shape[:npre]+inds.shape[1:],dtype=a.dtype)
-	fa, fr = partial_flatten(a, range(npre,a.ndim)), partial_flatten(res, range(npre, res.ndim))
-	if mask_nan:
-		mask = ~np.isfinite(fa)
-		fa[mask] = 0
-	for i in range(fa.shape[0]):
-		fr[i].real = scipy.ndimage.map_coordinates(fa[i].real, inds, order=order, mode=mode, cval=cval, prefilter=prefilter)
-		if np.iscomplexobj(fa[i]):
-			fr[i].imag = scipy.ndimage.map_coordinates(fa[i].imag, inds, order=order, mode=mode, cval=cval, prefilter=prefilter)
-	if mask_nan and np.sum(mask) > 0:
-		fmask = np.empty(fr.shape,dtype=bool)
-		for i in range(mask.shape[0]):
-			fmask[i] = scipy.ndimage.map_coordinates(mask[i], inds, order=0, mode=mode, cval=cval, prefilter=prefilter)
-		fr[fmask] = np.nan
-	if inds_orig_nd == 1: res = res[...,0]
-	return res
+def interpolator(arr, npre=0, mode="spline", border="nearest", order=3, cval=0.0,
+		epsilon=None):
+	"""Construct an interpolator object that can be used to quickly interpolate
+	many positions in some array arr. Wrapper for the underlying SplineInterpolator
+	and FourierInterpolator classes. Used to implement the interpolate function.
+	See it for argument details."""
+	mode, order = _ip_get_mode(mode, order)
+	if mode == "spline":
+		return SplineInterpolator(arr, npre=npre, mode=mode, border=border,
+				order=order, cval=cval)
+	elif mode == "fourier":
+		return FourierInterpolator(arr, npre=npre, epsilon=epsilon)
+	else:
+		raise ValueError("Unrecognized interpolation mode '%s'" % str(mode))
 
-def interpol_prefilter(a, npre=None, order=3, inplace=False, mode="nearest"):
-	if order < 2: return a
-	a = np.asanyarray(a)
-	if not inplace: a = a.copy()
-	if npre is None: npre = max(0,a.ndim - 2)
-	if npre < 0:     npre = a.ndim-npre
-	# spline_filter was looping through the enmap pixel by pixel with getitem.
-	# Not using flatview got around it, but I don't understand why it happend
-	# in the first place.
-	for I in nditer(a.shape[:npre]):
-		a[I] = scipy.ndimage.spline_filter(a[I], order=order, mode=mode)
-	return a
+class SplineInterpolator:
+	prefiltered = True
+	def __init__(self, arr, npre=0, mode="spline", border="nearest", order=3, cval=0.0):
+		self.mode, self.order = _ip_get_mode(mode, order)
+		self.npre = npre % arr.ndim
+		self.cval = cval
+		self.border = border
+		if self.mode != "spline": raise ValueError("Unrecognized spline interpolation mode '%s'" % str(mode))
+		arr = np.asanyarray(arr)
+		if self.order > 1:
+			arr = arr.copy()
+			for I in nditer(arr.shape[:npre]):
+				arr[I] = scipy.ndimage.spline_filter(arr[I], order=self.order, mode=self.border)
+		self.arr = arr
+	def __call__(self, inds, out=None):
+		inds, out = _ip_prepare(self, inds, out=out)
+		# Do the actual interpolation
+		for I in nditer(self.arr.shape[:self.npre]):
+			out[I] = scipy.ndimage.map_coordinates(self.arr[I], inds, order=self.order,
+				mode=self.border, cval=self.cval, prefilter=False)
+		return out
+
+class FourierInterpolator:
+	prefiltered = False
+	def __init__(self, arr, npre=0, epsilon=None):
+		from . import fft
+		self.npre = npre % arr.ndim
+		self.arr  = np.asanyarray(arr)
+		self.epsilon = epsilon
+		self.farr = fft.fft(arr, axes=tuple(range(self.npre,arr.ndim)))
+	def __call__(self, inds, out=None):
+		from . import fft
+		inds, out = _ip_prepare(self, inds, out=out)
+		out = fft.interpol_nufft(self.farr, inds, out=out, nofft=True, epsilon=self.epsilon)
+		return out
+
+def _ip_get_mode(mode, order):
+	# The type of interpolation to do
+	if   mode in ["nn", "nearest"]: mode, order = "spline", 0
+	elif mode in ["lin","linear" ]: mode, order = "spline", 1
+	elif mode in ["cub","cubic"  ]: mode, order = "spline", 3
+	elif mode in ["fft","nufft","fourier"]: mode = "fourier"
+	if mode not in ["spline", "fourier"]: raise ValueError("Unrecognized interpol mode '%s'" % str(mode))
+	return mode, order
+
+def _ip_prepare(self, inds, out=None):
+		inds = np.asanyarray(inds)
+		ndim = inds.ndim
+		if self.arr.ndim-len(inds) != self.npre:
+			raise ValueError("arr.ndim-len(inds) != npre")
+		# Allow us to use ndim<2 inputs, e.g. interpol(np.arange(6),3) instead of
+		# interpol(np.arange(6),[[3]])
+		while inds.ndim < 2: inds = inds[...,None]
+		if out is None:
+			# Doing it this way lets interpol inherit the array subclass from inds, which
+			# is useful when interpolating one enmap with another enmap
+			out = np.zeros_like(inds, shape=self.arr.shape[:self.npre]+inds.shape[1:], dtype=self.arr.dtype)
+		return inds, out
 
 def interp(x, xp, fp, left=None, right=None, period=None):
 	"""Unlike utils.interpol, this is a simple wrapper around np.interp that extends it
@@ -2891,6 +2976,72 @@ def profile_to_tform_hankel(profile_fun, lmin=0.1, lmax=1e7, n=512, pad=256):
 	lprof = rht.real2harm(profile_fun)
 	return rht.unpad(rht.l, lprof)
 
+class FFTLog:
+	def __init__(self, xrange=None, krange=None, n=512, pad=0, bias=0):
+		"""Set up an FFTLog, a Fast Fourier Transform for log-spaced data.
+		Implemented using the Fast Hankel Transform in scipy.fft.fht.
+		Define the domain by passing in either xrange=[xmin,xmax] or krange=[kmin,kmax],
+		but not both. The other will be defined as the inverse of the one given.
+
+		The number of sample points is given by n.
+
+		If pad is given, then the domain will be expanded with this number of
+		points on both sides. These can later be chopped off with the unpad
+		method.
+
+		bias affects the implied boundary conditions. The standard FFTLog
+		has bias=0, the default, but a differnt bias can allow exact results
+		for power laws. See https://jila.colorado.edu/~ajsh/FFTLog"""
+		if xrange is None and krange is None: raise ValueError("Either xrange xor krange must be given")
+		if xrange is not None and krange is not None: raise ValueError("Either xrange xor krange must be given")
+		if xrange is None: xrange = krange[::-1]
+		self.step = (np.log(xrange[1])-np.log(xrange[0]))/(n-1)
+		self.pad  = pad
+		self.n    = n
+		# Define our positions
+		self.x  = np.exp(np.linspace(np.log(xrange[0])-self.step*pad, np.log(xrange[1])+self.step*pad, n+2*pad))
+		self.k  = 1/self.x[::-1]
+		self.xh = self.x**(0.5-bias)
+		self.kh = self.k**(0.5+bias)
+		# Pre-multiply the normalization into kh. This takes care of all
+		# the normalization except for a factor 2 in the inverse
+		self.kh /= (np.pi/2)**0.5
+		self.bias = bias
+	def fft(self, a):
+		"""Perform a forward fft along the last axis of a, which must be sampled
+		at the points self.x"""
+		import scipy.fft
+		# Allow us to pass a function to evaluate at the given coordinates
+		try: a = a(self.x)
+		except TypeError: pass
+		xa   = a*self.xh
+		cos  = scipy.fft.fht(xa, self.step, -0.5, bias=self.bias)/self.kh
+		sin  = scipy.fft.fht(xa, self.step, +0.5, bias=self.bias)/self.kh
+		del xa
+		# Minus sign comes from the negative exponent in the forward fft
+		return cos-1j*sin
+	def ifft(self, fa):
+		"""Perform an inverse fft along the last axis of a, which must be sampled
+		at the points self.k"""
+		import scipy.fft
+		# Allow us to pass a function to evaluate at the given coordinates
+		try: fa = fa(self.k)
+		except TypeError: pass
+		kfa = fa*(self.kh/2)
+		a   = scipy.fft.ifht( kfa.real, self.step, -0.5, bias=self.bias)/self.xh
+		a  += scipy.fft.ifht(-kfa.imag, self.step, +0.5, bias=self.bias)/self.xh
+		return a
+	def unpad(self, *arrs):
+		"""Remove the padding from arrays used by this object. The
+		values in the padded areas of the output of the transform have
+		unreliable values, but they're not cropped automatically to
+		allow for round-trip transforms. Example:
+			r = unpad(r_padded)
+			r, l, vals = unpad(r_padded, l_padded, vals_padded)"""
+		if self.pad == 0: res = arrs
+		else: res = tuple([arr[...,self.pad:arr.shape[-1]-self.pad] for arr in arrs])
+		return res[0] if len(arrs) == 1 else res
+
 def fix_dtype_mpi4py(dtype):
 	"""Work around mpi4py bug, where it refuses to accept dtypes with endian info"""
 	return np.dtype(np.dtype(dtype).char)
@@ -3109,7 +3260,7 @@ class CG:
 	degrees of freedom, where each mpi task only stores parts of the full
 	solution. It is also reentrant, meaning that one can do nested CG if necessary.
 	"""
-	def __init__(self, A, b, x0=None, M=default_M, dot=default_dot):
+	def __init__(self, A, b, x0=None, M=default_M, dot=default_dot, destroy_b=False):
 		"""Initialize a solver for the system Ax=b, with a starting guess of x0 (0
 		if not provided). Vectors b and x0 must provide addition and multiplication,
 		as well as the .copy() method, such as provided by numpy arrays. The
@@ -3122,8 +3273,8 @@ class CG:
 		self.M   = M
 		self.dot = dot
 		if x0 is None:
-			self.x = b*0
-			self.r = b
+			self.x = np.zeros_like(b)
+			self.r = b.copy() if not destroy_b else b
 		else:
 			self.x  = x0.copy()
 			self.r  = b-self.A(self.x)
@@ -3219,17 +3370,40 @@ class Minres:
 		# Estimate of variance of Ax-b
 		self.abserr = self.rz/len(self.x)
 
-def nditer(shape):
+def nditer(shape, axes=None):
+	"""Iterate over all multidimensional indices into an array with the given shape.
+	If axes is specified, then it should be a list of the axes in shape to iterate
+	over. The remaining axes will not be indexed (the yielded multi-index will have
+	slice(None) for those axes). The order the entries in axes does not matter."""
 	ndim = len(shape)
-	I    = [0]*ndim
+	axes = tuple(range(ndim)) if axes is None else tuple(sorted([ax%ndim for ax in axes]))
+	axes = axes[::-1] # will iterate backwards below
+	I = [slice(None)]*ndim
+	for ax in axes: I[ax] = 0
 	while True:
 		yield tuple(I)
-		for dim in range(ndim-1,-1,-1):
-			I[dim] += 1
-			if I[dim] < shape[dim]: break
-			I[dim] = 0
+		for ax in axes:
+			I[ax] += 1
+			if I[ax] < shape[ax]: break
+			I[ax] = 0
 		else:
 			break
+
+def without_inds(a, inds):
+	"""Return a as a tuple with the given inds removed. Not optimized for
+	long arrays"""
+	if inds is None: return a
+	inds = astuple(inds)
+	# Negative inds
+	inds = [(n+len(a) if n<0 else n) for n in inds]
+	return tuple([v for i,v in enumerate(a) if i not in inds])
+
+def only_inds(a, inds):
+	"""Return a as a tuple with only the given inds present. Not optimized for
+	long arrays"""
+	if inds is None: return ()
+	inds = astuple(inds)
+	return tuple([a[i] for i in inds])
 
 def first_importable(*args):
 	"""Given a list of module names, return the name of the first
@@ -3283,7 +3457,7 @@ def primes(n):
 			i += 1
 		else:
 			n //= i
-		factors.append(i)
+			factors.append(i)
 	if n > 1:
 		factors.append(n)
 	return factors
@@ -3335,6 +3509,20 @@ def getaddr(a):
 	"""Get the address of the start of a"""
 	return a.__array_interface__["data"][0]
 
+def iscontig(a, naxes=None):
+	"""Return whether array a is C-contiguous. If naxes is specified,
+	then only the last naxes axes need to be contiguous, and axes
+	before that are ignored."""
+	if naxes is None: naxes = a.ndim
+	naxes    = min(a.ndim, naxes)
+	expected = a.itemsize
+	for i in range(naxes):
+		j = a.ndim-1-i
+		if a.strides[j] != expected:
+			return False
+		expected *= a.shape[j]
+	return True
+
 def zip2(*args):
 	"""Variant of python's zip that calls next() the same number of times on
 	all arguments. This means that it doesn't give up immediately after getting
@@ -3380,3 +3568,73 @@ def distpow(dist, N):
 		dist = np.convolve(dist,dist)
 		N >>= 1
 	return res
+
+def airy(x):
+	"""Dimensionless real-space representation of Airy beam, normalized to peak at 1.
+	To get the airy beam an angular distance r from the center for a telescope with
+	aperture diameter D at wavelength λ, use airy(sin(r)*(2*pi*D/λ)).
+	"""
+	# Avoid division by zero at low radius
+	with nowarn():
+		return np.where(x<1e-6, 1-x**2, (scipy.special.j1(2*x)/x)**2)
+
+def lairy(x):
+	"""This is the harmonic space representation of an Airy beam.
+	To get the airy beam at multipole l for a telescope with aperture
+	diameter D at wavelength λ, call lairy(l/(2*pi*D/λ)). Valid as long as
+	the beam is small compared to the curvature of the sky.
+
+	Multiply the result by airy_area(D,λ) if you want the harmonic space representation
+	of an Airy beam with a real-space peak of one.
+	"""
+	x = np.clip(x,0,1)
+	return (np.arccos(x)-x*(1-x**2)**0.5)/(np.pi/2)
+
+def airy_area(D, λ):
+	"""Area (steradians) of airy beam for an aperture of size D and wavelength λ.
+	This is simply (2λ/D)²/π"""
+	return (2*λ/D)**2/np.pi
+
+def disk_overlap(d, R):
+	"""Area of overlap between two disks with radius R and distance d between
+	their centers."""
+	x = np.clip(d/(2*R),0,1)
+	return (np.arccos(x)-x*(1-x**2)**0.5)*(2*R**2)
+
+def disk_overlap_curved(d, R, tol_flat=1e-4, tol_tiny=1e-10):
+	"""Solid angle of overlap between two disks with radius R and distance d
+	between their centers, on the sphere. I thought this would be useful for
+	calculating the curved-sky equivalent for the airy beam, but it seems it
+	won't. Oh well, it was hard to calculate, so here it is anyway.
+
+	The actual curved-sky airy beam would start from
+
+	 airy(r) = int_-R^R dx √(R²-x²) exp(2πiux/λ)
+
+	where u = cos(θ) and θ is the angle from the center of the beam.
+	This should hold up to an angle of π/2 away from the center. After
+	that the aperture is mostly obscured, and a new expression will
+	be needed, if it's not zero.
+
+	I think this is actually what I've implemented in airy(x) above, as
+	long as one uses sin when calling it.
+	"""
+	d, R = np.broadcast_arrays(d, R)
+	null = (d >= 2*R)|(R==0)
+	flat = (R < tol_flat) & ~null
+	tiny = (d < tol_tiny) & ~null
+	main = ~flat & ~tiny & ~null
+	res  = np.zeros_like(d)
+	res[flat] = disk_overlap(d[flat],R[flat])
+	res[tiny] = _disk_overlap_curved_tiny(d[tiny],R[tiny])
+	res[main] = _disk_overlap_curved_main(d[main],R[main])
+	return res
+
+def _disk_overlap_curved_main(d, R):
+	sinR, cosR = np.sin(R), np.cos(R)
+	return 2*np.arccos((1-np.cos(d))/sinR**2-1)-4*cosR*np.arccos(cosR/sinR*np.tan(d/2))
+
+def _disk_overlap_curved_tiny(d, R):
+	"""Curved sky disk overlap in limit of tiny separations.
+	First order accuracy in d"""
+	return 2*np.pi*(1-np.cos(R)) - 4*np.sin(R)*np.sin(d/2)
