@@ -1459,7 +1459,7 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 		shape = tuple(np.round(np.abs(faredge-nearedge)).astype(int))
 	return pre+tuple(shape), wcs
 
-def fullsky_geometry(res=None, shape=None, dims=(), proj="car", variant="CC"):
+def fullsky_geometry(res=None, shape=None, dims=(), proj="car", variant="fejer1"):
 	"""Build an enmap covering the full sky, with the outermost pixel centers
 	at the poles and wrap-around points. Only the car projection is
 	supported for now, but the variants CC and fejer1 can be selected using
@@ -1488,7 +1488,7 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car", variant="CC"):
 	wcs.wcs.ctype = ["RA---CAR","DEC--CAR"]
 	return dims+(ny,nx), wcs
 
-def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car", variant="CC"):
+def band_geometry(dec_cut, res=None, shape=None, dims=(), proj="car", variant="fejer1"):
 	"""Return a geometry corresponding to a sky that had a full-sky
 	geometry but to which a declination cut was applied. If dec_cut
 	is a single number, the declination range will be (-dec_cut,dec_cut)
