@@ -587,7 +587,7 @@ def inu2u(fa, inds, out=None, axes=None, periodicity=None, epsilon=None, nthread
 # TODO: Add proper docstrings here. Can I avoid lots of repetition?
 
 def nufft(a, inds, out=None, oshape=None, axes=None, periodicity=None, epsilon=None, nthread=None, normalize=False, flip=False):
-	return iu2nu(a, inds, out=out, oshape=oshape, axes=axes, periodicity=periodicity, epsilon=epsilon, normalize=normalize, forward=flip)
+	return iu2nu(a, inds, out=out, oshape=oshape, axes=axes, periodicity=periodicity, epsilon=epsilon, nthread=nthread, normalize=normalize, forward=flip)
 
 def inufft(fa, inds, out=None, axes=None, periodicity=None, epsilon=None, nthread=None, normalize=False, flip=False, complex=True, op=None):
 	return u2nu(fa, inds, out=out, axes=axes, periodicity=periodicity, epsilon=epsilon, nthread=nthread, normalize=normalize, forward=flip, complex=complex, op=op)

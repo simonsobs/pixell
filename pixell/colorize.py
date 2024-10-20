@@ -169,7 +169,7 @@ def mpl_register(names=None):
 	if isinstance(names, basestring): names = [names]
 	for name in names:
 		cmap = to_mpl_colormap(name, schemes[name])
-		matplotlib.cm.register_cmap(name, cmap)
+		matplotlib.colormaps.register(cmap)
 
 def mpl_setdefault(name):
 	import matplotlib.pyplot
