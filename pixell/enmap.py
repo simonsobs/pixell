@@ -80,8 +80,8 @@ class ndmap(np.ndarray):
 	def lform(self): return lform(self)
 	def modlmap(self, oversample=1, min=0): return modlmap(self.shape, self.wcs, oversample=oversample, min=min)
 	def modrmap(self, ref="center", safe=True, corner=False): return modrmap(self.shape, self.wcs, ref=ref, safe=safe, corner=corner)
-	def lbin(self, bsize=None, brel=1.0, return_nhit=False, return_bins=False): return lbin(self, bsize=bsize, brel=brel, return_nhit=return_nhit, return_bins=return_bins)
-	def rbin(self, center=[0,0], bsize=None, brel=1.0, return_nhit=False, return_bins=False): return rbin(self, center=center, bsize=bsize, brel=brel, return_nhit=return_nhit, return_bins=return_bins)
+	def lbin(self, bsize=None, brel=1.0, return_nhit=False, return_bins=False, lop=None): return lbin(self, bsize=bsize, brel=brel, return_nhit=return_nhit, return_bins=return_bins, lop=lop)
+	def rbin(self, center=[0,0], bsize=None, brel=1.0, return_nhit=False, return_bins=False, rop=None): return rbin(self, center=center, bsize=bsize, brel=brel, return_nhit=return_nhit, return_bins=return_bins, rop=rop)
 	def area(self): return area(self.shape, self.wcs)
 	def pixsize(self): return pixsize(self.shape, self.wcs)
 	def pixshape(self, signed=False): return pixshape(self.shape, self.wcs, signed=signed)
@@ -98,13 +98,13 @@ class ndmap(np.ndarray):
 	def npix(self): return np.prod(self.shape[-2:])
 	@property
 	def geometry(self): return self.shape, self.wcs
-	def resample(self, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3): return resample(self, oshape, off=off, method=method, mode=mode, corner=corner, order=order)
-	def project(self, shape, wcs, order=3, mode="constant", cval=0, prefilter=True, mask_nan=False, safe=True): return project(self, shape, wcs, order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan, safe=safe)
+	def resample(self, oshape, off=(0,0), method="fft", border="wrap", corner=False, order=3): return resample(self, oshape, off=off, method=method, border=border, corner=corner, order=order)
+	def project(self, shape, wcs, order=3, border="constant", cval=0, safe=True): return project(self, shape, wcs, order, border=border, cval=cval, safe=safe)
 	def extract(self, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract(self, shape, wcs, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def extract_pixbox(self, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract_pixbox(self, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def insert(self, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert(self, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
 	def insert_at(self, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert_at(self, pix, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
-	def at(self, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=False, safe=True): return at(self, pos, order, mode=mode, cval=0, unit=unit, prefilter=prefilter, mask_nan=mask_nan, safe=safe)
+	def at(self, pos, order=3, border="constant", cval=0.0, unit="coord", safe=True): return at(self, pos, order, border=border, cval=0, unit=unit, safe=safe)
 	def argmax(self, unit="coord"): return argmax(self, unit=unit)
 	def autocrop(self, method="plain", value="auto", margin=0, factors=None, return_info=False): return autocrop(self, method, value, margin, factors, return_info)
 	def apod(self, width, profile="cos", fill="zero"): return apod(self, width, profile=profile, fill=fill)
@@ -540,20 +540,20 @@ def contains(shape, wcs, pos, unit="coord"):
 	else:               pix = pos
 	return np.all((pix>=0)&(pix.T<shape[-2:]).T,0)
 
-def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, prefilter=True, mask_nan=False, safe=True, bsize=1000):
+def project(map, shape, wcs, order=3, border="constant", cval=0.0, force=False, safe=True, bsize=1000, ip=None):
 	"""Project the map into a new map given by the specified
-	shape and wcs, interpolating as necessary. Handles nan
-	regions in the map by masking them before interpolating.
+	shape and wcs, interpolating as necessary.
 	This uses local interpolation, and will lose information
 	when downgrading compared to averaging down."""
 	# Skip expensive operation if map is compatible
 	if not force:
 		if wcsutils.equal(map.wcs, wcs) and tuple(shape[-2:]) == tuple(shape[-2:]):
 			return map.copy()
-		elif wcsutils.is_compatible(map.wcs, wcs) and mode == "constant":
+		elif wcsutils.is_compatible(map.wcs, wcs) and border == "constant":
 			return extract(map, shape, wcs, cval=cval)
 	omap = zeros(map.shape[:-2]+shape[-2:], wcs, map.dtype)
-	# Save memory by looping over rows
+	# Save memory by looping over rows. This won't work for non-"prefiltered" interpolators
+	if ip and not ip.prefiltered: bsize=100000000
 	for i1 in range(0, shape[-2], bsize):
 		i2     = min(i1+bsize, shape[-2])
 		somap  = omap[...,i1:i2,:]
@@ -562,7 +562,7 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 		y2     = min(np.max(pix[0]).astype(int)+3,map.shape[-2])
 		if y2-y1 <= 0: continue
 		pix[0] -= y1
-		somap[:] = utils.interpol(map[...,y1:y2,:], pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
+		somap[:] = utils.interpol(map[...,y1:y2,:], pix, order=order, border=border, cval=cval, ip=ip)
 	return omap
 
 def pixbox_of(iwcs,oshape,owcs):
@@ -715,9 +715,9 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 	res[...,1,:] += 1
 	return res
 
-def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=False, safe=True):
-	if unit != "pix": pos = sky2pix(map.shape, map.wcs, pos, safe=safe)
-	return utils.interpol(map, pos, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
+def at(map, pos, order=3, border="constant", cval=0.0, unit="coord", safe=True, ip=None):
+	if unit != "pix": pos = sky2pix(map.shape, map.wcs, pos, safe=safe, ip=None)
+	return utils.interpol(map, pos, order=order, border=border, cval=cval, ip=ip)
 
 def argmax(map, unit="coord"):
 	"""Return the coordinates of the maximum value in the specified map.
@@ -774,7 +774,7 @@ def rand_gauss_iso_harm(shape, wcs, cov, pixel_units=False):
 		if not(pixel_units): cov = cov * np.prod(shape[-2:])/area(shape,wcs )
 		covsqrt = multi_pow(cov, 0.5)
 	else:
-		covsqrt = spec2flat(shape, wcs, massage_spectrum(cov, shape), 0.5, mode="constant")
+		covsqrt = spec2flat(shape, wcs, massage_spectrum(cov, shape), 0.5, border="constant")
 	data = map_mul(covsqrt, rand_gauss_harm(shape, wcs))
 	return ndmap(data, wcs)
 
@@ -1586,7 +1586,7 @@ def create_wcs(shape, box=None, proj="cea"):
 		box *= utils.degree
 	return wcsutils.build(box, shape=shape, rowmajor=True, system=proj)
 
-def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="auto"):
+def spec2flat(shape, wcs, cov, exp=1.0, border="constant", oversample=1, smooth="auto"):
 	"""Given a (ncomp,ncomp,l) power spectrum, expand it to harmonic map space,
 	returning (ncomp,ncomp,y,x). This involves a rescaling which converts from
 	power in terms of multipoles, to power in terms of 2d frequency.
@@ -1621,12 +1621,12 @@ def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="a
 	cov[~np.isfinite(cov)] = 0
 	# Use order 1 because we will perform very short interpolation, and to avoid negative
 	# values in spectra that must be positive (and it's faster)
-	res = ndmap(utils.interpol(cov, np.reshape(ls,(1,)+ls.shape),mode=mode, mask_nan=False, order=1),wcs)
+	res = ndmap(utils.interpol(cov, np.reshape(ls,(1,)+ls.shape),border=border, order=1),wcs)
 	res = downgrade(res, oversample)
 	res = res.reshape(oshape[:-2]+res.shape[-2:])
 	return res
 
-def spec2flat_corr(shape, wcs, cov, exp=1.0, mode="constant"):
+def spec2flat_corr(shape, wcs, cov, exp=1.0, border="constant"):
 	cov    = np.asarray(cov)
 	oshape = cov.shape[:-1] + tuple(shape)[-2:]
 	if cov.ndim == 1: cov = cov[None,None]
@@ -1645,7 +1645,7 @@ def spec2flat_corr(shape, wcs, cov, exp=1.0, mode="constant"):
 	dpos = posmap(shape, wcs)
 	dpos -= dpos[:,None,None,dpos.shape[-2]//2,dpos.shape[-1]//2]
 	ipos = np.arccos(np.cos(dpos[0])*np.cos(dpos[1]))*nr/rmax
-	corr2d = utils.interpol(corrfun, ipos.reshape((-1,)+ipos.shape), mode=mode, mask_nan=False, order=1)
+	corr2d = utils.interpol(corrfun, ipos.reshape((-1,)+ipos.shape), border=border, order=1)
 	corr2d = np.roll(corr2d, -corr2d.shape[-2]//2, -2)
 	corr2d = np.roll(corr2d, -corr2d.shape[-1]//2, -1)
 	corr2d = ndmap(corr2d, wcs)
@@ -2156,7 +2156,7 @@ def lwcs(shape, wcs):
 	owcs   = wcsutils.explicit(crpix=[nx//2+1,ny//2+1], crval=[0,0], cdelt=lres[::-1])
 	return owcs
 
-def rbin(map, center=[0,0], bsize=None, brel=1.0, return_nhit=False, return_bins=False):
+def rbin(map, center=[0,0], bsize=None, brel=1.0, return_nhit=False, return_bins=False, rop=None):
 	"""Radially bin map around the given center point ([0,0] by default).
 	If bsize it given it will be the constant bin width. This defaults to
 	the pixel size. brel can be used to scale up the bin size. This is
@@ -2166,13 +2166,15 @@ def rbin(map, center=[0,0], bsize=None, brel=1.0, return_nhit=False, return_bins
 	of the map in each radial bin and r is the mid-point of each bin
 	"""
 	r = map.modrmap(ref=center)
+	if rop: r = rop(r)
 	if bsize is None:
 		bsize = np.min(map.extent()/map.shape[-2:])
 	return _bin_helper(map, r, bsize*brel, return_nhit=return_nhit, return_bins=return_bins)
 
-def lbin(map, bsize=None, brel=1.0, return_nhit=False, return_bins=False):
+def lbin(map, bsize=None, brel=1.0, return_nhit=False, return_bins=False, lop=None):
 	"""Like rbin, but for fourier space. Returns b(l),l"""
 	l = map.modlmap()
+	if lop: l = lop(l)
 	if bsize is None: bsize = min(abs(l[0,1]),abs(l[1,0]))
 	return _bin_helper(map, l, bsize*brel, return_nhit=return_nhit, return_bins=return_bins)
 
@@ -2250,7 +2252,7 @@ def stamps(map, pos, shape, aslist=False):
 	res = samewcs(np.array(res),res[0])
 	return res
 
-def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000, destroy_input=False):
+def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000):
 	"""Project the enmap "imap" onto the healpix pixelization. If omap is given,
 	the output will be written to it. Otherwise, a new healpix map will be constructed.
 	The healpix map must be in RING order. nside controls the resolution of the output map.
@@ -2258,13 +2260,10 @@ def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000, destroy_input=Fa
 	This is needed to avoid losing information. To go to a lower-resolution output map,
 	you should first degrade the input map. The chunk argument affects the speed/memory
 	tradeoff of the function. Higher values use more memory, and might (and might not)
-	give higher speed. If destroy_input is True, then the input map will be prefiltered
-	in-place, which saves memory but modifies its values."""
+	give higher speed."""
 	warnings.warn("enmap.to_healpix is deprecated. Reprojecting this way is error-prone due to the potential loss of information, and the (very small) loss of high-l power due to the use of spline interpolation. Use reproject.map2healpix instead. And read its docstring!")
 	import healpy
-	if not destroy_input and order > 1: imap = imap.copy()
-	if order > 1:
-		imap = utils.interpol_prefilter(imap, order=order, inplace=True)
+	ip = utils.interpolator(imap, order=order)
 	if omap is None:
 		# Generate an output map
 		if not nside:
@@ -2280,7 +2279,7 @@ def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000, destroy_input=Fa
 		pos   = np.array(healpy.pix2ang(nside, np.arange(i, min(npix,i+chunk))))
 		# Healpix uses polar angle, not dec
 		pos[0] = np.pi/2 - pos[0]
-		omap[...,i:i+chunk] = imap.at(pos, order=order, mask_nan=False, prefilter=False)
+		omap[...,i:i+chunk] = imap.at(pos, ip=ip)
 	return omap
 
 def to_flipper(imap, omap=None, unpack=True):
@@ -2803,7 +2802,7 @@ def ifftshift(map, inplace=False):
 def fillbad(map, val=0, inplace=False):
 	return np.nan_to_num(map, copy=not inplace, nan=val, posinf=val, neginf=val)
 
-def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3):
+def resample(map, oshape, off=(0,0), method="fft", border="wrap", corner=False, order=3):
 	"""Resample the input map such that it covers the same area of the sky
 	with a different number of pixels given by oshape."""
 	# Construct the output shape and wcs
@@ -2817,7 +2816,7 @@ def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, or
 			off -= 0.5 - 0.5*np.array(oshape[-2:],float)/map.shape[-2:] # in output units
 		opix  = pixmap(oshape) - off[:,None,None]
 		ipix  = opix * (np.array(map.shape[-2:],float)/oshape[-2:])[:,None,None]
-		omap  = ndmap(map.at(ipix, unit="pix", mode=mode, order=order), owcs)
+		omap  = ndmap(map.at(ipix, unit="pix", border=border, order=order), owcs)
 	else:
 		raise ValueError("Invalid resample method '%s'" % method)
 	return omap

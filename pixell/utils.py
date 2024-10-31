@@ -523,7 +523,7 @@ def dedup(a):
 	return a[np.concatenate([[True],a[1:]!=a[:-1]])]
 
 def interpol(arr, inds, out=None, mode="spline", border="nearest",
-		order=3, cval=0.0, epsilon=None):
+		order=3, cval=0.0, epsilon=None, ip=None):
 	"""Given an array arr[{x},{y}] and a list of float indices into a,
 	inds[len(y),{z}], returns interpolated values at these positions as [{x},{z}].
 
@@ -567,8 +567,9 @@ def interpol(arr, inds, out=None, mode="spline", border="nearest",
 	arr  = np.asanyarray(arr)
 	inds = np.asanyarray(inds)
 	npre = arr.ndim - len(inds)
-	ip   = interpolator(arr, npre, mode=mode, border=border, order=order,
-			cval=cval, epsilon=epsilon)
+	if ip is None:
+		ip = interpolator(arr, npre, mode=mode, border=border, order=order,
+				cval=cval, epsilon=epsilon)
 	return ip(inds, out=out)
 
 def interpolator(arr, npre=0, mode="spline", border="nearest", order=3, cval=0.0,
