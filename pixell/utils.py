@@ -2738,15 +2738,15 @@ def uvec(n, i, dtype=np.float64):
 	u[i] = 1
 	return u
 
-def ubash(Afun, n, dtype=np.float64):
+def ubash(Afun, n, idtype=np.float64, odtype=None):
 	"""Find the matrix representation Amat of linear operator Afun by
 	repeatedly applying it unit vectors with length n."""
-	v = Afun(uvec(n,0,dtype=dtype))
+	v = Afun(uvec(n,0,dtype=idtype))
 	m = len(v)
-	Amat = np.zeros((m,n), dtype=dtype)
+	Amat = np.zeros((m,n), dtype=odtype or v.dtype)
 	Amat[:,0] = v
 	for i in range(1,n):
-		Amat[:,i] = Afun(uvec(n,i,dtype=dtype))
+		Amat[:,i] = Afun(uvec(n,i,dtype=idtype))
 	return Amat
 
 def load_ascii_table(fname, desc, sep=None, dsep=None):
