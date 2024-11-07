@@ -32,10 +32,10 @@ jobs:
     name: "Run tests on MacOS"
     runs-on: macos-12
     env:
-      # LDFLAGS: "-ld64" # For MacOS 13 and above (XCode CLT 15 and above.)
-      CC: gcc-13
-      CXX: gcc-13
-      FC: gfortran-13
+      LDFLAGS: "-ld64" # For MacOS 13 and above (XCode CLT 15 and above.)
+      CC: gcc-12
+      CXX: gcc-12
+      FC: gfortran-12
       DUCC0_NUM_THREADS: 2
 
     steps:
@@ -76,8 +76,8 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.19.1
         env:
-          FC: gfortran-13
-          CC: gcc-13
+          FC: gfortran-12
+          CC: gcc-12
           MACOSX_DEPLOYMENT_TARGET: "13.0"
 
       - uses: actions/upload-artifact@v4
@@ -99,8 +99,8 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.19.1
         env:
-          FC: gfortran-13
-          CC: gcc-13
+          FC: gfortran-12
+          CC: gcc-12
           MACOSX_DEPLOYMENT_TARGET: "14.0"
 
       - uses: actions/upload-artifact@v4
