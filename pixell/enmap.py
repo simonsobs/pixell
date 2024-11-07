@@ -1901,8 +1901,10 @@ def get_downgrade_offset(shape, wcs, factor, ref=None):
 def downgrade(emap, factor, op=np.mean, ref=None, off=None, inclusive=False):
 	"""Returns enmap "emap" downgraded by the given integer factor
 	(may be a list for each direction, or just a number) by averaging
-	inside pixels."""
+	inside pixels. Returns the original map if factor is None or 1."""
+	if (factor is None): return emap
 	factor  = np.zeros(2, int)+factor
+	if np.all(factor==1): return emap
 	# Optionally apply an offset to keep different downgraded maps pixel-compatible.
 	# This can be either manually specified, or inferred from reference coordinates.
 	if off is None:  off = get_downgrade_offset(emap.shape, emap.wcs, factor, ref)
