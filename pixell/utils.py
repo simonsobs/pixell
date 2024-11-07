@@ -1367,7 +1367,7 @@ def allgather(a, comm):
 	rather than needing an output argument."""
 	a   = np.asarray(a)
 	res = np.zeros((comm.size,)+a.shape,dtype=a.dtype)
-	if np.issubdtype(a.dtype, np.string_):
+	if np.issubdtype(a.dtype, np.bytes_):
 		comm.Allgather(a.view(dtype=np.uint8), res.view(dtype=np.uint8))
 	else:
 		comm.Allgather(a, res)
@@ -1402,10 +1402,11 @@ def allgatherv(a, comm, axis=0):
 	#print(comm.rank, "fa.shape", fa.shape)
 	ra = fa.reshape(fa.shape[0],-1) if fa.size > 0 else fa.reshape(0,np.prod(fa.shape[1:],dtype=int))
 	N  = ra.shape[1]
-	n  = allgather([len(ra)],comm)
+	# Number of elements each task has
+	n  = allgather([len(ra)],comm).reshape(-1)
 	o  = cumsum(n)
 	rb = np.zeros((np.sum(n),N),dtype=ra.dtype)
-	#print("A", comm.rank, ra.shape, ra.dtype, rb.shape, rb.dtype, n, N)
+	# print("A", comm.rank, ra.shape, ra.dtype, rb.shape, rb.dtype, n, N)
 	comm.Allgatherv(ra, (rb, (n*N,o*N)))
 	fb = rb.reshape((rb.shape[0],)+fa.shape[1:])
 	# Restore original data type
@@ -3645,3 +3646,37 @@ def _disk_overlap_curved_tiny(d, R):
 	"""Curved sky disk overlap in limit of tiny separations.
 	First order accuracy in d"""
 	return 2*np.pi*(1-np.cos(R)) - 4*np.sin(R)*np.sin(d/2)
+
+# Hm, the first bin can be exceptional, so use the 2nd instead.
+# Would be easier if we could # demand that dl_2 = dl_3. Would
+# then remove b_2 from the equation system, and say
+# b_2 = b_3-(b_4-b_3) = 2b_3-b_4. This would give
+# l_1 = 0.5*(b_1+b_2) = 0.5*(b_1+2b_3-b_4)
+# l_2 = 0.5*(b_2+b_3) = 0.5*(3b_3-b_4)
+#
+# l = 0.5*[1 2 -1 0 ...]
+#         [0 3 -1 0 ...]
+#         [0 1  1 0 ...]
+#         [............]
+def infer_bin_edges(l):
+	"""Given bin centers l[n], returns bin edges b[n+1] such
+	that l = 0.5*(b[1:]+b[:-1]) under the assumption
+	b[2] = (b[1]+b[3])/2. This is equivalent to assuming that
+	the 2nd and 3rd bins have the same size. The problem is
+	underspecified, so an assumption like this is needed, but
+	it could be generalized exactly what it is.
+	"""
+	from scipy import sparse
+	n = len(l)
+	P = 0.5*sparse.csr_array(
+		(
+			np.concatenate([[1,2,-1,3,-1],np.ones(2*(n-2))]),
+			(
+				np.concatenate([[0,0,0,1,1],np.arange(2,n),np.arange(2,n)]),
+				np.concatenate([[0,1,2,1,2],np.arange(1,n-1),np.arange(2,n)]),
+			)
+		), shape=(n,n)
+	)
+	b  = sparse.linalg.spsolve(P.T.dot(P), P.T.dot(l))
+	b  = np.concatenate([b[:1],[2*b[1]-b[2]],b[1:]])
+	return b
