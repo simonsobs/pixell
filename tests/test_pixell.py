@@ -137,7 +137,7 @@ def get_geometries(yml_section):
     geos = {}
     for g in yml_section:
         if g['type']=='fullsky':
-            geos[g['name']] = enmap.fullsky_geometry(res=np.deg2rad(g['res_arcmin']/60.),proj=g['proj'])
+            geos[g['name']] = enmap.fullsky_geometry(res=np.deg2rad(g['res_arcmin']/60.),proj=g['proj'],variant="CC")
         elif g['type']=='pickle':
             geos[g['name']] = pickle.load(open(DATA_PREFIX+"%s"%g['filename'],'rb'))
         else:
@@ -198,7 +198,7 @@ def get_extraction_test_results(yaml_file):
 lens_version = '071123'
 
 def get_offset_result(res=1.,dtype=np.float64,seed=1):
-    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res))
+    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res), variant="CC")
     shape = (3,) + shape
     obs_pos = enmap.posmap(shape, wcs)
     np.random.seed(seed)
@@ -207,7 +207,7 @@ def get_offset_result(res=1.,dtype=np.float64,seed=1):
     return obs_pos,grad,raw_pos
 
 def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
-    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res))
+    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res), variant="CC")
     shape = (3,) + shape
     # ells = np.arange(lmax)
     ps_cmb,ps_lens = powspec.read_camb_scalar(DATA_PREFIX+"test_scalCls.dat")
@@ -485,7 +485,7 @@ class PixelTests(unittest.TestCase):
         print("Testing full sky geometry...")
         test_res_arcmin = 0.5
         shape,wcs = enmap.fullsky_geometry(res=np.deg2rad(test_res_arcmin/60.),proj='car')
-        assert shape[0]==21601 and shape[1]==43200
+        assert shape[0]==21600 and shape[1]==43200
         assert abs(enmap.area(shape,wcs) - 4*np.pi) < 1e-6
 
     def test_pixels(self):
@@ -633,8 +633,8 @@ class PixelTests(unittest.TestCase):
         shape2,wcs2 = enmap.fullsky_geometry(res=np.deg2rad(6/60.),proj='car')
         shape3,wcs3 = enmap.fullsky_geometry(res=np.deg2rad(24/60.),proj='car')
         imap = enmap.ones(shape,wcs)
-        omap2 = enmap.project(imap,shape2,wcs2,order=0,mode='wrap')
-        omap3 = enmap.project(imap,shape3,wcs3,order=0,mode='wrap')
+        omap2 = enmap.project(imap,shape2,wcs2,order=0,border='wrap')
+        omap3 = enmap.project(imap,shape3,wcs3,order=0,border='wrap')
         assert np.all(np.isclose(omap2,1))
         assert np.all(np.isclose(omap3,1))
 
@@ -1093,7 +1093,7 @@ class PixelTests(unittest.TestCase):
             assert np.all(np.isclose(diff,0,atol=1e-3))
 
     def test_tilemap(self):
-        shape, wcs = enmap.fullsky_geometry(30*utils.degree)
+        shape, wcs = enmap.fullsky_geometry(30*utils.degree, variant="CC")
         assert shape == (7,12)
         geo  = tilemap.geometry((3,)+shape, wcs, tile_shape=(2,2))
         assert len(geo.active) == 0

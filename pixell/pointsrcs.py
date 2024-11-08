@@ -81,7 +81,7 @@ def sim_objects(shape, wcs, poss, amps, profile, prof_ids=None, omap=None, vmin=
 	sources will have been added (or maxed etc. depending on op) into the map.
 	Otherwise, the only signal in the map will be the objects."""
 	dtype = np.float32 # C extension only supports this dtype
-	if separable == "auto": separable = wcsutils.is_cyl(wcs)
+	if separable == "auto": separable = wcsutils.is_separable(wcs)
 	# Object positions
 	obj_decs = np.asanyarray(poss[0], dtype=dtype, order="C")
 	obj_ras  = np.asanyarray(poss[1], dtype=dtype, order="C")
@@ -149,7 +149,7 @@ def radial_sum(map, poss, bins, oprofs=None, separable="auto",
 	Returns the resulting profiles. If oprof was specified, then the same object will
 	be returned (after being updated of course)."""
 	dtype = np.float32 # C extension only supports this dtype
-	if separable == "auto": separable = wcsutils.is_cyl(map.wcs)
+	if separable == "auto": separable = wcsutils.is_separable(map.wcs)
 	# Object positions
 	obj_decs = np.asanyarray(poss[0], dtype=dtype, order="C")
 	obj_ras  = np.asanyarray(poss[1], dtype=dtype, order="C")
@@ -264,7 +264,7 @@ def sim_srcs_python(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rma
 
 	The source simulation is sped up by using a source lookup grid.
 	"""
-	if separable == "auto": separable = wcsutils.is_cyl(wcs)
+	if separable == "auto": separable = wcsutils.is_separable(wcs)
 	if omap is None: omap = enmap.zeros(shape, wcs, dtype)
 	ishape = omap.shape
 	omap   = omap.preflat
