@@ -30,7 +30,7 @@ jobs:
 
   test-macos:
     name: "Run tests on MacOS"
-    runs-on: macos-15
+    runs-on: macos-15-arm64
     env:
       #LDFLAGS: "-ld64" # For MacOS 13 and above (XCode CLT 15 and above.)
       CC: gcc-14
