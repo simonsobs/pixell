@@ -12,8 +12,8 @@ jobs:
         python: ["3.12", "3.11", "3.10"]
 
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions/setup-python@v1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
       
@@ -32,15 +32,14 @@ jobs:
     name: "Run tests on MacOS"
     runs-on: macos-latest
     env:
-      #LDFLAGS: "-ld64" # For MacOS 13 and above (XCode CLT 15 and above.)
       CC: gcc-14
       CXX: gcc-14
       FC: gfortran-14
       DUCC0_NUM_THREADS: 2
 
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions/setup-python@v1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -113,9 +112,9 @@ jobs:
     name: Build source distribution
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v5
         name: Install Python
         with:
           python-version: '3.10'
