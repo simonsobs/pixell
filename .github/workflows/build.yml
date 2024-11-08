@@ -30,12 +30,12 @@ jobs:
 
   test-macos:
     name: "Run tests on MacOS"
-    runs-on: macos-12
+    runs-on: macos-15
     env:
       #LDFLAGS: "-ld64" # For MacOS 13 and above (XCode CLT 15 and above.)
-      CC: gcc-12
-      CXX: gcc-12
-      FC: gfortran-12
+      CC: gcc-14
+      CXX: gcc-14
+      FC: gfortran-14
       DUCC0_NUM_THREADS: 2
 
     steps:
