@@ -77,7 +77,7 @@ class ndmap(np.ndarray):
 	def pixmap(self): return pixmap(self.shape, self.wcs)
 	def laxes(self, oversample=1, method="auto"): return laxes(self.shape, self.wcs, oversample=oversample, method=method)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
-	def lform(self): return lform(self)
+	def lform(self, method="auto"): return lform(self, method=method)
 	def modlmap(self, oversample=1, min=0): return modlmap(self.shape, self.wcs, oversample=oversample, min=min)
 	def modrmap(self, ref="center", safe=True, corner=False): return modrmap(self.shape, self.wcs, ref=ref, safe=safe, corner=corner)
 	def lbin(self, bsize=None, brel=1.0, return_nhit=False, return_bins=False, lop=None): return lbin(self, bsize=bsize, brel=brel, return_nhit=return_nhit, return_bins=return_bins, lop=lop)
@@ -2310,7 +2310,7 @@ def apod_mask(mask, width=1*utils.degree, edge=True, profile=apod_profile_cos):
 	r = mask.distance_transform(rmax=width)
 	return profile(r/width)
 
-def lform(map):
+def lform(map, method="auto"):
 	"""Given an enmap, return a new enmap that has been fftshifted (unless shift=False),
 	and which has had the wcs replaced by one describing fourier space. This is mostly
 	useful for plotting or writing 2d power spectra.
@@ -2319,12 +2319,12 @@ def lform(map):
 	are assumed to need conversion between degrees and radians, sky2pix etc. get confused
 	when applied to lform-maps."""
 	omap = fftshift(map)
-	omap.wcs = lwcs(map.shape, map.wcs)
+	omap.wcs = lwcs(map.shape, map.wcs, method=method)
 	return omap
 
-def lwcs(shape, wcs):
+def lwcs(shape, wcs, method="auto"):
 	"""Build world coordinate system for l-space"""
-	lres   = 2*np.pi/extent(shape, wcs, signed=True)
+	lres   = 2*np.pi/extent(shape, wcs, signed=True, method=method)
 	ny, nx = shape[-2:]
 	owcs   = wcsutils.explicit(crpix=[nx//2+1,ny//2+1], crval=[0,0], cdelt=lres[::-1])
 	return owcs
