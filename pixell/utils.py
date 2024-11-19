@@ -610,17 +610,41 @@ class SplineInterpolator:
 		return out
 
 class FourierInterpolator:
-	prefiltered = False
-	def __init__(self, arr, npre=0, epsilon=None):
+	def __init__(self, arr, npre=0, epsilon=None, precompute="plan"):
+		"""When plan=True, uses incremental u2nu. This requires
+		constructing a plan per field, overhead 10x arr. When
+		plan=False, precomputes just the """
 		from . import fft
-		self.npre = npre % arr.ndim
-		self.arr  = np.asanyarray(arr)
-		self.epsilon = epsilon
-		self.farr = fft.fft(arr, axes=tuple(range(self.npre,arr.ndim)))
+		self.npre        = npre % arr.ndim
+		self.arr         = np.asanyarray(arr)
+		self.epsilon     = epsilon
+		self.complex     = np.iscomplexobj(arr)
+		self.precompute  = precompute
+		axes = tuple(range(-arr.ndim+npre,0,1))
+		self.prefiltered = False
+		if precompute == "plan":
+			# Memory overhead: 10x arr size
+			self.plan = fft.u2nu_plan(arr, axes=axes, op=lambda arr: fft.fft(arr, axes=axes),
+					normalize=True, epsilon=self.epsilon, complex=self.complex)
+			self.prefiltered = True
+		elif precompute == "fft":
+			# Memory overhead: 2x arr size, +10x field size when calling
+			self.farr = fft.fft(arr, axes=axes)
+		elif precompute == "none":
+			self.arr  = arr
+		else:
+			raise ValueError("Invalid value of precompute: '%s'. Valid values are plan, fft or none" % str(precompute))
 	def __call__(self, inds, out=None):
 		from . import fft
 		inds, out = _ip_prepare(self, inds, out=out)
-		out = fft.interpol_nufft(self.farr, inds, out=out, nofft=True, epsilon=self.epsilon)
+		if self.precompute == "plan":
+			out = self.plan.eval(inds, out=out)
+		elif self.precompute == "fft":
+			out = fft.interpol_nufft(self.farr, inds, out=out, nofft=True,
+				epsilon=self.epsilon, complex=self.complex)
+		else:
+			out = fft.interpol_nufft(self.arr, inds, out=out,
+				epsilon=self.epsilon, complex=self.complex)
 		return out
 
 def _ip_get_mode(mode, order):
@@ -3580,11 +3604,14 @@ def distpow(dist, N):
 def airy(x):
 	"""Dimensionless real-space representation of Airy beam, normalized to peak at 1.
 	To get the airy beam an angular distance r from the center for a telescope with
-	aperture diameter D at wavelength λ, use airy(sin(r)*(2*pi*D/λ)).
+	aperture diameter D at wavelength λ, use airy(sin(r)/2*(2*pi*D/λ)).
+	This beam has an FWHM in terms of x of 3.2326799. So for small beams,
+	FWHM = 3.2326799 λ/(D*pi) radians. This works out to quite a bit smaller than
+	our beam, though. E.g. 1.17 arcmin where I expected 1.4 arcmin.
 	"""
 	# Avoid division by zero at low radius
 	with nowarn():
-		return np.where(x<1e-6, 1-x**2, (scipy.special.j1(2*x)/x)**2)
+		return np.where(x<1e-6, 1-0.25*x**2, (2*scipy.special.j1(x)/x)**2)
 
 def lairy(x):
 	"""This is the harmonic space representation of an Airy beam.
@@ -3597,6 +3624,8 @@ def lairy(x):
 	"""
 	x = np.clip(x,0,1)
 	return (np.arccos(x)-x*(1-x**2)**0.5)/(np.pi/2)
+
+def airy_lmax(D, λ): return 2*np.pi*D/λ
 
 def airy_area(D, λ):
 	"""Area (steradians) of airy beam for an aperture of size D and wavelength λ.

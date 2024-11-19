@@ -92,7 +92,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj=None, apod=2*utils
 		# I apologize for the syntax. There should be a better way of doing this
 		ipos = coordinates.transform("cel", ["cel",[[0,0,coords[si,1],coords[si,0]],False]], opos[::-1], pol=pol)
 		ipos, rest = ipos[1::-1], ipos[2:]
-		omaps[si] = ithumb.at(ipos, order=order)
+		omaps[si] = ithumb.at(ipos, mode="spline", order=order)
 		# Apply the polarization rotation. The sign is flipped because we computed the
 		# rotation from the output to the input
 		if pol: omaps[si] = enmap.rotate_pol(omaps[si], -rest[0])
@@ -232,7 +232,7 @@ def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], met
 				# Not sure why the [::-1] is necessary here. Maybe psi,theta,phi vs. phi,theta,psi?
 				pos = coordinates.transform_euler(inv_euler(rot2euler(rot))[::-1], pos, pol=pol)
 			# The actual interpolation happens here
-			vals  = imap_pre.at(pos[1::-1], order=order, prefilter=False, mode=boundary)
+			vals  = imap_pre.at(pos[1::-1], order=order, prefilter=False, mode="spline", border=boundary)
 			if rot is not None and imap.ndim > 2:
 				# Update the polarization to account for the new coordinate system
 				for s, c1, c2 in enmap.spin_helper(spin, imap.shape[-3]):
