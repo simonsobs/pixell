@@ -3676,36 +3676,31 @@ def _disk_overlap_curved_tiny(d, R):
 	First order accuracy in d"""
 	return 2*np.pi*(1-np.cos(R)) - 4*np.sin(R)*np.sin(d/2)
 
-# Hm, the first bin can be exceptional, so use the 2nd instead.
-# Would be easier if we could # demand that dl_2 = dl_3. Would
-# then remove b_2 from the equation system, and say
-# b_2 = b_3-(b_4-b_3) = 2b_3-b_4. This would give
-# l_1 = 0.5*(b_1+b_2) = 0.5*(b_1+2b_3-b_4)
-# l_2 = 0.5*(b_2+b_3) = 0.5*(3b_3-b_4)
-#
-# l = 0.5*[1 2 -1 0 ...]
-#         [0 3 -1 0 ...]
-#         [0 1  1 0 ...]
-#         [............]
-def infer_bin_edges(l):
-	"""Given bin centers l[n], returns bin edges b[n+1] such
-	that l = 0.5*(b[1:]+b[:-1]) under the assumption
-	b[2] = (b[1]+b[3])/2. This is equivalent to assuming that
-	the 2nd and 3rd bins have the same size. The problem is
-	underspecified, so an assumption like this is needed, but
-	it could be generalized exactly what it is.
-	"""
+def infer_bin_edges(centers, ref=1):
+	"""Given a list of bin centers[n], returns the corresponding
+	bin edges[n+1] such that centers=0.5*(edges[:-1]+edges[1:]).
+	Since the system is underdetermined, an extra assumption is
+	needed. This function assumes that the two consecutive bins
+	starting at index "ref" have equal width. The default, 1,
+	means that the 2nd and 3rd bins are assumed to have equal
+	width. This was chosen because the first bin often doesn't
+	follow the same pattern as the others."""
 	from scipy import sparse
-	n = len(l)
-	P = 0.5*sparse.csr_array(
+	# Equation system
+	# [c1]                  [0.5 0.5 0   0 ...]
+	# [c2]               =  [0   0.5 0.5 0 ...]
+	# [..]                  [      ......     ]
+	# [c(ref+1)-cref]       [... -1 1 ........]
+	n = len(centers)
+	P = sparse.csr_array(
 		(
-			np.concatenate([[1,2,-1,3,-1],np.ones(2*(n-2))]),
+			np.concatenate([np.full(2*n, 0.5), [-1,1]]),
 			(
-				np.concatenate([[0,0,0,1,1],np.arange(2,n),np.arange(2,n)]),
-				np.concatenate([[0,1,2,1,2],np.arange(1,n-1),np.arange(2,n)]),
+				np.concatenate([np.arange(0,n),np.arange(0,n),[n,n]]),
+				np.concatenate([np.arange(0,n),np.arange(1,n+1),[ref,ref+1]])
 			)
-		), shape=(n,n)
+		), shape=(n+1,n+1)
 	)
-	b  = sparse.linalg.spsolve(P.T.dot(P), P.T.dot(l))
-	b  = np.concatenate([b[:1],[2*b[1]-b[2]],b[1:]])
-	return b
+	rhs   = np.concatenate([centers,[centers[ref+1]-centers[ref]]])
+	edges = sparse.linalg.spsolve(P.T.dot(P), P.T.dot(rhs))
+	return edges

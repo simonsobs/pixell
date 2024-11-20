@@ -2235,7 +2235,7 @@ def shrink_mask(mask, r):
 	"""Shrink the True part of boolean mask "mask" by a distance of r radians"""
 	return mask.distance_transform(rmax=r) >= r
 
-def pad(emap, pix, return_slice=False, wrap=False):
+def pad(emap, pix, return_slice=False, wrap=False, value=0):
 	"""Pad enmap "emap", creating a larger map with zeros filled in on the sides.
 	How much to pad is controlled via pix, which har format [{from,to},{y,x}],
 	[{y,x}] or just a single number to apply on all sides. E.g. pix=5 would pad
@@ -2250,7 +2250,7 @@ def pad(emap, pix, return_slice=False, wrap=False):
 	w = emap.wcs.deepcopy()
 	w.wcs.crpix += pix[0,::-1]
 	# Construct a slice between the new and old map
-	res = zeros(emap.shape[:-2]+tuple([s+sum(p) for s,p in zip(emap.shape[-2:],pix.T)]),wcs=w, dtype=emap.dtype)
+	res = full(emap.shape[:-2]+tuple([s+sum(p) for s,p in zip(emap.shape[-2:],pix.T)]),wcs=w, val=value, dtype=emap.dtype)
 	mslice = (Ellipsis,slice(pix[0,0],res.shape[-2]-pix[1,0]),slice(pix[0,1],res.shape[-1]-pix[1,1]))
 	res[mslice] = emap
 	if wrap:
