@@ -3467,6 +3467,11 @@ def replace(istr, ipat, repl):
 	if ostr == istr: raise KeyError("Pattern not found")
 	return ostr
 
+def regreplace(istr, ipat, repl, count=0, flags=0):
+	ostr, n = re.subn(ipat, repl, istr, count=count, flags=flags)
+	if n == 0: raise KeyError("Pattern not found")
+	return ostr
+
 # I used to do stuff like a[~np.isfinite(a)] = 0, but this should be
 # lower overhad and faster
 def remove_nan(a):
