@@ -1971,6 +1971,17 @@ def downgrade(emap, factor, op=np.mean, ref=None, off=None, inclusive=False):
 	omap = ndmap(omap, wcs)
 	return omap
 
+def downgrade_fft(emap, factor):
+	"""Like downgrade(emap, factor), but uses fourier-resampling. This avoids
+	introducing both a pixel window and aliasing, but assumes periodic boundary
+	conditions."""
+	return resample(emap, utils.nint(np.array(emap.shape[-2:])/factor))
+
+def upgrade_fft(emap, factor):
+	"""Like upgrade(emap, factor), but uses fourier-resampling. This avoids
+	introducing any sharp edges, preserving the shape of the power spectrum."""
+	return resample(emap, utils.nint(np.array(emap.shape[-2:])*factor))
+
 def upgrade(emap, factor, off=None, oshape=None, inclusive=False):
 	"""Upgrade emap to a larger size using nearest neighbor interpolation,
 	returning the result. More advanced interpolation can be had using
@@ -3060,7 +3071,7 @@ def ifftshift(map, inplace=False):
 def fillbad(map, val=0, inplace=False):
 	return np.nan_to_num(map, copy=not inplace, nan=val, posinf=val, neginf=val)
 
-def resample(map, oshape, off=(0,0), method="fft", border="wrap", corner=False, order=3):
+def resample(map, oshape, off=(0,0), method="fft", border="wrap", corner=True, order=3):
 	"""Resample the input map such that it covers the same area of the sky
 	with a different number of pixels given by oshape."""
 	# Construct the output shape and wcs
@@ -3070,7 +3081,7 @@ def resample(map, oshape, off=(0,0), method="fft", border="wrap", corner=False, 
 	elif method == "spline":
 		owcs = wcsutils.scale(map.wcs, np.array(oshape[-2:],float)/map.shape[-2:], rowmajor=True, corner=corner)
 		off  = np.zeros(2)+off
-		if not corner:
+		if corner:
 			off -= 0.5 - 0.5*np.array(oshape[-2:],float)/map.shape[-2:] # in output units
 		opix  = pixmap(oshape) - off[:,None,None]
 		ipix  = opix * (np.array(map.shape[-2:],float)/oshape[-2:])[:,None,None]
@@ -3079,7 +3090,7 @@ def resample(map, oshape, off=(0,0), method="fft", border="wrap", corner=False, 
 		raise ValueError("Invalid resample method '%s'" % method)
 	return omap
 
-def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=False, norm="pix", op=lambda a,b:b, dummy=False):
+def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=True, norm="pix", op=lambda a,b:b, dummy=False):
 	"""Like resample, but takes a fourier-space map as input and outputs a fourier-space map.
 	unit specifies which fourier-space unit is used. "pix" corresponds to
 	the standard enmap normalization (normalize=True in enmap.fft). "phys" corresponds
@@ -3089,7 +3100,7 @@ def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=False, norm="pix",
 	# Construct the output shape and wcs
 	oshape = fimap.shape[:-2] + tuple(oshape)[-2:]
 	off    = np.zeros(2)+off
-	if not corner:
+	if corner:
 		# Apply phase shift to realign with pixel centers. This can be seen as a half pixel shift to
 		# the left in the original pixelization followed by a half pixel shift to the right in the new
 		# pixelization.

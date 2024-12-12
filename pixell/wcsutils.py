@@ -179,17 +179,21 @@ def parse_system(system, variant=None):
 	if len(toks) > 1: return toks[0].lower(), toks[1]
 	else: return toks[0].lower(), variant
 
-def scale(wcs, scale=1, rowmajor=False, corner=False):
+def scale(wcs, scale=1, rowmajor=False, corner=True):
 	"""Scales the linear pixel density of a wcs by the given factor, which can be specified
-	per axis. This is the same as dividing the pixel size by the same number."""
+	per axis. This is the same as dividing the pixel size by the same numberr
+	corner controls which area is scaled. With corner=True (the default), then the
+	area from the start of the first pixel to the end of the lats pixel will be scaled
+	by this factor. If corner=False, then the area from the center of the first pixel
+	to the center of the last pixel will be scaled. Usually the former makes most sense."""
 	scale = np.zeros(2)+scale
 	if rowmajor: scale = scale[::-1]
 	wcs = wcs.deepcopy()
-	if not corner:
+	if corner:
 		wcs.wcs.crpix -= 0.5
 	wcs.wcs.crpix *= scale
 	wcs.wcs.cdelt /= scale
-	if not corner:
+	if corner:
 		wcs.wcs.crpix += 0.5
 	return wcs
 
