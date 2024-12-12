@@ -426,7 +426,7 @@ def resample_fft(fa, n, out=None, axes=-1, norm=1, op=lambda a,b:b):
 	return out
 
 def interpol_nufft(a, inds, out=None, axes=None, normalize=True,
-		periodicity=None, epsilon=None, nthread=None, nofft=False):
+		periodicity=None, epsilon=None, nthread=None, nofft=False, complex=False):
 	"""Given some array a[{pre},{dims}] interpolate it at the given
 	inds[len(dims),{post}], resulting in an output with shape [{pre},{post}].
 	The signal is assumed to be periodic with the size of a unless this is overridden
@@ -442,9 +442,9 @@ def interpol_nufft(a, inds, out=None, axes=None, normalize=True,
 	# with this is that a full fourier-array needs to be allocated. I can save
 	# some memory by instead doing the fft per field, at the cost of it being
 	# a bit hacky
-	op = None if nofft else lambda a, h: fft.fft(a, nthread=h.nthread, axes=h.axes)
+	op = None if nofft else lambda a, h: fft(a, nthread=h.nthread, axes=h.axall)
 	return u2nu(a, inds, out=out, axes=axes, periodicity=periodicity,
-		epsilon=epsilon, nthread=nthread, normalize=normalize, complex=False, op=op)
+		epsilon=epsilon, nthread=nthread, normalize=normalize, complex=complex, op=op)
 
 def u2nu(fa, inds, out=None, axes=None, periodicity=None, epsilon=None, nthread=None,
 			normalize=False, forward=False, complex=True, op=None):
@@ -587,17 +587,73 @@ def inu2u(fa, inds, out=None, axes=None, periodicity=None, epsilon=None, nthread
 # TODO: Add proper docstrings here. Can I avoid lots of repetition?
 
 def nufft(a, inds, out=None, oshape=None, axes=None, periodicity=None, epsilon=None, nthread=None, normalize=False, flip=False):
+	"""Alias of iu2nu(..., forward=flip). This involves inverting a system with conjugate gradients"""
 	return iu2nu(a, inds, out=out, oshape=oshape, axes=axes, periodicity=periodicity, epsilon=epsilon, nthread=nthread, normalize=normalize, forward=flip)
 
 def inufft(fa, inds, out=None, axes=None, periodicity=None, epsilon=None, nthread=None, normalize=False, flip=False, complex=True, op=None):
+	"""Alias of u2nu(..., forward=flip)"""
 	return u2nu(fa, inds, out=out, axes=axes, periodicity=periodicity, epsilon=epsilon, nthread=nthread, normalize=normalize, forward=flip, complex=complex, op=op)
 
 def nufft_adjoint(a, inds, out=None, oshape=None, axes=None, periodicity=None, epsilon=None, nthread=None, normalize=False, flip=False):
+	"""Alias of nu2u(..., forward=not flip)"""
 	return nu2u(a, inds, out=out, oshape=oshape, axes=axes, periodicity=periodicity, epsilon=epsilon, nthread=nthread, normalize=normalize, forward=not flip)
 
 def inufft_adjoint(fa, inds, out=None, axes=None, periodicity=None, epsilon=None, nthread=None, normalize=False, flip=False, complex=True):
+	"""Alias of inu2u(..., forward=not flip). This involves inverting a system with conjugate gradients"""
 	return inu2u(fa, inds, out=out, axes=axes, periodicity=periodicity, epsilon=epsilon, nthread=nthread, normalize=normalize, forward=not flip)
 
+# Incremental nufft. This is useful for low-latency interpolation, or interpolation
+# where you don't know how many points there will be
+
+# Must figure out how much can be factorized out here. Sadly it wasn't
+# practicaly to use _nufft_helper here. Will wait with factorization until
+# I implement nu2u_plan
+class u2nu_plan:
+	def __init__(self, fa, axes, periodicity=None, epsilon=None, nthread=None,
+			normalize=False, forward=False, complex=True, op=None):
+		# Will set up one plan per fft-field
+		fa           = np.asarray(fa)
+		self.axes    = utils.astuple(axes)
+		self.shape   = fa.shape
+		self.gshape  = tuple([self.shape[ax] for ax in self.axes])
+		self.paxes   = tuple(utils.complement_inds(self.axes, fa.ndim))
+		self.pshape  = tuple([self.shape[ax] for ax in self.paxes])
+		if op is None: op = lambda fa: fa
+		if periodicity is None: periodicity = self.gshape
+		else: periodicity = np.zeros(len(self.axes),int)+periodicity
+		self.nthread = nthread or nthread_fft
+		self.plans = []
+		for I in utils.nditer(self.shape, axes=self.paxes):
+			faI        = op(fa[I])
+			self.ctype = faI.dtype
+			# Target accuracy
+			if epsilon is None:
+				epsilon = 1e-5 if self.ctype == np.complex64 else 1e-12
+			plan       = ducc0.nufft.experimental.incremental_u2nu(
+				grid=faI, epsilon=epsilon, nthreads=self.nthread, forward=forward,
+				periodicity=periodicity, fft_order=True)
+			self.plans.append(plan)
+		self.epsilon = epsilon
+		self.forward = forward
+		self.dtype   = utils.real_dtype(self.ctype)
+		self.ndim    = len(self.axes)
+		self.complex = complex
+		self.norm    = np.prod([fa.shape[ax] for ax in axes])
+		self.normalize = normalize
+	def eval(self, inds, out=None):
+		inds  = np.asarray(inds, dtype=self.dtype)
+		iflat = inds.reshape(self.ndim,-1).T
+		if out is None:
+			out = np.zeros(self.pshape+inds.shape[1:], self.ctype if self.complex else self.dtype)
+		oflat = out.reshape(len(self.plans),iflat.shape[0])
+		for i, plan in enumerate(self.plans):
+			vals = self.plans[i].get_points(coord=iflat)
+			if not self.complex: vals = vals.real
+			oflat[i] = vals
+			del vals
+		if self.normalize:
+			out /= self.norm
+		return out
 
 ########### Helper functions ##############
 

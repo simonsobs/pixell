@@ -425,6 +425,10 @@ class alm_info:
 		if nalm is not None:
 			assert self.nelem == nalm, "lmax must be explicitly specified when lmax != mmax"
 		self.mstart= mstart.astype(np.uint64, copy=False)
+	@property
+	def nl(self): return self.lmax+1
+	@property
+	def nm(self): return self.mmax+1
 	def lm2ind(self, l, m):
 		return (self.mstart[m].astype(int, copy=False)+l*self.stride).astype(int, copy=False)
 	def get_map(self):
