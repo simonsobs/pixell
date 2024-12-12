@@ -546,48 +546,6 @@ def contains(shape, wcs, pos, unit="coord"):
 	else:               pix = pos
 	return np.all((pix>=0)&(pix.T<shape[-2:]).T,0)
 
-#def project(map, shape, wcs, mode="spline", order=3, border="constant",
-#		cval=0.0, force=False, safe=True, bsize=1000, ip=None):
-#	"""Project the map into a new map given by the specified
-#	shape and wcs, interpolating as necessary.
-#	This uses local interpolation, and will lose information
-#	when downgrading compared to averaging down."""
-#	# Need to think about how to handle non-spline interpolation here.
-#	# 1. Build interpolator for whole map, then evaluate for whole map.
-#	#    Large memory overhead (~14x map size for fourier-interpolation)
-#	# 2. Build interpolator for whole map, then evaluate in blocks.
-#	#    Large memory overhead (~10x map size for fourier-interpolation)
-#	# 3. Build interpolation in blocks, then evaluate in blocks.
-#	#    Problems with boundary conditions. Fourier-interpolation assumes
-#	#    periodic boundaries, but can probably get away with some padding
-#	#    and apodization.
-#
-#	# In the simplest case we just build an interpolator and evaluate
-#	# all the positions at once. But this is memory-intensive.
-#	#
-#
-#
-#
-#	# Skip expensive operation if map is compatible
-#	if not force:
-#		if wcsutils.equal(map.wcs, wcs) and tuple(shape[-2:]) == tuple(shape[-2:]):
-#			return map.copy()
-#		elif wcsutils.is_compatible(map.wcs, wcs) and border == "constant":
-#			return extract(map, shape, wcs, cval=cval)
-#	omap = zeros(map.shape[:-2]+shape[-2:], wcs, map.dtype)
-#	# Save memory by looping over rows. This won't work for non-"prefiltered" interpolators
-#	if ip and not ip.prefiltered: bsize=100000000
-#	for i1 in range(0, shape[-2], bsize):
-#		i2     = min(i1+bsize, shape[-2])
-#		somap  = omap[...,i1:i2,:]
-#		pix    = map.sky2pix(somap.posmap(), safe=safe)
-#		y1     = max(np.min(pix[0]).astype(int)-3,0)
-#		y2     = min(np.max(pix[0]).astype(int)+3,map.shape[-2])
-#		if y2-y1 <= 0: continue
-#		pix[0] -= y1
-#		somap[:] = utils.interpol(map[...,y1:y2,:], pix, mode=mode, order=order, border=border, cval=cval, ip=ip)
-#	return omap
-
 def project(map, shape, wcs, mode="spline", order=3, border="constant",
 		cval=0.0, force=False, safe=True, bsize=1000, context=50, ip=None):
 	"""Project map to a new geometry.
