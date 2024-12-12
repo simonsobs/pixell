@@ -137,6 +137,7 @@ class CosineNeedlet:
 		"""
 		self.lpeaks = lpeaks
 		self.lmaxs = np.append(self.lpeaks[1:],self.lpeaks[-1])
+		self.lmins = np.append(self.lpeaks[0],self.lpeaks[:-1])
 		self.lmin = self.lpeaks[0]
 		self.lmax = self.lpeaks[-1]
 	@property
@@ -303,13 +304,24 @@ class WaveletTransform:
 	def geometry(self): return self.shape, self.wcs
 	@property
 	def nlevel(self): return len(self.geometries)
-	def map2wave(self, map, owave=None):
+	def map2wave(self, map, owave=None, fl = None, scales=None, fill_value=None):
 		"""Transform from an enmap map[...,ny,nx] to a multimap of wavelet coefficients,
 		which is effectively a group of enmaps with the same pre-dimensions but varying shape.
 		If owave is provided, it should be a multimap with the right shape (compatible with
 		the .geometries member of this class), and will be overwritten with the result. In
 		any case the resulting wavelet coefficients are returned.
+
+		A filter fl (either an array or a function; see curvedsky.almxfl) can be
+		provided that pre-filters the map in spherical harmonic space, e.g. to
+		convolve maps to a common beam.
+
+		A list of the indices of wavelet coefficients to be calculated can be provided
+		in scales; None defaults to all scales.  For wavelet coefficients that are not
+		calculated, a map of zeros wil be provided instead of performing the corresponding
+		harmonic to real space transform. Alternatively, a fill_value different from zero
+		can be specified.
 		"""
+		scales = range(len(self.geometries)) if scales is None else scales
 		filters, norms, lmids = self.filters, self.norms, self.lmids
 		# Output geometry. Can't just use our existing one because it doesn't know about the
 		# map pre-dimensions. There should be an easier way to do this.
@@ -317,18 +329,31 @@ class WaveletTransform:
 		if owave is None: owave = multimap.zeros(geos, map.dtype)
 		if self.uht.mode == "flat":
 			fmap = enmap.fft(map, normalize=False)
+			if fl is not None:
+				raise NotImplementedError("Pre-filtering not yet implemented for flat-sky wavelets.")				
 			for i, (shape, wcs) in enumerate(self.geometries):
-				fsmall  = enmap.resample_fft(fmap, shape, norm=None, corner=True)
-				fsmall *= filters[i] / (norms[i]*fmap.npix)
-				owave.maps[i] = enmap.ifft(fsmall, normalize=False).real
+				if i in scales:
+					fsmall  = enmap.resample_fft(fmap, shape, norm=None, corner=True)
+					fsmall *= filters[i] / (norms[i]*fmap.npix)
+					owave.maps[i] = enmap.ifft(fsmall, normalize=False).real
+				else:
+					owave.maps[i] = enmap.zeros(shape,wcs)
+					if fill_value is not None: owave.maps[i][:] = np.nan
+					
 		else:
 			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
 			alm   = curvedsky.map2alm(map, ainfo=ainfo)
+			if fl is not None:
+				alm = curvedsky.almxfl(alm,fl)
 			for i, (shape, wcs) in enumerate(self.geometries):
-				smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
-				asmall    = curvedsky.transfer_alm(ainfo, alm, smallinfo)
-				smallinfo.lmul(asmall, filters[i]/norms[i], asmall)
-				curvedsky.alm2map(asmall, owave.maps[i])
+				if i in scales:
+					smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
+					asmall    = curvedsky.transfer_alm(ainfo, alm, smallinfo)
+					smallinfo.lmul(asmall, filters[i]/norms[i], asmall)
+					curvedsky.alm2map(asmall, owave.maps[i])
+				else:
+					owave.maps[i] = enmap.zeros(shape,wcs)
+					if fill_value is not None: owave.maps[i][:] = fill_value
 		return owave
 	def wave2map(self, wave, omap=None):
 		"""Transform from the wavelet coefficients wave (multimap), to the corresponding enmap.

@@ -138,7 +138,8 @@ def fft(tod, ft=None, nthread=0, axes=[-1], flags=None, _direction="FFTW_FORWARD
 	use in the fft. The default (0) uses the value specified by the
 	OMP_NUM_THREAD environment varible if that is specified, or the total number
 	of cores on the computer otherwise."""
-	tod = asfcarray(tod)
+	tod  = asfcarray(tod)
+	axes = utils.astuple(-1 if axes is None else axes)
 	if tod.size == 0: return
 	nt = nthread or nthread_fft
 	if flags is None: flags = default_flags
@@ -164,7 +165,8 @@ def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None, engine=
 	meaning that fft followed by ifft will multiply the data by the length of the
 	transform. By specifying the normalize argument, you can turn normalization
 	on, though the normalization step will not use paralellization."""
-	ft = asfcarray(ft)
+	ft   = asfcarray(ft)
+	axes = utils.astuple(-1 if axes is None else axes)
 	if ft.size == 0: return
 	nt = nthread or nthread_ifft
 	if flags is None: flags = default_flags
@@ -184,7 +186,8 @@ def ifft(ft, tod=None, nthread=0, normalize=False, axes=[-1],flags=None, engine=
 def rfft(tod, ft=None, nthread=0, axes=[-1], flags=None, engine="auto"):
 	"""Equivalent to fft, except that if ft is not passed, it is allocated with
 	appropriate shape and data type for a real-to-complex transform."""
-	tod = asfcarray(tod)
+	tod  = asfcarray(tod)
+	axes = utils.astuple(-1 if axes is None else axes)
 	if ft is None:
 		oshape = list(tod.shape)
 		oshape[axes[-1]] = oshape[axes[-1]]//2+1
@@ -198,7 +201,8 @@ def irfft(ft, tod=None, n=None, nthread=0, normalize=False, axes=[-1], flags=Non
 	is specified, that is used as the length of the last transform axis
 	of the output array. Otherwise, the length of this axis is computed
 	assuming an even original array."""
-	ft = asfcarray(ft)
+	ft   = asfcarray(ft)
+	axes = utils.astuple(-1 if axes is None else axes)
 	if tod is None:
 		oshape = list(ft.shape)
 		oshape[axes[-1]] = n or (oshape[axes[-1]]-1)*2
@@ -221,8 +225,9 @@ def dct(tod, dt=None, nthread=0, normalize=False, axes=[-1], flags=None, type="D
 	Note that DCTs and DSTs were only added to pyfftw in version 13.0. The function will
 	fail with an Invalid scheme error for older versions.
 	"""
-	tod = asfcarray(tod)
-	type= _dct_names[type]
+	tod  = asfcarray(tod)
+	type = _dct_names[type]
+	axes = utils.astuple(-1 if axes is None else axes)
 	if dt is None:
 		dt = empty(tod.shape, tod.dtype)
 	return fft(tod, dt, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes), engine=engine)
@@ -256,6 +261,7 @@ def idct(dt, tod=None, nthread=0, normalize=False, axes=[-1], flags=None, type="
 	dt   = asfcarray(dt)
 	type = _dct_inverses[_dct_names[type]]
 	off  = _dct_sizes[type]
+	axes = utils.astuple(-1 if axes is None else axes)
 	if tod is None:
 		tod = empty(dt.shape, dt.dtype)
 	fft(dt, tod, nthread=nthread, axes=axes, flags=flags, _direction=[type]*len(axes), engine=engine)
@@ -341,6 +347,7 @@ def shift(a, shift, axes=None, nofft=False, deriv=None, engine="auto"):
 	ca     = a+0j
 	shift  = np.atleast_1d(shift)
 	if axes is None: axes = range(-len(shift),0)
+	axes   = utils.astuple(axes)
 	fa = fft(ca, axes=axes, engine=engine) if not nofft else ca
 	for i, ax in enumerate(axes):
 		ax   %= ca.ndim
@@ -352,6 +359,24 @@ def shift(a, shift, axes=None, nofft=False, deriv=None, engine="auto"):
 	if not nofft: ifft(fa, ca, axes=axes, normalize=True, engine=engine)
 	else:	      ca = fa
 	return ca if np.iscomplexobj(a) else ca.real
+
+def resample(a, n, axes=None, nthread=0, engine="auto"):
+	"""Given an array a, resize the given axes (defaulting to the last ones) to
+	length n (tuple or int) using Fourier resampling. For example, if a has shape
+	(2,3,4), then resample(a, 10, -1) has shape (2,3,10), and resample(a, (20,10), (0,2))
+	has shape (20,3,10)."""
+	a    = np.asarray(a)
+	n    = utils.astuple(n)
+	if axes is None:
+		axes = [-len(n)+i for i in range(len(n))]
+	if len(n) != len(axes):
+		raise ValueError("Resize size n = %s does not match axes = %s" % (str(n),str(axes)))
+	fa   = fft(a, axes=axes, nthread=nthread, engine=engine)
+	norm = 1/np.prod([a.shape[ax] for ax in axes])
+	fa   = resample_fft(fa, n, axes=axes, norm=norm)
+	out  = ifft(fa, axes=axes, normalize=False, nthread=nthread, engine=engine)
+	if not np.iscomplexobj(a): out = out.real
+	return out
 
 def resample_fft(fa, n, out=None, axes=-1, norm=1, op=lambda a,b:b):
 	"""Given array fa[{dims}] which is the fourier transform of some array a,
@@ -372,9 +397,8 @@ def resample_fft(fa, n, out=None, axes=-1, norm=1, op=lambda a,b:b):
 	fa = np.asanyarray(fa)
 	# Support n and axes being either tuples or a single number,
 	# and broadcast n to match axes
-	try: axes = tuple(axes)
-	except TypeError: axes = (axes,)
-	n  = np.zeros(len(axes),int)+n
+	axes = utils.astuple(axes)
+	n    = np.zeros(len(axes),int)+n
 	# Determine the shape of the output array
 	oshape = list(fa.shape)
 	for i, ax in enumerate(axes):
@@ -400,6 +424,183 @@ def resample_fft(fa, n, out=None, axes=-1, norm=1, op=lambda a,b:b):
 		sel = tuple(sel)
 		transfer(out[sel], fa[sel], norm, op)
 	return out
+
+def interpol_nufft(a, inds, out=None, axes=None, normalize=True,
+		periodicity=None, epsilon=None, nthread=None, nofft=False):
+	"""Given some array a[{pre},{dims}] interpolate it at the given
+	inds[len(dims),{post}], resulting in an output with shape [{pre},{post}].
+	The signal is assumed to be periodic with the size of a unless this is overridden
+	with the periodicity argument, which should have an integer for each axis being
+	transformed. Normally the last ndim = len(inds) axes of a are interpolated.
+	This can be overridden with the axes argument.
+
+	By default the interpolation is properly normalized. This can be turned off
+	with the normalization argument, in which case the output will be too high
+	by a factor of np.prod([a.shape[ax] for ax in axes]). If all axes are used,
+	this simplifies to a.size"""
+	# This function could be implemented as simply u2nu(fft(a),inds). The problem
+	# with this is that a full fourier-array needs to be allocated. I can save
+	# some memory by instead doing the fft per field, at the cost of it being
+	# a bit hacky
+	op = None if nofft else lambda a, h: fft.fft(a, nthread=h.nthread, axes=h.axes)
+	return u2nu(a, inds, out=out, axes=axes, periodicity=periodicity,
+		epsilon=epsilon, nthread=nthread, normalize=normalize, complex=False, op=op)
+
+def u2nu(fa, inds, out=None, axes=None, periodicity=None, epsilon=None, nthread=None,
+			normalize=False, forward=False, complex=True, op=None):
+	"""Given complex fourier coefficients fa[{pre},{dims}] corresponding to
+	some real-space array a, evaluate the real-space signal at the given
+	inds[len(dims),{post}], resulting in a output with shape [{pre},{post}].
+
+	Arguments:
+	* fa: Array of equi-spaced fourier coefficients. Complex with shape [{pre},{dims}]
+	* inds: Array of positions at which to evaluate the inverse Fourier transform
+	    of fa. Real with shape [len(dims),{post}]
+	* out: Array to write result to. Real or complex with shape [{pre},{post}].
+	    Optional. Allocated if missing.
+	* axes: Tuple of axes to perform the transform along. len(axes)=len(dims).
+	    Optional. Defaults to the last len(dims) axes.
+	* periodicity: Periodicity assumed in the Fourier transform. Tuple with length
+	   len(dims). Defaults to the shape of the axes being transformed.
+	* epsilon: The target relative accuracy of the non-uniform FFT. Defaults
+	   to 1e-5 for single precision and 1e-12 for double precision. See the
+	   ducc0.nufft documentation for details.
+	* normalize: If True, the output is divided by prod([fa.shape[ax] for ax in axes]),
+	   that is, the total number of elements in the transform. This normalization is
+	   equivalent to that of ifft. Defaults to False.
+	* forward: Controls the sign of the exponent in the Fourier transform. By default
+	   a backwards transform (fourier to real) is performed. By passing forward=True,
+	   you can instead regard fa as a real-sapce array and out as a non-equispaced
+	   Fourier array.
+	* complex: Only relevant if out=None. Controls whether out is allocated as a
+	   real or complex array. Defaults to complex.
+	"""
+	h = _nufft_helper(fa, out, inds, axes=axes, nuout=True, periodicity=periodicity,
+		epsilon=epsilon, nthread=nthread, normalize=normalize, complex=complex)
+	if op is None: op = lambda fa, h: fa
+	for uI, nuI in zip(h.uiter, h.nuiter):
+		grid = op(h.u[uI],h).astype(h.ctype, copy=False)
+		res  = ducc0.nufft.u2nu(grid=grid, coord=h.iflat, forward=forward,
+			epsilon=h.epsilon, nthreads=h.nthread, periodicity=h.periodicity,
+			fft_order=True)
+		if not np.iscomplexobj(h.nu):
+			res = res.real
+		h.nu[nuI] = res.reshape(h.inds.shape[1:])
+	if h.normalize:
+		h.nu /= h.norm
+	return h.nu
+
+# FIXME: Check normalization
+def nu2u(a, inds, out=None, oshape=None, axes=None, periodicity=None, epsilon=None, nthread=None,
+			normalize=False, forward=False):
+	h = _nufft_helper(out, a, inds, axes=axes, nuout=False, periodicity=periodicity, ushape=oshape,
+		epsilon=epsilon, nthread=nthread, normalize=normalize, complex=complex)
+	work = np.zeros(h.tshape, h.ctype)
+	for uI, nuI in zip(h.uiter, h.nuiter):
+		res = ducc0.nufft.nu2u(points=h.nu[nuI], coord=h.iflat, out=work,
+			forward=forward, epsilon=h.epsilon, nthreads=h.nthread,
+			periodicity=h.periodicity, fft_order=True)
+		if not np.iscomplexobj(h.u):
+			res = res.real
+		h.u[uI] = res
+	if h.normalize:
+		h.u /= h.norm
+	return h.u
+
+def iu2nu(a, inds, out=None, oshape=None, axes=None, periodicity=None, epsilon=None, nthread=None,
+			normalize=False, forward=False):
+	"""The inverse of nufft/u2nu. Given non-equispaced samples a[{pre},{post}] and
+	their coordinates inds[len(dims),{post}], calculates the equispaced
+	Fourier coefficients out[{pre},{dims}] of a.
+
+	Arguments:
+	* a: Array of of non-equispaced values. Real or complex with shape [{pre},{post}]
+	* inds: Coordinates of samples in a. Real with shape [len(dims),{post}].
+	* out: Equispaced Fourier coefficients of a. Complex with shape [{pre},{dims}].
+	    Optional, but if missing, the shape of the out array to allocate must be
+	    specified using the oshape argument
+	* oshape: Tuple giving the shape to use when allocating out (if it's not passed in).
+	See u2nu for the meaning of the other arguments.
+	"""
+	h = _nufft_helper(out, a, inds, axes=axes, nuout=False, ushape=oshape,
+		periodicity=periodicity, epsilon=epsilon, nthread=nthread,
+		normalize=normalize, complex=complex)
+	work   = np.zeros(h.tshape, h.ctype)
+	def wzip(u): return u.reshape(-1).view(h.rtype)
+	def wunzip(x): return x.view(h.ctype).reshape(h.tshape)
+	def P(u): return ducc0.nufft.u2nu(grid=u, coord=h.iflat, forward=forward,
+		epsilon=h.epsilon, nthreads=h.nthread, periodicity=h.periodicity, fft_order=True)
+	def PT(nu):
+		return ducc0.nufft.nu2u(points=nu, coord=h.iflat,
+		out=work, forward=not forward,
+		epsilon=h.epsilon, nthreads=h.nthread, periodicity=h.periodicity, fft_order=True)
+	for uI, nuI in zip(h.uiter, h.nuiter):
+		# Invert u2nu by finding the least-squares solution to
+		#  a = u2nu(out, inds). Written linearly this is a = P out
+		# with solution out = (P'P)"P'a. The CG solver wants real numbers, though,
+		# so we hack around that with view
+		# Set up the equation system. Our degrees of freedom are flattened real u
+		b = wzip(PT(h.nu[nuI].reshape(-1)))
+		def A(x): return wzip(PT(P(wunzip(x))))
+		solver = utils.CG(A, b)
+		while solver.err > h.epsilon:
+			solver.step()
+		res = wunzip(solver.x)
+		if not np.iscomplexobj(h.u):
+			res = res.real
+		h.u[uI] = res
+	if h.normalize:
+		h.u *= h.norm
+	return h.u
+
+# FIXME: Check normalization
+def inu2u(fa, inds, out=None, axes=None, periodicity=None, epsilon=None, nthread=None,
+			normalize=False, forward=False, complex=True):
+	h = _nufft_helper(fa, out, inds, axes=axes, nuout=True,
+		periodicity=periodicity, epsilon=epsilon, nthread=nthread,
+		normalize=normalize, complex=complex)
+	work = np.zeros(h.tshape, h.ctype)
+	def wzip(nu): return nu.view(h.rtype)
+	def wunzip(x): return x.view(h.ctype)
+	def P(nu): return ducc0.nufft.nu2u(points=nu, coord=h.iflat, out=work, forward=forward,
+		epsilon=h.epsilon, nthreads=h.nthread, periodicity=h.periodicity, fft_order=True)
+	def PT(u): return ducc0.nufft.u2nu(grid=u, coord=h.iflat, forward=not forward,
+		epsilon=h.epsilon, nthreads=h.nthread, periodicity=h.periodicity, fft_order=True)
+	for uI, nuI in zip(h.uiter, h.nuiter):
+		# Invert nu2u by finding the least-squares solution to
+		#  fa = nu2u(out, inds). Written linearly this is fa = P out
+		# with solution out = (P'P)"P'fa
+		b = wzip(PT(h.u[uI]))
+		def A(x): return wzip(PT(P(wunzip(x))))
+		solver = utils.CG(A, b)
+		while solver.err > h.epsilon:
+			solver.step()
+		res = wunzip(solver.x)
+		if not np.iscomplexobj(h.nu):
+			res = res.real
+		h.nu[nuI] = res.reshape(h.inds.shape[1:])
+	if h.normalize:
+		h.nu *= h.norm
+	return h.nu
+
+# Alternative nufft interface more in line with fft and curvedsky.
+# TODO: Add proper docstrings here. Can I avoid lots of repetition?
+
+def nufft(a, inds, out=None, oshape=None, axes=None, periodicity=None, epsilon=None, nthread=None, normalize=False, flip=False):
+	return iu2nu(a, inds, out=out, oshape=oshape, axes=axes, periodicity=periodicity, epsilon=epsilon, nthread=nthread, normalize=normalize, forward=flip)
+
+def inufft(fa, inds, out=None, axes=None, periodicity=None, epsilon=None, nthread=None, normalize=False, flip=False, complex=True, op=None):
+	return u2nu(fa, inds, out=out, axes=axes, periodicity=periodicity, epsilon=epsilon, nthread=nthread, normalize=normalize, forward=flip, complex=complex, op=op)
+
+def nufft_adjoint(a, inds, out=None, oshape=None, axes=None, periodicity=None, epsilon=None, nthread=None, normalize=False, flip=False):
+	return nu2u(a, inds, out=out, oshape=oshape, axes=axes, periodicity=periodicity, epsilon=epsilon, nthread=nthread, normalize=normalize, forward=not flip)
+
+def inufft_adjoint(fa, inds, out=None, axes=None, periodicity=None, epsilon=None, nthread=None, normalize=False, flip=False, complex=True):
+	return inu2u(fa, inds, out=out, axes=axes, periodicity=periodicity, epsilon=epsilon, nthread=nthread, normalize=normalize, forward=not flip)
+
+
+########### Helper functions ##############
+
 
 def fft_flat(tod, ft, nthread=1, axes=[-1], flags=None, _direction="FFTW_FORWARD"):
 	"""Workaround for intel FFTW wrapper. Flattens appropriate dimensions of
@@ -430,3 +631,76 @@ def ifft_flat(ft, tod, nthread=1, axes=[-1], flags=None):
 	tod = utils.partial_expand(tod, shape_tod, axes=axes, pos=0)
 	return tod
 
+def _nufft_helper(u, nu, inds, axes=None, periodicity=None, epsilon=None,
+		nuout=False, nthread=None, complex=True, normalize=False, ushape=None):
+	"""Do the type checking etc. needed to prepare for our nufft operations.
+	This is a lot of code, but the overhead is around 300 µs, plus any time
+	needed to allocate the output array. So there's a bit of overhead, but
+	not anything we can't live with, and the raw ducc interface is available
+	for when this overhead is too much."""
+	from . import bunch
+	# Prepare arguments for nufft operations. Must ensure that
+	# * inds → iflat[ndim,npoint] f32 or f64
+	# * ctype = c64 or c128 based u or nu, priority to which one is output which must be specified
+	u     = np.asarray(u)  if u  is not None else None
+	nu    = np.asarray(nu) if nu is not None else None
+	inds  = np.asarray(inds)
+	# Are we single or double precision? This set of statements sets up a priority
+	# order for which array to get the dtype from
+	dtypes = [nu if nuout else u, u if not nuout else nu, inds, np.float64()]
+	rtypes = [utils.real_dtype(d.dtype) for d in dtypes if d is not None]
+	rtype  = [d for d in rtypes if d in [np.float32, np.float64]][0]
+	ctype  = utils.complex_dtype(rtype)
+	if ctype not in [np.complex64, np.complex128]:
+		raise ValueError("only single and double precision supported")
+	# Convert inds to the right dtype only if it has an invalid dtype
+	if inds.dtype not in [np.float32,np.float64]:
+		inds = inds.astype(rtype, copy=False)
+	ndim  = inds.shape[0]
+	# By default the last ndim dimensions are transformed
+	if axes is None: axes = tuple(range(-ndim,0))
+	axes = utils.astuple(axes)
+	if len(axes) != ndim: raise ValueError("Number of axes to transform does not match len(inds)!")
+	# Set up output array. This depends on which direction we're going
+	odtype = ctype if complex else rtype
+	if nuout:
+		npre   = u.ndim-ndim
+		if npre < 0:
+			raise ValueError("uniform array must has at least as many dimensions as indexed by the first axis of inds!")
+		pshape = utils.without_inds(u.shape, axes)
+		if nu is None:
+			# Output array. Allocating it like this lets it inherit any subclass of
+			# inds, which is useful when interpolating an enmap with another enmap
+			nu = np.zeros_like(inds, shape=pshape+inds.shape[1:], dtype=odtype)
+		if nu.shape != pshape+inds.shape[1:]:
+			raise ValueError("nu must have shape pshape+inds.shape[1:]")
+	else:
+		if u is None:
+			if ushape is None: raise ValueError("Either the output uniformly sampled array or its shape must be provided")
+			u  = np.zeros(ushape, dtype=odtype)
+		npre   = u.ndim-ndim
+		pshape = utils.without_inds(u.shape, axes)
+		# Hard to do any more sanity checks here
+	tshape = utils.only_inds(u.shape, axes)
+	npoint = np.prod(tshape)
+	# Periodicity of the full space. Allows us to support arrays that represent
+	# a subset of a bigger, periodic array
+	if periodicity is None: periodicity = tshape
+	else: periodicity = np.zeros(ndim,int)+periodicity
+	nthread = nthread or nthread_fft
+	# Target accuracy
+	if epsilon is None:
+		epsilon = 1e-5 if ctype == np.complex64 else 1e-12
+	# ducc wants just a single pre-dimension for inds, so flatten it.
+	iflat = inds.reshape(ndim,-1).T
+	# Do the actual looping
+	other_axes = tuple(utils.complement_inds(axes, u.ndim))
+	axall = tuple(range(ndim))
+	norm  = np.prod([u.shape[ax] for ax in axes])
+	uiter  = utils.nditer(u.shape, axes=other_axes)
+	nuiter = utils.nditer(nu.shape[:npre])
+	return bunch.Bunch(u=u, nu=nu, inds=inds, iflat=iflat,
+		epsilon=epsilon, nthread=nthread, normalize=normalize, norm=norm,
+		periodicity=periodicity, pshape=pshape, tshape=tshape, npoint=npoint,
+		other_axes=other_axes, axall=axall, complex=complex, rtype=rtype,
+		ctype=ctype, npre=npre, uiter=uiter, nuiter=nuiter)

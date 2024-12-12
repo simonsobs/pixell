@@ -76,3 +76,17 @@ dist: clean ## builds source and wheel package
 
 install: clean ## install the package to the active Python's site-packages
 	pip install .
+
+
+# Symlink-based alternative setup below. Not intended for general use
+# Standard meson build
+SHELL=/bin/bash
+.PHONY: build inline
+inline: build
+	(shopt -s nullglob; cd pixell; rm -f *.so; ln -s ../build/*.so ../build/*.dylib .)
+build: build/build.ninja
+	(cd build; meson compile)
+build/build.ninja:
+	rm -rf build
+	mkdir build
+	meson setup build

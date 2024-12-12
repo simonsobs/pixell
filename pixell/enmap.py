@@ -80,8 +80,8 @@ class ndmap(np.ndarray):
 	def lform(self): return lform(self)
 	def modlmap(self, oversample=1, min=0): return modlmap(self.shape, self.wcs, oversample=oversample, min=min)
 	def modrmap(self, ref="center", safe=True, corner=False): return modrmap(self.shape, self.wcs, ref=ref, safe=safe, corner=corner)
-	def lbin(self, bsize=None, brel=1.0, return_nhit=False, return_bins=False): return lbin(self, bsize=bsize, brel=brel, return_nhit=return_nhit, return_bins=return_bins)
-	def rbin(self, center=[0,0], bsize=None, brel=1.0, return_nhit=False, return_bins=False): return rbin(self, center=center, bsize=bsize, brel=brel, return_nhit=return_nhit, return_bins=return_bins)
+	def lbin(self, bsize=None, brel=1.0, return_nhit=False, return_bins=False, lop=None): return lbin(self, bsize=bsize, brel=brel, return_nhit=return_nhit, return_bins=return_bins, lop=lop)
+	def rbin(self, center=[0,0], bsize=None, brel=1.0, return_nhit=False, return_bins=False, rop=None): return rbin(self, center=center, bsize=bsize, brel=brel, return_nhit=return_nhit, return_bins=return_bins, rop=rop)
 	def area(self): return area(self.shape, self.wcs)
 	def pixsize(self): return pixsize(self.shape, self.wcs)
 	def pixshape(self, signed=False): return pixshape(self.shape, self.wcs, signed=signed)
@@ -98,13 +98,13 @@ class ndmap(np.ndarray):
 	def npix(self): return np.prod(self.shape[-2:])
 	@property
 	def geometry(self): return self.shape, self.wcs
-	def resample(self, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3): return resample(self, oshape, off=off, method=method, mode=mode, corner=corner, order=order)
-	def project(self, shape, wcs, order=3, mode="constant", cval=0, prefilter=True, mask_nan=False, safe=True): return project(self, shape, wcs, order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan, safe=safe)
+	def resample(self, oshape, off=(0,0), method="fft", border="wrap", corner=False, order=3): return resample(self, oshape, off=off, method=method, border=border, corner=corner, order=order)
+	def project(self, shape, wcs, order=3, border="constant", cval=0, safe=True): return project(self, shape, wcs, order, border=border, cval=cval, safe=safe)
 	def extract(self, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract(self, shape, wcs, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def extract_pixbox(self, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract_pixbox(self, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def insert(self, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert(self, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
 	def insert_at(self, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert_at(self, pix, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
-	def at(self, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=False, safe=True): return at(self, pos, order, mode=mode, cval=0, unit=unit, prefilter=prefilter, mask_nan=mask_nan, safe=safe)
+	def at(self, pos, order=3, border="constant", cval=0.0, unit="coord", safe=True): return at(self, pos, order, border=border, cval=0, unit=unit, safe=safe)
 	def argmax(self, unit="coord"): return argmax(self, unit=unit)
 	def autocrop(self, method="plain", value="auto", margin=0, factors=None, return_info=False): return autocrop(self, method, value, margin, factors, return_info)
 	def apod(self, width, profile="cos", fill="zero"): return apod(self, width, profile=profile, fill=fill)
@@ -192,7 +192,7 @@ def submap(map, box, mode=None, wrap="auto", iwcs=None):
 	if xflip: omap = omap[...,:,::-1]
 	return omap
 
-def subinds(shape, wcs, box, mode=None, cap=True, noflip=False):
+def subinds(shape, wcs, box, mode=None, cap=True, noflip=False, epsilon=1e-4):
 	"""Helper function for submap. Translates the coordinate box provided
 	into a pixel units.
 
@@ -204,18 +204,22 @@ def subinds(shape, wcs, box, mode=None, cap=True, noflip=False):
 	    inclusive and exclusive modes break this, and should be used with caution.
 	 2. tiny floating point errors should not usually be able to cause
 	    the ibox to change. Most boxes will have some simple fraction of
-	    a whole degree, and most have pixels with centers at a simple fraction
-	    of a whole degree. Hence, it is likely that box edges will fall
-	    almost exactly on an integer pixel value. floor and ceil will
-	    then move us around by a whole pixel based on tiny numerical
-	    jitter around this value. Hence these should be used with caution.
-	These concerns leave us with mode = "round" as the only generally
-	safe alternative, which is why it's default.
+	    a whole degree, and most have pixels with centers or pixel edges
+	    at a simple fraction of a whole degree. mode="floor" or "ceil"
+	    break when pixel centers are at whole values. mode="round"
+	    breaks when pixel edges are at whole values. But since small
+	    (but not float-precision-size) offsets from these cases are unlikely,
+	    we can define safe rounding by adding an epsilon to the values
+	    before rounding. As long as this epsilon is use consistently,
+	    box overlap still works.
+	With epsilon in place, modes "round", "floor" and "ceil" are all safe.
+	We make "round" the default.
 	"""
 	if mode is None: mode = "round"
 	box = np.asarray(box)
 	# Translate the box to pixels
 	bpix = skybox2pixbox(shape, wcs, box, include_direction=True)
+	bpix[:2] += epsilon
 	if noflip:
 		for b in bpix.T:
 			if b[2] < 0: b[:] = [b[1],b[0],-b[2]]
@@ -226,6 +230,8 @@ def subinds(shape, wcs, box, mode=None, cap=True, noflip=False):
 	elif mode == "exclusive": bpix = [np.ceil (bpix[0]),np.floor(bpix[1]), bpix[2]]
 	else: raise ValueError("Unrecognized mode '%s' in subinds" % str(mode))
 	bpix = np.array(bpix, int)
+	# A pixel goes from [i1-0.5:i2+0.5] with round(+eps) this becomes [i1:i2+1]
+	# We therefore don't need to add 1 to get a proper slice
 	if cap:
 		# Make sure we stay inside our map bounds
 		for b, n in zip(bpix.T,shape[-2:]):
@@ -430,7 +436,7 @@ def posmap(shape, wcs, safe=True, corner=False, separable="auto", dtype=np.float
 	is 1000x faster.
 	"""
 	res = zeros((2,)+tuple(shape[-2:]), wcs, dtype)
-	if separable == "auto": separable = wcsutils.is_cyl(wcs)
+	if separable == "auto": separable = wcsutils.is_separable(wcs)
 	if separable:
 		# If posmap could return a (dec,ra) tuple instead of an ndmap,
 		# we could have returned np.broadcast_arrays(dec, ra) instead.
@@ -540,20 +546,20 @@ def contains(shape, wcs, pos, unit="coord"):
 	else:               pix = pos
 	return np.all((pix>=0)&(pix.T<shape[-2:]).T,0)
 
-def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, prefilter=True, mask_nan=False, safe=True, bsize=1000):
+def project(map, shape, wcs, order=3, border="constant", cval=0.0, force=False, safe=True, bsize=1000, ip=None):
 	"""Project the map into a new map given by the specified
-	shape and wcs, interpolating as necessary. Handles nan
-	regions in the map by masking them before interpolating.
+	shape and wcs, interpolating as necessary.
 	This uses local interpolation, and will lose information
 	when downgrading compared to averaging down."""
 	# Skip expensive operation if map is compatible
 	if not force:
 		if wcsutils.equal(map.wcs, wcs) and tuple(shape[-2:]) == tuple(shape[-2:]):
 			return map.copy()
-		elif wcsutils.is_compatible(map.wcs, wcs) and mode == "constant":
+		elif wcsutils.is_compatible(map.wcs, wcs) and border == "constant":
 			return extract(map, shape, wcs, cval=cval)
 	omap = zeros(map.shape[:-2]+shape[-2:], wcs, map.dtype)
-	# Save memory by looping over rows
+	# Save memory by looping over rows. This won't work for non-"prefiltered" interpolators
+	if ip and not ip.prefiltered: bsize=100000000
 	for i1 in range(0, shape[-2], bsize):
 		i2     = min(i1+bsize, shape[-2])
 		somap  = omap[...,i1:i2,:]
@@ -562,7 +568,7 @@ def project(map, shape, wcs, order=3, mode="constant", cval=0.0, force=False, pr
 		y2     = min(np.max(pix[0]).astype(int)+3,map.shape[-2])
 		if y2-y1 <= 0: continue
 		pix[0] -= y1
-		somap[:] = utils.interpol(map[...,y1:y2,:], pix, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
+		somap[:] = utils.interpol(map[...,y1:y2,:], pix, order=order, border=border, cval=cval, ip=ip)
 	return omap
 
 def pixbox_of(iwcs,oshape,owcs):
@@ -715,9 +721,9 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 	res[...,1,:] += 1
 	return res
 
-def at(map, pos, order=3, mode="constant", cval=0.0, unit="coord", prefilter=True, mask_nan=False, safe=True):
+def at(map, pos, order=3, border="constant", cval=0.0, unit="coord", safe=True, ip=None):
 	if unit != "pix": pos = sky2pix(map.shape, map.wcs, pos, safe=safe)
-	return utils.interpol(map, pos, order=order, mode=mode, cval=cval, prefilter=prefilter, mask_nan=mask_nan)
+	return utils.interpol(map, pos, order=order, border=border, cval=cval, ip=ip)
 
 def argmax(map, unit="coord"):
 	"""Return the coordinates of the maximum value in the specified map.
@@ -774,7 +780,7 @@ def rand_gauss_iso_harm(shape, wcs, cov, pixel_units=False):
 		if not(pixel_units): cov = cov * np.prod(shape[-2:])/area(shape,wcs )
 		covsqrt = multi_pow(cov, 0.5)
 	else:
-		covsqrt = spec2flat(shape, wcs, massage_spectrum(cov, shape), 0.5, mode="constant")
+		covsqrt = spec2flat(shape, wcs, massage_spectrum(cov, shape), 0.5, border="constant")
 	data = map_mul(covsqrt, rand_gauss_harm(shape, wcs))
 	return ndmap(data, wcs)
 
@@ -796,9 +802,9 @@ def extent(shape, wcs, nsub=None, signed=False, method="auto"):
 	"""Returns the area of a patch with the given shape
 	and wcs, in steradians."""
 	if method == "auto":
-		if   wcsutils.is_plain(wcs): method = "intermediate"
-		elif wcsutils.is_cyl(wcs):   method = "cylindrical"
-		else:                        method = "subgrid"
+		if   wcsutils.is_plain(wcs):     method = "intermediate"
+		elif wcsutils.is_separable(wcs): method = "cylindrical"
+		else:                            method = "subgrid"
 	if   method in ["inter","intermediate"]: return extent_intermediate(shape, wcs, signed=signed)
 	elif method in ["cyl",  "cylindrical"]:  return extent_cyl(shape, wcs, signed=signed)
 	elif method in ["sub", "subgrid"]:       return extent_subgrid(shape, wcs, nsub=nsub, signed=signed)
@@ -895,9 +901,9 @@ def area(shape, wcs, nsamp=1000, method="auto"):
 	"""Returns the area of a patch with the given shape
 	and wcs, in steradians."""
 	if method == "auto":
-		if   wcsutils.is_plain(wcs): method = "intermediate"
-		elif wcsutils.is_cyl(wcs):   method = "cylindrical"
-		else:                        method = "contour"
+		if   wcsutils.is_plain(wcs):     method = "intermediate"
+		elif wcsutils.is_separable(wcs): method = "cylindrical"
+		else:                            method = "contour"
 	if   method in ["inter","intermediate"]: return area_intermediate(shape, wcs)
 	elif method in ["cyl",  "cylindrical"]:  return area_cyl(shape, wcs)
 	elif method in ["cont", "contour"]:      return area_contour(shape, wcs, nsamp=nsamp)
@@ -991,7 +997,7 @@ def pixshapemap(shape, wcs, bsize=1000, separable="auto", signed=False, bcheck=F
 		if not signed: pshape = np.abs(pshape)
 		pshape  = np.broadcast_to(pshape[:,None,None], (2,)+shape[-2:])
 		return ndmap(pshape, wcs)
-	elif separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
+	elif separable == True or (separable == "auto" and wcsutils.is_separable(wcs)):
 		pshape = pixshapes_cyl(shape, wcs, signed=signed, bcheck=bcheck)
 		pshape = np.broadcast_to(pshape[:,:,None], (2,)+shape[-2:])
 		return ndmap(pshape, wcs)
@@ -1074,7 +1080,7 @@ def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000, bc
 	"""
 	if wcsutils.is_plain(wcs):
 		return full(shape[-2:], wcs, np.abs(wcs.wcs.cdelt[0]*wcs.wcs.cdelt[1])*utils.degree**2)
-	elif separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
+	elif separable == True or (separable == "auto" and wcsutils.is_separable(wcs)):
 		psize = np.prod(pixshapes_cyl(shape, wcs, bcheck=bcheck),0)[:,None]
 		# Expand to full shape unless we are willing to accept an array
 		# with smaller size that is still broadcastable to the right result
@@ -1115,7 +1121,7 @@ def pixshapebounds(shape, wcs, separable="auto"):
 	geometry, in the form [{min,max},{y,x}]. Fast for separable geometries like
 	cylindrical ones, which it will try to recognize, but this can be forced by
 	setting separable to True (or disabled with False). Heavy in the general case."""
-	if separable == True or (separable == "auto" and wcsutils.is_cyl(wcs)):
+	if separable == True or (separable == "auto" and wcsutils.is_separable(wcs)):
 		return utils.minmax(pixshapes_cyl(shape, wcs),1)
 	else:
 		return utils.minmax(pixshapemap(shape, wcs))
@@ -1391,13 +1397,144 @@ def samewcs(arr, *args):
 		except AttributeError: pass
 	return arr
 
+# Work-in progress potential replacement for geometry.
+# Might be better to not try to replace all of geometry's functionality,
+# though, and keep geometry-as-window-into-fullsky and geometry-as-independent-patch
+# separate
+def geometry2(pos=None, res=None, shape=None, proj="car", variant=None,
+			deg=False, pre=(), ref=None, **kwargs):
+	"""Consruct a shape,wcs pair suitable for initializing enmaps. Some combination
+	of pos, res and shape must be passed:
+
+	* Only res given: A fullsky geometry with this resolution is constructed
+	* Only shape given: Fullsky geometry with the given shape. This may result
+	  in different resolution in the y and x directions if the shape is not
+	  chosen carefully
+	* pos and res given: A fullsky geometry with the given resolution is
+	  constructed, and is then cropped using pos. pos must be [{from,to},{dec,ra}],
+	  which specifies the corners of the geometry (to within a pixel).
+	* pos, res and shape given: As previous, but pos is just [{dec,ra}] and
+	  specifies the center of the geometry (to within a pixel), with the shape
+	  being given by shape
+
+	Other combinations are not supported. The other arguments are:
+
+	* proj: The projection to use. Either name or name:variant, where
+	  name is a WCS projection name like "CAR" (case-insensitive) and
+	  variant is a pixelization variant (see next)
+	* variant: A pixelization variant. Specifies how to split the full sky
+	  into pixels. Valid values:
+	  * "safe": pixel edge at all domain edges, e.g. both poles in dec and
+	    wraparound point in ra for cylindricatl projections. This rule is
+	    downgrade-safe, meaning that constructing a geometry and then
+	    downgrading it will produce the same geometry as directly constructing
+	    it at the downgraded resolution. This has the Fejer1 quadrature
+	    rules, but has a different name to distinguish it from our original
+	    implementation of Fejer1. Equivalent to the rule "hh,hh".
+	  * "fejer1": pixel edge at top/bottom domain edges, but pixel center
+	    at left/right domain edges. Follows the Fejer1 quadrature rules.
+	    Only partially downgrade-safe: Can still SHT after downgrading, but
+	    is not pixel-compatible with directly constructing a geometry at
+	    the target resolution. Equivalent to the rule "00,hh".
+	    This is the default, but it may be changed to "safe" in the future.
+	  * "cc": pixel center at all domain edges. Follows the Clenshaw-Curtis
+	    quadrature rules. Not downgrade-safe at all - cannot efficiently
+	    SHT after downgrade. Equivalent to the rule "00,00".
+	  * "any": No restriction on pixel center/edge placement. Allows for
+	    arbitrary-resolution maps, but not fast SHTs. Equivalent to the
+	    rule "**,**".
+	  * A rule of the form "lr,bt", where l,r,b,t specify the pixel placement
+	    for the left, right, bottom and top domain edges respectively. Each
+	    can take the values
+	    * "0": pixel center here (0 offset)
+	    * "h": pixel edge here (half-pixel offset)
+	    * "*": no restriction
+	* deg: If True (defaults to False), then pos, res and ref have units of
+	  degrees instead of radians.
+	* pre: Tuple of pre-dimensions to prepend to the returned shape
+	* ref: Reference point coordinates. This is the point the full geometry
+	  is built around. E.g. for Mollweide it would be the center of the
+	  Mollweide ellipse. Changing this point actually changes the projection,
+	  and projections with different ref will be incompatible with each other
+	  aside from special cases. Defaults to ra=dec=0 for non-azimuthal projections
+	  and ra=0, dec=pi/2 for azimuthal projections. The special value "mid"
+	  will use pos to set the reference point. Should probably be left alone
+	  unless you have special requirements."""
+	unit  = utils.degree if deg else 1
+	# First build the base projection
+	system, variant = wcsutils.parse_system(proj, variant=variant)
+	crval = _geometry_crval(ref, pos, unit)
+	#crval = None if ref is None else np.array(ref)[::-1]*unit/utils.degree
+	pwcs  = wcsutils.projection(system, crval=crval)
+	# Determine the pixelization. If pos is None, we will be making
+	# a fullsky geometry, which is simple
+	if pos is None:
+		if res is not None:
+			res = wcsutils.expand_res(res,flip=True)*unit/utils.degree
+		oshape, owcs = wcsutils.pixelization(pwcs, shape=shape, res=res, variant=variant)
+	else:
+		if res is None:
+			raise ValueError("geometry construction with just pos and shape is not supported. Pass in the target resolution")
+		pos = np.asarray(pos)*unit
+		# The coordinate order of the pos box affects the sign of res
+		if pos.ndim == 1: psign = [1,-1]
+		else: psign = np.sign(pos[1]-pos[0])
+		res = wcsutils.expand_res(res,signs=psign,flip=True)*unit/utils.degree
+		oshape, owcs = wcsutils.pixelization(pwcs, res=res, variant=variant)
+		oshape, owcs = crop_geometry(oshape, owcs, box=pos, oshape=shape)
+	# Add the pre-dimensions
+	oshape = pre + oshape
+	# For cylindrical projections we can move crval along the equator
+	# without changing the meaning of the projection, but only if crval
+	# is already on the equator. This avoids problems with invalid coordinates
+	# at more than 180° away from the reference point. It's not possible
+	# to do this for other projections because they actually change when crval
+	# is moved (e.g. for mollweide it changes what point the ellipse is centered on)
+	if wcsutils.is_cyl(owcs) and owcs.wcs.crval[1] == 0:
+		# This choice keeps us compatible with the old fullsky_geometry implementation
+		imid = np.array(oshape[-2:])//2-0.5
+		vmid = pix2sky(oshape, owcs, imid)
+		owcs.wcs.crval[0] = vmid[1]/utils.degree
+		owcs.wcs.crpix[0] = imid[1]+1
+	return oshape, owcs
+
+def _geometry_crval(ref=None, pos=None, unit=1):
+	if ref is None: return None
+	if isinstance(ref, str) and ref == "mid":
+		if pos is None: return None
+		pos = np.asarray(pos)
+		if   pos.shape == (2,):  return pos[::-1]*unit/utils.degree
+		elif pos.shape == (2,2): return np.mean(pos,0)[::-1]*unit/utils.degree
+		else: raise ValueError("pos must be [{from,to},{dec,ra}] or [{dec,ra}]")
+	else:
+		return np.array(ref)[::-1]*unit/utils.degree
+
+def fullsky_geometry2(res=None, shape=None, pre=None, deg=False, proj="car", variant=None, dims=None):
+	"""Build a fullsky geometry with the given resolution or shape. Simply forwards to
+	geometry(). See its docstring for the meaning of the arguments.
+
+	dims is an alias for pre provided for backwards compatibility"""
+	return geometry(res=res, shape=shape, deg=deg, pre=pre or dims or (), proj=proj, variant=variant)
+
+def band_geometry2(decrange, res=None, shape=None, pre=None, deg=False, proj="car", variant=None, dims=None):
+	"""Build a geometry covering a range of declinations. Equivalent to
+	geometry(pos=[[decrange[0],pi],[decrange[1],-pi]], ...). See geometry's documentation
+	for the meaning of the other arguments.
+
+	dims is an alias for pre provided for backwards compatibility"""
+	unit     = utils.degree if deg else 1
+	decrange = (np.zeros(2)+decrange)*unit
+	if decrange.shape != (2,): raise ValueError("decrange must be a number or (dec1,dec2)")
+	pos      = np.array([[decrange[0],np.pi],[decrange[1],-np.pi]])/unit
+	return geometry(pos=pos, res=res, shape=shape, deg=deg, pre=pre or dims or (), proj=proj, variant=variant)
+
 # Idea: Make geometry a class with .shape and .wcs members.
 # Make a function that takes (foo,bar) and returns a geometry,
 # there (foo,bar) can either be (shape,wcs) or (geometry,None).
 # Use that to make everything that currently accepts shape, wcs
 # transparently accept geometry. This will free us from having
 # to drag around a shape, wcs pair all the time.
-def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=False, ref=None, **kwargs):
+def geometry(pos, res=None, shape=None, proj="car", variant="cc", deg=False, pre=(), force=False, ref=None, **kwargs):
 	"""Consruct a shape,wcs pair suitable for initializing enmaps.
 	pos can be either a {dec,ra} center position or a [{from,to},{dec,ra}]
 	array giving the bottom-left and top-right corners of the desired geometry.
@@ -1429,6 +1566,7 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 	# rather than to start from a standard point on the sky and then grow it
 	# to the required size. This will require a complete rework of this function
 	# though.
+	assert variant == "cc"
 
 	# We use radians by default, while wcslib uses degrees, so need to rescale.
 	# The exception is when we are using a plain, non-spherical wcs, in which case
@@ -1459,7 +1597,7 @@ def geometry(pos, res=None, shape=None, proj="car", deg=False, pre=(), force=Fal
 		shape = tuple(np.round(np.abs(faredge-nearedge)).astype(int))
 	return pre+tuple(shape), wcs
 
-def fullsky_geometry(res=None, shape=None, dims=(), proj="car", variant="CC"):
+def fullsky_geometry(res=None, shape=None, dims=(), proj="car", variant="fejer1"):
 	"""Build an enmap covering the full sky, with the outermost pixel centers
 	at the poles and wrap-around points. Only the car projection is
 	supported for now, but the variants CC and fejer1 can be selected using
@@ -1488,7 +1626,7 @@ def fullsky_geometry(res=None, shape=None, dims=(), proj="car", variant="CC"):
 	wcs.wcs.ctype = ["RA---CAR","DEC--CAR"]
 	return dims+(ny,nx), wcs
 
-def band_geometry(dec_cut,res=None, shape=None, dims=(), proj="car", variant="CC"):
+def band_geometry(dec_cut, res=None, shape=None, dims=(), proj="car", variant="fejer1"):
 	"""Return a geometry corresponding to a sky that had a full-sky
 	geometry but to which a declination cut was applied. If dec_cut
 	is a single number, the declination range will be (-dec_cut,dec_cut)
@@ -1586,7 +1724,7 @@ def create_wcs(shape, box=None, proj="cea"):
 		box *= utils.degree
 	return wcsutils.build(box, shape=shape, rowmajor=True, system=proj)
 
-def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="auto"):
+def spec2flat(shape, wcs, cov, exp=1.0, border="constant", oversample=1, smooth="auto"):
 	"""Given a (ncomp,ncomp,l) power spectrum, expand it to harmonic map space,
 	returning (ncomp,ncomp,y,x). This involves a rescaling which converts from
 	power in terms of multipoles, to power in terms of 2d frequency.
@@ -1621,12 +1759,12 @@ def spec2flat(shape, wcs, cov, exp=1.0, mode="constant", oversample=1, smooth="a
 	cov[~np.isfinite(cov)] = 0
 	# Use order 1 because we will perform very short interpolation, and to avoid negative
 	# values in spectra that must be positive (and it's faster)
-	res = ndmap(utils.interpol(cov, np.reshape(ls,(1,)+ls.shape),mode=mode, mask_nan=False, order=1),wcs)
+	res = ndmap(utils.interpol(cov, np.reshape(ls,(1,)+ls.shape),border=border, order=1),wcs)
 	res = downgrade(res, oversample)
 	res = res.reshape(oshape[:-2]+res.shape[-2:])
 	return res
 
-def spec2flat_corr(shape, wcs, cov, exp=1.0, mode="constant"):
+def spec2flat_corr(shape, wcs, cov, exp=1.0, border="constant"):
 	cov    = np.asarray(cov)
 	oshape = cov.shape[:-1] + tuple(shape)[-2:]
 	if cov.ndim == 1: cov = cov[None,None]
@@ -1645,7 +1783,7 @@ def spec2flat_corr(shape, wcs, cov, exp=1.0, mode="constant"):
 	dpos = posmap(shape, wcs)
 	dpos -= dpos[:,None,None,dpos.shape[-2]//2,dpos.shape[-1]//2]
 	ipos = np.arccos(np.cos(dpos[0])*np.cos(dpos[1]))*nr/rmax
-	corr2d = utils.interpol(corrfun, ipos.reshape((-1,)+ipos.shape), mode=mode, mask_nan=False, order=1)
+	corr2d = utils.interpol(corrfun, ipos.reshape((-1,)+ipos.shape), border=border, order=1)
 	corr2d = np.roll(corr2d, -corr2d.shape[-2]//2, -2)
 	corr2d = np.roll(corr2d, -corr2d.shape[-1]//2, -1)
 	corr2d = ndmap(corr2d, wcs)
@@ -1763,8 +1901,10 @@ def get_downgrade_offset(shape, wcs, factor, ref=None):
 def downgrade(emap, factor, op=np.mean, ref=None, off=None, inclusive=False):
 	"""Returns enmap "emap" downgraded by the given integer factor
 	(may be a list for each direction, or just a number) by averaging
-	inside pixels."""
+	inside pixels. Returns the original map if factor is None or 1."""
+	if (factor is None): return emap
 	factor  = np.zeros(2, int)+factor
+	if np.all(factor==1): return emap
 	# Optionally apply an offset to keep different downgraded maps pixel-compatible.
 	# This can be either manually specified, or inferred from reference coordinates.
 	if off is None:  off = get_downgrade_offset(emap.shape, emap.wcs, factor, ref)
@@ -1804,11 +1944,44 @@ def downgrade_geometry(shape, wcs, factor):
 	supports integer factors."""
 	factor = np.full(2, 1, dtype=int)*factor
 	oshape = tuple(shape[-2:]//factor)
-	owcs   = wcsutils.scale(wcs, 1.0/factor)
+	owcs   = wcsutils.scale(wcs, 1.0/factor, rowmajor=True)
 	return oshape, owcs
 
 def upgrade_geometry(shape, wcs, factor):
 	return scale_geometry(shape, wcs, factor)
+
+def crop_geometry(shape, wcs, box=None, pixbox=None, oshape=None):
+	if pixbox is None:
+		box    = np.asarray(box)
+		# Allow box and pixbox to be 1d, in which case we will
+		# crop around a central point
+		if box.ndim == 2: pixbox = subinds(shape, wcs, box)
+		else:             pixbox = utils.nint(sky2pix(shape, wcs, box))
+	# We assume that the box selects pixel edges, so any pixel that is
+	# even partially inside the box should be included. This means that
+	# pixel i would be included for i-0.5, but not for i-0.6. We should
+	# thefore use rounding boundaries, we just have to make sure it's
+	# numerically stable
+
+
+	print("box", box/utils.degree)
+	print("mid", np.mean(box,0)/utils.degree)
+	print("pixbox", pixbox)
+	pixbox = utils.nint(pixbox)
+	print("pixbox2", pixbox)
+
+
+	# Handle 1d case
+	if pixbox.ndim == 1:
+		if oshape is None: raise ValueError("crop_geometry needs an explicit output shape when given a 1d box (i.e. a single point instead of a bounding box")
+		shp    = np.array(oshape[-2:])
+		pixbox = np.array([pixbox-shp//2,pixbox-shp//2+shp])
+	print("pixbox3", pixbox)
+	# Can now proceed assuming 2d
+	oshape = tuple(shape[:-2]) + tuple(np.abs(pixbox[1]-pixbox[0]))
+	owcs   = wcs.deepcopy()
+	owcs.wcs.crpix -= pixbox[0,::-1]
+	return oshape, owcs
 
 def distance_transform(mask, omap=None, rmax=None, method="cellgrid"):
 	"""Given a boolean mask, produce an output map where the value in each pixel is the distance
@@ -1865,7 +2038,7 @@ def distance_from(shape, wcs, points, omap=None, odomains=None, domains=False, m
 		if domains: odomains[:] = -1
 		return (omap, odomains) if domains else omap
 	# Ok, we have at least one point, use the normal stuff
-	if wcsutils.is_cyl(wcs):
+	if wcsutils.is_separable(wcs):
 		dec, ra = posaxes(shape, wcs)
 		if method == "bubble":
 			point_pix = utils.nint(sky2pix(shape, wcs, points))
@@ -2156,7 +2329,7 @@ def lwcs(shape, wcs):
 	owcs   = wcsutils.explicit(crpix=[nx//2+1,ny//2+1], crval=[0,0], cdelt=lres[::-1])
 	return owcs
 
-def rbin(map, center=[0,0], bsize=None, brel=1.0, return_nhit=False, return_bins=False):
+def rbin(map, center=[0,0], bsize=None, brel=1.0, return_nhit=False, return_bins=False, rop=None):
 	"""Radially bin map around the given center point ([0,0] by default).
 	If bsize it given it will be the constant bin width. This defaults to
 	the pixel size. brel can be used to scale up the bin size. This is
@@ -2166,13 +2339,15 @@ def rbin(map, center=[0,0], bsize=None, brel=1.0, return_nhit=False, return_bins
 	of the map in each radial bin and r is the mid-point of each bin
 	"""
 	r = map.modrmap(ref=center)
+	if rop: r = rop(r)
 	if bsize is None:
 		bsize = np.min(map.extent()/map.shape[-2:])
 	return _bin_helper(map, r, bsize*brel, return_nhit=return_nhit, return_bins=return_bins)
 
-def lbin(map, bsize=None, brel=1.0, return_nhit=False, return_bins=False):
+def lbin(map, bsize=None, brel=1.0, return_nhit=False, return_bins=False, lop=None):
 	"""Like rbin, but for fourier space. Returns b(l),l"""
 	l = map.modlmap()
+	if lop: l = lop(l)
 	if bsize is None: bsize = min(abs(l[0,1]),abs(l[1,0]))
 	return _bin_helper(map, l, bsize*brel, return_nhit=return_nhit, return_bins=return_bins)
 
@@ -2250,7 +2425,7 @@ def stamps(map, pos, shape, aslist=False):
 	res = samewcs(np.array(res),res[0])
 	return res
 
-def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000, destroy_input=False):
+def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000):
 	"""Project the enmap "imap" onto the healpix pixelization. If omap is given,
 	the output will be written to it. Otherwise, a new healpix map will be constructed.
 	The healpix map must be in RING order. nside controls the resolution of the output map.
@@ -2258,13 +2433,10 @@ def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000, destroy_input=Fa
 	This is needed to avoid losing information. To go to a lower-resolution output map,
 	you should first degrade the input map. The chunk argument affects the speed/memory
 	tradeoff of the function. Higher values use more memory, and might (and might not)
-	give higher speed. If destroy_input is True, then the input map will be prefiltered
-	in-place, which saves memory but modifies its values."""
+	give higher speed."""
 	warnings.warn("enmap.to_healpix is deprecated. Reprojecting this way is error-prone due to the potential loss of information, and the (very small) loss of high-l power due to the use of spline interpolation. Use reproject.map2healpix instead. And read its docstring!")
 	import healpy
-	if not destroy_input and order > 1: imap = imap.copy()
-	if order > 1:
-		imap = utils.interpol_prefilter(imap, order=order, inplace=True)
+	ip = utils.interpolator(imap, order=order)
 	if omap is None:
 		# Generate an output map
 		if not nside:
@@ -2280,7 +2452,7 @@ def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000, destroy_input=Fa
 		pos   = np.array(healpy.pix2ang(nside, np.arange(i, min(npix,i+chunk))))
 		# Healpix uses polar angle, not dec
 		pos[0] = np.pi/2 - pos[0]
-		omap[...,i:i+chunk] = imap.at(pos, order=order, mask_nan=False, prefilter=False)
+		omap[...,i:i+chunk] = imap.at(pos, ip=ip)
 	return omap
 
 def to_flipper(imap, omap=None, unpack=True):
@@ -2803,7 +2975,7 @@ def ifftshift(map, inplace=False):
 def fillbad(map, val=0, inplace=False):
 	return np.nan_to_num(map, copy=not inplace, nan=val, posinf=val, neginf=val)
 
-def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, order=3):
+def resample(map, oshape, off=(0,0), method="fft", border="wrap", corner=False, order=3):
 	"""Resample the input map such that it covers the same area of the sky
 	with a different number of pixels given by oshape."""
 	# Construct the output shape and wcs
@@ -2817,7 +2989,7 @@ def resample(map, oshape, off=(0,0), method="fft", mode="wrap", corner=False, or
 			off -= 0.5 - 0.5*np.array(oshape[-2:],float)/map.shape[-2:] # in output units
 		opix  = pixmap(oshape) - off[:,None,None]
 		ipix  = opix * (np.array(map.shape[-2:],float)/oshape[-2:])[:,None,None]
-		omap  = ndmap(map.at(ipix, unit="pix", mode=mode, order=order), owcs)
+		omap  = ndmap(map.at(ipix, unit="pix", border=border, order=order), owcs)
 	else:
 		raise ValueError("Invalid resample method '%s'" % method)
 	return omap
