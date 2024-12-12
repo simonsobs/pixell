@@ -1369,16 +1369,18 @@ def calc_window(shape, order=0, scale=1):
 	wx = utils.pixwin_1d(np.fft.fftfreq(shape[-1], scale), order=order)
 	return wy, wx
 
-def apply_window(emap, pow=1.0, order=0, scale=1, nofft=False):
+def apply_window(emap, pow=1.0, order=0, scale=1, nofft=False, kmask=None):
 	"""Apply the pixel window function to the specified power to the map,
 	returning a modified copy. Use pow=-1 to unapply the pixel window.
 	By default the pixel window for interpolation order 0 mapmaking
-	(nearest neighbor) is applied. Pass 1 for bilinear mapmaking's pixel window."""
+	(nearest neighbor) is applied. Pass 1 for bilinear mapmaking's pixel window.
+	Optionally, zero out regions specified by kmask."""
 	wy, wx = calc_window(emap.shape, order=order, scale=scale)
 	if not nofft: emap = fft(emap)
 	else:         emap = emap.copy()
 	emap *= wy[:,None]**pow
 	emap *= wx[None,:]**pow
+	if kmask is not None: emap[kmask] = 0
 	if not nofft: emap = ifft(emap).real
 	return emap
 
