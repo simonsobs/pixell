@@ -1078,8 +1078,8 @@ class PixelTests(unittest.TestCase):
         # with gnomonic/tangent projection
         proj = "tan"
         r = 10*u.arcmin
-        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj, 
-            apod=2*u.arcmin, order=3, oversample=2,pixwin=False)
+        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj,
+            apod=2*u.arcmin, order=3, oversample=4, pixwin=False)
 
         # Create a reference source at the equator to compare this against
         ishape,iwcs = enmap.geometry(shape=ret.shape,res=res,pos=(0,0),proj=proj)
