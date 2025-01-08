@@ -5,7 +5,6 @@ import unittest
 from pixell import enmap
 from pixell import curvedsky
 from pixell import lensing
-from pixell import interpol
 from pixell import array_ops
 from pixell import enplot
 from pixell import powspec
@@ -19,7 +18,7 @@ from pixell import tilemap
 from pixell import utils
 import numpy as np
 import pickle
-import os,sys
+import os,sys,time
 
 import matplotlib
 matplotlib.use('Agg')
@@ -1078,8 +1077,8 @@ class PixelTests(unittest.TestCase):
         # with gnomonic/tangent projection
         proj = "tan"
         r = 10*u.arcmin
-        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj, 
-            apod=2*u.arcmin, order=3, oversample=2,pixwin=False)
+        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj,
+            apod=2*u.arcmin, order=3, oversample=4, pixwin=False)
 
         # Create a reference source at the equator to compare this against
         ishape,iwcs = enmap.geometry(shape=ret.shape,res=res,pos=(0,0),proj=proj)
@@ -1146,3 +1145,100 @@ class PixelTests(unittest.TestCase):
         assert m1c.geometry.nactive == 2
         assert np.allclose(m1c, 1)
 
+    def test_interpol_1d(self):
+        dtype = np.float64
+        n     = 10
+        data  = np.sin(2*np.pi*3*np.arange(n)/n)
+        inds  = np.array([0.0,0.1,0.51,0.9,1.0])
+        # Nearest neighbor interpolation
+        vals  = utils.interpol(data, inds[None], mode="spline", order=0)
+        assert np.allclose(vals, data[utils.nint(inds)])
+        # Linear interpolation. This check assumes that inds is [0:1]!
+        vals  = utils.interpol(data, inds[None], mode="spline", order=1)
+        assert np.allclose(vals, data[0]*(1-inds)+data[1]*inds)
+        # Cubic spline interpolation. No simple formula here, so hardcode
+        vals  = utils.interpol(data, inds[None], mode="spline", order=3)
+        assert np.allclose(vals, [-1.39824833112681842e-12, 1.16478779103952171e-01, 6.66141591529904153e-01, 9.62884886419913988e-01, 9.51056516295153753e-01])
+        # Nufft interpolation
+        vals  = utils.interpol(data, inds[None], mode="fourier")
+        targ  = np.sin(2*np.pi*3*inds/n)
+        assert np.allclose(vals, targ)
+
+    def test_interpol_map(self):
+        # Make a small map to interpolate. We will simply use the angular distance
+        # from the center, which avoids any non-periodicity issues
+        shape, wcs = enmap.geometry([[-1,1],[1,-1]], res=0.1, deg=True, proj="car")
+        # Make test cases where the exact answer is known. Bilinear is easy for a linear field,
+        # and NN is easy anywayre
+        dtype = np.float64
+        ypix  = np.arange(shape[-2], dtype=dtype)
+        xpix  = np.arange(shape[-1], dtype=dtype)
+        opix  = np.array([[10,10.2],[10,12.7]])
+        # NN and bilinear
+        def f(y,x): return 2*y-x
+        data  = enmap.enmap(f(ypix[:,None],xpix[None,:]),wcs)
+        vals  = data.at(opix, unit="pix", mode="spline", order=0)
+        targ  = data[tuple(utils.nint(opix))]
+        assert np.allclose(vals, targ)
+        vals  = data.at(opix, unit="pix", mode="spline", order=1)
+        targ  = f(*opix)
+        assert np.allclose(vals, targ)
+        # Bicubic is exact up to 3rd order, but only if we ignore
+        # boundary conditions. I'm not sure how to calculate the
+        # expected answer here, so just hardcode it
+        def f(y,x): return y**3+2*y**2+3*y-2*x**3-3*x**2-4*x+x*y
+        data  = enmap.enmap(f(ypix[:,None],xpix[None,:]),wcs)
+        vals  = data.at(opix, unit="pix", mode="spline", order=3)
+        targ  = np.array([-1.01000000000000000e+03, -3.20214384455599429e+03])
+        assert np.allclose(vals, targ)
+        # Fourier is simple. All fourier modes up to Nyquist are exact.
+        # Nufft adds some inaccuracy, but it's tiny
+        def f(y,x): return np.sin(2*np.pi*3*y/shape[-2])+np.cos(2*np.pi*5*x/shape[-1])
+        data  = enmap.enmap(f(ypix[:,None],xpix[None,:]),wcs)
+        vals  = data.at(opix, unit="pix", mode="fourier")
+        targ  = f(*opix)
+        assert np.allclose(vals, targ)
+
+    def test_interpol_map_Nd(self):
+        # Test that multidimensional interpolation works
+        shape, wcs = enmap.geometry([[-1,1],[1,-1]], res=0.1, deg=True, proj="car")
+        dtype = np.float64
+        ypix  = np.arange(shape[-2], dtype=dtype)
+        xpix  = np.arange(shape[-1], dtype=dtype)
+        def f(y,x): return np.sin(2*np.pi*3*y/shape[-2])+np.cos(2*np.pi*5*x/shape[-1])
+        data  = (1+np.arange(12)).reshape(3,4)[:,:,None,None]*enmap.enmap(f(ypix[:,None],xpix[None,:]),wcs)
+        opix  = np.array([[10,10.2],[10,12.7]])
+        vals  = data.at(opix, unit="pix")
+        assert vals.shape == (3,4)+opix.shape[1:]
+        targ  = vals*0
+        for I in utils.nditer(data.shape[:-2]):
+            targ[I] = data[I].at(opix, unit="pix")
+        assert np.allclose(vals, targ)
+
+    def test_interpolator(self):
+        # Test that lookups using an interpolator work, and are fast.
+        # Use a decently large array to be sure we can measure the
+        # speed difference.
+        shape = (1000,1000)
+        dtype = np.float64
+        ypix  = np.arange(shape[-2], dtype=dtype)
+        xpix  = np.arange(shape[-1], dtype=dtype)
+        opix  = np.array([[10,10.2],[10,12.7]])
+        def f(y,x): return np.sin(2*np.pi*3*y/shape[-2])+np.cos(2*np.pi*5*x/shape[-1])
+        data  = f(ypix[:,None],xpix)
+        cases = [("spline",3),("fourier",None)]
+        for ci, (mode,order) in enumerate(cases):
+            t1 = time.time()
+            vals_raw = utils.interpol(data, opix, mode=mode, order=order)
+            t2 = time.time()
+            ip = utils.interpolator(data, mode=mode, order=order)
+            t3 = time.time()
+            vals_ip  = ip(opix)
+            t4 = time.time()
+            assert np.allclose(vals_ip, vals_raw)
+            time_full  = t2-t1
+            time_eval  = t4-t3
+            assert time_eval < time_full / 100
+            # Also test that we can pass the interpolator as an argument
+            vals_ip2 = utils.interpol(data, opix, mode=mode, order=order, ip=ip)
+            assert np.allclose(vals_ip2, vals_raw)

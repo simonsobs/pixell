@@ -98,8 +98,8 @@ class ndmap(np.ndarray):
 	def npix(self): return np.prod(self.shape[-2:])
 	@property
 	def geometry(self): return self.shape, self.wcs
-	def resample(self, oshape, off=(0,0), method="fft", border="wrap", corner=False, order=3): return resample(self, oshape, off=off, method=method, border=border, corner=corner, order=order)
-	def project(self, shape, wcs, mode="spline", order=3, border="constant", cval=0, safe=True): return project(self, shape, wcs, order, mode=mode, border=border, cval=cval, safe=safe)
+	def resample(self, oshape, off=(0,0), method="fft", border="wrap", corner=True, order=3): return resample(self, oshape, off=off, method=method, border=border, corner=corner, order=order)
+	def project(self, shape, wcs, mode="spline", order=3, border="constant", cval=0, safe=True): return project(self, shape, wcs, mode=mode, order=order, border=border, cval=cval, safe=safe)
 	def extract(self, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract(self, shape, wcs, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def extract_pixbox(self, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract_pixbox(self, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def insert(self, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert(self, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
@@ -478,7 +478,7 @@ def pix2sky(shape, wcs, pix, safe=True, corner=False, bcheck=False):
 	coords = np.asarray(wcs.wcs_pix2world(*(tuple(pflat)[::-1]+(0,)))[::-1])*get_unit(wcs)
 	coords = coords.reshape(pix.shape)
 	if safe and not wcsutils.is_plain(wcs):
-		coords = utils.unwind(coords, refmode="middle")
+		coords[1] = utils.unwind(coords[1], refmode="middle")
 	return coords
 
 def sky2pix(shape, wcs, coords, safe=True, corner=False, bcheck=False):
@@ -545,48 +545,6 @@ def contains(shape, wcs, pos, unit="coord"):
 	if unit == "coord": pix = sky2pix(shape, wcs, pos)
 	else:               pix = pos
 	return np.all((pix>=0)&(pix.T<shape[-2:]).T,0)
-
-#def project(map, shape, wcs, mode="spline", order=3, border="constant",
-#		cval=0.0, force=False, safe=True, bsize=1000, ip=None):
-#	"""Project the map into a new map given by the specified
-#	shape and wcs, interpolating as necessary.
-#	This uses local interpolation, and will lose information
-#	when downgrading compared to averaging down."""
-#	# Need to think about how to handle non-spline interpolation here.
-#	# 1. Build interpolator for whole map, then evaluate for whole map.
-#	#    Large memory overhead (~14x map size for fourier-interpolation)
-#	# 2. Build interpolator for whole map, then evaluate in blocks.
-#	#    Large memory overhead (~10x map size for fourier-interpolation)
-#	# 3. Build interpolation in blocks, then evaluate in blocks.
-#	#    Problems with boundary conditions. Fourier-interpolation assumes
-#	#    periodic boundaries, but can probably get away with some padding
-#	#    and apodization.
-#
-#	# In the simplest case we just build an interpolator and evaluate
-#	# all the positions at once. But this is memory-intensive.
-#	#
-#
-#
-#
-#	# Skip expensive operation if map is compatible
-#	if not force:
-#		if wcsutils.equal(map.wcs, wcs) and tuple(shape[-2:]) == tuple(shape[-2:]):
-#			return map.copy()
-#		elif wcsutils.is_compatible(map.wcs, wcs) and border == "constant":
-#			return extract(map, shape, wcs, cval=cval)
-#	omap = zeros(map.shape[:-2]+shape[-2:], wcs, map.dtype)
-#	# Save memory by looping over rows. This won't work for non-"prefiltered" interpolators
-#	if ip and not ip.prefiltered: bsize=100000000
-#	for i1 in range(0, shape[-2], bsize):
-#		i2     = min(i1+bsize, shape[-2])
-#		somap  = omap[...,i1:i2,:]
-#		pix    = map.sky2pix(somap.posmap(), safe=safe)
-#		y1     = max(np.min(pix[0]).astype(int)-3,0)
-#		y2     = min(np.max(pix[0]).astype(int)+3,map.shape[-2])
-#		if y2-y1 <= 0: continue
-#		pix[0] -= y1
-#		somap[:] = utils.interpol(map[...,y1:y2,:], pix, mode=mode, order=order, border=border, cval=cval, ip=ip)
-#	return omap
 
 def project(map, shape, wcs, mode="spline", order=3, border="constant",
 		cval=0.0, force=False, safe=True, bsize=1000, context=50, ip=None):
@@ -2013,6 +1971,17 @@ def downgrade(emap, factor, op=np.mean, ref=None, off=None, inclusive=False):
 	omap = ndmap(omap, wcs)
 	return omap
 
+def downgrade_fft(emap, factor):
+	"""Like downgrade(emap, factor), but uses fourier-resampling. This avoids
+	introducing both a pixel window and aliasing, but assumes periodic boundary
+	conditions."""
+	return resample(emap, utils.nint(np.array(emap.shape[-2:])/factor))
+
+def upgrade_fft(emap, factor):
+	"""Like upgrade(emap, factor), but uses fourier-resampling. This avoids
+	introducing any sharp edges, preserving the shape of the power spectrum."""
+	return resample(emap, utils.nint(np.array(emap.shape[-2:])*factor))
+
 def upgrade(emap, factor, off=None, oshape=None, inclusive=False):
 	"""Upgrade emap to a larger size using nearest neighbor interpolation,
 	returning the result. More advanced interpolation can be had using
@@ -3102,7 +3071,7 @@ def ifftshift(map, inplace=False):
 def fillbad(map, val=0, inplace=False):
 	return np.nan_to_num(map, copy=not inplace, nan=val, posinf=val, neginf=val)
 
-def resample(map, oshape, off=(0,0), method="fft", border="wrap", corner=False, order=3):
+def resample(map, oshape, off=(0,0), method="fft", border="wrap", corner=True, order=3):
 	"""Resample the input map such that it covers the same area of the sky
 	with a different number of pixels given by oshape."""
 	# Construct the output shape and wcs
@@ -3112,7 +3081,7 @@ def resample(map, oshape, off=(0,0), method="fft", border="wrap", corner=False, 
 	elif method == "spline":
 		owcs = wcsutils.scale(map.wcs, np.array(oshape[-2:],float)/map.shape[-2:], rowmajor=True, corner=corner)
 		off  = np.zeros(2)+off
-		if not corner:
+		if corner:
 			off -= 0.5 - 0.5*np.array(oshape[-2:],float)/map.shape[-2:] # in output units
 		opix  = pixmap(oshape) - off[:,None,None]
 		ipix  = opix * (np.array(map.shape[-2:],float)/oshape[-2:])[:,None,None]
@@ -3121,7 +3090,7 @@ def resample(map, oshape, off=(0,0), method="fft", border="wrap", corner=False, 
 		raise ValueError("Invalid resample method '%s'" % method)
 	return omap
 
-def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=False, norm="pix", op=lambda a,b:b, dummy=False):
+def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=True, norm="pix", op=lambda a,b:b, dummy=False):
 	"""Like resample, but takes a fourier-space map as input and outputs a fourier-space map.
 	unit specifies which fourier-space unit is used. "pix" corresponds to
 	the standard enmap normalization (normalize=True in enmap.fft). "phys" corresponds
@@ -3131,7 +3100,7 @@ def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=False, norm="pix",
 	# Construct the output shape and wcs
 	oshape = fimap.shape[:-2] + tuple(oshape)[-2:]
 	off    = np.zeros(2)+off
-	if not corner:
+	if corner:
 		# Apply phase shift to realign with pixel centers. This can be seen as a half pixel shift to
 		# the left in the original pixelization followed by a half pixel shift to the right in the new
 		# pixelization.

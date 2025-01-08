@@ -298,6 +298,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("-S", "--symmetric", action="store_true", help="Treat the non-pixel axes as being asymmetric matrix, and only plot a non-redundant triangle of this matrix.")
 	add_argument("-z", "--zenith",    action="store_true", help="Plot the zenith angle instead of the declination.")
 	add_argument("-F", "--fix-wcs",   action="store_true", help="Fix the wcs for maps in cylindrical projections where the reference point was placed too far away from the map center.")
+	add_argument(      "--pos-ra",    action="store_true", help="RA goes from 0 to 360 instead of -180 to 180")
 
 	# Define the argument parser
 	parser   = argparse.ArgumentParser()
@@ -686,7 +687,7 @@ def calc_gridinfo(shape, wcs, args):
 	try:               unit = float(args.tick_unit)
 	except TypeError:  unit = 1.0
 	except ValueError: unit = args.tick_unit
-	return cgrid.calc_gridinfo(shape, wcs, steps=ticks, nstep=args.nstep, zenith=args.zenith, unit=unit)
+	return cgrid.calc_gridinfo(shape, wcs, steps=ticks, nstep=args.nstep, zenith=args.zenith, unit=unit, positive_ra=args.pos_ra)
 
 def draw_grid(ginfo, args):
 	"""Return a grid based on gridinfo. args.grid_color controls the color

@@ -8,8 +8,8 @@ try: basestring
 except NameError: basestring = str
 
 def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj=None, apod=2*utils.arcmin,
-		order=3, oversample=4, pol=None, oshape=None, owcs=None, extensive=False, verbose=False,
-		filter=None,pixwin=False,pixwin_order=0):
+		method="mixed", order=3, oversample=4, pol=None, oshape=None, owcs=None,
+		extensive=False, verbose=False, filter=None,pixwin=False,pixwin_order=0):
 	"""Given an enmap [...,ny,nx] and a set of coordinates in a numpy array
 	coords with shape (n,2) and ordering [n,{dec,ra}], extract a set
 	of thumbnail images [n,...,thumby,thumbx] centered on each set of
@@ -73,7 +73,7 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj=None, apod=2*utils
 	# Define our output maps, which we will fill below
 	omaps = enmap.zeros((nsrc,)+imap.shape[:-2]+oshape, owcs, imap.dtype)
 	for si, pixbox in enumerate(pixboxes):
-		if oversample > 1:
+		if method == "nufft" or method == "mixed" and oversample > 1:
 			# Make the pixbox fft-friendly
 			for i in range(2):
 				pixbox[1,i] = pixbox[0,i] + fft.fft_len(pixbox[1,i]-pixbox[0,i], direction="above", factors=[2,3,5])
@@ -86,13 +86,16 @@ def thumbnails(imap, coords, r=5*utils.arcmin, res=None, proj=None, apod=2*utils
 			print("%4d/%d %6.2f %6.2f %8.2f %dx%d" % (si+1, nsrc, coords[si,0]/utils.degree, coords[si,1]/utils.degree, np.max(ithumb), ithumb.shape[-2], ithumb.shape[-1]))
 		# Oversample using fourier if requested. We do this because fourier
 		# interpolation is better than spline interpolation overall
-		if oversample > 1:
+		if method == "mixed" and oversample > 1:
 			fshape = utils.nint(np.array(oshape[-2:])*oversample)
 			ithumb = ithumb.resample(fshape, method="fft")
-		# I apologize for the syntax. There should be a better way of doing this
+		# I apologize for the syntax. There should be a better way to do this
 		ipos = coordinates.transform("cel", ["cel",[[0,0,coords[si,1],coords[si,0]],False]], opos[::-1], pol=pol)
 		ipos, rest = ipos[1::-1], ipos[2:]
-		omaps[si] = ithumb.at(ipos, mode="spline", order=order)
+		if   method in ["spline", "mixed"]: ipol_mode = "spline"
+		elif method in ["nufft"]:           ipol_mode = "nufft"
+		else: raise ValueError("Unrecognized method '%s'" % (str(method)))
+		omaps[si] = ithumb.at(ipos, mode=ipol_mode, order=order)
 		# Apply the polarization rotation. The sign is flipped because we computed the
 		# rotation from the output to the input
 		if pol: omaps[si] = enmap.rotate_pol(omaps[si], -rest[0])
@@ -219,7 +222,7 @@ def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], met
 		# splines, but linear and nearest neighbor may be useful. Coordinate rotation may
 		# be slow.
 		import healpy
-		imap_pre = utils.interpol_prefilter(imap, npre=-2, order=order, mode=boundary)
+		ip = utils.interpolator(imap, npre=-2, order=order, mode="spline", border=boundary)
 		# Figure out if we need to compute polarization rotations
 		pol = imap.ndim > 2 and any([s != 0 for s,c1,c2 in enmap.spin_helper(spin, imap.shape[-3])])
 		# Batch to save memory
@@ -232,7 +235,7 @@ def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], met
 				# Not sure why the [::-1] is necessary here. Maybe psi,theta,phi vs. phi,theta,psi?
 				pos = coordinates.transform_euler(inv_euler(rot2euler(rot))[::-1], pos, pol=pol)
 			# The actual interpolation happens here
-			vals  = imap_pre.at(pos[1::-1], order=order, prefilter=False, mode="spline", border=boundary)
+			vals  = imap.at(pos[1::-1], order=order, border=boundary, ip=ip)
 			if rot is not None and imap.ndim > 2:
 				# Update the polarization to account for the new coordinate system
 				for s, c1, c2 in enmap.spin_helper(spin, imap.shape[-3]):

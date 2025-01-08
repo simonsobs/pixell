@@ -232,6 +232,7 @@ def unwind(a, period=2*np.pi, axes=[-1], ref=0, refmode="left", mask_nan=False):
 	period-wrapping. I.e. [0.07,0.02,6.25,6.20] would
 	become [0.07,0.02,-0.03,-0.08] with the default period
 	of 2*pi."""
+	if a.ndim == 0: return a
 	res = rewind(a, period=period, ref=ref)
 	for axis in axes:
 		with flatview(res, axes=[axis]) as flat:
@@ -538,8 +539,8 @@ def interpol(arr, inds, out=None, mode="spline", border="nearest",
 	Valid values are:
 	* "nearest": Indices outside the array use the value from the nearest
 	  point on the edge.
-	* "cyclic": Periodic boundary conditions
-	* "mirrored": Mirrored boundary conditions
+	* "wrap": Periodic boundary conditions
+	* "mirror": Mirrored boundary conditions
 	* "constant": Use a constant value, given by the cval argument
 
 	Epsilon controls the target relative accuracy of the interpolation.
