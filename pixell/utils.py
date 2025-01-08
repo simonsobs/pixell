@@ -539,8 +539,8 @@ def interpol(arr, inds, out=None, mode="spline", border="nearest",
 	Valid values are:
 	* "nearest": Indices outside the array use the value from the nearest
 	  point on the edge.
-	* "cyclic": Periodic boundary conditions
-	* "mirrored": Mirrored boundary conditions
+	* "wrap": Periodic boundary conditions
+	* "mirror": Mirrored boundary conditions
 	* "constant": Use a constant value, given by the cval argument
 
 	Epsilon controls the target relative accuracy of the interpolation.

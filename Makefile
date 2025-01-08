@@ -1,4 +1,4 @@
-.PHONY: clean clean-test clean-pyc clean-build docs help develop
+.PHONY: clean clean-test clean-pyc clean-build docs help develop build inline
 .DEFAULT_GOAL := develop
 
 define BROWSER_PYSCRIPT
