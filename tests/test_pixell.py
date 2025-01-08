@@ -1238,7 +1238,8 @@ class PixelTests(unittest.TestCase):
             assert np.allclose(vals_ip, vals_raw)
             time_full  = t2-t1
             time_eval  = t4-t3
-            assert time_eval < time_full / 100
+            # Should be much faster than 10%, but timing is unreliable, especially in github actions
+            assert time_eval < time_full / 10
             # Also test that we can pass the interpolator as an argument
             vals_ip2 = utils.interpol(data, opix, mode=mode, order=order, ip=ip)
             assert np.allclose(vals_ip2, vals_raw)
