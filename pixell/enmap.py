@@ -104,7 +104,7 @@ class ndmap(np.ndarray):
 	def extract_pixbox(self, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract_pixbox(self, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def insert(self, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert(self, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
 	def insert_at(self, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert_at(self, pix, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
-	def at(self, pos, order=3, border="constant", cval=0.0, unit="coord", safe=True): return at(self, pos, order, border=border, cval=0, unit=unit, safe=safe)
+	def at(self, pos, order=3, border="constant", cval=0.0, unit="coord", safe=True, ip=None): return at(self, pos, order, border=border, cval=0, unit=unit, safe=safe, ip=ip)
 	def argmax(self, unit="coord"): return argmax(self, unit=unit)
 	def autocrop(self, method="plain", value="auto", margin=0, factors=None, return_info=False): return autocrop(self, method, value, margin, factors, return_info)
 	def apod(self, width, profile="cos", fill="zero"): return apod(self, width, profile=profile, fill=fill)
@@ -716,7 +716,7 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 	return res
 
 def at(map, pos, order=3, border="constant", cval=0.0, unit="coord", safe=True, ip=None):
-	if unit != "pix": pos = sky2pix(map.shape, map.wcs, pos, safe=safe, ip=None)
+	if unit != "pix": pos = sky2pix(map.shape, map.wcs, pos, safe=safe)
 	return utils.interpol(map, pos, order=order, border=border, cval=cval, ip=ip)
 
 def argmax(map, unit="coord"):

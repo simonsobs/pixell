@@ -219,7 +219,7 @@ def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], met
 		# splines, but linear and nearest neighbor may be useful. Coordinate rotation may
 		# be slow.
 		import healpy
-		imap_pre = utils.interpol_prefilter(imap, npre=-2, order=order, mode=boundary)
+		ip = utils.interpolator(imap, npre=-2, order=order, mode="spline", border=boundary)
 		# Figure out if we need to compute polarization rotations
 		pol = imap.ndim > 2 and any([s != 0 for s,c1,c2 in enmap.spin_helper(spin, imap.shape[-3])])
 		# Batch to save memory
@@ -232,7 +232,7 @@ def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], met
 				# Not sure why the [::-1] is necessary here. Maybe psi,theta,phi vs. phi,theta,psi?
 				pos = coordinates.transform_euler(inv_euler(rot2euler(rot))[::-1], pos, pol=pol)
 			# The actual interpolation happens here
-			vals  = imap_pre.at(pos[1::-1], order=order, prefilter=False, mode=boundary)
+			vals  = imap.at(pos[1::-1], order=order, border=boundary, ip=ip)
 			if rot is not None and imap.ndim > 2:
 				# Update the polarization to account for the new coordinate system
 				for s, c1, c2 in enmap.spin_helper(spin, imap.shape[-3]):

@@ -298,23 +298,47 @@ def _apply_zenithal_ref(w, ref):
 def angdist(lon1,lat1,lon2,lat2):
 	return np.arccos(np.cos(lat1)*np.cos(lat2)*(np.cos(lon1)*np.cos(lon2)+np.sin(lon1)*np.sin(lon2))+np.sin(lat1)*np.sin(lat2))
 
-def fix_wcs(wcs, axis=0):
+def fix_wcs(wcs, axis=0, n=None):
 	"""Returns a new WCS object which has had the reference pixel moved to the
 	middle of the possible pixel space."""
+	# Can't manipulate crval if coordinates aren't separable
+	if not (is_cyl(wcs) and wcs.wcs.crval[1-axis] == 0):
+		raise ValueError("Can't fix wcs for non-separable wcs")
+	if n is None: n = abs(360/wcs.wcs.cdelt[axis])
+	# Get the raw distance from crval
+	ra1   = wcs.wcs.crval[axis] - wcs.wcs.crpix[axis]*wcs.wcs.cdelt[axis]
+	ra2   = ra1 + (n-1)*wcs.wcs.cdelt[axis]
+	left  = abs(wcs.wcs.crval[axis]-ra1)
+	right = abs(wcs.wcs.crval[axis]-ra2)
+	# Stop if we don't need to fix anything
+	if max(left,right) <= 180: return wcs
+	# Otherwise move crval to the middle
+	mid   = 0.5*(ra1+ra2)
+	dra   = mid-wcs.wcs.crval[axis]
+	dpix  = dra/wcs.wcs.cdelt[axis]
 	res = wcs.deepcopy()
-	# Find the center ra manually: mean([crval - crpix*cdelt, crval + (-crpix+shape)*cdelt])
-	#  = crval + (-crpix+shape/2)*cdelt
-	# What pixel does this correspond to?
-	#  crpix2 = crpix + (crval2-crval)/cdelt
-	# But that requires shape. Can we do without it? Yes, let's use the
-	# biggest possible shape. n = 360/cdelt
-	n = abs(360/wcs.wcs.cdelt[axis])
-	delta_ra  = wcs.wcs.cdelt[axis]*(n/2-wcs.wcs.crpix[axis])
-	delta_pix = delta_ra/wcs.wcs.cdelt[axis]
-	res.wcs.crval[axis] += delta_ra
-	res.wcs.crpix[axis] += delta_pix
-	repr(res.wcs) # wcs not properly updated if I don't do this
+	res.wcs.crval[axis] += mid
+	res.wcs.crpix[axis] += dpix
+	# I don't think this is necessary any more, but apparently I had
+	# problems with wcs not being properly updated if I didn't do this
+	# at som epoint
+	repr(res.wcs)
 	return res
+
+	#res = wcs.deepcopy()
+	## Find the center ra manually: mean([crval - crpix*cdelt, crval + (-crpix+shape)*cdelt])
+	##  = crval + (-crpix+shape/2)*cdelt
+	## What pixel does this correspond to?
+	##  crpix2 = crpix + (crval2-crval)/cdelt
+	## But that requires shape. Can we do without it? Yes, let's use the
+	## biggest possible shape. n = 360/cdelt
+	#n = abs(360/wcs.wcs.cdelt[axis])
+	#delta_ra  = wcs.wcs.cdelt[axis]*(n/2-wcs.wcs.crpix[axis])
+	#delta_pix = delta_ra/wcs.wcs.cdelt[axis]
+	#res.wcs.crval[axis] += delta_ra
+	#res.wcs.crpix[axis] += delta_pix
+	#repr(res.wcs) # wcs not properly updated if I don't do this
+	#return res
 
 def fix_cdelt(wcs):
 	"""Return a new wcs with pc and cd replaced by cdelt"""
