@@ -99,7 +99,7 @@ class ndmap(np.ndarray):
 	@property
 	def geometry(self): return self.shape, self.wcs
 	def resample(self, oshape, off=(0,0), method="fft", border="wrap", corner=True, order=3): return resample(self, oshape, off=off, method=method, border=border, corner=corner, order=order)
-	def project(self, shape, wcs, mode="spline", order=3, border="constant", cval=0, safe=True): return project(self, shape, wcs, order, mode=mode, border=border, cval=cval, safe=safe)
+	def project(self, shape, wcs, mode="spline", order=3, border="constant", cval=0, safe=True): return project(self, shape, wcs, mode=mode, order=order, border=border, cval=cval, safe=safe)
 	def extract(self, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract(self, shape, wcs, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def extract_pixbox(self, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False): return extract_pixbox(self, pixbox, omap=omap, wrap=wrap, op=op, cval=cval, iwcs=iwcs, reverse=reverse)
 	def insert(self, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert(self, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
