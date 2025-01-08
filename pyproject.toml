@@ -1,0 +1,84 @@
+[build-system]
+build-backend = 'mesonpy'
+requires = ['meson-python', 'numpy', 'cython', 'versioneer[toml]', 'build']
+
+[project]
+name = 'pixell'
+version = "0.27.2"
+description = "A rectangular pixel map manipulation and harmonic analysis library derived from Sigurd Naess' enlib."
+readme = 'README.rst'
+requires-python = '>=3.9'
+license = {file = 'LICENSE'}
+authors = [
+    {name = "Simons Observatory Collaboration Analysis Library Task Force"},
+]
+maintainers = [
+    {name = "Mathew Madhavacheril", email = "mathewsyriac@gmail.com"}
+]
+dependencies = [
+    'numpy>=1.20.0',
+    'astropy>=2.0',
+    'setuptools>=39',
+    'h5py>=2.7',
+    'scipy>=1.0',
+    'python_dateutil>=2.7',
+    'cython',
+    'healpy>=1.13',
+    'matplotlib>=2.0',
+    'pyyaml>=5.0',
+    'Pillow>=5.3.0, != 10.4.0',
+    'pytest-cov>=2.6',
+    'coveralls>=1.5',
+    'pytest>=4.6',
+    'ducc0>=0.34.0',
+    'numba>=0.54.0'
+]
+
+[project.scripts]
+# See scripts/meson.build for installation
+benchmark-pixell-runner = "pixell.scripts.benchmark_pixell_runner:main"
+benchmark-pixell = "pixell.scripts.benchmark_pixell:main"
+
+[project.optional-dependencies]
+test = [
+    'pip>=9.0',
+    'bumpversion>=0.5',
+    'wheel>=0.30',
+    'watchdog>=0.8',
+    'flake8>=3.5',
+    'coverage>=4.5',
+    'Sphinx>=1.7',
+    'twine>=1.10',
+    'numpy>=1.20',
+    'astropy>=2.0',
+    'setuptools>=39.2',
+    'h5py>=2.7',
+    'scipy>=1.0',
+    'python_dateutil>=2.7',
+    'cython',
+    'matplotlib>=2.0',
+    'pyyaml>=5.0',
+    'pytest-cov>=2.6',
+    'coveralls>=1.5',
+    'pytest>=4.6'
+]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+
+[tool.cibuildwheel]
+test-requires = "pytest"
+test-command = "pytest {project}/tests"
+build = "cp39-* cp310-* cp311-* cp312-*"
+skip = "*i686* *musllinux*"
+
+[tool.coverage.run]
+source = [
+    "pixell"
+]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover"]
+exclude_also = ["if TYPE_CHECKING:"]

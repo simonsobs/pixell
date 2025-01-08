@@ -1,6 +1,6 @@
 module fortran
 
-	private :: map_border, calc_weights
+	!private :: map_border, calc_weights
 
 contains
 

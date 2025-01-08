@@ -543,6 +543,14 @@ def draw_colorbar(crange, width, args):
 	fmt  = "%g"
 	labels, boxes = [], []
 	for val in crange:
+		# Val could be a one-element array. In NumPy 1.25 this is not
+		# acceptable to string formatters.
+
+		try:
+			val = val[0]
+		except (TypeError, IndexError):
+			pass
+		
 		labels.append(fmt % val)
 		boxes.append(font.getbbox(labels[-1])[-2:])
 	boxes = np.array(boxes,int)
@@ -908,7 +916,7 @@ def draw_ellipse(image, bounds, width=1, outline='white', antialias=1):
 		draw.ellipse([a[0],a[1],b[0],b[1]], fill=fill)
 	# downsample the mask using PIL.Image.LANCZOS 
 	# (a high-quality downsampling filter).
-	mask = mask.resize(esize, PIL.Image.LANCZOS)
+	mask = mask.resize(tuple(esize), PIL.Image.LANCZOS)
 	# paste outline color to input image through the mask
 	image.paste(outline, tuple(bounds[:2]-width), mask=mask)
 

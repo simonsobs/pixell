@@ -24,7 +24,7 @@ class Butterworth:
 	def __init__(self, step=2, shape=7, tol=1e-3, lmin=None, lmax=None):
 		self.step = step; self.shape = shape; self.tol = tol
 		self.lmin = lmin; self.lmax  = lmax
-		if self.lmin is not None and self.lmin is not None:
+		if self.lmin is not None and self.lmax is not None:
 			self._finalize()
 	def with_bounds(self, lmin, lmax):
 		"""Return a new instance with the given multipole bounds"""
@@ -53,7 +53,7 @@ class ButterTrim:
 	def __init__(self, step=2, shape=7, trim=1e-2, lmin=None, lmax=None):
 		self.step = step; self.shape = shape; self.trim = trim
 		self.lmin = lmin; self.lmax  = lmax
-		if self.lmin is not None and self.lmin is not None:
+		if self.lmin is not None and self.lmax is not None:
 			self._finalize()
 	def with_bounds(self, lmin, lmax):
 		"""Return a new instance with the given multipole bounds"""
@@ -83,7 +83,7 @@ class DigitalButterTrim:
 	def __init__(self, step=2, shape=7, trim=1e-2, lmin=None, lmax=None):
 		self.step = step; self.shape = shape; self.trim = trim
 		self.lmin = lmin; self.lmax  = lmax
-		if self.lmin is not None and self.lmin is not None:
+		if self.lmin is not None and self.lmax is not None:
 			self._finalize()
 	def with_bounds(self, lmin, lmax):
 		"""Return a new instance with the given multipole bounds"""
@@ -126,6 +126,35 @@ class AdriSD:
 		from optweight import wlm_utils
 		self.profiles, self.lmaxs = wlm_utils.get_sd_kernels(self.lamb, self.lmax, lmin=self.lmin)
 
+
+
+class CosineNeedlet:
+	"""From Coulton et al 2023 arxiv:2307.01258"""
+	def __init__(self, lpeaks):
+		"""
+		Cosine-shaped needlets. lpeaks is a list of multipoles
+		where each needlet peaks.
+		"""
+		self.lpeaks = lpeaks
+		self.lmaxs = np.append(self.lpeaks[1:],self.lpeaks[-1])
+		self.lmins = np.append(self.lpeaks[0],self.lpeaks[:-1])
+		self.lmin = self.lpeaks[0]
+		self.lmax = self.lpeaks[-1]
+	@property
+	def n(self): return len(self.lpeaks)
+	def __call__(self, i, l):
+		lpeaki = self.lpeaks[i]
+		out = l*0.
+		if i>0:
+			lpeakim1 = self.lpeaks[i-1]
+			sel1 = np.logical_and(l>=lpeakim1,l<lpeaki)
+			out[sel1] = np.cos(np.pi*(lpeaki-l[sel1])/(lpeaki-lpeakim1)/2.)
+		if i<(self.n-1):
+			lpeakip1 = self.lpeaks[i+1]
+			sel2 = np.logical_and(l>=lpeaki,l<lpeakip1)
+			out[sel2] = np.cos(np.pi*(l[sel2]-lpeaki)/(lpeakip1-lpeaki)/2.)
+		return out
+		
 ##### Variance wavelet basis generators #####
 
 # These are used to implement the variance wavelet transform, which
@@ -275,13 +304,24 @@ class WaveletTransform:
 	def geometry(self): return self.shape, self.wcs
 	@property
 	def nlevel(self): return len(self.geometries)
-	def map2wave(self, map, owave=None):
+	def map2wave(self, map, owave=None, fl = None, scales=None, fill_value=None):
 		"""Transform from an enmap map[...,ny,nx] to a multimap of wavelet coefficients,
 		which is effectively a group of enmaps with the same pre-dimensions but varying shape.
 		If owave is provided, it should be a multimap with the right shape (compatible with
 		the .geometries member of this class), and will be overwritten with the result. In
 		any case the resulting wavelet coefficients are returned.
+
+		A filter fl (either an array or a function; see curvedsky.almxfl) can be
+		provided that pre-filters the map in spherical harmonic space, e.g. to
+		convolve maps to a common beam.
+
+		A list of the indices of wavelet coefficients to be calculated can be provided
+		in scales; None defaults to all scales.  For wavelet coefficients that are not
+		calculated, a map of zeros wil be provided instead of performing the corresponding
+		harmonic to real space transform. Alternatively, a fill_value different from zero
+		can be specified.
 		"""
+		scales = range(len(self.geometries)) if scales is None else scales
 		filters, norms, lmids = self.filters, self.norms, self.lmids
 		# Output geometry. Can't just use our existing one because it doesn't know about the
 		# map pre-dimensions. There should be an easier way to do this.
@@ -289,18 +329,31 @@ class WaveletTransform:
 		if owave is None: owave = multimap.zeros(geos, map.dtype)
 		if self.uht.mode == "flat":
 			fmap = enmap.fft(map, normalize=False)
+			if fl is not None:
+				raise NotImplementedError("Pre-filtering not yet implemented for flat-sky wavelets.")				
 			for i, (shape, wcs) in enumerate(self.geometries):
-				fsmall  = enmap.resample_fft(fmap, shape, norm=None, corner=True)
-				fsmall *= filters[i] / (norms[i]*fmap.npix)
-				owave.maps[i] = enmap.ifft(fsmall, normalize=False).real
+				if i in scales:
+					fsmall  = enmap.resample_fft(fmap, shape, norm=None, corner=True)
+					fsmall *= filters[i] / (norms[i]*fmap.npix)
+					owave.maps[i] = enmap.ifft(fsmall, normalize=False).real
+				else:
+					owave.maps[i] = enmap.zeros(shape,wcs)
+					if fill_value is not None: owave.maps[i][:] = np.nan
+					
 		else:
 			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
 			alm   = curvedsky.map2alm(map, ainfo=ainfo)
+			if fl is not None:
+				alm = curvedsky.almxfl(alm,fl)
 			for i, (shape, wcs) in enumerate(self.geometries):
-				smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
-				asmall    = curvedsky.transfer_alm(ainfo, alm, smallinfo)
-				smallinfo.lmul(asmall, filters[i]/norms[i], asmall)
-				curvedsky.alm2map(asmall, owave.maps[i])
+				if i in scales:
+					smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
+					asmall    = curvedsky.transfer_alm(ainfo, alm, smallinfo)
+					smallinfo.lmul(asmall, filters[i]/norms[i], asmall)
+					curvedsky.alm2map(asmall, owave.maps[i])
+				else:
+					owave.maps[i] = enmap.zeros(shape,wcs)
+					if fill_value is not None: owave.maps[i][:] = fill_value
 		return owave
 	def wave2map(self, wave, omap=None):
 		"""Transform from the wavelet coefficients wave (multimap), to the corresponding enmap.

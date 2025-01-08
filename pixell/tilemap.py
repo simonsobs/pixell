@@ -71,7 +71,10 @@ class TileMap(np.ndarray):
 	def __repr__(self):
 		return "TileMap(%s,%s)" % (np.asarray(self), str(self.geometry))
 	def __str__(self): return repr(self)
-	def __array_wrap__(self, arr, context=None):
+	def __array_wrap__(self, arr, context=None, return_scalar=False):
+		# In the future need to support `return_scalar`, but that is seemingly
+		# undocumented and not actually supported in numpy 2.0? So for now we
+		# just ignore it.
 		return TileMap(arr, self.geometry)
 	def __getitem__(self, sel):
 		# Split sel into normal and wcs parts.

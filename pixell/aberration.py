@@ -116,7 +116,7 @@ class Aberrator:
 		nthread = int(utils.fallback(utils.getenv("OMP_NUM_THREADS",nthread),0))
 		# 1. Calculate the aberration field. These are tiny
 		alm_dpos = calc_boost_field(-beta, dir, nthread=nthread)
-		# 2. Evaluate these on our target geometry. Hardcoded float64 because of get_deflected_angles
+		# 2. Evaluate these on our target geometry.
 		deflect = enmap.zeros(alm_dpos.shape[:-1]+shape[-2:], wcs, coord_dtype)
 		curvedsky.alm2map(alm_dpos.astype(coord_ctype, copy=False), deflect, spin=1, nthread=nthread)
 		# 3. Calculate the offset angles.
@@ -315,8 +315,6 @@ iplanck = numba.njit(utils.iplanck_T)
 # In the future I can easily gain back af actor 4x with an implementation in C
 @numba.njit
 def _modulate_T2lin(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, spin=0, dipole=False):
-	xh   = 0.5*utils.h*freq/(utils.k*T0)
-	f    = xh/np.tanh(xh)-1
 	scale= dplanck(freq, T=T0)
 	off  = planck(freq,T0)/scale
 	for y in range(map.shape[0]):
@@ -334,8 +332,6 @@ def _modulate_T2lin(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, spin=0, d
 
 @numba.njit
 def _modulate_lin2T(map, A, T0=utils.T_cmb, freq=150e9, map_unit=1e-6, spin=0, dipole=False):
-	xh   = 0.5*utils.h*freq/(utils.k*T0)
-	f    = xh/np.tanh(xh)-1
 	scale= dplanck(freq, T=T0) # Jy/sr/K'
 	off  = planck(freq,T0)     # Jy/sr
 	for y in range(map.shape[0]):

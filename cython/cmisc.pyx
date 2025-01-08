@@ -31,7 +31,7 @@ def alm2cl(ainfo, alm, alm2=None):
 	# I used to flatten here to make looping simple, but that caused a copy to be made
 	# when combined with np.broadcast. So instead I will use manual raveling
 	pshape = alm.shape[:-1]
-	npre   = int(np.product(pshape))
+	npre   = int(np.prod(pshape))
 	cdef float[::1]  cl_single_sp, alm_single_sp1, alm_single_sp2
 	cdef double[::1] cl_single_dp, alm_single_dp1, alm_single_dp2
 	cdef int64_t[::1] mstart = np.ascontiguousarray(ainfo.mstart).view(np.int64)
