@@ -137,7 +137,7 @@ def get_geometries(yml_section):
     geos = {}
     for g in yml_section:
         if g['type']=='fullsky':
-            geos[g['name']] = enmap.fullsky_geometry(res=np.deg2rad(g['res_arcmin']/60.),proj=g['proj'])
+            geos[g['name']] = enmap.fullsky_geometry(res=np.deg2rad(g['res_arcmin']/60.),proj=g['proj'],variant="CC")
         elif g['type']=='pickle':
             geos[g['name']] = pickle.load(open(DATA_PREFIX+"%s"%g['filename'],'rb'))
         else:
@@ -198,7 +198,7 @@ def get_extraction_test_results(yaml_file):
 lens_version = '071123'
 
 def get_offset_result(res=1.,dtype=np.float64,seed=1):
-    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res))
+    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res), variant="CC")
     shape = (3,) + shape
     obs_pos = enmap.posmap(shape, wcs)
     np.random.seed(seed)
@@ -207,7 +207,7 @@ def get_offset_result(res=1.,dtype=np.float64,seed=1):
     return obs_pos,grad,raw_pos
 
 def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
-    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res))
+    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res), variant="CC")
     shape = (3,) + shape
     # ells = np.arange(lmax)
     ps_cmb,ps_lens = powspec.read_camb_scalar(DATA_PREFIX+"test_scalCls.dat")
@@ -485,7 +485,7 @@ class PixelTests(unittest.TestCase):
         print("Testing full sky geometry...")
         test_res_arcmin = 0.5
         shape,wcs = enmap.fullsky_geometry(res=np.deg2rad(test_res_arcmin/60.),proj='car')
-        assert shape[0]==21601 and shape[1]==43200
+        assert shape[0]==21600 and shape[1]==43200
         assert abs(enmap.area(shape,wcs) - 4*np.pi) < 1e-6
 
     def test_pixels(self):
@@ -633,8 +633,8 @@ class PixelTests(unittest.TestCase):
         shape2,wcs2 = enmap.fullsky_geometry(res=np.deg2rad(6/60.),proj='car')
         shape3,wcs3 = enmap.fullsky_geometry(res=np.deg2rad(24/60.),proj='car')
         imap = enmap.ones(shape,wcs)
-        omap2 = enmap.project(imap,shape2,wcs2,order=0,mode='wrap')
-        omap3 = enmap.project(imap,shape3,wcs3,order=0,mode='wrap')
+        omap2 = enmap.project(imap,shape2,wcs2,order=0,border='wrap')
+        omap3 = enmap.project(imap,shape3,wcs3,order=0,border='wrap')
         assert np.all(np.isclose(omap2,1))
         assert np.all(np.isclose(omap3,1))
 
@@ -735,6 +735,30 @@ class PixelTests(unittest.TestCase):
         self.assertEqual(ainfo_out.mmax, ainfo_in.mmax)
         self.assertEqual(ainfo_out.nelem, ainfo_in.nelem)
 
+
+    def test_lens_alms(self):
+        # We generate phi alms and convert them to kappa and back
+        lmax = 100
+        ps = np.zeros(lmax+1)
+        ls = np.arange(lmax+1)
+        ps[ls>=2] = 1./ls[ls>=2]
+        phi_alm = curvedsky.rand_alm(ps,lmax=lmax)
+        kappa_alm = lensing.phi_to_kappa(phi_alm)
+        phi_alm2 = lensing.kappa_to_phi(kappa_alm)
+        np.testing.assert_array_almost_equal(phi_alm, phi_alm2)
+
+    def test_downgrade(self):
+        shape,wcs = enmap.geometry(pos=(0,0),shape=(100,100),res=0.01)
+        imap = enmap.ones(shape,wcs)
+        for dfact in [None,1]:
+            omap = enmap.downgrade(imap,dfact)
+            np.testing.assert_equal(imap,omap)
+
+        dfact = 2
+        omap = enmap.downgrade(imap,dfact,op=np.sum)
+        np.testing.assert_equal(omap,np.ones(enmap.scale_geometry(shape,wcs,1./dfact)[0])*4)
+
+        
     def test_almxfl(self):
         # We try to filter alms of shape (nalms,) and (ncomp,nalms) with
         # a filter of shape (nells,)
@@ -901,43 +925,44 @@ class PixelTests(unittest.TestCase):
             alm_out = curvedsky.map2alm_healpix(omap, spin=spin, ainfo=ainfo, niter=niter)
             np.testing.assert_array_almost_equal(alm_out, alm)
 
-    # Disabled for now because the version of ducc currently on pypi
-    # has an adjointness bug. It's fixed in the ducc git repo.
-    #def test_adjointness(self):
-    #    # This tests if alm2map_adjoint is the adjoint of alm2map,
-    #    # and if map2alm_adjoint is the adjoint of map2alm.
-    #    # (This doesn't test if they're correct, just that they're
-    #    # consistent with each other). This test is a bit slow, taking
-    #    # 5 s or so. It would be much faster if we dropped the ncomp=3 case.
-    #    for dtype in [np.float32, np.float64]:
-    #        for ncomp in [1,3]:
-    #            # Define our geometries
-    #            geos = []
-    #            res  = 30*utils.degree
-    #            shape, wcs = enmap.fullsky_geometry(res=res, variant="fejer1")
-    #            geos.append(("fullsky_fejer1", shape, wcs))
+    # MM: Re-enabled 09/17/2024
+    # --Disabled for now because the version of ducc currently on pypi
+    # has an adjointness bug. It's fixed in the ducc git repo.--
+    def test_adjointness(self):
+       # This tests if alm2map_adjoint is the adjoint of alm2map,
+       # and if map2alm_adjoint is the adjoint of map2alm.
+       # (This doesn't test if they're correct, just that they're
+       # consistent with each other). This test is a bit slow, taking
+       # 5 s or so. It would be much faster if we dropped the ncomp=3 case.
+       for dtype in [np.float32, np.float64]:
+           for ncomp in [1,3]:
+               # Define our geometries
+               geos = []
+               res  = 30*utils.degree
+               shape, wcs = enmap.fullsky_geometry(res=res, variant="fejer1")
+               geos.append(("fullsky_fejer1", shape, wcs))
 
-    #            shape, wcs = enmap.fullsky_geometry(res=res, variant="cc")
-    #            geos.append(("fullsky_cc", shape, wcs))
-    #            lmax = shape[-2]-2
+               shape, wcs = enmap.fullsky_geometry(res=res, variant="cc")
+               geos.append(("fullsky_cc", shape, wcs))
+               lmax = shape[-2]-2
 
-    #            shape, wcs = enmap.Geometry(shape, wcs)[3:-3,3:-3]
-    #            geos.append(("patch_cc", shape, wcs))
+               shape, wcs = enmap.Geometry(shape, wcs)[3:-3,3:-3]
+               geos.append(("patch_cc", shape, wcs))
 
-    #            wcs = wcs.deepcopy()
-    #            wcs.wcs.crpix += 0.123
-    #            geos.append(("patch_gen_cyl", shape, wcs))
+               wcs = wcs.deepcopy()
+               wcs.wcs.crpix += 0.123
+               geos.append(("patch_gen_cyl", shape, wcs))
 
-    #            shape, wcs = enmap.geometry(np.array([[-45,45],[45,-45]])*utils.degree, res=res, proj="tan")
-    #            geos.append(("patch_tan", shape, wcs))
+               shape, wcs = enmap.geometry(np.array([[-45,45],[45,-45]])*utils.degree, res=res, proj="tan")
+               geos.append(("patch_tan", shape, wcs))
 
-    #            for gi, (name, shape, wcs) in enumerate(geos):
-    #                mat1  = alm_bash(curvedsky.alm2map,         shape, wcs, ncomp, lmax, dtype)
-    #                mat2  = map_bash(curvedsky.alm2map_adjoint, shape, wcs, ncomp, lmax, dtype)
-    #                np.testing.assert_array_almost_equal(mat1, mat2)
-    #                mat1 = map_bash(curvedsky.map2alm,         shape, wcs, ncomp, lmax, dtype)
-    #                mat2 = alm_bash(curvedsky.map2alm_adjoint, shape, wcs, ncomp, lmax, dtype)
-    #                np.testing.assert_array_almost_equal(mat1, mat2)
+               for gi, (name, shape, wcs) in enumerate(geos):
+                   mat1  = alm_bash(curvedsky.alm2map,         shape, wcs, ncomp, lmax, dtype)
+                   mat2  = map_bash(curvedsky.alm2map_adjoint, shape, wcs, ncomp, lmax, dtype)
+                   np.testing.assert_array_almost_equal(mat1, mat2)
+                   mat1 = map_bash(curvedsky.map2alm,         shape, wcs, ncomp, lmax, dtype)
+                   mat2 = alm_bash(curvedsky.map2alm_adjoint, shape, wcs, ncomp, lmax, dtype)
+                   np.testing.assert_array_almost_equal(mat1, mat2)
 
 
     #def test_sharp_alm2map_der1(self):
@@ -1053,8 +1078,8 @@ class PixelTests(unittest.TestCase):
         # with gnomonic/tangent projection
         proj = "tan"
         r = 10*u.arcmin
-        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj, 
-            apod=2*u.arcmin, order=3, oversample=2,pixwin=False)
+        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj,
+            apod=2*u.arcmin, order=3, oversample=4, pixwin=False)
 
         # Create a reference source at the equator to compare this against
         ishape,iwcs = enmap.geometry(shape=ret.shape,res=res,pos=(0,0),proj=proj)
@@ -1068,7 +1093,7 @@ class PixelTests(unittest.TestCase):
             assert np.all(np.isclose(diff,0,atol=1e-3))
 
     def test_tilemap(self):
-        shape, wcs = enmap.fullsky_geometry(30*utils.degree)
+        shape, wcs = enmap.fullsky_geometry(30*utils.degree, variant="CC")
         assert shape == (7,12)
         geo  = tilemap.geometry((3,)+shape, wcs, tile_shape=(2,2))
         assert len(geo.active) == 0

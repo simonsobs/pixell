@@ -232,6 +232,7 @@ def unwind(a, period=2*np.pi, axes=[-1], ref=0, refmode="left", mask_nan=False):
 	period-wrapping. I.e. [0.07,0.02,6.25,6.20] would
 	become [0.07,0.02,-0.03,-0.08] with the default period
 	of 2*pi."""
+	if a.ndim == 0: return a
 	res = rewind(a, period=period, ref=ref)
 	for axis in axes:
 		with flatview(res, axes=[axis]) as flat:
@@ -610,17 +611,41 @@ class SplineInterpolator:
 		return out
 
 class FourierInterpolator:
-	prefiltered = False
-	def __init__(self, arr, npre=0, epsilon=None):
+	def __init__(self, arr, npre=0, epsilon=None, precompute="plan"):
+		"""When plan=True, uses incremental u2nu. This requires
+		constructing a plan per field, overhead 10x arr. When
+		plan=False, precomputes just the """
 		from . import fft
-		self.npre = npre % arr.ndim
-		self.arr  = np.asanyarray(arr)
-		self.epsilon = epsilon
-		self.farr = fft.fft(arr, axes=tuple(range(self.npre,arr.ndim)))
+		self.npre        = npre % arr.ndim
+		self.arr         = np.asanyarray(arr)
+		self.epsilon     = epsilon
+		self.complex     = np.iscomplexobj(arr)
+		self.precompute  = precompute
+		axes = tuple(range(-arr.ndim+npre,0,1))
+		self.prefiltered = False
+		if precompute == "plan":
+			# Memory overhead: 10x arr size
+			self.plan = fft.u2nu_plan(arr, axes=axes, op=lambda arr: fft.fft(arr, axes=axes),
+					normalize=True, epsilon=self.epsilon, complex=self.complex)
+			self.prefiltered = True
+		elif precompute == "fft":
+			# Memory overhead: 2x arr size, +10x field size when calling
+			self.farr = fft.fft(arr, axes=axes)
+		elif precompute == "none":
+			self.arr  = arr
+		else:
+			raise ValueError("Invalid value of precompute: '%s'. Valid values are plan, fft or none" % str(precompute))
 	def __call__(self, inds, out=None):
 		from . import fft
 		inds, out = _ip_prepare(self, inds, out=out)
-		out = fft.interpol_nufft(self.farr, inds, out=out, nofft=True, epsilon=self.epsilon)
+		if self.precompute == "plan":
+			out = self.plan.eval(inds, out=out)
+		elif self.precompute == "fft":
+			out = fft.interpol_nufft(self.farr, inds, out=out, nofft=True,
+				epsilon=self.epsilon, complex=self.complex)
+		else:
+			out = fft.interpol_nufft(self.arr, inds, out=out,
+				epsilon=self.epsilon, complex=self.complex)
 		return out
 
 def _ip_get_mode(mode, order):
@@ -1367,7 +1392,7 @@ def allgather(a, comm):
 	rather than needing an output argument."""
 	a   = np.asarray(a)
 	res = np.zeros((comm.size,)+a.shape,dtype=a.dtype)
-	if np.issubdtype(a.dtype, np.string_):
+	if np.issubdtype(a.dtype, np.bytes_):
 		comm.Allgather(a.view(dtype=np.uint8), res.view(dtype=np.uint8))
 	else:
 		comm.Allgather(a, res)
@@ -1402,10 +1427,11 @@ def allgatherv(a, comm, axis=0):
 	#print(comm.rank, "fa.shape", fa.shape)
 	ra = fa.reshape(fa.shape[0],-1) if fa.size > 0 else fa.reshape(0,np.prod(fa.shape[1:],dtype=int))
 	N  = ra.shape[1]
-	n  = allgather([len(ra)],comm)
+	# Number of elements each task has
+	n  = allgather([len(ra)],comm).reshape(-1)
 	o  = cumsum(n)
 	rb = np.zeros((np.sum(n),N),dtype=ra.dtype)
-	#print("A", comm.rank, ra.shape, ra.dtype, rb.shape, rb.dtype, n, N)
+	# print("A", comm.rank, ra.shape, ra.dtype, rb.shape, rb.dtype, n, N)
 	comm.Allgatherv(ra, (rb, (n*N,o*N)))
 	fb = rb.reshape((rb.shape[0],)+fa.shape[1:])
 	# Restore original data type
@@ -3442,6 +3468,11 @@ def replace(istr, ipat, repl):
 	if ostr == istr: raise KeyError("Pattern not found")
 	return ostr
 
+def regreplace(istr, ipat, repl, count=0, flags=0):
+	ostr, n = re.subn(ipat, repl, istr, count=count, flags=flags)
+	if n == 0: raise KeyError("Pattern not found")
+	return ostr
+
 # I used to do stuff like a[~np.isfinite(a)] = 0, but this should be
 # lower overhad and faster
 def remove_nan(a):
@@ -3579,11 +3610,14 @@ def distpow(dist, N):
 def airy(x):
 	"""Dimensionless real-space representation of Airy beam, normalized to peak at 1.
 	To get the airy beam an angular distance r from the center for a telescope with
-	aperture diameter D at wavelength λ, use airy(sin(r)*(2*pi*D/λ)).
+	aperture diameter D at wavelength λ, use airy(sin(r)/2*(2*pi*D/λ)).
+	This beam has an FWHM in terms of x of 3.2326799. So for small beams,
+	FWHM = 3.2326799 λ/(D*pi) radians. This works out to quite a bit smaller than
+	our beam, though. E.g. 1.17 arcmin where I expected 1.4 arcmin.
 	"""
 	# Avoid division by zero at low radius
 	with nowarn():
-		return np.where(x<1e-6, 1-x**2, (scipy.special.j1(2*x)/x)**2)
+		return np.where(x<1e-6, 1-0.25*x**2, (2*scipy.special.j1(x)/x)**2)
 
 def lairy(x):
 	"""This is the harmonic space representation of an Airy beam.
@@ -3596,6 +3630,8 @@ def lairy(x):
 	"""
 	x = np.clip(x,0,1)
 	return (np.arccos(x)-x*(1-x**2)**0.5)/(np.pi/2)
+
+def airy_lmax(D, λ): return 2*np.pi*D/λ
 
 def airy_area(D, λ):
 	"""Area (steradians) of airy beam for an aperture of size D and wavelength λ.
@@ -3645,3 +3681,32 @@ def _disk_overlap_curved_tiny(d, R):
 	"""Curved sky disk overlap in limit of tiny separations.
 	First order accuracy in d"""
 	return 2*np.pi*(1-np.cos(R)) - 4*np.sin(R)*np.sin(d/2)
+
+def infer_bin_edges(centers, ref=1):
+	"""Given a list of bin centers[n], returns the corresponding
+	bin edges[n+1] such that centers=0.5*(edges[:-1]+edges[1:]).
+	Since the system is underdetermined, an extra assumption is
+	needed. This function assumes that the two consecutive bins
+	starting at index "ref" have equal width. The default, 1,
+	means that the 2nd and 3rd bins are assumed to have equal
+	width. This was chosen because the first bin often doesn't
+	follow the same pattern as the others."""
+	from scipy import sparse
+	# Equation system
+	# [c1]                  [0.5 0.5 0   0 ...]
+	# [c2]               =  [0   0.5 0.5 0 ...]
+	# [..]                  [      ......     ]
+	# [c(ref+1)-cref]       [... -1 1 ........]
+	n = len(centers)
+	P = sparse.csr_array(
+		(
+			np.concatenate([np.full(2*n, 0.5), [-1,1]]),
+			(
+				np.concatenate([np.arange(0,n),np.arange(0,n),[n,n]]),
+				np.concatenate([np.arange(0,n),np.arange(1,n+1),[ref,ref+1]])
+			)
+		), shape=(n+1,n+1)
+	)
+	rhs   = np.concatenate([centers,[centers[ref+1]-centers[ref]]])
+	edges = sparse.linalg.spsolve(P.T.dot(P), P.T.dot(rhs))
+	return edges
