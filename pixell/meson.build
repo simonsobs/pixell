@@ -9,6 +9,7 @@ python_sources = [
     'colors.py',
     'coordinates.py',
     'curvedsky.py',
+    'fake_communicator.py',
     'enmap.py',
     'enplot.py',
     'fft.py',
