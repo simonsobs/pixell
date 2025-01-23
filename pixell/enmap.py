@@ -707,7 +707,7 @@ def map_union(map1, map2):
 	parts of the sky, return a new map that contains all pixels of both maps.
 	If the input maps overlap, then those pixels will have the sum of the two maps"""
 	oshape, owcs = union_geometry([map1.geometry, map2.geometry])
-	omap = enmap.zeros(map1.shape[:-2]+oshape[-2:], owcs, map1.dtype)
+	omap = zeros(map1.shape[:-2]+oshape[-2:], owcs, map1.dtype)
 	omap.insert(map1)
 	omap.insert(map2, op=lambda a,b:a+b)
 	return omap
