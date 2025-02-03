@@ -232,6 +232,7 @@ def unwind(a, period=2*np.pi, axes=[-1], ref=0, refmode="left", mask_nan=False):
 	period-wrapping. I.e. [0.07,0.02,6.25,6.20] would
 	become [0.07,0.02,-0.03,-0.08] with the default period
 	of 2*pi."""
+	a = np.asanyarray(a)
 	if a.ndim == 0: return a
 	res = rewind(a, period=period, ref=ref)
 	for axis in axes:

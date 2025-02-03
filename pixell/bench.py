@@ -1,4 +1,4 @@
-import time as _time
+import time
 from contextlib import contextmanager
 from . import bunch
 
@@ -52,21 +52,21 @@ The overhead of bench.mark is around 3 µs.
 # cpu time or leaked memory
 class Bench:
 	def __init__(self):
-		self.t_tot  = bunch.Bunch()
 		self.t      = bunch.Bunch()
+		self.t_tot  = bunch.Bunch()
 		self.n      = bunch.Bunch()
 	@contextmanager
 	def mark(self, name):
 		if name not in self.n:
 			self.t_tot[name] = 0
-			self.n[name]    = 0
-		t1 = _time.time()
+			self.n    [name] = 0
+		t1 = time.time()
 		try:
 			yield
 		finally:
-			t2 = _time.time()
-			self.n[name] += 1
-			self.t    [name] = t2-t1
+			t2 = time.time()
+			self.n    [name] += 1
+			self.t    [name]  = t2-t1
 			self.t_tot[name] += t2-t1
 	@contextmanager
 	def show(self, name):

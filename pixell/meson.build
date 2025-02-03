@@ -16,6 +16,7 @@ python_sources = [
     'lensing.py',
     'memory.py',
     'mpi.py',
+    'mpiutils.py',
     'multimap.py',
     'old_aberration.py',
     'pointsrcs.py',
