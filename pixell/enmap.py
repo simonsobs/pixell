@@ -1336,6 +1336,42 @@ def queb_rotmat(lmap, inverse=False, iau=False, spin=2):
 		warnings.warn("enmap polarization convention changed. The old iau was actually healpix, and vice versa. This has been fixed now, and the enmap meaning of iau and healpix now matches that of curvedsky, and the rest of the world. If you suddenly get gibberish EE spectra, then you will need to change the value of the iau flag you pass to harm2map, map2harm, etc.. To mute this warnings, set enmapl.mute[\"polconv_fix\"] = True")
 	a    = sgn*spin*np.arctan2(-lmap[1], lmap[0])
 	c, s = np.cos(a), np.sin(a)
+
+	# NOTE: important that the rotmat respects the symmetry of a real map. this
+	# means that the real part is symmetric about the monopole and the imag part
+	# antisymmetric about the monopole in kspace. given that the fft of a map
+	# already respects these symmetries, this means that both the c and s 
+	# components of the rotmat must be symmetric about the monopole. in the case
+	# of an even axis size, the s component must be adjusted to achieve this.
+	# NOTE: the below sign-change is valid since the sign of the Nyquist freq
+	# is arbitrary.
+	# NOTE: we need to pick a standard convention and adjust it according to
+	# non-standard cdelt signs. this handles the case that the cdelts have 
+	# possible flipped during other analysis.
+	ny, nx = lmap.shape[-2:]
+
+	# this is the standard cdelt or flipped in both
+	if ((lmap.wcs.wcs.cdelt[0] < 0) and (lmap.wcs.wcs.cdelt[1] > 0)) or \
+	((lmap.wcs.wcs.cdelt[0] > 0) and (lmap.wcs.wcs.cdelt[1] < 0)):
+		if (ny % 2 == 0) and (nx % 2 != 0):
+			s[ny//2, (nx+1)//2:] *= -1
+		elif (ny % 2 != 0) and (nx % 2 == 0):
+			s[(ny+1)//2:, nx//2] *= -1
+		elif (ny % 2 == 0) and (nx % 2 == 0):
+			s[ny//2, nx//2:] *= -1
+			s[ny//2:, nx//2] *= -1
+
+	# this is flipped in x or y but not both
+	else:
+		if (ny % 2 == 0) and (nx % 2 != 0):
+			s[ny//2, :(nx+1)//2] *= -1
+		elif (ny % 2 != 0) and (nx % 2 == 0):
+			s[:(ny+1)//2, nx//2] *= -1
+		elif (ny % 2 == 0) and (nx % 2 == 0):
+			s[ny//2, :nx//2] *= -1
+			s[:ny//2, nx//2] *= -1
+			s[ny//2, nx//2] *= -1
+
 	if inverse: s = -s
 	return samewcs(np.array([[c,-s],[s,c]]),lmap)
 
