@@ -461,11 +461,12 @@ class PixelTests(unittest.TestCase):
         np.testing.assert_allclose(out, out_exp, atol=1e-12)
         self.assertTrue(out.flags['C_CONTIGUOUS'])
 
-    def test_queb_rotmat(self):
+    def test_queb_rotmat_complex(self):
         # Tests that the rotmat respects fft symmetry constraints
-        # for real maps -- ie, map2harm, harm2map produces 
-        # sensible round-trips
-        ishapes = [(50, 50), (50, 51), (51, 50), (51, 51)]
+        # for real maps -- ie, map2harm, harm2map produces
+        # sensible round-trips. This version tests a map that's
+        # complex in real-space
+        ishapes = [(10, 10), (10, 11), (11, 10), (11, 11)]
         dtypes = [np.complex64, np.complex128]
         comps = [1, 2] # this is the comp we will set to non-zero
 
@@ -476,7 +477,7 @@ class PixelTests(unittest.TestCase):
             input_complex_hmap = enmap.zeros((3, *shape), wcs, dtype=dtype)
             input_complex_hmap[comp] += 1. + 1.j
             output_complex_hmap = enmap.zeros((3, *shape), wcs, dtype=dtype)
-            output_complex_hmap[comp] += 1.
+            output_complex_hmap[comp] += 1. + 1.j
 
             # do a round-trip and check that we get what we expect.
             # the queb operations mix E and B and could lead to artifacts if
@@ -486,11 +487,33 @@ class PixelTests(unittest.TestCase):
             elif input_complex_hmap.real.dtype.itemsize == 4:
                 atol = 1e-5
             test_output_complex_hmap = enmap.map2harm(
-                enmap.harm2map(input_complex_hmap)
+                enmap.harm2map(input_complex_hmap, keep_imag=True)
                 )
             assert np.allclose(
                 test_output_complex_hmap, output_complex_hmap, rtol=0, atol=atol
                 ), f'{ishape=}, {dtype=}, {comp=}'
+
+    def test_queb_rotmat_real(self):
+        # Tests that the rotmat respects fft symmetry constraints
+        # for real maps -- ie, map2harm, harm2map produces
+        # sensible round-trips. This version tests a map that's
+        # real in real-space. This means that its DC must be real
+        # and along even dimensions the nyquist freq must also be real
+        ishapes = [(10, 10), (10, 11), (11, 10), (11, 11)]
+        dtypes = [np.complex64, np.complex128]
+        comps = [1, 2] # this is the comp we will set to non-zero
+        np.random.seed(0)
+
+        for ishape, dtype, comp in itertools.product(ishapes, dtypes, comps):
+            shape, wcs = enmap.geometry(pos=(0, 0), shape=ishape, res=0.01)
+
+            # define some easy test input to evaluate for mixing
+            input_hmap = enmap.map2harm(enmap.rand_gauss((3,)+shape, wcs, dtype=dtype))
+            # do a round-trip and check that we get what we expect.
+            atol = 1e-10 if dtype == np.complex128 else 1e-5
+            output_hmap = enmap.map2harm(enmap.harm2map(input_hmap))
+            assert np.allclose(
+                input_hmap, output_hmap, rtol=0, atol=atol), f'{ishape=}, {dtype=}, {comp=}'
 
     def test_extract(self):
         # Tests that extraction is sensible
@@ -608,7 +631,7 @@ class PixelTests(unittest.TestCase):
             imap = imap[sel]
             kmap = enmap.map2harm(imap.copy())
             rmap2 = enmap.harm2map(kmap,spin=0)[sel] # comparison map
-            
+
             assert np.allclose(rmap[0],rmap2[0],atol=0,rtol=1e-7), f'{ishape=}, {sel=}'
             assert np.allclose(rmap[1],rmap2[1],atol=0,rtol=1e-7), f'{ishape=}, {sel=}'
             assert np.allclose(rmap[2],rmap2[2],atol=0,rtol=1e-7), f'{ishape=}, {sel=}'
