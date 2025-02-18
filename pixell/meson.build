@@ -16,6 +16,7 @@ python_sources = [
     'lensing.py',
     'memory.py',
     'mpi.py',
+    'mpiutils.py',
     'multimap.py',
     'old_aberration.py',
     'pointsrcs.py',
@@ -27,6 +28,7 @@ python_sources = [
     'utils.py',
     'wavelets.py',
     'wcsutils.py',
+    'bench.py',
     # Not technically a python source file, but is required for pixell
     'arial.ttf',
 ]

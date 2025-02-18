@@ -4,7 +4,7 @@ requires = ['meson-python', 'numpy', 'cython', 'versioneer[toml]', 'build']
 
 [project]
 name = 'pixell'
-version = "0.27.2"
+version = "0.28.0"
 description = "A rectangular pixel map manipulation and harmonic analysis library derived from Sigurd Naess' enlib."
 readme = 'README.rst'
 requires-python = '>=3.9'
@@ -30,7 +30,7 @@ dependencies = [
     'pytest-cov>=2.6',
     'coveralls>=1.5',
     'pytest>=4.6',
-    'ducc0>=0.34.0',
+    'ducc0>=0.36.0',
     'numba>=0.54.0'
 ]
 
