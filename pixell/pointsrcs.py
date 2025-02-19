@@ -41,7 +41,10 @@ def sim_objects(shape, wcs, poss, amps, profile, prof_ids=None, omap=None, vmin=
 	  is used. amps determines the pre-dimensions
 	* poss: The positions of the objects. [{dec,ra},nobj] in radians.
 	* amps: The central amplitudes of the objects. [...,nobj]. Not the same as the flux.
-	* profile: The profiles to use. Either [{r,b(r)},nsamp] or a list of such.
+	* profile: The profiles to use. Either [{r,b(r)},nsamp] (with shape (2,nsamp)) or a
+	  list of such, where nsamp is the size of r and b(r).  If providing a list for
+	  nobj objects, the shape of the array passed is (nobj,2,nsamp) and prof_ids
+	  should be np.arange(nobj).
 
 	Optional arguments:
 	* prof_ids: Which profile to use for each source. Defaults to use
@@ -78,7 +81,7 @@ def sim_objects(shape, wcs, poss, amps, profile, prof_ids=None, omap=None, vmin=
 	sources will have been added (or maxed etc. depending on op) into the map.
 	Otherwise, the only signal in the map will be the objects."""
 	dtype = np.float32 # C extension only supports this dtype
-	if separable == "auto": separable = wcsutils.is_cyl(wcs)
+	if separable == "auto": separable = wcsutils.is_separable(wcs)
 	# Object positions
 	obj_decs = np.asanyarray(poss[0], dtype=dtype, order="C")
 	obj_ras  = np.asanyarray(poss[1], dtype=dtype, order="C")
@@ -146,7 +149,7 @@ def radial_sum(map, poss, bins, oprofs=None, separable="auto",
 	Returns the resulting profiles. If oprof was specified, then the same object will
 	be returned (after being updated of course)."""
 	dtype = np.float32 # C extension only supports this dtype
-	if separable == "auto": separable = wcsutils.is_cyl(map.wcs)
+	if separable == "auto": separable = wcsutils.is_separable(map.wcs)
 	# Object positions
 	obj_decs = np.asanyarray(poss[0], dtype=dtype, order="C")
 	obj_ras  = np.asanyarray(poss[1], dtype=dtype, order="C")
@@ -261,7 +264,7 @@ def sim_srcs_python(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rma
 
 	The source simulation is sped up by using a source lookup grid.
 	"""
-	if separable == "auto": separable = wcsutils.is_cyl(wcs)
+	if separable == "auto": separable = wcsutils.is_separable(wcs)
 	if omap is None: omap = enmap.zeros(shape, wcs, dtype)
 	ishape = omap.shape
 	omap   = omap.preflat

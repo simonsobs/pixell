@@ -1,5 +1,6 @@
 """My own version of bunch, since the standard one lacks tab completion
 and has trouble printing sometimes."""
+import os
 class Bunch:
 	def __init__(self, *args, **kwargs):
 		self._dict = {}
@@ -53,61 +54,102 @@ class Bunch:
 # Some simple I/O routines. These can't handle everything that could
 # be in a bunch, but they cover all my most common use cases.
 
-def read(fname, fmt="auto", group=None):
-	if fmt == "auto":
-		if is_hdf_path(fname): fmt = "hdf"
-		else: raise ValueError("Could not infer format for '%s'" % fname)
-	if fmt == "hdf": return read_hdf(fname, group=group)
+def read(fname, fmt="auto", group=None, gmode="dot"):
+	if fmt == "auto": fmt="hdf"
+	if fmt == "hdf": return read_hdf(fname, group=group, gmode=gmode)
 	else: raise ValueError("Unrecognized format '%s'" % fmt)
 
-def write(fname, bunch, fmt="auto", group=None):
-	if fmt == "auto":
-		if is_hdf_path(fname): fmt = "hdf"
-		else: raise ValueError("Could not infer format for '%s'" % fname)
-	if fmt == "hdf": write_hdf(fname, bunch, group=group)
+def write(fname, bunch, fmt="auto", group=None, gmode="dot"):
+	if fmt == "auto": fmt = "hdf"
+	if fmt == "hdf": write_hdf(fname, bunch, group=group, gmode=gmode)
 	else: raise ValueError("Unrecognized format '%s'" % fmt)
 
-def write_hdf(fname, bunch, group=None):
+def read_hdf(fname, group=None, gmode="dot"):
 	import h5py
-	fname, group = split_hdf_path(fname, group)
-	with h5py.File(fname, "w") as hfile:
-		if group: hfile = hfile.create_group(group)
-		for key in bunch:
-			hfile[key] = bunch[key]
-
-def read_hdf(fname, group=None):
-	import h5py
-	bunch = Bunch()
-	fname, group = split_hdf_path(fname, group)
+	if group is None:
+		fname, group = split_hdf_path(fname, group, mode=gmode)
 	with h5py.File(fname, "r") as hfile:
 		if group: hfile = hfile[group]
+		return read_hdf_recursive(hfile)
+
+def read_hdf_recursive(hfile):
+	import h5py
+	if isinstance(hfile, h5py.Dataset):
+		return hfile[()]
+	else:
+		bunch = Bunch()
 		for key in hfile:
-			bunch[key] = hfile[key][()]
-	return bunch
+			bunch[key] = read_hdf_recursive(hfile[key])
+		return bunch
+
+def write_hdf(fname, bunch, group=None, gmode="dot"):
+	import h5py
+	if group is None:
+		fname, group = split_hdf_path(fname, group, mode=gmode)
+	with h5py.File(fname, "w") as hfile:
+		if group: hfile = hfile.create_group(group)
+		write_hdf_recursive(hfile, bunch)
+
+def write_hdf_recursive(hfile, bunch):
+	for key in bunch:
+		if isinstance(bunch[key],Bunch):
+			hfile.create_group(key)
+			write_hdf_recursive(hfile[key], bunch[key])
+		else:
+			hfile[key] = bunch[key]
+
+#def make_safe(val):
+#	import numpy as np
+#	if isinstance(val, np.ndarray):
+#		try: return np.char.encode(val)
+#		except TypeError: pass
+#	elif isinstance(val, str):
+#		return val.encode()
+#	else:
+#		return val
 
 def is_hdf_path(fname):
 	"""Returns true if the fname would be recognized by split_hdf_path"""
-	for suf in [".hdf", ".h5"]:
-		name, _, group = fname.rpartition(suf)
-		if name and (not group or group[0] == "/"): return True
-	return False
+	return True
 
-def split_hdf_path(fname, subgroup=None):
+def split_hdf_path(fname, subgroup=None, mode="dot"):
 	"""Split an hdf path of the form path.hdf/group, where the group part is
 	optional, into the path and the group parts. If subgroup is specified, then
 	it will be appended to the group informaiton. returns fname, group. The
 	fname will be a string, and the group will be a string or None. Raises
-	a ValueError if the fname is not recognized as a hdf file."""
-	for suf in [".hdf", ".h5"]:
-		name, _, group = fname.rpartition(suf)
-		if not name: continue
-		name += suf
-		if not group: return name, subgroup
-		elif group[0] == "/":
-			group = group[1:]
-			if subgroup: group += "/" + subgroup
-			return name, group
-	raise ValueError("Not an hdf path")
+	a ValueError if unsuccessful.
+	
+	mode controles how the split is done:
+	* "none": Don't split. fname is returned unmodified
+	* "dot": The last entry in the path given by filename
+	    containing a "." will be taken to be the real
+	    file name, the rest till be the hdf group path.
+	    For example, with a/b/c.d/e/f, a/b/c.d would be returned
+	    as the file name and e/f as the hdf group
+	* "exists": As dot, but based on whether a file with that
+	    name can be found on disk. Seemed like a good idea,
+	    except it doesn't work when writing a new file.
+	"""
+	toks = fname.split("/")
+	if mode == "dot":
+		# Find last entry with a dot i in it
+		for i, tok in reversed(list(enumerate(toks))):
+			if "." in tok: break
+		else: raise ValueError("Could not split hdf path using 'dot' method: no . found")
+	elif mode == "exists":
+		for i in reversed(list(range(len(toks)))):
+			cand = "/".join(toks[:i+1])
+			if os.path.isfile(cand): break
+		else: raise ValueError("Could not split hdf path using 'exists' method: no file found")
+	elif mode == "none":
+		i = len(toks)
+	else: raise ValueError("Unrecognized split mode '%s'" % (str(mode)))
+	# Return the result
+	fname = "/".join(toks[:i+1])
+	gtoks = toks[i+1:]
+	if subgroup: gtoks.append(subgroup)
+	group = "/".join(gtoks) if len(gtoks)>0 else None
+	return fname, group
 
 def concatenate(bunches):
 	"""Go from a list of bunches to a bunch of lists."""

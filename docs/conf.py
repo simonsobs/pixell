@@ -60,7 +60,7 @@ author = u"Simons Observatory Collaboration Analysis Library Task Force"
 # the built documents.
 #
 # The short X.Y version.
-version = pixell.__version__
+version = ".".join(pixell.__version__.split(".")[:2])
 # The full version, including alpha/beta/rc tags.
 release = pixell.__version__
 

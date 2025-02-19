@@ -298,6 +298,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("-S", "--symmetric", action="store_true", help="Treat the non-pixel axes as being asymmetric matrix, and only plot a non-redundant triangle of this matrix.")
 	add_argument("-z", "--zenith",    action="store_true", help="Plot the zenith angle instead of the declination.")
 	add_argument("-F", "--fix-wcs",   action="store_true", help="Fix the wcs for maps in cylindrical projections where the reference point was placed too far away from the map center.")
+	add_argument(      "--pos-ra",    action="store_true", help="RA goes from 0 to 360 instead of -180 to 180")
 
 	# Define the argument parser
 	parser   = argparse.ArgumentParser()
@@ -542,6 +543,14 @@ def draw_colorbar(crange, width, args):
 	fmt  = "%g"
 	labels, boxes = [], []
 	for val in crange:
+		# Val could be a one-element array. In NumPy 1.25 this is not
+		# acceptable to string formatters.
+
+		try:
+			val = val[0]
+		except (TypeError, IndexError):
+			pass
+		
 		labels.append(fmt % val)
 		boxes.append(font.getbbox(labels[-1])[-2:])
 	boxes = np.array(boxes,int)
@@ -678,7 +687,7 @@ def calc_gridinfo(shape, wcs, args):
 	try:               unit = float(args.tick_unit)
 	except TypeError:  unit = 1.0
 	except ValueError: unit = args.tick_unit
-	return cgrid.calc_gridinfo(shape, wcs, steps=ticks, nstep=args.nstep, zenith=args.zenith, unit=unit)
+	return cgrid.calc_gridinfo(shape, wcs, steps=ticks, nstep=args.nstep, zenith=args.zenith, unit=unit, positive_ra=args.pos_ra)
 
 def draw_grid(ginfo, args):
 	"""Return a grid based on gridinfo. args.grid_color controls the color
@@ -907,7 +916,7 @@ def draw_ellipse(image, bounds, width=1, outline='white', antialias=1):
 		draw.ellipse([a[0],a[1],b[0],b[1]], fill=fill)
 	# downsample the mask using PIL.Image.LANCZOS 
 	# (a high-quality downsampling filter).
-	mask = mask.resize(esize, PIL.Image.LANCZOS)
+	mask = mask.resize(tuple(esize), PIL.Image.LANCZOS)
 	# paste outline color to input image through the mask
 	image.paste(outline, tuple(bounds[:2]-width), mask=mask)
 

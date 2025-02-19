@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 """Tests for `pixell` package."""
 
 import unittest
@@ -8,7 +5,6 @@ import unittest
 from pixell import enmap
 from pixell import curvedsky
 from pixell import lensing
-from pixell import interpol
 from pixell import array_ops
 from pixell import enplot
 from pixell import powspec
@@ -22,19 +18,186 @@ from pixell import tilemap
 from pixell import utils
 import numpy as np
 import pickle
-import os,sys
+import os,sys,time
 
-try:                              # when invoked directly...
-    import pixel_tests as ptests
-except ImportError:               # when imported through py.test
-    from . import pixel_tests as ptests
+import matplotlib
+matplotlib.use('Agg')
+import numpy as np
+import itertools,yaml,pickle,os,sys
+import matplotlib.pyplot as plt
 
-TEST_DIR = ptests.TEST_DIR
-DATA_PREFIX = ptests.DATA_PREFIX
+TEST_DIR = os.path.dirname(__file__)
+DATA_PREFIX = os.path.join(TEST_DIR, 'data/')
+
+def get_reference_pixels(shape):
+    """For a given 2D array, return a list of pixel indices
+    corresponding to locations of a pre-determined and fixed
+    pattern of reference pixels.
+
+    e.g even x even
+    1100110011
+    1100110011
+    0000000000
+    0000000000
+    1100110011
+    1100110011
+    0000000000
+    0000000000
+    1100110011
+    1100110011
+
+    e,g. odd x odd
+    110010011
+    110010011
+    000000000
+    000000000
+    110010011
+    000000000
+    000000000
+    110010011
+    110010011
+
+    e.g even x odd
+    110010011
+    110010011
+    000000000
+    000000000
+    110010011
+    110010011
+    000000000
+    000000000
+    110010011
+    110010011
+
+    requires N>=5 in each axis
+    """
+    Ny,Nx = shape[-2:]
+    assert (Ny>=5) and (Nx>=5), "Tests are not implemented for arrays with a dimension<5."
+    """Given N, return 0,1,{x},N-2,N-1, where {x} is N//2-1,N//2 if N is even
+    and {x} is N//2 if N is odd.
+    """
+    midextremes = lambda N: [0,1,N//2-1,N//2,N-2,N-1] if N%2==0 else [0,1,N//2,N-2,N-1]
+    ys = midextremes(Ny)
+    xs = midextremes(Nx)
+    pixels = np.array(list(itertools.product(ys,xs)))
+    return pixels
+
+def mask(arr,pixels,val=0):
+    """Mask an array arr based on array pixels of (y,x) pixel coordinates of (Npix,2)"""
+    arr[...,pixels[:,0],pixels[:,1]] = val
+    return arr
+
+def get_pixel_values(arr,pixels):
+    """Get values of arr at pixels specified in pixels (Npix,2)"""
+    return arr[...,pixels[:,0],pixels[:,1]]
+
+def get_meansquare(arr):
+    return np.mean(arr*2.)
+
+def save_mask_image(filename,shape):
+    """Save a minimal plot of an array masked by the currently implemented reference
+    pixel geometry
+
+    e.g.
+    > shape = (11,12)
+    > save_mask_image("test_mask.png",shape)
+    """
+    arr = np.zeros(shape)
+    pixels = get_reference_pixels(shape)
+    masked = mask(arr,pixels,val=1)
+    fig = plt.figure()
+    im = plt.imshow(masked,cmap='rainbow')
+    ax = plt.gca()
+    ax.set_xticks(np.arange(0,shape[1])+0.5);
+    ax.set_yticks(np.arange(0,shape[0])+0.5);
+    ax.grid(which='major',color='w', linestyle='-', linewidth=5)
+    ax.tick_params(axis='x', colors=(0,0,0,0))
+    ax.tick_params(axis='y', colors=(0,0,0,0))
+    for spine in im.axes.spines.values():
+        spine.set_edgecolor((0,0,0,0))
+    plt.savefig(filename, bbox_inches='tight')
+
+def get_spectrum(ntype,noise,lmax,lmax_pad):
+    ells = np.arange(0,lmax+lmax_pad)
+    if ntype=="white": return np.ones(shape=(ells.size,))*(noise**2.)*((np.pi/180./60.)**2.)
+    if ntype=="white_dl":
+        spec = np.zeros(shape=(ells.size,))
+        spec[2:] = (noise**2.)*((np.pi/180./60.)**2.)*2.*np.pi/ells[2:]/(ells+1.)[2:]
+        return spec
+    raise NotImplementedError
+
+def get_spectra(yml_section,lmax,lmax_pad):
+    spectra = {}
+    for s in yml_section:
+        spectra[s['name']] = get_spectrum(s['type'],s['noise'],lmax,lmax_pad)
+    return spectra
+
+def get_geometries(yml_section):
+    geos = {}
+    for g in yml_section:
+        if g['type']=='fullsky':
+            geos[g['name']] = enmap.fullsky_geometry(res=np.deg2rad(g['res_arcmin']/60.),proj=g['proj'],variant="CC")
+        elif g['type']=='pickle':
+            geos[g['name']] = pickle.load(open(DATA_PREFIX+"%s"%g['filename'],'rb'))
+        else:
+            raise NotImplementedError
+    return geos
+
+def generate_map(shape,wcs,powspec,lmax,seed):
+    return curvedsky.rand_map(shape, wcs, powspec, lmax=lmax, dtype=np.float64, seed=seed, spin=[0,2], method="auto", verbose=False)
+
+def check_equality(imap1,imap2):
+    assert np.all(imap1.shape==imap2.shape)
+    assert wcsutils.equal(imap1.wcs,imap2.wcs)
+    try:
+        assert np.all(np.isclose(imap1,imap2))
+    except:
+        from orphics import io
+        io.plot_img(imap1,"i1.png",lim=[-1.5,2])
+        io.plot_img(imap2,"i2.png",lim=[-1.5,2])
+        io.plot_img((imap1-imap2)/imap1,"ip.png",lim=[-0.1,0.1])
+        assert 1==0
+
+    
+def get_extraction_test_results(yaml_file):
+    print("Starting tests from ",yaml_file)
+    with open(yaml_file) as f:
+        config = yaml.safe_load(f)
+    geos = get_geometries(config['geometries'])
+    lmax = config['lmax'] ; lmax_pad = config['lmax_pad']
+    spectra = get_spectra(config['spectra'],lmax,lmax_pad)
+    seed = config['seed']
+
+    results = {}
+    for g in geos.keys():
+        results[g] = {}
+        for s in spectra.keys():
+            results[g][s] = {}
+            imap = generate_map(geos[g][0][-2:],geos[g][1],spectra[s],lmax,seed)
+
+            # Do write and read test
+            filename = "temporary_map.fits" # NOT THREAD SAFE
+            enmap.write_map(filename,imap)
+            imap_in = enmap.read_map(filename)
+            check_equality(imap,imap_in)
+            for e in config['extracts']:
+                print("Doing test for extract ",e['name']," with geometry ",g," and spectrum ",s,"...")
+                if e['type']=='slice':
+                    box = np.deg2rad(np.array(e['box_deg']))
+                    cutout = enmap.read_map(filename,box=box)
+                    cutout_internal = imap.submap(box=box)
+                check_equality(cutout,cutout_internal)
+                pixels = get_reference_pixels(cutout.shape)
+                results[g][s]['refpixels'] = get_pixel_values(cutout,pixels)
+                results[g][s]['meansquare'] = get_meansquare(cutout)
+
+    os.remove(filename)
+    return results,config['result_name']
+
 lens_version = '071123'
 
 def get_offset_result(res=1.,dtype=np.float64,seed=1):
-    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res))
+    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res), variant="CC")
     shape = (3,) + shape
     obs_pos = enmap.posmap(shape, wcs)
     np.random.seed(seed)
@@ -43,7 +206,7 @@ def get_offset_result(res=1.,dtype=np.float64,seed=1):
     return obs_pos,grad,raw_pos
 
 def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
-    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res))
+    shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res), variant="CC")
     shape = (3,) + shape
     # ells = np.arange(lmax)
     ps_cmb,ps_lens = powspec.read_camb_scalar(DATA_PREFIX+"test_scalCls.dat")
@@ -321,14 +484,14 @@ class PixelTests(unittest.TestCase):
         print("Testing full sky geometry...")
         test_res_arcmin = 0.5
         shape,wcs = enmap.fullsky_geometry(res=np.deg2rad(test_res_arcmin/60.),proj='car')
-        assert shape[0]==21601 and shape[1]==43200
+        assert shape[0]==21600 and shape[1]==43200
         assert abs(enmap.area(shape,wcs) - 4*np.pi) < 1e-6
 
     def test_pixels(self):
         """Runs reference pixel and mean-square comparisons on extracts from randomly generated
         maps"""
         print("Testing reference pixels...")
-        results,rname = ptests.get_extraction_test_results(TEST_DIR+"/tests.yml")
+        results,rname = get_extraction_test_results(TEST_DIR+"/tests.yml")
         cresults = pickle.load(open(DATA_PREFIX+"%s.pkl" % rname,'rb'))
         assert sorted(results.keys())==sorted(cresults.keys())
         for g in results.keys():
@@ -469,8 +632,8 @@ class PixelTests(unittest.TestCase):
         shape2,wcs2 = enmap.fullsky_geometry(res=np.deg2rad(6/60.),proj='car')
         shape3,wcs3 = enmap.fullsky_geometry(res=np.deg2rad(24/60.),proj='car')
         imap = enmap.ones(shape,wcs)
-        omap2 = enmap.project(imap,shape2,wcs2,order=0,mode='wrap')
-        omap3 = enmap.project(imap,shape3,wcs3,order=0,mode='wrap')
+        omap2 = enmap.project(imap,shape2,wcs2,order=0,border='wrap')
+        omap3 = enmap.project(imap,shape3,wcs3,order=0,border='wrap')
         assert np.all(np.isclose(omap2,1))
         assert np.all(np.isclose(omap3,1))
 
@@ -571,6 +734,30 @@ class PixelTests(unittest.TestCase):
         self.assertEqual(ainfo_out.mmax, ainfo_in.mmax)
         self.assertEqual(ainfo_out.nelem, ainfo_in.nelem)
 
+
+    def test_lens_alms(self):
+        # We generate phi alms and convert them to kappa and back
+        lmax = 100
+        ps = np.zeros(lmax+1)
+        ls = np.arange(lmax+1)
+        ps[ls>=2] = 1./ls[ls>=2]
+        phi_alm = curvedsky.rand_alm(ps,lmax=lmax)
+        kappa_alm = lensing.phi_to_kappa(phi_alm)
+        phi_alm2 = lensing.kappa_to_phi(kappa_alm)
+        np.testing.assert_array_almost_equal(phi_alm, phi_alm2)
+
+    def test_downgrade(self):
+        shape,wcs = enmap.geometry(pos=(0,0),shape=(100,100),res=0.01)
+        imap = enmap.ones(shape,wcs)
+        for dfact in [None,1]:
+            omap = enmap.downgrade(imap,dfact)
+            np.testing.assert_equal(imap,omap)
+
+        dfact = 2
+        omap = enmap.downgrade(imap,dfact,op=np.sum)
+        np.testing.assert_equal(omap,np.ones(enmap.scale_geometry(shape,wcs,1./dfact)[0])*4)
+
+        
     def test_almxfl(self):
         # We try to filter alms of shape (nalms,) and (ncomp,nalms) with
         # a filter of shape (nells,)
@@ -737,43 +924,44 @@ class PixelTests(unittest.TestCase):
             alm_out = curvedsky.map2alm_healpix(omap, spin=spin, ainfo=ainfo, niter=niter)
             np.testing.assert_array_almost_equal(alm_out, alm)
 
-    # Disabled for now because the version of ducc currently on pypi
-    # has an adjointness bug. It's fixed in the ducc git repo.
-    #def test_adjointness(self):
-    #    # This tests if alm2map_adjoint is the adjoint of alm2map,
-    #    # and if map2alm_adjoint is the adjoint of map2alm.
-    #    # (This doesn't test if they're correct, just that they're
-    #    # consistent with each other). This test is a bit slow, taking
-    #    # 5 s or so. It would be much faster if we dropped the ncomp=3 case.
-    #    for dtype in [np.float32, np.float64]:
-    #        for ncomp in [1,3]:
-    #            # Define our geometries
-    #            geos = []
-    #            res  = 30*utils.degree
-    #            shape, wcs = enmap.fullsky_geometry(res=res, variant="fejer1")
-    #            geos.append(("fullsky_fejer1", shape, wcs))
+    # MM: Re-enabled 09/17/2024
+    # --Disabled for now because the version of ducc currently on pypi
+    # has an adjointness bug. It's fixed in the ducc git repo.--
+    def test_adjointness(self):
+       # This tests if alm2map_adjoint is the adjoint of alm2map,
+       # and if map2alm_adjoint is the adjoint of map2alm.
+       # (This doesn't test if they're correct, just that they're
+       # consistent with each other). This test is a bit slow, taking
+       # 5 s or so. It would be much faster if we dropped the ncomp=3 case.
+       for dtype in [np.float32, np.float64]:
+           for ncomp in [1,3]:
+               # Define our geometries
+               geos = []
+               res  = 30*utils.degree
+               shape, wcs = enmap.fullsky_geometry(res=res, variant="fejer1")
+               geos.append(("fullsky_fejer1", shape, wcs))
 
-    #            shape, wcs = enmap.fullsky_geometry(res=res, variant="cc")
-    #            geos.append(("fullsky_cc", shape, wcs))
-    #            lmax = shape[-2]-2
+               shape, wcs = enmap.fullsky_geometry(res=res, variant="cc")
+               geos.append(("fullsky_cc", shape, wcs))
+               lmax = shape[-2]-2
 
-    #            shape, wcs = enmap.Geometry(shape, wcs)[3:-3,3:-3]
-    #            geos.append(("patch_cc", shape, wcs))
+               shape, wcs = enmap.Geometry(shape, wcs)[3:-3,3:-3]
+               geos.append(("patch_cc", shape, wcs))
 
-    #            wcs = wcs.deepcopy()
-    #            wcs.wcs.crpix += 0.123
-    #            geos.append(("patch_gen_cyl", shape, wcs))
+               wcs = wcs.deepcopy()
+               wcs.wcs.crpix += 0.123
+               geos.append(("patch_gen_cyl", shape, wcs))
 
-    #            shape, wcs = enmap.geometry(np.array([[-45,45],[45,-45]])*utils.degree, res=res, proj="tan")
-    #            geos.append(("patch_tan", shape, wcs))
+               shape, wcs = enmap.geometry(np.array([[-45,45],[45,-45]])*utils.degree, res=res, proj="tan")
+               geos.append(("patch_tan", shape, wcs))
 
-    #            for gi, (name, shape, wcs) in enumerate(geos):
-    #                mat1  = alm_bash(curvedsky.alm2map,         shape, wcs, ncomp, lmax, dtype)
-    #                mat2  = map_bash(curvedsky.alm2map_adjoint, shape, wcs, ncomp, lmax, dtype)
-    #                np.testing.assert_array_almost_equal(mat1, mat2)
-    #                mat1 = map_bash(curvedsky.map2alm,         shape, wcs, ncomp, lmax, dtype)
-    #                mat2 = alm_bash(curvedsky.map2alm_adjoint, shape, wcs, ncomp, lmax, dtype)
-    #                np.testing.assert_array_almost_equal(mat1, mat2)
+               for gi, (name, shape, wcs) in enumerate(geos):
+                   mat1  = alm_bash(curvedsky.alm2map,         shape, wcs, ncomp, lmax, dtype)
+                   mat2  = map_bash(curvedsky.alm2map_adjoint, shape, wcs, ncomp, lmax, dtype)
+                   np.testing.assert_array_almost_equal(mat1, mat2)
+                   mat1 = map_bash(curvedsky.map2alm,         shape, wcs, ncomp, lmax, dtype)
+                   mat2 = alm_bash(curvedsky.map2alm_adjoint, shape, wcs, ncomp, lmax, dtype)
+                   np.testing.assert_array_almost_equal(mat1, mat2)
 
 
     #def test_sharp_alm2map_der1(self):
@@ -889,8 +1077,8 @@ class PixelTests(unittest.TestCase):
         # with gnomonic/tangent projection
         proj = "tan"
         r = 10*u.arcmin
-        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj, 
-            apod=2*u.arcmin, order=3, oversample=2,pixwin=False)
+        ret = reproject.thumbnails(omap, srcs[:,:2], r=r, res=res, proj=proj,
+            apod=2*u.arcmin, order=3, oversample=4, pixwin=False)
 
         # Create a reference source at the equator to compare this against
         ishape,iwcs = enmap.geometry(shape=ret.shape,res=res,pos=(0,0),proj=proj)
@@ -904,7 +1092,7 @@ class PixelTests(unittest.TestCase):
             assert np.all(np.isclose(diff,0,atol=1e-3))
 
     def test_tilemap(self):
-        shape, wcs = enmap.fullsky_geometry(30*utils.degree)
+        shape, wcs = enmap.fullsky_geometry(30*utils.degree, variant="CC")
         assert shape == (7,12)
         geo  = tilemap.geometry((3,)+shape, wcs, tile_shape=(2,2))
         assert len(geo.active) == 0
@@ -957,7 +1145,101 @@ class PixelTests(unittest.TestCase):
         assert m1c.geometry.nactive == 2
         assert np.allclose(m1c, 1)
 
+    def test_interpol_1d(self):
+        dtype = np.float64
+        n     = 10
+        data  = np.sin(2*np.pi*3*np.arange(n)/n)
+        inds  = np.array([0.0,0.1,0.51,0.9,1.0])
+        # Nearest neighbor interpolation
+        vals  = utils.interpol(data, inds[None], mode="spline", order=0)
+        assert np.allclose(vals, data[utils.nint(inds)])
+        # Linear interpolation. This check assumes that inds is [0:1]!
+        vals  = utils.interpol(data, inds[None], mode="spline", order=1)
+        assert np.allclose(vals, data[0]*(1-inds)+data[1]*inds)
+        # Cubic spline interpolation. No simple formula here, so hardcode
+        vals  = utils.interpol(data, inds[None], mode="spline", order=3)
+        assert np.allclose(vals, [-1.39824833112681842e-12, 1.16478779103952171e-01, 6.66141591529904153e-01, 9.62884886419913988e-01, 9.51056516295153753e-01])
+        # Nufft interpolation
+        vals  = utils.interpol(data, inds[None], mode="fourier")
+        targ  = np.sin(2*np.pi*3*inds/n)
+        assert np.allclose(vals, targ)
 
-if __name__ == '__main__':
-    unittest.main()
-    test_sim_slice()
+    def test_interpol_map(self):
+        # Make a small map to interpolate. We will simply use the angular distance
+        # from the center, which avoids any non-periodicity issues
+        shape, wcs = enmap.geometry([[-1,1],[1,-1]], res=0.1, deg=True, proj="car")
+        # Make test cases where the exact answer is known. Bilinear is easy for a linear field,
+        # and NN is easy anywayre
+        dtype = np.float64
+        ypix  = np.arange(shape[-2], dtype=dtype)
+        xpix  = np.arange(shape[-1], dtype=dtype)
+        opix  = np.array([[10,10.2],[10,12.7]])
+        # NN and bilinear
+        def f(y,x): return 2*y-x
+        data  = enmap.enmap(f(ypix[:,None],xpix[None,:]),wcs)
+        vals  = data.at(opix, unit="pix", mode="spline", order=0)
+        targ  = data[tuple(utils.nint(opix))]
+        assert np.allclose(vals, targ)
+        vals  = data.at(opix, unit="pix", mode="spline", order=1)
+        targ  = f(*opix)
+        assert np.allclose(vals, targ)
+        # Bicubic is exact up to 3rd order, but only if we ignore
+        # boundary conditions. I'm not sure how to calculate the
+        # expected answer here, so just hardcode it
+        def f(y,x): return y**3+2*y**2+3*y-2*x**3-3*x**2-4*x+x*y
+        data  = enmap.enmap(f(ypix[:,None],xpix[None,:]),wcs)
+        vals  = data.at(opix, unit="pix", mode="spline", order=3)
+        targ  = np.array([-1.01000000000000000e+03, -3.20214384455599429e+03])
+        assert np.allclose(vals, targ)
+        # Fourier is simple. All fourier modes up to Nyquist are exact.
+        # Nufft adds some inaccuracy, but it's tiny
+        def f(y,x): return np.sin(2*np.pi*3*y/shape[-2])+np.cos(2*np.pi*5*x/shape[-1])
+        data  = enmap.enmap(f(ypix[:,None],xpix[None,:]),wcs)
+        vals  = data.at(opix, unit="pix", mode="fourier")
+        targ  = f(*opix)
+        assert np.allclose(vals, targ)
+
+    def test_interpol_map_Nd(self):
+        # Test that multidimensional interpolation works
+        shape, wcs = enmap.geometry([[-1,1],[1,-1]], res=0.1, deg=True, proj="car")
+        dtype = np.float64
+        ypix  = np.arange(shape[-2], dtype=dtype)
+        xpix  = np.arange(shape[-1], dtype=dtype)
+        def f(y,x): return np.sin(2*np.pi*3*y/shape[-2])+np.cos(2*np.pi*5*x/shape[-1])
+        data  = (1+np.arange(12)).reshape(3,4)[:,:,None,None]*enmap.enmap(f(ypix[:,None],xpix[None,:]),wcs)
+        opix  = np.array([[10,10.2],[10,12.7]])
+        vals  = data.at(opix, unit="pix")
+        assert vals.shape == (3,4)+opix.shape[1:]
+        targ  = vals*0
+        for I in utils.nditer(data.shape[:-2]):
+            targ[I] = data[I].at(opix, unit="pix")
+        assert np.allclose(vals, targ)
+
+    def test_interpolator(self):
+        # Test that lookups using an interpolator work, and are fast.
+        # Use a decently large array to be sure we can measure the
+        # speed difference.
+        shape = (1000,1000)
+        dtype = np.float64
+        ypix  = np.arange(shape[-2], dtype=dtype)
+        xpix  = np.arange(shape[-1], dtype=dtype)
+        opix  = np.array([[10,10.2],[10,12.7]])
+        def f(y,x): return np.sin(2*np.pi*3*y/shape[-2])+np.cos(2*np.pi*5*x/shape[-1])
+        data  = f(ypix[:,None],xpix)
+        cases = [("spline",3),("fourier",None)]
+        for ci, (mode,order) in enumerate(cases):
+            t1 = time.time()
+            vals_raw = utils.interpol(data, opix, mode=mode, order=order)
+            t2 = time.time()
+            ip = utils.interpolator(data, mode=mode, order=order)
+            t3 = time.time()
+            vals_ip  = ip(opix)
+            t4 = time.time()
+            assert np.allclose(vals_ip, vals_raw)
+            time_full  = t2-t1
+            time_eval  = t4-t3
+            # Should be much faster than 10%, but timing is unreliable, especially in github actions
+            assert time_eval < time_full / 10
+            # Also test that we can pass the interpolator as an argument
+            vals_ip2 = utils.interpol(data, opix, mode=mode, order=order, ip=ip)
+            assert np.allclose(vals_ip2, vals_raw)

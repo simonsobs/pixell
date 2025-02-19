@@ -2,6 +2,17 @@
 History
 =======
 
+0.26.2 (2024-09-24)
+-------------------
+
+Changes relative to 0.21.0 include:
+
+* Significant changes to build and deployment system, now based on meson
+* Improvements to sky aberration and modulation
+* Minor bug fixes in reproject and curvedsky 
+* Improvements to wavelet analysis
+
+
 0.21.0 (2023-10-19)
 -------------------
 

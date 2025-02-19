@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 #include <omp.h>
 
 int min(int a, int b) { return a < b ? a : b; }
@@ -268,4 +269,55 @@ void transfer_alm_sp(int lmax1, int mmax1, int64_t * mstart1, float * alm1, int 
 			alm2[2*i2+1] = alm1[2*i1+1];
 		}
 	}
+}
+
+// wcs acceleration
+#define DEG (M_PI/180)
+
+// I pass the wcs information as individual doubles to avoid having to construct
+// numpy arrays on the python side. All of these have the arguments in the same
+// order, regardless of which way they go, so they can be defined in a macro
+//
+// We only implement plain spherical coordinates here - the final coordinate
+// rotation is missing. For cylindrical coordinates this means that we only
+// support dec0 = 0 - the result will be wrong for other values
+#define wcsdef(name) \
+void name(int64_t n, double * restrict dec, double * restrict ra, \
+		double * restrict y, double * restrict x, \
+		double crval0, double crval1, double cdelt0, double cdelt1, \
+		double crpix0, double crpix1) { \
+	double ra0 = crval0*DEG, dec0 = crval1*DEG; \
+	double dra = cdelt0*DEG, ddec = cdelt1*DEG; \
+	double x0  = crpix0-1,   y0   = crpix1-1; \
+	_Pragma("omp parallel for") \
+	for(int64_t i = 0; i < n; i++) {
+#define wcsend } \
+}
+
+wcsdef(wcs_car_sky2pix)
+x[i] = (ra [i]-ra0 )/dra +x0;
+y[i] = (dec[i]-dec0)/ddec+y0; // dec0 should be zero
+wcsend
+
+wcsdef(wcs_car_pix2sky)
+ra [i] = (x[i]-x0)*dra +ra0;
+dec[i] = (y[i]-y0)*ddec+dec0; // dec0 should be zero
+wcsend
+
+wcsdef(wcs_cea_sky2pix)
+x[i] = (ra [i]-ra0 )/dra +x0;
+y[i] = sin(dec[i])/ddec  +y0;
+(void)dec0; // mark dec0 as explicitly unused
+wcsend
+
+wcsdef(wcs_cea_pix2sky)
+ra [i] = (x[i]-x0)*dra +ra0;
+dec[i] = asin((y[i]-y0)*ddec);
+(void)dec0; // mark dec0 as explicitly unused
+wcsend
+
+void rewind_inplace(int64_t n, double * vals, double period, double ref) {
+	_Pragma("omp parallel for")
+	for(int64_t i = 0; i < n; i++)
+		vals[i] = fmod((vals[i]+ref),period)-ref;
 }

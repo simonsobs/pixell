@@ -15,7 +15,7 @@ int xoffs[8] = {-1, +1,  0,  0, +1, -1, +1, -1 };
 double wall_time() { struct timeval tv; gettimeofday(&tv,0); return tv.tv_sec + 1e-6*tv.tv_usec; }
 int max(int a, int b) { return a > b ? a : b; }
 int min(int a, int b) { return a < b ? a : b; }
-int compar_int(int * a, int * b) { return *a-*b; }
+int compar_int(const void * a, const void * b) { return *(int*)a-*(int*)b; }
 int wrap1(int a, int n) { return a < 0 ? a+n : a >= n ? a-n : a; }
 
 // The simple functions are too slow to serve as the basis for a distance transform.
