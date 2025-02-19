@@ -354,13 +354,13 @@ def shift(a, shift, axes=None, nofft=False, deriv=None, engine="auto"):
 	return ca if np.iscomplexobj(a) else ca.real
 
 def resample_fft(fa, n, out=None, axes=-1, norm=1, op=lambda a,b:b):
-	"""Given array fa[{dims}] which is the fourier transform of some array a,
-	transform it so that that it corresponds to the fourier transform of
-	a version of a with a different number of samples by padding or truncating
-	the fourier space. The argument n controls the new number of samples. By
-	default this is for the last axis, but this can be changed using the axes
-	argument. Multiple axes can be resampled at once by specifying a tuple for
-	axes and n.
+	"""Given array fa[{dims}] which is the fourier transform (fft, not rfft)
+	of some array a, transform it so that that it corresponds to the fourier
+	transform of a version of a with a different number of samples by padding
+	or truncating the fourier space. The argument n controls the new number
+	of samples. By default this is for the last axis, but this can be changed
+	using the axes argument. Multiple axes can be resampled at once by
+	specifying a tuple for axes and n.
 
 	The resulting array is multiplied by the argument norm. This can be used
 	for normalization purposes. If norm is 1, then the multiplication is skipped.
