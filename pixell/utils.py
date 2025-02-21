@@ -3113,6 +3113,10 @@ def encode_array_if_necessary(arr):
 		else:
 			return arr
 
+def chararray_slice(a, sel):
+	b = a.view((a.dtype.kind,1)).reshape(len(a),-1)[:,sel]
+	return b.reshape(-1).view((a.dtype.kind,b.shape[1]))
+
 ### These functions deal with the conversion between decimal and sexagesimal ###
 
 def to_sexa(x):
