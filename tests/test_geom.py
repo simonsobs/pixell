@@ -79,16 +79,17 @@ class GeometryTests(unittest.TestCase):
 
         """
         DELT = 0.05
-        for ep in [DELT * 2, 0]:
-            patch = Patch.centered_at(0., 90.-ep, 0., 0.)
-            for proj in ['tan', 'zea', 'arc', 'sin']:
-                shape, wcs = enmap.geometry(pos=patch.center() * DEG,
+        for geometry_gen in [enmap.geometry, enmap.geometry2]:
+            for ep in [DELT * 2, 0]:
+                patch = Patch.centered_at(0., 90.-ep, 0., 0.)
+                for proj in ['tan', 'zea', 'arc', 'sin']:
+                    shape, wcs = geometry_gen(pos=patch.center() * DEG,
                                               shape=(101, 101),
                                               res=DELT*utils.degree,
                                               proj=proj)
-                dec, ra = enmap.posmap(shape, wcs)
-                # Bottom row of the map only have RA near 0 (not 180).
-                assert np.all(abs(ra[0]) < 90*DEG)
+                    dec, ra = enmap.posmap(shape, wcs)
+                    # Bottom row of the map only have RA near 0 (not 180).
+                    assert np.all(abs(ra[0]) < 90*DEG)
 
     def test_full_sky(self):
         """Test that fullsky_geometry returns sensible objects.
