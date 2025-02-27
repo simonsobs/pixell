@@ -73,6 +73,24 @@ class GeometryTests(unittest.TestCase):
             assert(np.all(is_centered(pix0)))
             assert(np.all(is_centered(pix1)))
 
+    def test_zenithal_lonpole(self):
+        """For zenithal projs, test that lonpole is set to 180, even
+        if the reference point is the north pole.
+
+        """
+        DELT = 0.05
+        for geometry_gen in [enmap.geometry, enmap.geometry2]:
+            for ep in [DELT * 2, 0]:
+                patch = Patch.centered_at(0., 90.-ep, 0., 0.)
+                for proj in ['tan', 'zea', 'arc', 'sin']:
+                    shape, wcs = geometry_gen(pos=patch.center() * DEG,
+                                              shape=(101, 101),
+                                              res=DELT*utils.degree,
+                                              proj=proj)
+                    dec, ra = enmap.posmap(shape, wcs)
+                    # Bottom row of the map only have RA near 0 (not 180).
+                    assert np.all(abs(ra[0]) < 90*DEG)
+
     def test_full_sky(self):
         """Test that fullsky_geometry returns sensible objects.
 
