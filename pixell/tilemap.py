@@ -378,7 +378,7 @@ class TileGeometry:
 	@property
 	def nactive(self): return len(self.active)
 	@property
-	def size(self): return np.product(self.pre)*np.sum(self.npixs[self.active])
+	def size(self): return np.prod(self.pre)*np.sum(self.npixs[self.active])
 	@property
 	def tiles(self):
 		"""Allow us to get the enmap geometry of tile #i by writing
@@ -453,8 +453,8 @@ def redistribute(imap, comm, active=None, omap=None):
 	# 3. Figure out who I should send and receive each of my tiles to/from
 	omask     = oactive_all[:,imap.active] # [ntasks,iactive]
 	imask     = iactive_all[:,omap.active] # [ntasks,oactive]
-	isizes    = imap.geometry.npixs[imap.active] * np.product(imap.pre).astype(int)
-	osizes    = omap.geometry.npixs[omap.active] * np.product(omap.pre).astype(int)
+	isizes    = imap.geometry.npixs[imap.active] * np.prod(imap.pre).astype(int)
+	osizes    = omap.geometry.npixs[omap.active] * np.prod(omap.pre).astype(int)
 	ioffs     = utils.cumsum(isizes)
 	ooffs     = utils.cumsum(osizes)
 	# 4. Build our alltoallv send info

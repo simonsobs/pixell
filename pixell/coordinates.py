@@ -371,7 +371,7 @@ def getsys_full(sys, time=None, site=default_site, bore=None):
 			r = toks[0]
 			refsys = getsys(toks[1]) if len(toks) > 1 else prevsys
 			try:
-				r = np.asfarray(r.split("_"))*utils.degree
+				r = np.asarray(r.split("_"), dtype=np.float64)*utils.degree
 				assert(r.ndim == 1 and len(r) == 2)
 				r = transform_raw(refsys, base, r[:,None], time=time, site=site, bore=bore)
 			except ValueError:

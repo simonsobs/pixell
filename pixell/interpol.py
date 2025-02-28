@@ -55,7 +55,7 @@ def map_coordinates(idata, points, odata=None, mode="spline", order=3, border="c
 	core    = get_core(idata.dtype)
 	ndim    = points.shape[0]
 	dpre,dpost= idata.shape[:-ndim], idata.shape[-ndim:]
-	def iprod(x): return np.product(x).astype(int)
+	def iprod(x): return np.prod(x).astype(int)
 	if not trans:
 		if odata is None:
 			if not deriv:
@@ -128,8 +128,8 @@ def build(func, interpolator, box, errlim, maxsize=None, maxtime=None, return_ob
 	automatically polls func and constructs an interpolator
 	object that has the required accuracy inside the provided
 	bounding box."""
-	box     = np.asfarray(box)
-	errlim  = np.asfarray(errlim)
+	box     = np.asarray(box, dtype=np.float64)
+	errlim  = np.asarray(errlim, dtype=np.float64)
 	idim    = box.shape[1]
 	n       = [3]*idim if nstart is None else nstart
 	n       = np.array(n) # starting mesh size
@@ -147,7 +147,7 @@ def build(func, interpolator, box, errlim, maxsize=None, maxtime=None, return_ob
 	# Refine until good enough
 	while True:
 		depth += 1
-		if maxsize and np.product(n) > maxsize:
+		if maxsize and np.prod(n) > maxsize:
 			if return_status:
 				return ip if not return_obox else ip, np.array(obox), False, err
 			raise OverflowError("Maximum refinement mesh size exceeded")
@@ -265,7 +265,7 @@ def lin_derivs_forward(y, npre=0):
 	dimensions, returning an array of shape (2,)*n+(:,)*npre+(:-1,)*n. That is,
 	it is one shorter in each direction along which the derivative is taken.
 	Derivatives are computed using forward difference."""
-	y        = np.asfarray(y)
+	y        = np.asarray(y, dtype=np.float64)
 	nin      = y.ndim-npre
 	ys = np.zeros((2,)*nin+y.shape)
 	ys[(0,)*nin] = y
@@ -283,7 +283,7 @@ def grad_forward(y, npre=0):
 	"""Given an array y with npre leading dimensions and n following dimensions,
 	the gradient along the n last dimensions, returning an array of shape (n,)+y.shape.
 	Derivatives are computed using forward difference."""
-	y        = np.asfarray(y)
+	y        = np.asarray(y, dtype=np.float64)
 	nin      = y.ndim-npre
 	dy       = np.zeros((nin,)+y.shape)
 	for i in range(nin):

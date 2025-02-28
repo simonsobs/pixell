@@ -394,7 +394,7 @@ def weighted_quantile(map, ivar, quantile, axis=-1):
 	and quantile has shape B, then the result will have shape B+A.
 	"""
 	map, ivar = np.broadcast_arrays(map, ivar)
-	quantile  = np.asfarray(quantile)
+	quantile  = np.asarray(quantile, dtype=np.float64)
 	axis      = axis % map.ndim
 	# Move axis to end
 	map       = np.moveaxis(map,  axis, -1)
@@ -408,8 +408,8 @@ def weighted_quantile(map, ivar, quantile, axis=-1):
 	quantile  = quantile.reshape(-1)             # [B]
 	# Sort
 	order     = np.argsort(map, -1)
-	map       = np.asfarray(np.take_along_axis(map,  order, -1))
-	ivar      = np.asfarray(np.take_along_axis(ivar, order, -1))
+	map       = np.asarray(np.take_along_axis(map,  order, -1), dtype=np.float64)
+	ivar      = np.asarray(np.take_along_axis(ivar, order, -1), dtype=np.float64)
 	# We don't have interp or searchsorted for this case, so do it ourselves.
 	# The 0.5 part corresponds to the C=0.5 case in the method
 	icum      = np.cumsum(ivar, axis=-1) # [A,n]
@@ -717,7 +717,7 @@ def grid(box, shape, endpoint=True, axis=0, flat=False):
 		grid([[0],[1]],[4]) => [[0,0000, 0.3333, 0.6667, 1.0000]]
 	"""
 	n    = np.asarray(shape)
-	box  = np.asfarray(box)
+	box  = np.asarray(box, dtype=np.float64)
 	off  = -1 if endpoint else 0
 	inds = np.rollaxis(np.indices(n),0,len(n)+1) # (d1,d2,d3,...,indim)
 	res  = inds * (box[1]-box[0])/(n+off) + box[0]
@@ -2408,7 +2408,7 @@ def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, np
 		_tsz_profile_los_cache[key] = (interpolate.interp1d(xp, yp, "cubic"), x1, x2, yp[0], yp[-1], (yp[-2]-yp[-1])/(xp[-2]-xp[-1]))
 	spline, xmin, xmax, vleft, vright, slope = _tsz_profile_los_cache[key]
 	# Split into 3 cases: x<xmin, x inside and x > xmax.
-	x     = np.asfarray(x)
+	x     = np.asarray(x, dtype=np.float64)
 	left  = x<xmin
 	right = x>xmax
 	inside= (~left) & (~right)
