@@ -71,7 +71,7 @@ testpaths = [
 [tool.cibuildwheel]
 test-requires = "pytest"
 test-command = "pytest {project}/tests"
-build = "cp39-* cp310-* cp311-* cp312-*"
+build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
 skip = "*i686* *musllinux*"
 
 [tool.coverage.run]
