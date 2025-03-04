@@ -73,7 +73,7 @@ def pixelization(pwcs, shape=None, res=None, variant=None):
 	# some have infinite size. May just have to handle the cases one by
 	# one instead of trying to be general
 	system   = get_proj(pwcs)
-	extent   = default_extent(system)
+	extent, lonpole   = default_extent(system)
 	variant  = variant or default_variant(system)
 	offs     = parse_variant(variant)
 	periodic = is_periodic(system)
@@ -97,6 +97,8 @@ def pixelization(pwcs, shape=None, res=None, variant=None):
 	# The center is the average of these
 	owcs.wcs.crpix[0] = 1+((nx-1)-ox2-ox1)/2
 	owcs.wcs.crpix[1] = 1+((ny-1)-oy2-oy1)/2
+	if lonpole is not None:
+		owcs.wcs.lonpole = lonpole
 	return (ny,nx), owcs
 
 def explicit(naxis=2, **args):
@@ -220,23 +222,26 @@ def default_crval(system):
 	else: return [0,0]
 
 def default_extent(system):
-	"""Return the horizontal and vertical extent of the full sky in degrees.
-	For some systems the full sky is not representable, in which case a
-	reasonable compromise is returned"""
+	"""Return the horizontal and vertical extent of the full sky in
+	degrees, and the prefered value of lonpole (or None if it should
+	be left alone).  For some systems the full sky is not
+	representable, in which case a reasonable compromise is returned
+
+	"""
 	system = system.lower()
-	if   system in ["", "plain"]: return [1,1]
+	if   system in ["", "plain"]: return [1,1], None
 	# Cylindrical
-	if   system == "car": return [360,180]
-	elif system == "cea": return [360,360/np.pi]
-	elif system == "mer": return [360,360] # traditional dec range gives square map
+	if   system == "car": return [360,180], None
+	elif system == "cea": return [360,360/np.pi], None
+	elif system == "mer": return [360,360], None # traditional dec range gives square map
 	# Zenithal
-	elif system == "arc": return [360,360]
-	elif system == "zea": return [720/np.pi,720/np.pi]
-	elif system == "sin": return [360/np.pi,360/np.pi] # only orthographic supported
-	elif system == "tan": return [360,360] # goes down to 0.158° above the horizon
+	elif system == "arc": return [360,360], 180.
+	elif system == "zea": return [720/np.pi,720/np.pi], 180.
+	elif system == "sin": return [360/np.pi,360/np.pi], 180. # only orthographic supported
+	elif system == "tan": return [360,360], 180. # goes down to 0.158° above the horizon
 	# Pseudo-cyl
-	elif system == "mol": return [720*2**0.5/np.pi,360*2**0.5/np.pi]
-	elif system == "ait": return [720*2**0.5/np.pi,360*2**0.5/np.pi]
+	elif system == "mol": return [720*2**0.5/np.pi,360*2**0.5/np.pi], None
+	elif system == "ait": return [720*2**0.5/np.pi,360*2**0.5/np.pi], None
 	else: raise ValueError("Unsupported system '%s'" % str(system))
 
 def default_variant(system):
@@ -431,6 +436,30 @@ def mer(pos, res=None, shape=None, rowmajor=False, ref=None):
 	if streq(ref, "standard"): ref = (0,0)
 	return finalize(w, pos, res, shape, ref=ref)
 
+def arc(pos, res=None, shape=None, rowmajor=False, ref=None):
+	"""Setups up a zenithal equidistant projection.  See the build
+	function for details.
+
+	"""
+	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
+	w = WCS(naxis=2)
+	w.wcs.ctype = ["RA---ARC", "DEC--ARC"]
+	w.wcs.crval = mid
+	w, ref = _apply_zenithal_ref(w, ref)
+	return finalize(w, pos, res, shape, ref=ref)
+
+def sin(pos, res=None, shape=None, rowmajor=False, ref=None):
+	"""Setups up an orthographic projection.  See the build function
+	for details.
+
+	"""
+	pos, res, shape, mid = validate(pos, res, shape, rowmajor)
+	w = WCS(naxis=2)
+	w.wcs.ctype = ["RA---SIN", "DEC--SIN"]
+	w.wcs.crval = mid
+	w, ref = _apply_zenithal_ref(w, ref)
+	return finalize(w, pos, res, shape, ref=ref)
+
 def zea(pos, res=None, shape=None, rowmajor=False, ref=None):
 	"""Setups up an oblate Lambert's azimuthal equal area system.
 	See the build function for details. Don't use this if you want
@@ -468,7 +497,7 @@ def tan(pos, res=None, shape=None, rowmajor=False, ref=None):
 	w, ref = _apply_zenithal_ref(w, ref)
 	return finalize(w, pos, res, shape, ref=ref)
 
-systems = {"car": car, "cea": cea, "mer": mer, "air": air, "zea": zea, "tan": tan, "gnom": tan, "plain": plain }
+systems = {"car": car, "cea": cea, "mer": mer, "air": air, "arc": arc, "sin": sin, "zea": zea, "tan": tan, "gnom": tan, "plain": plain }
 
 def build(pos, res=None, shape=None, rowmajor=False, system="cea", ref=None, **kwargs):
 	"""Set up the WCS system named by the "system" argument.
@@ -541,7 +570,10 @@ def _apply_zenithal_ref(w, ref):
 	"""Input is a wcs w and ref is a position (dec,ra) or a special value
 	(None, 'standard').  Returns tuple (w, ref_out).  If ref is a
 	position, it is copied into w.wcs.crval and ref_out=ref.
-	Otherwise, w is unmodified and ref_out=w.wcs.crval."""
+	Otherwise, w is unmodified and ref_out=w.wcs.crval.  Also sets lonpole,
+	if not already set, to 180, which is sensible default."""
+	if np.isnan(w.wcs.lonpole):
+		w.wcs.lonpole = 180.
 	if isinstance(ref, str) and ref == 'standard':
 		ref = None
 	if ref is None:

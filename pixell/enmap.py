@@ -899,7 +899,7 @@ def extent_subgrid(shape, wcs, nsub=None, safe=True, signed=False):
 	if nsub is None: nsub = 17
 	# Create a new wcs with (nsub,nsub) pixels
 	wcs = wcs.deepcopy()
-	step = (np.asfarray(shape[-2:])/nsub)[::-1]
+	step = (utils.asfarray(shape[-2:])/nsub)[::-1]
 	wcs.wcs.crpix -= 0.5
 	wcs.wcs.cdelt *= step
 	wcs.wcs.crpix /= step
