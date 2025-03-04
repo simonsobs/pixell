@@ -518,10 +518,10 @@ def reduce(tile_map, comm, root=0):
 	active = active_distributed if comm.rank == root else []
 	return redistribute(tile_map, comm, active)
 
-def write_map(fname, tile_map, comm):
+def write_map(fname, tile_map, comm, extra={}):
 	"""Write a distributed tile_map to disk as a single enmap.
 	Collects all the data on a single task before writing."""
 	omap = reduce(tile_map, comm)
 	if comm.rank == 0:
 		omap = to_enmap(omap)
-		enmap.write_map(fname, omap, allow_modify=True)
+		enmap.write_map(fname, omap, allow_modify=True, extra=extra)
