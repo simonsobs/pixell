@@ -75,7 +75,7 @@ class ndmap(np.ndarray):
 	def posmap(self, safe=True, corner=False, separable="auto", dtype=np.float64): return posmap(self.shape, self.wcs, safe=safe, corner=corner, separable=separable, dtype=dtype)
 	def posaxes(self, safe=True, corner=False, dtype=np.float64): return posaxes(self.shape, self.wcs, safe=safe, corner=corner, dtype=dtype)
 	def pixmap(self): return pixmap(self.shape, self.wcs)
-	def laxes(self, oversample=1, method="auto"): return laxes(self.shape, self.wcs, oversample=oversample, method=method)
+	def laxes(self, oversample=1, method="auto", broadcastable=False): return laxes(self.shape, self.wcs, oversample=oversample, method=method, broadcastable=broadcastable)
 	def lmap(self, oversample=1): return lmap(self.shape, self.wcs, oversample=oversample)
 	def lform(self, method="auto"): return lform(self, method=method)
 	def modlmap(self, oversample=1, min=0): return modlmap(self.shape, self.wcs, oversample=oversample, min=min)
@@ -899,7 +899,7 @@ def extent_subgrid(shape, wcs, nsub=None, safe=True, signed=False):
 	if nsub is None: nsub = 17
 	# Create a new wcs with (nsub,nsub) pixels
 	wcs = wcs.deepcopy()
-	step = (np.asfarray(shape[-2:])/nsub)[::-1]
+	step = (utils.asfarray(shape[-2:])/nsub)[::-1]
 	wcs.wcs.crpix -= 0.5
 	wcs.wcs.cdelt *= step
 	wcs.wcs.crpix /= step
@@ -1212,9 +1212,10 @@ def modrmap(shape, wcs, ref="center", safe=True, corner=False):
 	if wcsutils.is_plain(wcs): return np.sum((slmap-ref)**2,0)**0.5
 	return ndmap(utils.angdist(slmap[::-1],ref[::-1],zenith=False),wcs)
 
-def laxes(shape, wcs, oversample=1, method="auto"):
+def laxes(shape, wcs, oversample=1, method="auto", broadcastable=False):
 	oversample = int(oversample)
 	step = extent(shape, wcs, signed=True, method=method)/shape[-2:]
+
 	ly = np.fft.fftfreq(shape[-2]*oversample, step[0])*2*np.pi
 	lx = np.fft.fftfreq(shape[-1]*oversample, step[1])*2*np.pi
 	if oversample > 1:
@@ -1229,6 +1230,7 @@ def laxes(shape, wcs, oversample=1, method="auto"):
 		def shift(l,a,n): return l+a/2*(-1+1./n)
 		ly = shift(ly,ly[oversample],oversample)
 		lx = shift(lx,lx[oversample],oversample)
+	if broadcastable: ly, lx = ly[:,None], lx[None,:]
 	return ly, lx
 
 def lrmap(shape, wcs, oversample=1):
@@ -1314,7 +1316,7 @@ def harm2map(emap, nthread=0, normalize=True, iau=False, spin=[0,2], keep_imag=F
 		rot, s0 = None, None
 		for s, i1, i2 in spin_helper(spin, emap.shape[-3]):
 			if s == 0:  continue
-			if s != s0: s0, rot = s, queb_rotmat(emap.lmap(), iau=iau, spin=s, inverse=True)
+			if s != s0: s0, rot = s, queb_rotmat(emap.laxes(broadcastable=True), iau=iau, spin=s, inverse=True, wcs=emap.wcs)
 			emap[...,i1:i2,:,:] = map_mul(rot, emap[...,i1:i2,:,:])
 	res = samewcs(ifft(emap,nthread=nthread,normalize=normalize, adjoint_fft=adjoint_map2harm), emap)
 	if not keep_imag: res = res.real
@@ -1326,17 +1328,15 @@ def map2harm_adjoint(emap, nthread=0, normalize=True, iau=False, spin=[0,2], kee
 def harm2map_adjoint(emap, nthread=0, normalize=True, iau=False, spin=[0,2]):
 	return map2harm(emap, nthread=nthread, normalize=normalize, iau=iau, spin=spin, adjoint_harm2map=True)
 
-def queb_rotmat(lmap, inverse=False, iau=False, spin=2):
-	# atan2(x,y) instead of (y,x) because Qr points in the
-	# tangential direction, not radial. This matches flipperpol too.
+def queb_rotmat(lmap, inverse=False, iau=False, spin=2, wcs=None):
 	# This corresponds to the Healpix convention. To get IAU,
 	# flip the sign of a.
-	sgn = 1 if iau else -1
-	if not mute["polconv_fix"]:
-		warnings.warn("enmap polarization convention changed. The old iau was actually healpix, and vice versa. This has been fixed now, and the enmap meaning of iau and healpix now matches that of curvedsky, and the rest of the world. If you suddenly get gibberish EE spectra, then you will need to change the value of the iau flag you pass to harm2map, map2harm, etc.. To mute this warnings, set enmapl.mute[\"polconv_fix\"] = True")
-	a    = sgn*spin*np.arctan2(-lmap[1], lmap[0])
+	sign = 1
+	if iau:     sign = -sign
+	if inverse: sign = -sign
+	# More efficient to multiply in the sign before expanding to full map
+	a    = spin*np.arctan2(sign*lmap[1],lmap[0])
 	c, s = np.cos(a), np.sin(a)
-	if inverse: s = -s
 	return samewcs(np.array([[c,-s],[s,c]]),lmap)
 
 def rotate_pol(emap, angle, comps=[-2,-1], spin=2, axis=-3):

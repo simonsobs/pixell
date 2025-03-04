@@ -81,18 +81,22 @@ def pixelization(pwcs, shape=None, res=None, variant=None):
 	# coordinates of the first and last pixel center along each axis
 	if shape is None:
 		res = expand_res(res)
-		ra1, ra2, nx = pixelize_1d(extent[0], res=res[0],  offs=offs[0], periodic=periodic[0])
-		dec1,dec2,ny = pixelize_1d(extent[1], res=res[1],  offs=offs[1], periodic=periodic[1])
+		ra1, ra2, nx, ox1, ox2 = pixelize_1d(extent[0], res=res[0],  offs=offs[0], periodic=periodic[0])
+		dec1,dec2,ny, oy1, oy2 = pixelize_1d(extent[1], res=res[1],  offs=offs[1], periodic=periodic[1])
 	elif res is None:
-		ra1, ra2, nx = pixelize_1d(extent[0], n=shape[-2], offs=offs[0], periodic=periodic[0])
-		dec1,dec2,ny = pixelize_1d(extent[1], n=shape[-2], offs=offs[1], periodic=periodic[0])
+		ra1, ra2, nx, ox1, ox2 = pixelize_1d(extent[0], n=shape[-2], offs=offs[0], periodic=periodic[0])
+		dec1,dec2,ny, oy1, oy2 = pixelize_1d(extent[1], n=shape[-2], offs=offs[1], periodic=periodic[0])
 	else:
 		raise ValueError("Either res or shape must be given to build a pixelization")
 	# Now that we have the intermediate coordinates of our endpoints, we
 	# can calculate cdelt and crpix
 	owcs  = pwcs.deepcopy()
 	owcs.wcs.cdelt = [(ra2-ra1)/(nx-1), (dec2-dec1)/(ny-1)]
-	owcs.wcs.crpix = [1+(pwcs.wcs.crval[0]-ra1)/owcs.wcs.cdelt[0],1+(pwcs.wcs.crval[1]-dec1)/owcs.wcs.cdelt[1]]
+	# The bottom-left corner has pixel coordinates -ox1,-oy1
+	# The top-right   corner has pixel coordinates (nx-1)-ox2,(ny-1)-oy2
+	# The center is the average of these
+	owcs.wcs.crpix[0] = 1+((nx-1)-ox2-ox1)/2
+	owcs.wcs.crpix[1] = 1+((ny-1)-oy2-oy1)/2
 	if lonpole is not None:
 		owcs.wcs.lonpole = lonpole
 	return (ny,nx), owcs
@@ -325,7 +329,7 @@ def pixelize_1d(w, n=None, res=None, offs=None, periodic=False, adjust=False, si
 	# Apply any sign
 	ra1 *= sign
 	ra2 *= sign
-	return ra1, ra2, n
+	return ra1, ra2, n, o1, o2
 
 def fix_wcs(wcs, axis=0):
 	"""Returns a new WCS object which has had the reference pixel moved to the
