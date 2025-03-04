@@ -128,8 +128,8 @@ def build(func, interpolator, box, errlim, maxsize=None, maxtime=None, return_ob
 	automatically polls func and constructs an interpolator
 	object that has the required accuracy inside the provided
 	bounding box."""
-	box     = np.asarray(box, dtype=np.float64)
-	errlim  = np.asarray(errlim, dtype=np.float64)
+	box     = utils.asfarray(box)
+	errlim  = utils.asfarray(errlim)
 	idim    = box.shape[1]
 	n       = [3]*idim if nstart is None else nstart
 	n       = np.array(n) # starting mesh size
@@ -265,7 +265,7 @@ def lin_derivs_forward(y, npre=0):
 	dimensions, returning an array of shape (2,)*n+(:,)*npre+(:-1,)*n. That is,
 	it is one shorter in each direction along which the derivative is taken.
 	Derivatives are computed using forward difference."""
-	y        = np.asarray(y, dtype=np.float64)
+	y        = utils.asfarray(y)
 	nin      = y.ndim-npre
 	ys = np.zeros((2,)*nin+y.shape)
 	ys[(0,)*nin] = y
@@ -283,7 +283,7 @@ def grad_forward(y, npre=0):
 	"""Given an array y with npre leading dimensions and n following dimensions,
 	the gradient along the n last dimensions, returning an array of shape (n,)+y.shape.
 	Derivatives are computed using forward difference."""
-	y        = np.asarray(y, dtype=np.float64)
+	y        = utils.asfarray(y)
 	nin      = y.ndim-npre
 	dy       = np.zeros((nin,)+y.shape)
 	for i in range(nin):

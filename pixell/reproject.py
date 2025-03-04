@@ -380,7 +380,7 @@ def rot2euler(rot):
 		else: raise ValueError("Unrecognized system '%s'" % osys)
 		return R.as_euler("zyz")
 	else:
-		rot = np.asarray(rot, dtype=np.float64)
+		rot = utils.asfarray(rot)
 		return rot
 
 def inv_euler(euler): return [-euler[2], -euler[1], -euler[0]]
