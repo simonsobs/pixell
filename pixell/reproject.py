@@ -246,119 +246,124 @@ def map2healpix(imap, nside=None, lmax=None, out=None, rot=None, spin=[0,2], met
 		raise ValueError("Map reprojection method '%s' not recognized" % str(method))
 	return out
 
-def healpix2map(iheal, shape=None, wcs=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, verbose=False, niter=0):
-	"""Reproject from healpix to an enmap, optionally including a rotation.
+def healpix2map(iheal, shape=None, wcs=None, lmax=None, out=None, rot=None, spin=[0,2], method="harm", order=1, extensive=False, bsize=100000, verbose=False, niter=0,save_alm=False):
+    """Reproject from healpix to an enmap, optionally including a rotation.
 
-	iheal: The input healpix map [...,npix]. Stokes along the -2nd axis if
-	       present.
-	shape: The (...,ny,nx) shape of the output map. Only the last two entries
-	       are used, the rest of the dimensions are taken from iheal.
-	       Mandatory unless an output map is passed.
-	wcs  : The world woordinate system object the output map.
-	       Mandatory unless an output map is passed.
-	lmax:  The highest multipole to use in any harmonic-space
-	       operations. Defaults to 3 times the nside of iheal.
-	out:   An optional enmap [...,ny,nx] to write the output map to.
-	       The ...  part must match iheal, as must the data type.
-	rot:   An optional coordinate rotation to apply. Either a string
-	       "isys,osys", where isys is the system to transform from,
-	       and osys is the system to transform to. Currently the values
-	       "cel"/"equ" and "gal" are recognized. Alternatively, a tuple of
-	       3 euler zyz euler angles can be passed, in the same convention
-	       as healpy.rotate_alm.
-	spin:  A description of the spin of the entries along the stokes
-	       axis. Defaults to [0,2], which means that the first entry
-	       is spin-0, followed by a spin-2 pair (any non-zero spin
-	       covers a pair of entries). If the axis is longer than
-	       what's covered in the description, then it is repeated as
-	       necessary. Pass spin=[0] to disable any special treatment
-	       of this axis.
-	method: How to interpolate between the input and output
-	       pixelizations. Can be "harm" (default) or "spline".
-	       "harm" maps between them using spherical harmonics
-	       transforms. This preserves the power spectrum (so no window
-	       function is introduced), and averages noise down when the
-	       output pixels are larger than the input pixels. However, it
-	       can suffer from ringing around very bright features, and an
-	       all-positive input map may end up with small negative values.
-	       "spline" instead uses spline interpolation to look up the
-	       value in the intput map corresponding to each pixel center
-	       in the output map. The spline order is controlled with the
-	       "order" argument. Overall "harm" is best suited for normal
-	       sky maps, while "spline" with order = 0 or 1 is best suited
-	       for hitcount maps and masks.
-	order: The spline order to use when method="spline".
-	       0 corresponds to nearest neighbor interpolation.
-	       1 corresponds to bilinear interpolation (default)
-	       Higher order interpolation is not supported - use
-	       method="harm" for that.
-	extensive: Whether the map represents an extensive (as opposed to
-	       intensive) quantity. Extensive quantities have values
-	       proportional to the pixel size, unlike intensive quantities.
-	       Hitcount per pixel is an extensive quantity. Hitcount per
-	       square degree is an intensive quantity, as is a temperature
-	       map. Defaults to False.
-	bsize: The spline method operates on batches of pixels to save memory.
-	       This controls the batch size, in pixels. Defaults to 100000.
-	verbose: Whether to print information about what it's doing.
-	       Defaults to False, which doesn't print anything.
+    iheal: The input healpix map [...,npix]. Stokes along the -2nd axis if
+           present.
+    shape: The (...,ny,nx) shape of the output map. Only the last two entries
+           are used, the rest of the dimensions are taken from iheal.
+           Mandatory unless an output map is passed.
+    wcs  : The world woordinate system object the output map.
+           Mandatory unless an output map is passed.
+    lmax:  The highest multipole to use in any harmonic-space
+           operations. Defaults to 3 times the nside of iheal.
+    out:   An optional enmap [...,ny,nx] to write the output map to.
+           The ...  part must match iheal, as must the data type.
+    rot:   An optional coordinate rotation to apply. Either a string
+           "isys,osys", where isys is the system to transform from,
+           and osys is the system to transform to. Currently the values
+           "cel"/"equ" and "gal" are recognized. Alternatively, a tuple of
+           3 euler zyz euler angles can be passed, in the same convention
+           as healpy.rotate_alm.
+    spin:  A description of the spin of the entries along the stokes
+           axis. Defaults to [0,2], which means that the first entry
+           is spin-0, followed by a spin-2 pair (any non-zero spin
+           covers a pair of entries). If the axis is longer than
+           what's covered in the description, then it is repeated as
+           necessary. Pass spin=[0] to disable any special treatment
+           of this axis.
+    method: How to interpolate between the input and output
+           pixelizations. Can be "harm" (default) or "spline".
+           "harm" maps between them using spherical harmonics
+           transforms. This preserves the power spectrum (so no window
+           function is introduced), and averages noise down when the
+           output pixels are larger than the input pixels. However, it
+           can suffer from ringing around very bright features, and an
+           all-positive input map may end up with small negative values.
+           "spline" instead uses spline interpolation to look up the
+           value in the intput map corresponding to each pixel center
+           in the output map. The spline order is controlled with the
+           "order" argument. Overall "harm" is best suited for normal
+           sky maps, while "spline" with order = 0 or 1 is best suited
+           for hitcount maps and masks.
+    order: The spline order to use when method="spline".
+           0 corresponds to nearest neighbor interpolation.
+           1 corresponds to bilinear interpolation (default)
+           Higher order interpolation is not supported - use
+           method="harm" for that.
+    extensive: Whether the map represents an extensive (as opposed to
+           intensive) quantity. Extensive quantities have values
+           proportional to the pixel size, unlike intensive quantities.
+           Hitcount per pixel is an extensive quantity. Hitcount per
+           square degree is an intensive quantity, as is a temperature
+           map. Defaults to False.
+    bsize: The spline method operates on batches of pixels to save memory.
+           This controls the batch size, in pixels. Defaults to 100000.
+    verbose: Whether to print information about what it's doing.
+           Defaults to False, which doesn't print anything.
 
-	Typical usage:
-	* map  = healpix2map(map_healpix,  shape, wcs, rot="gal,cel")
-	* ivar = healpix2map(ivar_healpix, shape, wcs, rot="gal,cel", method="spline", spin=[0], extensive=True)
-	"""
-	iheal    = np.asarray(iheal)
-	npix     = iheal.shape[-1]
-	nside    = curvedsky.npix2nside(npix)
-	ipixsize = 4*np.pi/npix
-	if out is None:
-		out = enmap.zeros(iheal.shape[:-1]+shape[-2:], wcs, dtype=iheal.dtype)
-	else: shape, wcs = out.geometry
-	if lmax is None: lmax = 3*nside
-	if method in ["harm", "harmonic"]:
-		# Harmonic interpolation preserves the power spectrum, but can introduce ringing.
-		# Probably not a good choice for positive-only quantities like hitcounts.
-		# Coordinate rotation is slow.
-		alm = curvedsky.map2alm_healpix(iheal, lmax=lmax, spin=spin, niter=niter)
-		if rot is not None:
-			curvedsky.rotate_alm(alm, *rot2euler(rot), inplace=True)
-		curvedsky.alm2map(alm, out, spin=spin)
-		del alm
-	elif method == "spline":
-		# Covers linear interpolation (order=1) and nearest neighbor (order=0).
-		# Coordinate rotation may be slow.
-		import healpy
-		if order > 1:
-			raise ValueError("Only order 0 and order 1 spline interpolation supported from healpix maps")
-		# Figure out if we need to compute polarization rotations
-		pol  = iheal.ndim > 1 and any([s != 0 for s,c1,c2 in enmap.spin_helper(spin, iheal.shape[-2])])
-		# Batch to save memory
-		brow = (bsize+out.shape[-1]-1)//out.shape[-1]
-		for i1 in range(0, out.shape[-2], brow):
-			i2   = min(i1+brow, out.shape[-2])
-			pos  = out[...,i1:i2,:].posmap().reshape(2,-1)[::-1]
-			if rot is not None:
-				# Not sure why the [::-1] is necessary here. Maybe psi,theta,phi vs. phi,theta,psi?
-				pos = coordinates.transform_euler(inv_euler(rot2euler(rot))[::-1], pos, pol=pol)
-			pos[1] = np.pi/2 - pos[1]
-			if order == 0:
-				# Nearest neighbor. Just read off from the pixels
-				vals = iheal[...,healpy.ang2pix(nside, pos[1], pos[0])]
-			else:
-				# Bilinear interpolation. healpy only supports one component at a time, so loop
-				vals = np.zeros(iheal.shape[:-1]+pos.shape[-1:], iheal.dtype)
-				for I in utils.nditer(iheal.shape[:-1]):
-					vals[I] = healpy.get_interp_val(iheal[I], pos[1], pos[0])
-			if rot is not None and iheal.ndim > 1:
-				# Update the polarization to account for the new coordinate system
-				for s, c1, c2 in enmap.spin_helper(spin, iheal.shape[-2]):
-					vals = enmap.rotate_pol(vals, -pos[2], spin=s, comps=[c1,c2-1], axis=-2)
-			out[...,i1:i2,:] = vals.reshape(vals.shape[:-1]+(i2-i1,-1))
-	else:
-		raise ValueError("Map reprojection method '%s' not recognized" % str(method))
-	if extensive:
-		out *= out.pixsizemap(broadcastable=True)/ipixsize
-	return out
+    Typical usage:
+    * map  = healpix2map(map_healpix,  shape, wcs, rot="gal,cel")
+    * ivar = healpix2map(ivar_healpix, shape, wcs, rot="gal,cel", method="spline", spin=[0], extensive=True)
+    """
+    iheal    = np.asarray(iheal)
+    npix     = iheal.shape[-1]
+    nside    = curvedsky.npix2nside(npix)
+    ipixsize = 4*np.pi/npix
+    if not save_alm:
+        if out is None:
+            out = enmap.zeros(iheal.shape[:-1]+shape[-2:], wcs, dtype=iheal.dtype)
+        else: shape, wcs = out.geometry
+    if lmax is None: lmax = 3*nside
+    if method in ["harm", "harmonic"]:
+        # Harmonic interpolation preserves the power spectrum, but can introduce ringing.
+        # Probably not a good choice for positive-only quantities like hitcounts.
+        # Coordinate rotation is slow.
+        alm = curvedsky.map2alm_healpix(iheal, lmax=lmax, spin=spin, niter=niter)
+        if rot is not None:
+            curvedsky.rotate_alm(alm, *rot2euler(rot), inplace=True)
+        if save_alm:
+            print("saving alm")
+            return alm
+        else:
+            curvedsky.alm2map(alm, out, spin=spin)
+        del alm
+    elif method == "spline":
+        # Covers linear interpolation (order=1) and nearest neighbor (order=0).
+        # Coordinate rotation may be slow.
+        import healpy
+        if order > 1:
+            raise ValueError("Only order 0 and order 1 spline interpolation supported from healpix maps")
+        # Figure out if we need to compute polarization rotations
+        pol  = iheal.ndim > 1 and any([s != 0 for s,c1,c2 in enmap.spin_helper(spin, iheal.shape[-2])])
+        # Batch to save memory
+        brow = (bsize+out.shape[-1]-1)//out.shape[-1]
+        for i1 in range(0, out.shape[-2], brow):
+            i2   = min(i1+brow, out.shape[-2])
+            pos  = out[...,i1:i2,:].posmap().reshape(2,-1)[::-1]
+            if rot is not None:
+                # Not sure why the [::-1] is necessary here. Maybe psi,theta,phi vs. phi,theta,psi?
+                pos = coordinates.transform_euler(inv_euler(rot2euler(rot))[::-1], pos, pol=pol)
+            pos[1] = np.pi/2 - pos[1]
+            if order == 0:
+                # Nearest neighbor. Just read off from the pixels
+                vals = iheal[...,healpy.ang2pix(nside, pos[1], pos[0])]
+            else:
+                # Bilinear interpolation. healpy only supports one component at a time, so loop
+                vals = np.zeros(iheal.shape[:-1]+pos.shape[-1:], iheal.dtype)
+                for I in utils.nditer(iheal.shape[:-1]):
+                    vals[I] = healpy.get_interp_val(iheal[I], pos[1], pos[0])
+            if rot is not None and iheal.ndim > 1:
+                # Update the polarization to account for the new coordinate system
+                for s, c1, c2 in enmap.spin_helper(spin, iheal.shape[-2]):
+                    vals = enmap.rotate_pol(vals, -pos[2], spin=s, comps=[c1,c2-1], axis=-2)
+            out[...,i1:i2,:] = vals.reshape(vals.shape[:-1]+(i2-i1,-1))
+    else:
+        raise ValueError("Map reprojection method '%s' not recognized" % str(method))
+    if extensive:
+        out *= out.pixsizemap(broadcastable=True)/ipixsize
+    return out
 
 def rot2euler(rot):
 	"""Given a coordinate rotation description, return the [rotz,roty,rotz] euler
