@@ -337,13 +337,13 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, adjoint=False,
 	# Loop over pre-dimensions
 	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
-			ducc0.sht.experimental.synthesis(alm=alm_full[I], map=map_full[I], mode="DERIV1", spin=1, **kwargs)
+			func(alm=alm_full[I], map=map_full[I], mode="DERIV1", spin=1, **kwargs)
 			# Flip sign of theta derivative to get dec derivative
 			map_full[I+(0,)] *= -1
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full[I].shape[-2]):
 				Ij = I+(slice(j1,j2),)
-				ducc0.sht.experimental.synthesis(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
+				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
 	if adjoint: return alm
 	else:       return healmap
 
