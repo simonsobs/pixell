@@ -55,7 +55,7 @@ jobs:
         run: |
           ln -s $FC $(dirname $(which $FC))/gfortran
           echo "Using FC=$FC CXX=$CXX CC=$CC"
-          python -m pip install .
+          python -m pip install .[test]
 
       - name: Run Tests (MacOS)
         run: |
