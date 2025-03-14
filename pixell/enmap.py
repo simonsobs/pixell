@@ -142,7 +142,7 @@ class ndmap(np.ndarray):
 		_, wcs = slice_geometry(self.shape[-2:], self.wcs, sel2)
 		return ndmap(np.ndarray.__getitem__(self, sel), wcs)
 	def __getslice__(self, a, b=None, c=None): return self[slice(a,b,c)]
-	def submap(self, box, mode=None, wrap="auto", recenter="auto"):
+	def submap(self, box, mode=None, wrap="auto", recenter=False):
 		"""Extract the part of the map inside the given coordinate box
 		box : array_like
 			The [[fromy,fromx],[toy,tox]] coordinate box to select.
@@ -162,7 +162,7 @@ class ndmap(np.ndarray):
 	def write(self, fname, fmt=None):
 		write_map(fname, self, fmt=fmt)
 
-def submap(map, box, mode=None, wrap="auto", recenter="auto", iwcs=None):
+def submap(map, box, mode=None, wrap="auto", recenter=False, iwcs=None):
 	"""Extract the part of the map inside the given coordinate box
 	box : array_like
 		The [[fromy,fromx],[toy,tox]] coordinate box to select.
@@ -193,7 +193,7 @@ def submap(map, box, mode=None, wrap="auto", recenter="auto", iwcs=None):
 	if xflip: omap = omap[...,:,::-1]
 	return omap
 
-def subgeo(shape, wcs, box=None, pixbox=None, mode=None, wrap="auto", noflip=False, recenter="auto"):
+def subgeo(shape, wcs, box=None, pixbox=None, mode=None, wrap="auto", noflip=False, recenter=False):
 	"""Extract the part of the geometry inside the coordinate box
 	box : array_like
 		The [[fromy,fromx],[toy,tox]] coordinate box to select.
@@ -319,7 +319,7 @@ class Geometry:
 	@property
 	def nopre(self): return Geometry(self.shape[-2:], self.wcs)
 	def with_pre(self, pre): return Geometry(tuple(pre) + self.shape[-2:], self.wcs)
-	def submap(self, box=None, pixbox=None, mode=None, wrap="auto", noflip=False, recenter="auto"):
+	def submap(self, box=None, pixbox=None, mode=None, wrap="auto", noflip=False, recenter=False):
 		return Geometry(*subgeo(*self, box=box, pixbox=pixbox, mode=mode, wrap=wrap, noflip=noflip, recenter=recenter))
 	def scale(self, scale):
 		shape, wcs = scale_geometry(self.shape, self.wcs, scale)
@@ -674,7 +674,7 @@ def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iw
 	extracted.wcs = wcs
 	return extracted
 
-def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False, recenter="auto"):
+def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False, recenter=False):
 	"""This function extracts a rectangular area from an enmap based on the
 	given pixbox[{from,to,[stride]},{y,x}]. The difference between this function
 	and plain slicing of the enmap is that this one supports wrapping around the
@@ -2657,7 +2657,7 @@ def write_map(fname, emap, fmt=None, address=None, extra={}, allow_modify=False)
 	else:
 		raise ValueError
 
-def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False, verbose=False, address=None, recenter="auto"):
+def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False, verbose=False, address=None, recenter=False):
 	"""Read an enmap from file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'.
@@ -2776,7 +2776,7 @@ def write_fits_geometry(fname, shape, wcs):
 	utils.mkdir(os.path.dirname(fname))
 	header.tofile(fname, overwrite=True)
 
-def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, recenter="auto", verbose=False):
+def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, recenter=False, verbose=False):
 	"""Read an enmap from the specified fits file. By default,
 	the map and coordinate system will be read from HDU 0. Use
 	the hdu argument to change this. The map must be stored as
@@ -2868,7 +2868,7 @@ def write_hdf(fname, emap, address=None, extra={}):
 		for key, val in extra.items():
 			hfile[key] = val
 
-def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None, recenter="auto"):
+def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None, recenter=False):
 	"""Read an enmap from the specified hdf file. Two formats
 	are supported. The old enmap format, which simply used
 	a bounding box to specify the coordinates, and the new
@@ -2922,7 +2922,7 @@ def read_hdf_dtype(fname, address=None):
 			hfile = hfile[address]
 		return hfile["data"].dtype
 
-def read_npy(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None, recenter="auto"):
+def read_npy(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None, recenter=False):
 	"""Read an enmap from the specified npy file. Only minimal support.
 	No wcs information."""
 	return enmap(np.load(fname), wcs)
@@ -2935,7 +2935,7 @@ def fix_python3(s):
 		else: return s
 	except TypeError: return s
 
-def read_helper(data, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, delayed=False, recenter="auto"):
+def read_helper(data, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, delayed=False, recenter=False):
 	"""Helper function for map reading. Handles the slicing, sky-wrapping and capping, etc."""
 	if delayed: return data # Slicing not supported yet when we want to return a proxy object
 	if geometry is not None: data = extract(data, *geometry, wrap=wrap)
@@ -2964,7 +2964,7 @@ class ndmap_proxy:
 	def __repr__(self): return "ndmap_proxy(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (str(self.fname), str(self.shape), str(self.wcs), str(self.dtype))
 	def __getslice__(self, a, b=None, c=None): return self[slice(a,b,c)]
 	def __getitem__(self, sel): raise NotImplementedError("ndmap_proxy must be subclassed")
-	def submap(self, box, mode=None, wrap="auto", recenter="auto"):
+	def submap(self, box, mode=None, wrap="auto", recenter=False):
 		return submap(self, box, mode=mode, wrap=wrap, recenter=recenter)
 	def stamps(self, pos, shape, aslist=False): return stamps(self, pos, shape, aslist=aslist)
 

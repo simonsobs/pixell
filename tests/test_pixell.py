@@ -146,9 +146,9 @@ def get_geometries(yml_section):
 def generate_map(shape,wcs,powspec,lmax,seed):
     return curvedsky.rand_map(shape, wcs, powspec, lmax=lmax, dtype=np.float64, seed=seed, spin=[0,2], method="auto", verbose=False)
 
-def check_equality(imap1,imap2, wcstol=1e-4):
+def check_equality(imap1,imap2):
     assert np.all(imap1.shape==imap2.shape)
-    assert wcsutils.equal(imap1.wcs,imap2.wcs, tol=wcstol)
+    assert wcsutils.equal(imap1.wcs,imap2.wcs)
     try:
         assert np.all(np.isclose(imap1,imap2))
     except:
@@ -179,13 +179,7 @@ def get_extraction_test_results(yaml_file):
             filename = "temporary_map.fits" # NOT THREAD SAFE
             enmap.write_map(filename,imap)
             imap_in = enmap.read_map(filename)
-            # Submap now has recentering on by default for cylindrical maps.
-            # This suffers a bit more from the loss in precision in CDELT
-            # in FITS (due to too few digits stored) than one does without
-            # recentering. It's still tiny though. To be clear, CDELT itself
-            # is as precise as before, but it's inaccuracy bleeds into CRVAL,
-            # magnified by nx.
-            check_equality(imap,imap_in, wcstol=1e-9)
+            check_equality(imap,imap_in)
             for e in config['extracts']:
                 print("Doing test for extract ",e['name']," with geometry ",g," and spectrum ",s,"...")
                 if e['type']=='slice':
@@ -532,7 +526,7 @@ class PixelTests(unittest.TestCase):
         # Do write and read test
         filename = "temporary_extract_map.fits" # NOT THREAD SAFE
         enmap.write_map(filename,imap)
-        smap3 = enmap.read_map(filename,pixbox=pixbox,recenter=False)
+        smap3 = enmap.read_map(filename,pixbox=pixbox)
         os.remove(filename)
         assert np.all(np.isclose(smap,smap2))
         assert np.all(np.isclose(smap,smap3))
