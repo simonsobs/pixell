@@ -331,6 +331,20 @@ def pixelize_1d(w, n=None, res=None, offs=None, periodic=False, adjust=False, si
 	ra2 *= sign
 	return ra1, ra2, n, o1, o2
 
+def recenter_cyl_x(wcs, x):
+	"""Given a cylindrical wcs with the reference point already on the equator,
+	move the reference point along the equator to the given x (counting from 1)
+	returning a new wcs."""
+	if not is_separable(wcs):
+		raise ValueError("recenter_cyl requires a cylindrical wcs with crval on the equator")
+	owcs = wcs.deepcopy()
+	owcs.wcs.crpix[0]  = x
+	owcs.wcs.crval[0] += (x-wcs.wcs.crpix[0])*wcs.wcs.cdelt[0]
+	return owcs
+
+def recenter_cyl_ra(wcs, ra):
+	return recenter_cyl_x(wcs.wcs.crpix[0] + (ra-wcs.wcs.crval[0])/wcs.wcs.cdelt[0])
+
 def fix_wcs(wcs, axis=0):
 	"""Returns a new WCS object which has had the reference pixel moved to the
 	middle of the possible pixel space."""
