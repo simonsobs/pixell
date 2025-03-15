@@ -142,7 +142,7 @@ class ndmap(np.ndarray):
 		_, wcs = slice_geometry(self.shape[-2:], self.wcs, sel2)
 		return ndmap(np.ndarray.__getitem__(self, sel), wcs)
 	def __getslice__(self, a, b=None, c=None): return self[slice(a,b,c)]
-	def submap(self, box, mode=None, wrap="auto"):
+	def submap(self, box, mode=None, wrap="auto", recenter=False):
 		"""Extract the part of the map inside the given coordinate box
 		box : array_like
 			The [[fromy,fromx],[toy,tox]] coordinate box to select.
@@ -156,13 +156,13 @@ class ndmap(np.ndarray):
 			 "ceil":  both upper and lower bounds will be rounded up
 			 "inclusive": lower bounds are rounded down, and upper bounds up
 			 "exclusive": lower bounds are rounded up, and upper bounds down"""
-		return submap(self, box, mode=mode, wrap=wrap)
+		return submap(self, box, mode=mode, wrap=wrap, recenter=recenter)
 	def subinds(self, box, mode=None, cap=True):
 		return subinds(self.shape, self.wcs, box=box, mode=mode, cap=cap)
 	def write(self, fname, fmt=None):
 		write_map(fname, self, fmt=fmt)
 
-def submap(map, box, mode=None, wrap="auto", iwcs=None):
+def submap(map, box, mode=None, wrap="auto", recenter=False, iwcs=None):
 	"""Extract the part of the map inside the given coordinate box
 	box : array_like
 		The [[fromy,fromx],[toy,tox]] coordinate box to select.
@@ -186,11 +186,33 @@ def submap(map, box, mode=None, wrap="auto", iwcs=None):
 	yflip, yslice = helper(ibox[:,0])
 	xflip, xslice = helper(ibox[:,1])
 	oshape, owcs = slice_geometry(map.shape, iwcs, (yslice, xslice), nowrap=True)
+	oshape, owcs = recenter_geo(oshape, owcs, mode=recenter)
 	omap = extract(map, oshape, owcs, wrap=wrap, iwcs=iwcs)
 	# Unflip if neccessary
 	if yflip: omap = omap[...,::-1,:]
 	if xflip: omap = omap[...,:,::-1]
 	return omap
+
+def subgeo(shape, wcs, box=None, pixbox=None, mode=None, wrap="auto", noflip=False, recenter=False):
+	"""Extract the part of the geometry inside the coordinate box
+	box : array_like
+		The [[fromy,fromx],[toy,tox]] coordinate box to select.
+		The resulting map will have corners as close
+		as possible to this, but will differ slightly due to
+		the finite pixel size.
+	mode : str
+		How to handle partially selected pixels:
+		 "round": round bounds using standard rules
+		 "floor": both upper and lower bounds will be rounded down
+		 "ceil":  both upper and lower bounds will be rounded up
+		 "inclusive": lower bounds are rounded down, and upper bounds up
+		 "exclusive": lower bounds are rounded up, and upper bounds down
+	"""
+	if pixbox is not None: ibox = pixbox
+	else: ibox = subinds(shape, wcs, box, mode=mode, noflip=noflip, cap=False)
+	ogeo = slice_geometry(shape, wcs, (slice(*ibox[:,0]),slice(*ibox[:,1])), nowrap=True)
+	ogeo = recenter_geo(*ogeo, mode=recenter)
+	return ogeo
 
 def subinds(shape, wcs, box, mode=None, cap=True, noflip=False, epsilon=1e-4):
 	"""Helper function for submap. Translates the coordinate box provided
@@ -256,7 +278,10 @@ def slice_geometry(shape, wcs, sel, nowrap=False):
 		wcs.wcs.cdelt[j] *= s.step
 		wcs.wcs.crpix[j] += 0.5
 		oshape[i] = (s.stop-s.start+s.step-np.sign(s.step))//s.step
-	return tuple(pre)+tuple(oshape), wcs
+	# Convert this is a bit cumbersome, but ensures we get a tuple of
+	# plain python ints instead of numpy.int64s
+	oshape = tuple([int(a) for a in oshape])
+	return tuple(pre)+oshape, wcs
 
 def scale_geometry(shape, wcs, scale):
 	"""Scale the geometry so that the number of pixels is scaled 
@@ -294,21 +319,8 @@ class Geometry:
 	@property
 	def nopre(self): return Geometry(self.shape[-2:], self.wcs)
 	def with_pre(self, pre): return Geometry(tuple(pre) + self.shape[-2:], self.wcs)
-	def submap(self, box=None, pixbox=None, mode=None, wrap="auto", noflip=False):
-		if pixbox is None:
-			pixbox = subinds(self.shape, self.wcs, box, mode=mode, cap=False, noflip=noflip)
-		def helper(b):
-			if   len(b) < 3: return False, slice(b[0],b[1],1)
-			elif b[2] >= 0:  return False, slice(b[0],b[1],b[2])
-			else:            return True,  slice(b[1]-b[2],b[0]-b[2],-b[2])
-		yflip, yslice = helper(pixbox[:,0])
-		xflip, xslice = helper(pixbox[:,1])
-		shape, wcs = slice_geometry(self.shape, self.wcs, (yslice, xslice), nowrap=True)
-		res = Geometry(shape,wcs)
-		# Unflip if neccessary
-		if yflip: res = res[::-1,:]
-		if xflip: res = res[:,::-1]
-		return res
+	def submap(self, box=None, pixbox=None, mode=None, wrap="auto", noflip=False, recenter=False):
+		return Geometry(*subgeo(*self, box=box, pixbox=pixbox, mode=mode, wrap=wrap, noflip=noflip, recenter=recenter))
 	def scale(self, scale):
 		shape, wcs = scale_geometry(self.shape, self.wcs, scale)
 		return Geometry(shape, wcs)
@@ -662,7 +674,7 @@ def extract(map, shape, wcs, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iw
 	extracted.wcs = wcs
 	return extracted
 
-def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False):
+def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None, reverse=False, recenter=False):
 	"""This function extracts a rectangular area from an enmap based on the
 	given pixbox[{from,to,[stride]},{y,x}]. The difference between this function
 	and plain slicing of the enmap is that this one supports wrapping around the
@@ -684,6 +696,9 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 		oslice = utils.sbox2slice(obox)
 		if reverse: map [islice] = op(map[islice], omap[oslice])
 		else:       omap[oslice] = op(omap[oslice], map[islice])
+	# Optionally recenter cylindrical geometries so the reference point is
+	# in-bounds in RA
+	omap.wcs = recenter_geo(omap.shape, omap.wcs, mode=recenter)[1]
 	return omap
 
 def insert(omap, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
@@ -1771,7 +1786,26 @@ def union_geometry(geometries):
 	owcs.wcs.crpix -= bbox[0,::-1]
 	return oshape, owcs
 
+def recenter_cyl(shape, wcs):
+	"""Given a cylindrical geometry with the equator horizontal, move
+	the reference point to the point along the equator closest to the middle
+	of the geometry. This is useful when deriving a sub-geometry that strattles
+	the wrap-around point of another geometry"""
+	return shape, wcsutils.recenter_cyl_x(wcs, (shape[-1]-1)/2+1)
+
+def recenter_geo(shape, wcs, mode="auto"):
+	"""Return either a recentered geometry or the original one, depending
+	on the value of mode, which accepts three values:
+	* True: Always attempts to recenter. Will fail if it's a non-cylindrical geometry
+	* False: Leaves the geometry as it is
+	* "auto": Recenters only if it's a cylindrical geometry"""
+	if mode == "auto": mode = wcsutils.is_separable(wcs)
+	if mode not in [True,False]: raise ValueError("Mode must be 'auto', True or False")
+	if mode: return recenter_cyl(shape, wcs)
+	else: return shape, wcs
+
 def create_wcs(shape, box=None, proj="cea"):
+	"""Very old function. Do not use"""
 	if box is None:
 		box = np.array([[-1,-1],[1,1]])*0.5*10
 		box *= utils.degree
@@ -2623,7 +2657,7 @@ def write_map(fname, emap, fmt=None, address=None, extra={}, allow_modify=False)
 	else:
 		raise ValueError
 
-def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False, verbose=False, address=None):
+def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False, verbose=False, address=None, recenter=False):
 	"""Read an enmap from file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'.
@@ -2644,11 +2678,11 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wr
 		elif fname.endswith(".fits.gz"): fmt = "fits"
 		else: fmt = "fits"
 	if fmt == "fits":
-		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu, delayed=delayed, verbose=verbose)
+		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu, delayed=delayed, recenter=recenter, verbose=verbose)
 	elif fmt == "hdf":
-		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed, hdu=hdu, address=address)
+		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed, hdu=hdu, recenter=recenter, address=address)
 	elif fmt == "npy":
-		res = read_npy(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed, hdu=hdu, address=address)
+		res = read_npy(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed, hdu=hdu, recenter=recenter, address=address)
 	else:
 		raise ValueError
 	if len(toks) > 1:
@@ -2742,7 +2776,7 @@ def write_fits_geometry(fname, shape, wcs):
 	utils.mkdir(os.path.dirname(fname))
 	header.tofile(fname, overwrite=True)
 
-def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, verbose=False):
+def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, recenter=False, verbose=False):
 	"""Read an enmap from the specified fits file. By default,
 	the map and coordinate system will be read from HDU 0. Use
 	the hdu argument to change this. The map must be stored as
@@ -2759,7 +2793,7 @@ def read_fits(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, w
 		with warnings.catch_warnings():
 			wcs = wcsutils.WCS(hdu.header).sub(2)
 	proxy = ndmap_proxy_fits(hdu, wcs, fname=fname, threshold=sel_threshold, verbose=verbose)
-	return read_helper(proxy, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, delayed=delayed)
+	return read_helper(proxy, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, delayed=delayed, recenter=recenter)
 
 def read_fits_header(fname, hdu=None, quick=True):
 	if hdu is None: hdu = 0
@@ -2834,7 +2868,7 @@ def write_hdf(fname, emap, address=None, extra={}):
 		for key, val in extra.items():
 			hfile[key] = val
 
-def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None):
+def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None, recenter=False):
 	"""Read an enmap from the specified hdf file. Two formats
 	are supported. The old enmap format, which simply used
 	a bounding box to specify the coordinates, and the new
@@ -2865,7 +2899,7 @@ def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wr
 		if wcs is None:
 			wcs = wcsutils.WCS(header).sub(2)
 		proxy = ndmap_proxy_hdf(data, wcs, fname=fname, threshold=sel_threshold)
-		return read_helper(proxy, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, delayed=delayed)
+		return read_helper(proxy, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, delayed=delayed, recenter=recenter)
 
 def read_hdf_geometry(fname, address=None):
 	"""Read an enmap wcs from the specified hdf file."""
@@ -2888,7 +2922,7 @@ def read_hdf_dtype(fname, address=None):
 			hfile = hfile[address]
 		return hfile["data"].dtype
 
-def read_npy(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None):
+def read_npy(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None, recenter=False):
 	"""Read an enmap from the specified npy file. Only minimal support.
 	No wcs information."""
 	return enmap(np.load(fname), wcs)
@@ -2901,12 +2935,12 @@ def fix_python3(s):
 		else: return s
 	except TypeError: return s
 
-def read_helper(data, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, delayed=False):
+def read_helper(data, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, delayed=False, recenter=False):
 	"""Helper function for map reading. Handles the slicing, sky-wrapping and capping, etc."""
 	if delayed: return data # Slicing not supported yet when we want to return a proxy object
 	if geometry is not None: data = extract(data, *geometry, wrap=wrap)
-	if box      is not None: data = submap(data, box, wrap=wrap)
-	if pixbox   is not None: data = extract_pixbox(data, pixbox, wrap=wrap)
+	if box      is not None: data = submap(data, box, wrap=wrap, recenter=recenter)
+	if pixbox   is not None: data = extract_pixbox(data, pixbox, wrap=wrap, recenter=recenter)
 	if sel      is not None: data = data[sel]
 	data = data[:] # Get rid of the wrapper if it still remains
 	data = data.copy()
@@ -2930,8 +2964,8 @@ class ndmap_proxy:
 	def __repr__(self): return "ndmap_proxy(fname=%s, shape=%s, wcs=%s, dtype=%s)" % (str(self.fname), str(self.shape), str(self.wcs), str(self.dtype))
 	def __getslice__(self, a, b=None, c=None): return self[slice(a,b,c)]
 	def __getitem__(self, sel): raise NotImplementedError("ndmap_proxy must be subclassed")
-	def submap(self, box, mode=None, wrap="auto"):
-		return submap(self, box, mode=mode, wrap=wrap)
+	def submap(self, box, mode=None, wrap="auto", recenter=False):
+		return submap(self, box, mode=mode, wrap=wrap, recenter=recenter)
 	def stamps(self, pos, shape, aslist=False): return stamps(self, pos, shape, aslist=aslist)
 
 # Copy over some methos from ndmap
