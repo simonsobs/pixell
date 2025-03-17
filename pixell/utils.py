@@ -154,6 +154,12 @@ def contains(array, vals):
 	inds[inds>=len(vals)] = 0
 	return vals[inds] == array
 
+def asfarray(arr, default_dtype=np.float64):
+	arr = np.asanyarray(arr)
+	if not np.issubdtype(arr.dtype, np.floating) and not np.issubdtype(arr.dtype, np.complexfloating):
+		arr = arr.astype(default_dtype)
+	return arr
+
 def common_vals(arrs):
 	"""Given a list of arrays, returns their intersection.
 	For example
@@ -397,7 +403,7 @@ def weighted_quantile(map, ivar, quantile, axis=-1):
 	and quantile has shape B, then the result will have shape B+A.
 	"""
 	map, ivar = np.broadcast_arrays(map, ivar)
-	quantile  = np.asfarray(quantile)
+	quantile  = asfarray(quantile)
 	axis      = axis % map.ndim
 	# Move axis to end
 	map       = np.moveaxis(map,  axis, -1)
@@ -411,8 +417,8 @@ def weighted_quantile(map, ivar, quantile, axis=-1):
 	quantile  = quantile.reshape(-1)             # [B]
 	# Sort
 	order     = np.argsort(map, -1)
-	map       = np.asfarray(np.take_along_axis(map,  order, -1))
-	ivar      = np.asfarray(np.take_along_axis(ivar, order, -1))
+	map       = asfarray(np.take_along_axis(map,  order, -1))
+	ivar      = asfarray(np.take_along_axis(ivar, order, -1))
 	# We don't have interp or searchsorted for this case, so do it ourselves.
 	# The 0.5 part corresponds to the C=0.5 case in the method
 	icum      = np.cumsum(ivar, axis=-1) # [A,n]
@@ -720,7 +726,7 @@ def grid(box, shape, endpoint=True, axis=0, flat=False):
 		grid([[0],[1]],[4]) => [[0,0000, 0.3333, 0.6667, 1.0000]]
 	"""
 	n    = np.asarray(shape)
-	box  = np.asfarray(box)
+	box  = asfarray(box)
 	off  = -1 if endpoint else 0
 	inds = np.rollaxis(np.indices(n),0,len(n)+1) # (d1,d2,d3,...,indim)
 	res  = inds * (box[1]-box[0])/(n+off) + box[0]
@@ -898,9 +904,9 @@ def range_sub(a,b, mapping=False):
 
 	Example: utils.range_sub([[0,100],[200,1000]], [[1,2],[3,4],[8,999]], mapping=True)
 	(array([[   0,    1],
-	        [   2,    3],
-	        [   4,    8],
-	        [ 999, 1000]]),
+			[   2,    3],
+			[   4,    8],
+			[ 999, 1000]]),
 	array([0, 0, 0, 1]),
 	array([ 0, -1,  1, -2,  2, -3,  3]))
 
@@ -913,9 +919,9 @@ def range_sub(a,b, mapping=False):
 
 	The same call without mapping: utils.range_sub([[0,100],[200,1000]], [[1,2],[3,4],[8,999]])
 	array([[   0,    1],
-	       [   2,    3],
-	       [   4,    8],
-	       [ 999, 1000]])
+		   [   2,    3],
+		   [   4,    8],
+		   [ 999, 1000]])
 	"""
 	def fixshape(a):
 		a = np.asarray(a)
@@ -1171,10 +1177,10 @@ def greedy_split(data, n=2, costfun=max, workfun=lambda w,x: x if w is None else
 	for each group score = scorefun([workval,workval,....]).
 
 	Example: greedy_split(range(10)) => [[9,6,5,2,1,0],[8,7,4,3]]
-	         greedy_split([1,10,100]) => [[2],[1,0]]
-	         greedy_split("012345",costfun=lambda x:sum([xi**2 for xi in x]),
-	          workfun=lambda w,x:0 if x is None else int(x)+w)
-	          => [[5,2,1,0],[4,3]]
+			 greedy_split([1,10,100]) => [[2],[1,0]]
+			 greedy_split("012345",costfun=lambda x:sum([xi**2 for xi in x]),
+			  workfun=lambda w,x:0 if x is None else int(x)+w)
+			  => [[5,2,1,0],[4,3]]
 	"""
 	# Sort data based on standalone costs
 	costs = []
@@ -2411,7 +2417,7 @@ def tsz_profile_los(x, xc=0.497, alpha=1.0, beta=-4.65, gamma=-0.3, zmax=1e5, np
 		_tsz_profile_los_cache[key] = (interpolate.interp1d(xp, yp, "cubic"), x1, x2, yp[0], yp[-1], (yp[-2]-yp[-1])/(xp[-2]-xp[-1]))
 	spline, xmin, xmax, vleft, vright, slope = _tsz_profile_los_cache[key]
 	# Split into 3 cases: x<xmin, x inside and x > xmax.
-	x     = np.asfarray(x)
+	x     = asfarray(x)
 	left  = x<xmin
 	right = x>xmax
 	inside= (~left) & (~right)
