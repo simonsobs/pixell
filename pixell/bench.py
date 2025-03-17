@@ -48,7 +48,7 @@ benchmark objects with bench.Bench(). Example:
 The overhead of bench.mark is around 3 µs.
 """
 
-_print = print
+_print   = print
 
 # Just wall times for now, but could be extended to measure
 # cpu time or leaked memory
@@ -58,17 +58,18 @@ class Bench:
 		self.t_tot  = bunch.Bunch()
 		self.n      = bunch.Bunch()
 	@contextmanager
-	def mark(self, name):
-		t1 = time.time()
+	def mark(self, name, tfun=None):
+		if tfun is None: tfun = time.time
+		t1 = tfun()
 		try:
 			yield
 		finally:
-			t2 = time.time()
+			t2 = tfun()
 			self.add(name, t2-t1)
 	@contextmanager
-	def show(self, name):
+	def show(self, name, tfun=None):
 		try:
-			with self.mark(name):
+			with self.mark(name, tfun=None):
 				yield
 		finally:
 			self.print(name)
