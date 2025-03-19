@@ -2065,6 +2065,7 @@ def crop_geometry(shape, wcs, box=None, pixbox=None, oshape=None):
 	#print("pixbox", pixbox)
 	#pixbox = utils.nint(pixbox)
 	#print("pixbox2", pixbox)
+	pixbox = np.asarray(pixbox)
 	# Handle 1d case
 	if pixbox.ndim == 1:
 		if oshape is None: raise ValueError("crop_geometry needs an explicit output shape when given a 1d box (i.e. a single point instead of a bounding box")

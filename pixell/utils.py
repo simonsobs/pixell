@@ -56,6 +56,9 @@ adeg = np.array(degree)
 amin = np.array(arcmin)
 asec = np.array(arcsec)
 
+class DataError(Exception): pass
+class DataMissing(DataError): pass
+
 def l2ang(l):
 	"""Compute the angular scale roughly corresponding to a given multipole. Based on
 	matching the number of alm degrees of freedom with map degrees of freedom."""
@@ -3119,6 +3122,10 @@ def encode_array_if_necessary(arr):
 		else:
 			return arr
 
+def chararray_slice(a, sel):
+	b = a.view((a.dtype.kind,1)).reshape(len(a),-1)[:,sel]
+	return b.reshape(-1).view((a.dtype.kind,b.shape[1]))
+
 ### These functions deal with the conversion between decimal and sexagesimal ###
 
 def to_sexa(x):
@@ -3585,6 +3592,7 @@ def zip2(*args):
 			yield tuple(res)
 
 def call_help(fun, *args, **kwargs):
+	print(str(fun))
 	for ai, arg in enumerate(args):
 		print("arg %d %s" % (ai, arg_help(arg)))
 	for name, arg in kwargs.items():
@@ -3592,9 +3600,9 @@ def call_help(fun, *args, **kwargs):
 	return fun(*args, **kwargs)
 
 def arg_help(arg):
-	if isinstance(arg, np.ndarray):
-		return "np.ndarray %s %s %s %s" % (str(arg.shape), str(arg.dtype), str(arg.strides), "contig" if arg.flags["C_CONTIGUOUS"] else "noncontig")
-	else:
+	try:
+		return "%s %s %s %s %s" % (type(arg).__name__, str(arg.shape), str(arg.dtype), str(arg.strides), "contig" if arg.flags["C_CONTIGUOUS"] else "noncontig")
+	except AttributeError as e:
 		return "value %s" % (str(arg))
 
 def dicedist(N,D):
