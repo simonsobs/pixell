@@ -59,7 +59,6 @@ test = [
     'pytest-cov>=2.6',
     'coveralls>=1.5',
     'pytest>=4.6',
-    'healpy>=1.13',
 ]
 
 [tool.pytest.ini_options]
