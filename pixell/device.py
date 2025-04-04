@@ -10,7 +10,7 @@ class Device:
 	def ptr(self, arr): return getptr(arr)
 	def synchronize(self): raise NotImplementedError
 	def garbage_collect(self): raise NotImplementedError
-	def memuse(self): raise NotImplementedError
+	def memuse(self, type="total"): raise NotImplementedError
 	def copy(self, afrom, ato): raise NotImplementedError
 	def time(self):
 		self.synchronize()
@@ -30,9 +30,15 @@ class DeviceCpu(Device):
 	def garbage_collect(self):
 		import gc
 		gc.collect()
-	def memuse(self):
-		from . import memory
-		return memory.current()
+	def memuse(self, type="total"):
+		if type == "total":
+			from . import memory
+			return memory.current()
+		elif type == "pools":
+			return self.pools.totsize()
+		elif type == "np":
+			return 0
+		else: raise ValueError("Unknown memuse type: '%s'" % str(type))
 	def copy(self, afrom, ato):
 		"""Copy (cpu/dev) → (cpu/dev)"""
 		ato[:] = afrom
@@ -55,13 +61,19 @@ class DeviceGpu(Device):
 		cupy.cuda.runtime.deviceSynchronize()
 	def garbage_collect(self):
 		self.heap.free_all_blocks()
-	def memuse(self):
-		import nvidia_smi
-		if self.nvhandle is None:
-			nvidia_smi.nvmlInit()
-			self.nvhandle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
-		info   = nvidia_smi.nvmlDeviceGetMemoryInfo(self.nvhandle)
-		return info.used
+	def memuse(self, type="total"):
+		if type == "total":
+			import nvidia_smi
+			if self.nvhandle is None:
+				nvidia_smi.nvmlInit()
+				self.nvhandle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
+			info   = nvidia_smi.nvmlDeviceGetMemoryInfo(self.nvhandle)
+			return info.used
+		elif type == "pools":
+			return self.pools.totsize()
+		elif type == "np":
+			return self.heap.used_bytes()
+		else: raise ValueError("Unknown memuse type: '%s'" % str(type))
 	def copy(self, afrom, ato):
 		"""Copy (cpu/dev) → (cpu/dev)"""
 		cuda_memcpy(afrom,ato)
@@ -130,6 +142,7 @@ class Mempool:
 			buf       = self.arenas[-1][self.pos:self.pos+n]
 			self.pos += effsize
 		return buf
+	def totsize(self): return sum([arena.size for arena in self.arenas])
 	def free(self):
 		self.arenas    = []
 		self.pos       = 0
@@ -223,6 +236,8 @@ class ArrayMultipool:
 				self.pools[name] = self.factory(name=name)
 			pools.append(self.pools[name])
 		return pools
+	def size(self): return sum([pool.size() for name, pool in self.pools.items()])
+	def totsize(self): return sum([pool.totsize() for name, pool in self.pools.items()])
 	def free(self):
 		for name in self.pools:
 			self.pools[name].free()
