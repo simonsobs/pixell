@@ -85,48 +85,18 @@ class DeviceGpu(Device):
 # at this low level. If I get rid of AllocAligned, then
 # all the code is CPU/GPU-specific
 
-# Low-level allocators need to return something the higher-
-# level code can work with. Agnostic code should be able to
-# query its size, and derive a new sub-allocation at some offset.
-#
-# How about a class AllocationCpu and AllocationGpu,
-# which provide
-#  .raw, .off, .size and getitem
-
-class AllocationCpu:
-	def __init__(self, bytearr):
-		self.raw  = bytearr
-	@property
-	def size(self): return self.raw.size
-	@property
-	def ptr(self): return self.raw.ctypes.data
-	def __getitem__(self, sel): return AllocationCpu(self.raw[sel])
-
-class AllocationGpu:
-	def __init__(self, memptr, size=None):
-		self.raw  = memptr
-		self.size = size or memptr.mem.size
-	@property
-	def ptr(self): return self.raw.ptr
-	def __getitem__(self, sel):
-		import cupy
-		assert isinstance(sel, slice)
-		start = sel.start or 0
-		stop  = sel.stop  or self.size
-		off   = self.raw.ptr-self.raw.mem.ptr
-		raw   = cupy.cuda.MemoryPointer(self.raw.mem, off+start)
-		return AllocationGpu(raw, size=stop-start)
-
 class AllocCpu:
-	def alloc(self, n): return AllocationCpu(np.empty(n, dtype=np.uint8))
+	def alloc(self, n): return np.empty(n, dtype=np.uint8)
 
 class AllocGpu:
 	def __init__(self):
 		import cupy
 		self.allocator = cupy.cuda.get_allocator()
 	def alloc(self, n):
-		n = int(n)
-		return AllocationGpu(self.allocator(n), size=n)
+		import cupy
+		n      = int(n)
+		memptr = self.allocator(n)
+		return cupy.ndarray(n, np.uint8, memptr=self.allocator(n))
 
 class AllocAligned:
 	"""Wraps an allocator to make it aligned. Should work for both cpu and gpu.
@@ -137,9 +107,9 @@ class AllocAligned:
 		self.align     = align
 	def alloc(self, n):
 		n   = int(n)
-		alc = self.allocator.alloc(n+self.align-1)
-		off = (-alc.ptr)%self.align
-		return alc[off:off+n]
+		buf = self.allocator.alloc(n+self.align-1)
+		off = (-getptr(buf))%self.align
+		return buf[off:off+n]
 
 class Mempool:
 	def __init__(self, aligned_alloc, name="[unnamed]"):
@@ -157,7 +127,7 @@ class Mempool:
 			self.size += effsize
 		else:
 			# We have room. Parsel out some more
-			buf       = self.arenas[-1][0:n]
+			buf       = self.arenas[-1][self.pos:self.pos+n]
 			self.pos += effsize
 		return buf
 	def free(self):
@@ -175,6 +145,7 @@ class Mempool:
 			# Free up our old arenas, and make our hopefully final one
 			self.arenas = [self.allocator.alloc(self.size)]
 		return self
+
 	def __repr__(self): return "%s(name='%s', size=%d, free=%d, align=%d)" % (self.__class__.__name__, self.name, self.size, self.size-self.pos, self.allocator.align)
 
 class ArrayPoolCpu(Mempool):
@@ -184,8 +155,7 @@ class ArrayPoolCpu(Mempool):
 		oarr[:] = arr
 		return oarr
 	def empty(self, shape, dtype=np.float32):
-		alc = self.alloc(np.prod(shape)*np.dtype(dtype).itemsize)
-		return alc.raw.view(dtype).reshape(shape)
+		return self.alloc(np.prod(shape)*np.dtype(dtype).itemsize).view(dtype).reshape(shape)
 	def full(self, shape, val, dtype=np.float32):
 		arr = self.empty(shape, dtype=dtype)
 		arr[:] = val
@@ -196,7 +166,7 @@ class ArrayPoolCpu(Mempool):
 		return self.full(shape, 1, dtype=dtype)
 	# No allocator support in numpy, so undefined what this
 	# should return. Just return a numpy array of bytes for now
-	def alloc_raw(self, n): return self.alloc(n).raw
+	def alloc_raw(self, n): return self.alloc(n)
 	@contextlib.contextmanager
 	def as_allocator(self):
 		# No-op
@@ -213,9 +183,7 @@ class ArrayPoolGpu(Mempool):
 		cuda_memcpy(arr, oarr)
 		return oarr
 	def empty(self, shape, dtype=np.float32):
-		import cupy
-		alc = self.alloc(np.prod(shape)*np.dtype(dtype).itemsize)
-		return cupy.ndarray(shape, dtype, memptr=alc.raw)
+		return self.alloc(np.prod(shape)*np.dtype(dtype).itemsize).view(dtype).reshape(shape)
 	def full(self, shape, val, dtype=np.float32):
 		arr = self.empty(shape, dtype=dtype)
 		arr[:] = val
@@ -224,12 +192,21 @@ class ArrayPoolGpu(Mempool):
 		return self.full(shape, 0, dtype=dtype)
 	def ones(self, shape, dtype=np.float32):
 		return self.full(shape, 1, dtype=dtype)
-	def alloc_raw(self, n): return self.alloc(n).raw
+	def alloc_raw(self, n): return self.alloc(n).data
 	@contextlib.contextmanager
 	def as_allocator(self):
 		import cupy
 		old_allocator = cupy.cuda.get_allocator()
 		try:
+			# This causes a crash. I think it happens because
+			# reset() can end up freeing the memory we handed
+			# out here. In the old design, things were done a bit
+			# differently. The memory needed was pre-allocated
+			# and parseled out. However, if a later to was bigger than
+			# an earlier, then memory would still be reallocated, so I
+			# don't see why that worked.
+			# TODO: Make a small test case that demonstrates the problem
+			# without all this abstraction.
 			cupy.cuda.set_allocator(self.alloc_raw)
 			yield
 		finally:
