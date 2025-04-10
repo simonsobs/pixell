@@ -131,6 +131,8 @@ class Mempool:
 	def alloc(self, n):
 		n       = int(n)
 		effsize = round_up(n, self.allocator.align)
+		# Check if we have room to hand out bytes from our
+		# current allocation.
 		if len(self.arenas) == 0 or self.arenas[-1].size < self.pos + n:
 			# We don't have room. Make more
 			self.arenas.append(self.allocator.alloc(n))
@@ -141,25 +143,35 @@ class Mempool:
 			# We have room. Parsel out some more
 			buf       = self.arenas[-1][self.pos:self.pos+n]
 			self.pos += effsize
+		self.capacity = max(self.capacity, self.size)
 		return buf
 	def totsize(self): return sum([arena.size for arena in self.arenas])
 	def free(self):
 		self.arenas    = []
-		self.pos       = 0
+		# capacity is the logical size of the buffer, the size of the single
+		# arena we will consolidate the others to. This is not the same as
+		# the total size of all the arenas
+		self.capacity  = 0
+		# size is how much space we have logically allocated (so ignoring overhead
+		# from extra arenas before we reach steady state)
 		self.size      = 0
+		# pos is our allocation offset in the current arena, which helps us
+		# keep track of how much free space there there
+		self.pos       = 0
 	def reset(self):
 		"""Invalidate the memory we point to, potentially cleaning it up to a single
 		fixed area we can allocate from. New allocations will reuse this memory
 		as long as they don't exceed its capacity. If the capacity is exceeded, then
 		it will start requesting new memory again."""
 		self.pos = 0
-		if   self.size == 0: self.arenas = []
-		elif len(self.arenas) != 1 or self.arenas[0].size != self.size:
+		self.size = 0
+		if   self.capacity == 0: self.arenas = []
+		elif len(self.arenas) != 1 or self.arenas[0].size != self.capacity:
 			# Free up our old arenas, and make our hopefully final one
-			self.arenas = [self.allocator.alloc(self.size)]
+			self.arenas = [self.allocator.alloc(self.capacity)]
 		return self
 
-	def __repr__(self): return "%s(name='%s', size=%d, free=%d, align=%d)" % (self.__class__.__name__, self.name, self.size, self.size-self.pos, self.allocator.align)
+	def __repr__(self): return "%s(name='%s', capacity=%d, free=%d, align=%d)" % (self.__class__.__name__, self.name, self.capacity, (self.arenas[-1].size-self.pos if len(self.arenas)>0 else 0), self.allocator.align)
 
 class ArrayPoolCpu(Mempool):
 	def array(self, arr):
@@ -167,21 +179,23 @@ class ArrayPoolCpu(Mempool):
 		oarr = self.empty(arr.shape, dtype=arr.dtype)
 		oarr[:] = arr
 		return oarr
-	def empty(self, shape, dtype=np.float32):
+	def empty(self, shape, dtype=np.float32, reset=True):
+		if reset: self.reset()
 		return self.alloc(np.prod(shape)*np.dtype(dtype).itemsize).view(dtype).reshape(shape)
-	def full(self, shape, val, dtype=np.float32):
-		arr = self.empty(shape, dtype=dtype)
+	def full(self, shape, val, dtype=np.float32, reset=True):
+		arr = self.empty(shape, dtype=dtype, reset=reset)
 		arr[:] = val
 		return arr
-	def zeros(self, shape, dtype=np.float32):
-		return self.full(shape, 0, dtype=dtype)
-	def ones(self, shape, dtype=np.float32):
-		return self.full(shape, 1, dtype=dtype)
+	def zeros(self, shape, dtype=np.float32, reset=True):
+		return self.full(shape, 0, dtype=dtype, reset=reset)
+	def ones(self, shape, dtype=np.float32, reset=True):
+		return self.full(shape, 1, dtype=dtype, reset=reset)
 	# No allocator support in numpy, so undefined what this
 	# should return. Just return a numpy array of bytes for now
 	def alloc_raw(self, n): return self.alloc(n)
 	@contextlib.contextmanager
-	def as_allocator(self):
+	def as_allocator(self, reset=True):
+		if reset: self.reset()
 		# No-op
 		try: yield
 		finally: pass
@@ -195,20 +209,22 @@ class ArrayPoolGpu(Mempool):
 		oarr = self.empty(arr.shape, dtype=arr.dtype)
 		cuda_memcpy(arr, oarr)
 		return oarr
-	def empty(self, shape, dtype=np.float32):
+	def empty(self, shape, dtype=np.float32, reset=True):
+		if reset: self.reset()
 		return self.alloc(np.prod(shape)*np.dtype(dtype).itemsize).view(dtype).reshape(shape)
-	def full(self, shape, val, dtype=np.float32):
-		arr = self.empty(shape, dtype=dtype)
+	def full(self, shape, val, dtype=np.float32, reset=True):
+		arr = self.empty(shape, dtype=dtype, reset=reset)
 		arr[:] = val
 		return arr
-	def zeros(self, shape, dtype=np.float32):
-		return self.full(shape, 0, dtype=dtype)
-	def ones(self, shape, dtype=np.float32):
-		return self.full(shape, 1, dtype=dtype)
+	def zeros(self, shape, dtype=np.float32, reset=True):
+		return self.full(shape, 0, dtype=dtype, reset=reset)
+	def ones(self, shape, dtype=np.float32, reset=True):
+		return self.full(shape, 1, dtype=dtype, reset=reset)
 	def alloc_raw(self, n): return self.alloc(n).data
 	@contextlib.contextmanager
-	def as_allocator(self):
+	def as_allocator(self, reset=True):
 		import cupy
+		if reset: self.reset()
 		old_allocator = cupy.cuda.get_allocator()
 		try:
 			# This causes a crash. I think it happens because
@@ -244,7 +260,13 @@ class ArrayMultipool:
 	def reset(self):
 		for name in self.pools:
 			self.pools[name].reset()
+	def __getitem__(self, name):
+		"""Returns the memory pool with the given name, creating it if it doesn't exist"""
+		if name not in self.pools:
+			self.pools[name] = self.factory(name=name)
+		return self.pools[name]
 	def __getattr__(self, name):
+		"""Returns the memory pool with the given name, if it exists"""
 		return self.pools[name]
 	def __delattr__(self, name):
 		del self.pools[name]
