@@ -8,8 +8,8 @@ class SQL:
 	def __init__(self, fname):
 		self.fname= fname
 		self.conn = sqlite3.connect(fname)
-	def execute(self, command, args=[]):
-		return self.conn.execute(command, args)
+	def execute(self, command, parameters=[]):
+		return self.conn.execute(command, parameters)
 	def close(self):
 		self.conn.close()
 	def tables(self): return tables(self)
