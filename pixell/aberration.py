@@ -116,7 +116,7 @@ class Aberrator:
 		nthread = int(utils.fallback(utils.getenv("OMP_NUM_THREADS",nthread),0))
 		# 1. Calculate the aberration field. These are tiny
 		alm_dpos = calc_boost_field(-beta, dir, nthread=nthread)
-		# 2. Evaluate these on our target geometry. Hardcoded float64 because of get_deflected_angles
+		# 2. Evaluate these on our target geometry.
 		deflect = enmap.zeros(alm_dpos.shape[:-1]+shape[-2:], wcs, coord_dtype)
 		curvedsky.alm2map(alm_dpos.astype(coord_ctype, copy=False), deflect, spin=1, nthread=nthread)
 		# 3. Calculate the offset angles.

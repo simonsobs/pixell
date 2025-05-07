@@ -241,6 +241,9 @@ float * measure_amax(int nobj, int ncomp, float ** amps) {
 	return amaxs;
 }
 
+// prof_info is conceptually a 2d array with the one-past-the-end
+// index of the relevant part of the profile for exponentially spaced
+// value cutoffs.
 int * build_prof_info(int nprof, int * prof_ns, float ** prof_vs) {
 	int * prof_info = calloc(nprof*prof_levels, sizeof(int));
 	#pragma omp parallel for
@@ -255,8 +258,11 @@ int * build_prof_info(int nprof, int * prof_ns, float ** prof_vs) {
 				vmax = v;
 			}
 		}
-		// This corresponds to the 0th exponent
-		prof_info[i*prof_levels+0] = imax;
+		// This corresponds to cases where the cutoff is bigger than
+		// any value the beam can reach. Should really set it to 0
+		// in this case, but easier for measure_rmax if se set it to
+		// 1
+		prof_info[i*prof_levels+0] = 1;
 		// The last level just goes all the way out to the end
 		prof_info[i*prof_levels+prof_levels-1] = prof_ns[i];
 		// Populate the others by inwards from the edge
@@ -295,7 +301,7 @@ float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, flo
 		// non-negligible point. Assuming that profiles tend to be repeated, I could precompute
 		// the inds where profiles reach a set of predefined multiples of their peak height. Then
 		// this loop could use that to reduce the loop range for the individual objects.
-		int i = prof_info ? prof_info_lookup(prof_info, pid, vrel) : n-1;
+		int i = prof_info ? prof_info_lookup(prof_info, pid, vrel)-1 : n-1;
 		for(; i > 0 && fabsf(vs[i]) < vrel; i--);
 		rmaxs[oi] = rs[i];
 		if(rmax > 0) rmaxs[oi] = fminf(rmaxs[oi], rmax);

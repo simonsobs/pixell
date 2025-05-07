@@ -132,6 +132,58 @@ def kappa_to_phi(kappa_alm,kappa_ainfo=None):
 
 
 def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, dtype=np.float64, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
+	"""
+	Lenses a CMB map given the lensing potential harmonic transform and the CMB 
+	harmonic transform.  By default, T,E,B spherical harmonic coefficients are
+	accepted and the returned maps are T, Q, U.
+	Parameters:
+	-----------
+	shape : tuple
+		Shape of the output map.
+	wcs : WCS object
+		World Coordinate System object describing the map projection.
+	phi_alm : array-like
+		Spherical harmonic coefficients of the lensing potential.
+	cmb_alm : array-like
+		Spherical harmonic coefficients of the CMB. If (3,nelem) shaped, the
+		coeffients are assumed to be in the form of [T,E,B] in that order.
+	phi_ainfo : alm_info, optional
+		alm_info object containing information about the alm layout. Default: standard triangular layout.
+	maplmax : int, optional
+		Maximum multipole to use in the map.
+	dtype : data-type, optional
+		Data type of the output maps. Default is np.float64.
+	spin : list, optional
+		List of spins. These describe how to handle the [ncomp] axis in cmb_alm.
+	 	0: scalar transform. Consumes one element in the component axis
+	 	not 0: spin transform. Consumes two elements from the component axis.
+	 	For example, if you have a TEB alm [3,nelem] and want to transform it
+	 	to a TQU map [3,ny,nx], you would use spin=[0,2] to perform a scalar
+	 	transform for the T component and a spin-2 transform for the Q,U
+	 	components. Another example. If you had an alm [5,nelem] and map
+	 	[5,ny,nx] and the first element was scalar, the next pair spin-1
+	 	and the next pair spin-2, you woudl use spin=[0,1,2]. default:[0,2]
+	output : str, optional
+		String which specifies which maps to output, e.g. "lu". Default is "l".
+		"l" - lensed CMB map
+		"u" - unlensed CMB map
+		"p" - lensing potential map
+		"k" - convergence map
+		"a" - deflection angle maps
+	geodesic : bool, optional
+		Properly parallel transport on the sphere (default). If False, a much faster
+		approximation is used, which is still very accurate unless one is
+		close to the poles.
+	verbose : bool, optional
+		If True, prints progress information. Default is False.
+	delta_theta : float, optional
+		Step size for the theta coordinate. 
+	Returns:
+	--------
+	tuple
+		A tuple containing the requested output maps in the order specified by the `output` parameter.
+	"""
+
 	from . import curvedsky
 	# Restrict to target number of components
 	oshape  = shape[-3:]

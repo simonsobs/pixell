@@ -337,13 +337,13 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, adjoint=False,
 	# Loop over pre-dimensions
 	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
-			ducc0.sht.experimental.synthesis(alm=alm_full[I], map=map_full[I], mode="DERIV1", spin=1, **kwargs)
+			func(alm=alm_full[I], map=map_full[I], mode="DERIV1", spin=1, **kwargs)
 			# Flip sign of theta derivative to get dec derivative
 			map_full[I+(0,)] *= -1
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full[I].shape[-2]):
 				Ij = I+(slice(j1,j2),)
-				ducc0.sht.experimental.synthesis(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
+				func(alm=alm_full[Ij], map=map_full[Ij], spin=s, **kwargs)
 	if adjoint: return alm
 	else:       return healmap
 
@@ -425,6 +425,10 @@ class alm_info:
 		if nalm is not None:
 			assert self.nelem == nalm, "lmax must be explicitly specified when lmax != mmax"
 		self.mstart= mstart.astype(np.uint64, copy=False)
+	@property
+	def nl(self): return self.lmax+1
+	@property
+	def nm(self): return self.mmax+1
 	def lm2ind(self, l, m):
 		return (self.mstart[m].astype(int, copy=False)+l*self.stride).astype(int, copy=False)
 	def get_map(self):
@@ -1238,7 +1242,7 @@ def analyse_geometry(shape, wcs, tol=1e-6):
 	# TODO: Pseudo-cylindrical projections can be handled with standard ducc synthesis,
 	# so ideally our check would be less stringent than this. Supporinting them requires
 	# more work, so will just do it with the general interface for now.
-	separable = wcsutils.is_cyl(wcs)
+	separable = wcsutils.is_separable(wcs)
 	divides   = utils.hasoff(360/np.abs(wcs.wcs.cdelt[0]), 0, tol=tol)
 	if not separable or not divides:
 		# Not cylindrical or ra does not evenly divide the sky

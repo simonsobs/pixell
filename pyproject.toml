@@ -4,7 +4,7 @@ requires = ['meson-python', 'numpy', 'cython', 'versioneer[toml]', 'build']
 
 [project]
 name = 'pixell'
-version = "0.26.2"
+version = "0.28.4"
 description = "A rectangular pixel map manipulation and harmonic analysis library derived from Sigurd Naess' enlib."
 readme = 'README.rst'
 requires-python = '>=3.9'
@@ -16,7 +16,7 @@ maintainers = [
     {name = "Mathew Madhavacheril", email = "mathewsyriac@gmail.com"}
 ]
 dependencies = [
-    'numpy>=1.20.0',
+    'numpy',
     'astropy>=2.0',
     'setuptools>=39',
     'h5py>=2.7',
@@ -30,7 +30,7 @@ dependencies = [
     'pytest-cov>=2.6',
     'coveralls>=1.5',
     'pytest>=4.6',
-    'ducc0>=0.34.0',
+    'ducc0>=0.36.0',
     'numba>=0.54.0'
 ]
 
@@ -49,7 +49,7 @@ test = [
     'coverage>=4.5',
     'Sphinx>=1.7',
     'twine>=1.10',
-    'numpy>=1.20',
+    'numpy',
     'astropy>=2.0',
     'setuptools>=39.2',
     'h5py>=2.7',
@@ -71,7 +71,7 @@ testpaths = [
 [tool.cibuildwheel]
 test-requires = "pytest"
 test-command = "pytest {project}/tests"
-build = "cp39-* cp310-* cp311-* cp312-*"
+build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
 skip = "*i686* *musllinux*"
 
 [tool.coverage.run]

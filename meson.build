@@ -45,6 +45,8 @@ incdir_f2py = run_command(
 run_command('make', '-C', 'fortran', check: true)
 
 fortran_include = include_directories(incdir_numpy, incdir_f2py)
+add_project_arguments('-Wno-tabs', language : 'fortran')
+add_project_arguments('-Wno-conversion', language : 'fortran')
 
 fortran_sources = {
     'fortran/interpol_32.f90': '_interpol_32',
@@ -87,7 +89,7 @@ helper_sources = {
 linkables = []
 
 foreach source_name, module_name : helper_sources
-    linkables += shared_library(
+    linkables += static_library(
         module_name,
         source_name,
         install: true,
