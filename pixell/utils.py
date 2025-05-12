@@ -307,6 +307,12 @@ def repeat_filler(d, n):
 	dtot = np.concatenate([d]*nmul)
 	return dtot[:n]
 
+def repeat(arr, n, axis=-1):
+	"""Repeat the array n times along the given axis.
+	Example: repeat([0,1,2],2) → [0,1,2,0,1,2]"""
+	axis = axis % arr.ndim
+	return np.tile(arr, (1,)*axis + (n,) + (1,)*(arr.ndim-axis-1))
+
 def deslope(d, w=1, inplace=False, axis=-1, avg=np.mean):
 	"""Remove a slope and mean from d, matching up the beginning
 	and end of d. The w parameter controls the number of samples
