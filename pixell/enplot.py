@@ -982,7 +982,7 @@ def show(img, title=None, method="auto"):
 		raise ImportError("Could not find any working display backends for enplot.show")
 
 def show_ipython(img, title=None):
-	from IPython.core.display import display
+	from IPython.display import display
 	for img_, title_ in _show_helper(img, title):
 		display(img_)
 
