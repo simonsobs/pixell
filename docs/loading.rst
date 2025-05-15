@@ -75,11 +75,52 @@ assocating the correct geometry with your cut-out:
 
     from pixell import enmap
     act_dr6 = enmap.read_map("act_dr6.02_std_AA_day_pa4_f150_4way_coadd_map.fits")
+    cut_out = act_dr6[0, 32:46, 93:99]
 
-    print(act_dr6)
+Using geometric functions on the ``cut_out`` (like :py:meth:`pixell.enmap.ndmap.pix2sky`)
+will provide the correct sky positions relative to the indexing in that cut-out.
 
-    cut_out = act_dr6[32:46, 93:99]
+It's important here to understand the conventions that pixell uses for array ordering,
+with there being much more detail in the :doc:`documentation on geometry <./geometry>`.
+Generally, you can expect pixell's array indexing to occur in the following pattern:
+``[ARRAY, Dec, RA]``, with ``ARRAY`` corresponding to e.g. the stokes parameter, and
+``Dec`` and ``RA`` corresponding to pixel indicies in those axes on the sky.
 
-    print(cut_out)
+It's not always as easy as extracting a specific pixel value on the sky, though. Usually,
+you will know some *sky position* you wish to extract, and you'll need to convert
+that to pixel space. Thankfully, pixell contains utilities to do this for you:
+:py:func:`pixell.enmap.submap` and :py:meth:`pixell.enmap.ndmap.submap`. You will need
+to specify a box from a minimum dec and ra value, to a pair of maximum values - in radians.
 
-However, it's not always that easy!
+.. code-block:: python
+
+    from pixell import enmap
+    act_dr6 = enmap.read_map("act_dr6.02_std_AA_day_pa4_f150_4way_coadd_map.fits")
+    cut_out = act_dr6.submap(
+        [[-0.43, -1.02], [0.55, -0.93]]
+    )
+
+Reprojecting Maps
+-----------------
+
+Pixell is designed to work with maps using the CAR projection, i.e. such that each pixel
+is a square with a uniform side length across the sky (again, see :doc:`geometry <./geomtery>`
+for more details). However, it is common to have maps in other pixelisations, like healpix -
+or need to retrieve them from healpix. Pixell provides utilities for this in
+:py:mod:`pixell.reproject`. Of particular interest will be
+:py:func:`pixell.reproject.map2healpix` and :py:func:`pixell.reproject.healpix2map`.
+
+To convert a pixell map to healpix:
+
+.. code-block:: python
+
+    from pixell import enmap
+    from pixell.reproject import map2healpix
+
+    act_dr6 = enmap.read_map("act_dr6.02_std_AA_day_pa4_f150_4way_coadd_map.fits")
+    healpix = map2healpix(act_dr6, nsize=8192)
+
+where ``healpix`` is now an ``nsize=8192`` healpix map. Doing such reprojections is
+by its very nature lossy, and should be treated with caution; reprojecting to healpix,
+performing an operation, and coming back to CAR (via :py:func:`pixell.reproject.healpix2map`)
+will introduce reprojection artifacts and may impact the results of your analysis.
