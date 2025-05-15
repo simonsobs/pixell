@@ -17,6 +17,7 @@ Welcome to pixell's documentation!
    wavelet
    simulation
    utilities
+   reference
 
 Indices and tables
 ==================
