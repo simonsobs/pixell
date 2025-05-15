@@ -104,7 +104,7 @@ Reprojecting Maps
 -----------------
 
 Pixell is designed to work with maps using the CAR projection, i.e. such that each pixel
-is a square with a uniform side length across the sky (again, see :doc:`geometry <./geomtery>`
+is a square with a uniform side length across the sky (again, see :doc:`geometry <./geometry>`
 for more details). However, it is common to have maps in other pixelisations, like healpix -
 or need to retrieve them from healpix. Pixell provides utilities for this in
 :py:mod:`pixell.reproject`. Of particular interest will be
