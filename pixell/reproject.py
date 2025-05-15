@@ -427,22 +427,22 @@ def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
 	raise NotImplementedError("This function has been removed.")
 	
 def healpix_from_enmap_interp(imap, **kwargs):
-	raise RuntimeError("This function has been removed. Use map2healpix(...method='spline').")
+	raise RuntimeError("This function has been removed. Use reproject.map2healpix(...method='spline').")
 
 
 def healpix_from_enmap(imap, lmax, nside):
-	raise RuntimeError("This function has been removed. Use map2healpix(...method='harm').")
+	raise RuntimeError("This function has been removed. Use reproject.map2healpix(...method='harm').")
 
 
 
 def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
 					   rot="gal,equ", first=0, is_alm=False, return_alm=False, f_ell=None):
-	raise RuntimeError("This function has been removed. Use healpix2map(...method='harm').")
+	raise RuntimeError("This function has been removed. Use reproject.healpix2map(...method='harm').")
 
 
 def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
 							  interpolate=False):
-	raise RuntimeError("This function has been removed. Use healpix2map(...method='spline').")
+	raise RuntimeError("This function has been removed. Use reproject.healpix2map(...method='spline').")
 
 
 

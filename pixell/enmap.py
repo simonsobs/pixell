@@ -2557,7 +2557,7 @@ def stamps(map, pos, shape, aslist=False):
 	return res
 
 def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000):
-	raise RuntimeError("This function has been removed. Use map2healpix().")
+	raise RuntimeError("This function has been removed. Use reproject.map2healpix().")
 
 def to_flipper(imap, omap=None, unpack=True):
 	"""Convert the enmap "imap" into a flipper map with the same geometry. If
