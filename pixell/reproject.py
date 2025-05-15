@@ -424,402 +424,64 @@ def restrict_nside(nside, mode="mul32", round="ceil"):
 def centered_map(imap, res, box=None, pixbox=None, proj='car', rpix=None,
 				 width=None, height=None, width_multiplier=1.,
 				 rotate_pol=True, **kwargs):
-	"""Reproject a map such that its central pixel is at the origin of a
-	given projection system (default: CAR).
-
-	imap -- (Ny,Nx) enmap array from which to extract stamps
-	TODO: support leading dimensions
-	res -- width of pixel in radians
-	box -- optional bounding box of submap in radians
-	pixbox -- optional bounding box of submap in pixel numbers
-	proj -- coordinate system for target map; default is 'car';
-	can also specify 'cea' or 'gnomonic'
-	rpix -- optional pre-calculated pixel positions from get_rotated_pixels()
-	"""
-	warnings.warn("reproject.centered_map is deprecated. Use reproject.thumbnails instead")
-	if imap.ndim==2: imap = imap[None,:]
-	ncomp = imap.shape[0]
-	proj = proj.strip().lower()
-	assert proj in ['car', 'cea']
-	# cut out a stamp assuming CAR ; TODO: generalize?
-	if box is not None:
-		pixbox = enmap.skybox2pixbox(imap.shape, imap.wcs, box)
-	if pixbox is not None:
-		omap = enmap.extract_pixbox(imap, pixbox)
-	else:
-		omap = imap
-	sshape, swcs = omap.shape, omap.wcs
-	# central pixel of source geometry
-	dec, ra = enmap.pix2sky(sshape, swcs, (sshape[0] / 2., sshape[1] / 2.))
-	dims = enmap.extent(sshape, swcs)
-	dheight, dwidth = dims
-	if height is None:
-		height = dheight
-	if width is None:
-		width = dwidth
-	width *= width_multiplier
-	tshape, twcs = rect_geometry(
-		width=width, res=res, proj=proj, height=height)
-	if rpix is None:
-		rpix = get_rotated_pixels(sshape, swcs, tshape, twcs, inverse=False,
-								  pos_target=None, center_target=(0., 0.),
-								  center_source=(dec, ra))
-	rot = enmap.enmap(rotate_map(omap, pix_target=rpix[:2], **kwargs), twcs)
-	if ncomp==3 and rotate_pol:
-		rot[1:3] = enmap.rotate_pol(rot[1:3], -rpix[2]) # for polarization rotation if enough components
-	return rot, rpix
+	raise NotImplementedError("This function has been removed.")
 	
 def healpix_from_enmap_interp(imap, **kwargs):
-	return imap.to_healpix(**kwargs)
+	raise RuntimeError("This function has been removed. Use map2healpix(...method='spline').")
 
 
 def healpix_from_enmap(imap, lmax, nside):
-	"""Convert an ndmap to a healpix map such that the healpix map is
-	band-limited up to lmax. Only supports single component (intensity)
-	currently. The resulting map will be band-limited. Bright sources and 
-	sharp edges could cause ringing. Use healpix_from_enmap_interp if you 
-	are worried about this (e.g. for a mask), but that routine will not ensure 
-	power to be correct to some lmax.
+	raise RuntimeError("This function has been removed. Use map2healpix(...method='harm').")
 
-
-	Args:
-		imap: ndmap of shape (Ny,Nx)
-		lmax: integer specifying maximum multipole of map
-		nside: integer specifying nside of healpix map
-
-	Returns:
-		retmap: (Npix,) healpix map as array
-
-	"""
-	from pixell import curvedsky
-	import healpy as hp
-	alm = curvedsky.map2alm(imap, lmax=lmax, spin=0)
-	if alm.ndim > 1:
-		assert alm.shape[0] == 1
-		alm = alm[0]
-	retmap = hp.alm2map(alm.astype(np.complex128), nside, lmax=lmax)
-	return retmap
 
 
 def enmap_from_healpix(hp_map, shape, wcs, ncomp=1, unit=1, lmax=0,
 					   rot="gal,equ", first=0, is_alm=False, return_alm=False, f_ell=None):
-	"""Convert a healpix map to an ndmap using harmonic space reprojection.
-	The resulting map will be band-limited. Bright sources and sharp edges
-	could cause ringing. Use enmap_from_healpix_interp if you are worried
-	about this (e.g. for a mask), but that routine will not ensure power to 
-	be correct to some lmax.
-
-	Args:
-		hp_map: an (Npix,) or (ncomp,Npix,) healpix map, or alms,  or a string containing
-		the path to a healpix map on disk
-		shape: the shape of the ndmap geometry to project to
-		wcs: the wcs object of the ndmap geometry to project to
-		ncomp: the number of components in the healpix map (either 1 or 3)
-		unit: a unit conversion factor to divide the map by
-		lmax: the maximum multipole to include in the reprojection
-		rot: comma separated string that specify a coordinate rotation to
-		perform. Use None to perform no rotation. e.g. default "gal,equ"
-		to rotate a Planck map in galactic coordinates to the equatorial
-		coordinates used in ndmaps.
-		first: if a filename is provided for the healpix map, this specifies
-		the index of the first FITS field
-		is_alm: if True, interprets hp_map as alms
-		return_alm: if True, returns alms also
-		f_ell: optionally apply a transfer function f_ell(ell) -- this should be 
-		a function of a single variable ell. e.g., lambda x: exp(-x**2/2/sigma**2)
-
-	Returns:
-		res: the reprojected ndmap or the a tuple (ndmap,alms) if return_alm
-		is True
-
-	"""
-	from pixell import curvedsky
-	import healpy as hp, warnings
-	warnings.warn("enmap_from_healpix is deprecated. Use healpix2map instead. enmap_from_healpix has not been tested after the port from libsharp to ducc0. It also uses a very inefficient approach for coordinate rotation.")
-	dtype = np.float64
-	if not(is_alm):
-		assert ncomp == 1 or ncomp == 3, "Only 1 or 3 components supported"
-		ctype = np.result_type(dtype, 0j)
-		# Read the input maps
-		if type(hp_map) == str:
-			m = np.atleast_2d(hp.read_map(hp_map, field=tuple(
-				range(first, first + ncomp)))).astype(dtype)
-		else:
-			m = np.atleast_2d(hp_map).astype(dtype)
-		if unit != 1:
-			m /= unit
-		# Perform the actual transform
-		print("map -> alm")
-		nside = hp.npix2nside(m.shape[1])
-		lmax  = lmax or 3 * nside
-		alm   = curvedsky.map2alm_healpix(m, lmax=lmax)
-		del m
-	else:
-		alm = hp_map
-
-	if f_ell is not None: alm = curvedsky.almxfl(alm,f_ell)
-
-	if rot is not None:
-		# Rotate by displacing coordinates and then fixing the polarization
-		print("Computing pixel positions")
-		pmap = enmap.posmap(shape, wcs)
-		if rot:
-			print("Computing rotated positions")
-			s1, s2 = rot.split(",")
-			opos = coordinates.transform(s2, s1, pmap[::-1], pol=ncomp == 3)
-			pmap[...] = opos[1::-1]
-			if len(opos) == 3:
-				psi = -opos[2].copy()
-			del opos
-		print("Projecting")
-		res = curvedsky.alm2map_pos(alm, pmap)
-		if rot and ncomp == 3:
-			print("Rotating polarization vectors")
-			res[1:3] = enmap.rotate_pol(res[1:3], psi)
-	else:
-		print("Projecting")
-		res = enmap.zeros((len(alm),) + shape[-2:], wcs, dtype)
-		res = curvedsky.alm2map(alm, res)
-	if return_alm: return res,alm
-	return res
+	raise RuntimeError("This function has been removed. Use healpix2map(...method='harm').")
 
 
 def enmap_from_healpix_interp(hp_map, shape, wcs , rot="gal,equ",
 							  interpolate=False):
-	"""Project a healpix map to an enmap of chosen shape and wcs. The wcs
-	is assumed to be in equatorial (ra/dec) coordinates. No coordinate systems 
-	other than equatorial or galactic are currently supported. Only intensity 
-	maps are supported.
-	
-	Args:
-		hp_map: an (Npix,) healpix map
-		shape: the shape of the ndmap geometry to project to
-		wcs: the wcs object of the ndmap geometry to project to
-		rot: comma separated string that specify a coordinate rotation to
-		perform. Use None to perform no rotation. e.g. default "gal,equ"
-		to rotate a Planck map in galactic coordinates to the equatorial
-		coordinates used in ndmaps.
-		interpolate: if True, bilinear interpolation using 4 nearest neighbours
-		is done.
-
-	"""
-	warnings.warn("enmap_from_healpix_interp is deprecated. Use healpix2map instead.")
-	import healpy as hp
-	from astropy.coordinates import SkyCoord
-	import astropy.units as u
-	eq_coords = ['fk5', 'j2000', 'equatorial']
-	gal_coords = ['galactic']
-	imap = enmap.zeros(shape, wcs)
-	Ny, Nx = shape
-	pixmap = enmap.pixmap(shape, wcs)
-	y = pixmap[0, ...].T.ravel()
-	x = pixmap[1, ...].T.ravel()
-	del pixmap
-	posmap = enmap.posmap(shape, wcs)
-	if rot is not None:
-		s1, s2 = rot.split(",")
-		opos = coordinates.transform(s2,s1, posmap[::-1], pol=None)
-		posmap[...] = opos[1::-1]
-	th = np.rad2deg(posmap[1, ...].T.ravel())
-	ph = np.rad2deg(posmap[0, ...].T.ravel())
-	del posmap
-	if interpolate:
-		imap[y, x] = hp.get_interp_val(
-			hp_map, th, ph, lonlat=True)
-	else:
-		ind = hp.ang2pix(hp.get_nside(hp_map),
-						 th, ph, lonlat=True)
-		del th
-		del ph
-		imap[:] = 0.
-		imap[(y, x)] = hp_map[ind]
-		del y
-		del x
-	return enmap.ndmap(imap, wcs)
+	raise RuntimeError("This function has been removed. Use healpix2map(...method='spline').")
 
 
 
 def ivar_hp_to_cyl(hmap, shape, wcs, rot=False,do_mask=True,extensive=True):
-	from . import mpi, utils
-	import healpy as hp
-	warnings.warn("ivar_hp_to_cyl is deprecated. Use healpix2map instead. See the example at the bottom of its docstring for how to do this with ivar maps")
-	comm = mpi.COMM_WORLD
-	rstep = 100
-	dtype = np.float32
-	nside = hp.npix2nside(hmap.size)
-	dec, ra = enmap.posaxes(shape, wcs)
-	pix = np.zeros(shape, np.int32)
-	# Get the pixel area. We assume a rectangular pixelization, so this is just
-	# a function of y
-	ipixsize = 4 * np.pi / (12 * nside ** 2)
-	opixsize = get_pixsize_rect(shape, wcs)
-	nblock = (shape[-2] + rstep - 1) // rstep
-	for bi in range(comm.rank, nblock, comm.size):
-		if bi % comm.size != comm.rank:
-			continue
-		i = bi * rstep
-		rdec = dec[i : i + rstep]
-		opos = np.zeros((2, len(rdec), len(ra)))
-		opos[0] = rdec[:, None]
-		opos[1] = ra[None, :]
-		if rot:
-			# This is unreasonably slow
-			ipos = coordinates.transform("equ", "gal", opos[::-1], pol=True)
-		else:
-			ipos = opos[::-1]
-		pix[i : i + rstep, :] = hp.ang2pix(nside, np.pi / 2 - ipos[1], ipos[0])
-		del ipos, opos
-	for i in range(0, shape[-2], rstep):
-		pix[i : i + rstep] = utils.allreduce(pix[i : i + rstep], comm)
-	omap = enmap.zeros((1,) + shape, wcs, dtype)
-	imap = np.array(hmap).astype(dtype)
-	imap = imap[None]
-	if do_mask:
-		bad = hp.mask_bad(imap)
-		bad |= imap <= 0
-		imap[bad] = 0
-		del bad
-	# Read off the nearest neighbor values
-	omap[:] = imap[:, pix]
-	if extensive: omap *= opixsize[:, None] / ipixsize
-	# We ignore QU mixing during rotation for the noise level, so
-	# it makes no sense to maintain distinct levels for them
-	if do_mask:
-		mask = omap[1:] > 0
-		omap[1:] = np.mean(omap[1:], 0)
-		omap[1:] *= mask
-		del mask
-	return omap
+	raise NotImplementedError("This function has been removed.")
 
 # Helper functions
 
 
 def gnomonic_pole_wcs(shape, res):
-	Ny, Nx = shape[-2:]
-	wcs = wcsutils.WCS(naxis=2)
-	wcs.wcs.ctype = ['RA---TAN', 'DEC--TAN']
-	wcs.wcs.crval = [0., 0.]
-	wcs.wcs.cdelt[:] = np.rad2deg(res)
-	wcs.wcs.crpix = [Ny / 2. + 0.5, Nx / 2. + 0.5]
-	return wcs
-
-
+	raise NotImplementedError("This function has been removed.")
+ 
 def gnomonic_pole_geometry(width, res, height=None):
-	if height is None:
-		height = width
-	Ny = int(height / res)
-	Nx = int(width / res)
-	return (Ny, Nx), gnomonic_pole_wcs((Ny, Nx), res)
+	raise NotImplementedError("This function has been removed.")
 
 
 def rotate_map(imap, shape_target=None, wcs_target=None, shape_source=None,
 			   wcs_source=None, pix_target=None, **kwargs):
-	if pix_target is None:
-		pix_target = get_rotated_pixels(
-			shape_source, wcs_source, shape_target, wcs_target)
-	else:
-		assert (shape_target is None) and (
-			wcs_target is None), "Both pix_target and shape_target, \
-			wcs_target must not be specified."
-	rotmap = enmap.at(imap, pix_target[:2], unit="pix", **kwargs)
-	return rotmap
+	raise NotImplementedError("This function has been removed.")
 
 
 def get_rotated_pixels(shape_source, wcs_source, shape_target, wcs_target,
 					   inverse=False, pos_target=None,
 					   center_target=None, center_source=None):
-	""" Given a source geometry (shape_source,wcs_source)
-	return the pixel positions in the target geometry (shape_target,wcs_target)
-	if the source geometry were rotated such that its center lies on the center
-	of the target geometry.
-
-	WARNING: Only currently tested for a rotation along declination
-	from one CAR geometry to another CAR geometry.
-	"""
-	# what are the center coordinates of each geometries
-	if center_source is None:
-		center_source = enmap.pix2sky(
-			shape_source, wcs_source,
-			(shape_source[0] / 2., shape_source[1] / 2.))
-	if center_target is None:
-		center_target = enmap.pix2sky(
-			shape_target, wcs_target,
-			(shape_target[0] / 2., shape_target[1] / 2.))
-	decs, ras = center_source
-	dect, rat = center_target
-	# what are the angle coordinates of each pixel in the target geometry
-	if pos_target is None:
-		pos_target = enmap.posmap(shape_target, wcs_target)
-	#del pos_target
-	# recenter the angle coordinates of the target from the target center
-	# to the source center
-	if inverse:
-		transfun = lambda x: coordinates.decenter(x, (rat, dect, ras, decs))
-	else:
-		transfun = lambda x: coordinates.recenter(x, (rat, dect, ras, decs))
-	res = coordinates.transform_meta(transfun, pos_target[1::-1], fields=["ang"])
-	pix_new = enmap.sky2pix(shape_source, wcs_source, res.ocoord[1::-1])
-	pix_new = np.concatenate((pix_new,res.ang[None]))
-	return pix_new
-
+	raise NotImplementedError("This function has been removed.")
 
 def cutout(imap, width=None, ra=None, dec=None, pad=1, corner=False,
 		   res=None, npix=None, return_slice=False,sindex=None):
-	if type(imap) == str:
-		shape, wcs = enmap.read_map_geometry(imap)
-	else:
-		shape, wcs = imap.shape, imap.wcs
-	Ny, Nx = shape[-2:]
-	def fround(x):
-		return int(np.round(x))
-	iy, ix = enmap.sky2pix(shape, wcs, coords=(dec, ra), corner=corner)
-	if res is None:
-		res = np.min(enmap.extent(shape, wcs) / shape[-2:])
-	if npix is None:
-		npix = int(width / res)
-	if fround(iy - npix / 2) < pad or fround(ix - npix / 2) < pad or \
-	   fround(iy + npix / 2) > (Ny - pad) or \
-	   fround(ix + npix / 2) > (Nx - pad):
-		return None
-	if sindex is None:
-		s = np.s_[...,fround(iy - npix / 2. + 0.5):fround(iy + npix / 2. + 0.5),
-				  fround(ix - npix / 2. + 0.5):fround(ix + npix / 2. + 0.5)]
-	else:
-		s = np.s_[sindex,fround(iy - npix / 2. + 0.5):fround(iy + npix / 2. + 0.5),
-				  fround(ix - npix / 2. + 0.5):fround(ix + npix / 2. + 0.5)]
-
-	if return_slice:
-		return s
-	cutout = imap[s]
-	return cutout
+	raise NotImplementedError("This function has been removed.")
 
 
 def rect_box(width, center=(0., 0.), height=None):
-	if height is None:
-		height = width
-	ycen, xcen = center
-	box = np.array([[-height / 2. + ycen, -width / 2. + xcen],
-					[height / 2. + ycen, width / 2. + xcen]])
-	return box
-
+	raise NotImplementedError("This function has been removed.")
 
 def get_pixsize_rect(shape, wcs):
-	"""Return the exact pixel size in steradians for the rectangular cylindrical
-	projection given by shape, wcs. Returns area[ny], where ny = shape[-2] is the
-	number of rows in the image. All pixels on the same row have the same area."""
-	ymin = enmap.sky2pix(shape, wcs, [-np.pi / 2, 0])[0]
-	ymax = enmap.sky2pix(shape, wcs, [np.pi / 2, 0])[0]
-	y = np.arange(shape[-2])
-	x = y * 0
-	dec1 = enmap.pix2sky(shape, wcs, [np.maximum(ymin, y - 0.5), x])[0]
-	dec2 = enmap.pix2sky(shape, wcs, [np.minimum(ymax, y + 0.5), x])[0]
-	area = np.abs((np.sin(dec2) - np.sin(dec1)) * wcs.wcs.cdelt[0] * np.pi / 180)
-	return area
+	raise NotImplementedError("This function has been removed.")
 
 def rect_geometry(width, res, height=None, center=(0., 0.), proj="car"):
-	shape, wcs = enmap.geometry(pos=rect_box(
-		width, center=center, height=height), res=res, proj=proj)
-	return shape, wcs
+	raise NotImplementedError("This function has been removed.")
 
 
 def distribute(N,nmax):
@@ -869,7 +531,7 @@ def populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400):
 
 
 def postage_stamp(inmap, ra_deg, dec_deg, width_arcmin,
-				  res_arcmin, proj='gnomonic', return_cutout=False,
-				  npad=3, rotate_pol=True, **kwargs):
-				  raise Exception("postage_stamp has been deprecated. Please use thumbnails instead.")
+		  res_arcmin, proj='gnomonic', return_cutout=False,
+		  npad=3, rotate_pol=True, **kwargs):
+	raise RuntimeError("postage_stamp has been removed. Please use thumbnails instead.")
 
