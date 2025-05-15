@@ -5,12 +5,18 @@ Welcome to pixell's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   readme
-   usage
-   reference
-   contributing
-   authors
-   history
+   loading
+   geometry
+   objects
+   plotting
+   masking
+   fourier
+   harmonic
+   thumbnails
+   matched
+   wavelet
+   simulation
+   utilities
 
 Indices and tables
 ==================

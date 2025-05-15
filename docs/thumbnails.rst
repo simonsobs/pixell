@@ -1,0 +1,2 @@
+Thumbnails and stacking
+=======================
