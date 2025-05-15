@@ -26,8 +26,8 @@ the lower and upper edges of the pixel are 0.5 pixel coordinates
 higher or lower respectively. So the pixel from the example above would
 have its lower-left corner at `(9.5,19.5)` and its top-right corner
 at `(10.5,20.5)`. Hence, a map with `shape = (ny,nx)` covers a pixel
-y coordinate range `-0.5 to ny-0.5` and an x coordinate range of
-`-0.5 to nx-0.5`.
+y coordinate range -0.5 to ny-0.5 and an x coordinate range of
+-0.5 to nx-0.5.
 
 Intermediate Coordinates
 ------------------------
