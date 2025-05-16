@@ -326,3 +326,118 @@ body, so they are tiny and fast to read.::
 
 * ``enmap.write_map_geometry(fname, shape, wcs)``
 * ``shape, wcs = enmap.read_map_geometry(fname)``
+
+Useful geometry concepts
+------------------------
+
+Ring-compatible
+^^^^^^^^^^^^^^^
+
+``ducc``'s spherical harmonics transforms (both ``alm2map`` and ``map2alm``)
+require the map to consist of rings of constant-declination pixels with
+constant pixel spacing inside each ring, and an integer number of pixels
+around the sky in the RA direction (though the number of pixels per ring
+can vary from ring to ring).
+
+Cylindrical projections have this property, e.g. CAR, CEA, MER. Most
+pseudocylindrical projections also satisfy this property, as long as
+the invalid pixels that are inside the bounding rectangle but not actually
+part of the projection aren't included in the rings. A popular example
+of a projection like this is Mollweide (MOL). SHTs on these aren't directly
+supported by ``pixell`` currently. Expensive repixelization is necessary.
+
+Quadrature-compatible
+^^^^^^^^^^^^^^^^^^^^^
+
+While spherical harmonic synthesis (``alm2map``) operations are simply a
+sum over multipoles per pixel, spherical harmonic analysis (``map2alm``)
+is an *integral* over the sky, and therefore requires quadrature weights
+to be accurate. To first order, these are just the area of each pixel,
+but this approximation isn't very good. ``ducc`` provides optimal quadrature
+weights for a limited set of ring-compatible pixelizations, including
+HEALPix (not supported by ``enmap.ndmaps``) and a few variants of CAR
+that have the following properties:
+
+* Ring-compatible
+* Either a pixel center or a pixel edge at the north and south poles.
+
+There are 4 possible combinations of these boundary conditions.
+
+* Edge and edge = Fejer's first quadrature rule = Fejer1 = F1
+* Center and center = Clenshaw-Curtis = CC
+* Edge and center = McEwen and Wiaux = MW
+* Center and edge = MWflip
+
+(A few exotic variants like Fejer's second rule and Driscoss-Healy
+are also supported, but unlikely to be useful).
+
+``enmap.geometry2`` produces Fejer1 geometries by default.
+
+Downgradable
+^^^^^^^^^^^^
+
+We call a geometry "downgradable" when it preserves its nice properties
+when downgraded by small integer factors like 2 or 4. Of the
+quadature-compatible geometries, only Fejer1 has this property.
+By "downgrade", we mean the action of replacing each group of n×n pixels
+with a single pixel with the average of their value. Below is an example
+of what happens to a 1D Fejer1 geometry when downgraded by a factor of 2.::
+
+       10.0   -20.0    7.5    12.1
+    |---*---|---*---|---*---|---*---|
+  -90     -45       0      45      90
+
+                    ↓
+
+           -5.0            9.8
+    |-------*-------|-------*-------|
+  -90               0              90
+
+Each interval represents one pixel. The pixel edges are indicated with ``|``
+and their centers with ``*``. The coordinates of the pixel edges
+given below, and example pixel values above. As you can see, we started with
+a pixel edge at the north and south pole (-90° and +90°), and this was still
+the case after downgrading. This would not be the case with e.g.
+Clenshaw-Curtis:::
+
+       10.0   -20.0    7.5    12.1
+    |...*---|---*---|---*---|---*...|
+  -120    -60       0      60      120
+
+                    ↓
+
+           -5.0            9.8
+    |...----*-------|-------*----...|
+  -120              0              120
+
+Here the north and south pole now fall in the center of the first and last
+pixel before downgrading, but are 3/4 the way to the edge after downgrading.
+Hence, while a downgraded Fejer1 is still Fejer1, a downgraded CC is never CC.
+
+(Note: Aside from these concerns, a geometry is only downgradable if the downgrade
+factor is a factor of both the y and x size of the map.)
+
+Pixel-compatible
+^^^^^^^^^^^^^^^^
+
+We say that two geometries are pixel-compatible if they are windows into the same
+underlying fullsky geometry, possibly with a cyclic shift in RA for cylindrical
+projections. It's convenient if most of the maps one works with are pixel-compatible,
+since it lets one easily move map values from one to the other with just copying,
+no interpolation needed. ``wcsutils.is_compatible(wcs1, wcs2)`` returns True if
+two geometries are compatible. One can cheaply and project a map onto a compatible
+geometry with ``enmap.extract``. For non-compatible geometries, the heavier,
+interpolation-based ``enmap.project`` must be used.
+
+Separable
+^^^^^^^^^
+
+A geometry is "separable" if dec is only a function of y, and RA is only a function
+of x. Some operations on separable maps are much faster and use less memory because
+only ``ny+nx`` values need to be calculated, istead of ``2*ny*nx`` values. These
+functions often have arguments like ``broadcastable`` to allow working with the
+smaller representation as long as possible. For example, if ``broadcastable=True``
+is passed to ``enmap.pixsizemap``, then it will return a result with shape
+``(ny,1)`` if the geometry is separable, instead of the normal ``(ny,nx)``.
+Since ``(ny,1)`` broadcasts to ``(ny,nx)``, most code can work with this can work
+can benefit from cheaper operations on the former without needing to be modified.
