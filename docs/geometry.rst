@@ -1,24 +1,26 @@
 Sky Geometry
 ============
 
-An ``enmap.ndmap`` represents one or more images of the sky, with a pixelization
-described by a "geometry" represented as a ``(shape, wcs)`` tuple. The ``shape`` is
-simply the shape of the numpy array backing the map, while ``wcs`` is an
-``astropy.wcs.WCS`` (World Coordinate System) object that attaches coordinates
-to the last two axes of the map
+An :py:class:`pixell.enmap.ndmap` represents one or more images of the sky, with
+a pixelization described by a "geometry" represented as a ``(shape, wcs)``
+tuple. The ``shape`` is simply the shape of the numpy array backing the map,
+while ``wcs`` is an ``astropy.wcs.WCS`` (World Coordinate System) object that
+attaches coordinates to the last two axes of the map
 according to the FITS standard. This is defined in `Representations of world
-coordinates in FITS <https://www.atnf.csiro.au/computing/software/wcs/WCS/wcs.pdf>`
-and `Representations of celestial coordinates in FITS <https://www.atnf.csiro.au/computing/software/wcs/WCS/ccs.pdf>`. Put simply, the world coordinate system describes how to translate from
+coordinates in FITS <https://www.atnf.csiro.au/computing/software/wcs/WCS/wcs.pdf>`_
+and `Representations of celestial coordinates in FITS <https://www.atnf.csiro.au/computing/software/wcs/WCS/ccs.pdf>`_.
+Put simply, the world coordinate system describes how to translate from
 pixel coordinates to sky ("world") coordinates.
 
 Pixel Coordinates
 -----------------
 
-The pixels are represented by the last two axes of an ``enmap.ndmap``.
-We use row-major (C) ordering like ``numpy``, so the second-to-last axis
-is the "y" (vertical) axis, while the last axis is the "x" (horizontal)
-axis. A pixel's pixel coordinates are simply its index into the last two
-axes, so the pixel ``map[10,20]`` would have pixel coordinates ``p=(10,20)``.
+The pixels are represented by the last two axes of an
+:py:class:`pixell.enmap.ndmap`.  We use row-major (C) ordering like ``numpy``,
+so the second-to-last axis is the "y" (vertical) axis, while the last axis is
+the "x" (horizontal) axis. A pixel's pixel coordinates are simply its index into
+the last two axes, so the pixel ``map[10,20]`` would have pixel coordinates
+``p=(10,20)``.
 
 Pixel coordinates differ from the map index by changing continuosly
 from pixel to pixel. Pixel centers have integer coordinates, while
@@ -90,7 +92,8 @@ where "XXX" describes the projection type. Common values are
 * TAN: Tangent plane (gnominic) projection. Only covers at most
   half the sky.  This is the projection a pinhole camera produces.
 
-and many others. See `Representations of celestial coordinates in FITS <https://www.atnf.csiro.au/computing/software/wcs/WCS/ccs.pdf>` for much more details.
+and many others. See `Representations of celestial coordinates in FITS <https://www.atnf.csiro.au/computing/software/wcs/WCS/ccs.pdf>`_
+for much more details.
 
 Note on the reference point
 ---------------------------
@@ -118,7 +121,7 @@ several roles.
    invalid and may cause problems (e.g. with drawing the coordinate
    grid in ``enplot``), but are supported as an extension for
    cylindrical coordinates in many ``enmap`` functions like
-   ``pix2sky`` and ``sky2pix``.
+   :py:meth:`pixell.enmap.ndmap.pix2sky` and :py:meth:`pixell.enmap.ndmap.sky2pix`.
 
 Supported geometries
 --------------------
