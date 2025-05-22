@@ -1,10 +1,77 @@
-Plotting
-========
+Plotting Maps with pixell
+=========================
 
-:py:mod:`pixell.enplot` can be used to plot maps and the results of any analysis performed with pixell.
+:py:mod:`pixell.enplot` can be used to plot maps and the results of any analysis 
+performed with pixell.
 
-The module is a wrapper around different map plotting mechanisms. It provides the basic plotting functionality, such as plot and show, as well as the ability to read and write maps. `enplot` module can also be used as an executable.
+The module is a wrapper around different map plotting mechanisms. It provides the basic 
+plotting functionality, such as plot and show, as well as the ability to read and 
+write maps.
 
+Plot and show
+----------------------------
+
+The main functionality is provided by the :py:func:`pixell.enplot.plot` function, which
+plots a list of maps or map files. Doing
+
+.. code-block:: python
+
+    >>> imap = ... # an Pixell map, or a file name to a map
+    >>> plots = enplot.plot(imap)
+    >>> print(plots)
+    [Bunch(base='', ci=0, cn=1, comp='', dir='', ext='png', fcomp='', fi=0, fn=1, iext='', img=<PIL.Image.Image image mode=RGBA size=6462x1473 at 0x12790BFD0>, info=Bunch(bounds=array([[ -18,  -19],
+        [6444, 1454]]), names=['img', 'grid', 'tics']), layer='', name='.png', pi=0, pn=1, pre='', printer=<pixell.enplot.Printer object at 0x1279ad0d0>, suf='', type='pil')]
+
+will produce a list of plots with one element which will correspond to `imap`. From there,
+you will want to show this plot on your your notebook. Simply calling 
+:py:func:`pixell.enplot.show` will do this for you.
+
+.. code-block:: python
+    
+    >>> enplot.show(plots)
+
+will display:
+
+.. figure:: plots/example1.png
+   :alt: Example plot
+   :width: 800px
+
+:py:func:`pixell.enplot.plots` allows you to further customize your plots. A list of 
+all possible arguments are shown in :ref:`enplot-interface` below. Please note that you
+need to change the dashes `--` to underscores `_` when using the function in Python. For example, 
+``--mask-tol`` becomes ``mask_tol``.
+
+For example:
+
+.. code-block:: python
+
+    >>> plots = enplot.plot(imap, colorbar=True, color='planck', grid=True, ticks=1, grid_width=1, font_size=20, downgrade=4)
+    >>> enplot.show(plots)
+
+will display:
+
+.. figure:: plots/example2.png
+   :alt: Example plot
+   :width: 800px
+
+
+Furthermote, you can also use the :py:func:`pixell.enplot.pshow` function to create and show
+a plot immediately. This function is a wrapper around :py:func:`pixell.enplot.plot` and
+:py:func:`pixell.enplot.show`. It takes the same arguments as :py:func:`pixell.enplot.plot`,
+but does not return a list of plots. Instead, it shows the plot immediately.
+For example:
+.. code-block:: python
+
+    >>> enplot.pshow(imap, colorbar=True, color='planck', grid=True, ticks=1, grid_width=1, font_size=20, downgrade=4)
+
+
+.. _enplot-interface:
+
+Command-line interface
+----------------------------
+
+In addition to the Python API, :py:mod:`pixell.enplot` can be used as a command-line tool.
+The command-line interface is available as ``pixell.enplot``
 **Command-line arguments:**
 
 ``-o``, ``--oname`` (type:str, default:"{dir}{pre}{base}{suf}{comp}{layer}.{ext}")
@@ -17,10 +84,10 @@ The module is a wrapper around different map plotting mechanisms. It provides th
     The symmetric color bar range to use. If specified, colors in the map will be truncated to [-range,range]. To give each component in a multidimensional map different color ranges, use a colon-separated list, for example ``-r 250:100:50`` would plot the first component with a range of 250, the second with a range of 100 and the third and any subsequent component with a range of 50.
 
 ``--min`` (type: str)  
-    The value at which the color bar starts. See --range.
+    The value at which the color bar starts. See `--range`.
 
 ``--max`` (type: str)  
-    The value at which the color bar ends. See --range.
+    The value at which the color bar ends. See `--range`.
 
 ``-q``, ``--quantile`` (type: float, default: 0.01)  
     Which quantile to use when automatically determining the color range. If specified, the color bar will go from [quant(q),quant(1-q)].
@@ -56,13 +123,13 @@ The module is a wrapper around different map plotting mechanisms. It provides th
     Downscale the map by this factor before plotting. This is done by averaging nearby pixels. See --upgrade for syntax.
 
 ``--prefix`` (type: str, default: "")  
-    Specify a prefix for the output file. See --oname.
+    Specify a prefix for the output file. See `--oname`.
 
 ``--suffix`` (type: str, default: "")  
-    Specify a suffix for the output file. See --oname.
+    Specify a suffix for the output file. See `--oname`.
 
 ``--odir`` (type: str, default: None)  
-    Override the output directory. See --oname.
+    Override the output directory. See `--oname`.
 
 ``--ext`` (type: str, default: "png")  
     Specify an extension for the output file. This will determine the file type of the resulting image. Can be anything PIL recognizes. The default is png.
