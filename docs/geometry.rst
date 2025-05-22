@@ -292,7 +292,7 @@ When you slice, submap, downgrade, upgrade, etc. a map, the attached
 geometry will be automatically updated to reflect this, but sometimes
 it's useful to be able to manipulate geometries directly, without
 having to construct a full map first. This is supported via the
-following functions.::
+following functions:
 
 * ``enmap.downgrade_geometry(shape, wcs, n)``: Produce the same
   geometry you would get by using ``enmap.downgrade`` on the corresponding
