@@ -11,7 +11,7 @@ maps available from the ACT DR5 and DR6 data releases, we recommend
 `this one <https://lambda.gsfc.nasa.gov/data/act/maps/published/act_dr6.02_std_AA_day_pa4_f150_4way_coadd_map.fits>`_
 for testing purposes.
 
-Reading Maps
+Reading maps
 ------------
 
 To read the map from disk into a pixell :py:class:`pixell.enmap.ndmap`:
@@ -45,7 +45,7 @@ numpy array - storing the underlying map data (e.g. the flux in each pixel) - an
 astropy WCS object - storing the sky geometry those pixels are stored within. There is
 :doc:`further documentation on geometry <./geometry>`, too.
 
-Creating Empty Maps
+Creating empty maps
 -------------------
 
 As well as reading maps, you can always create empty maps, should you wish to fill
@@ -64,7 +64,7 @@ You can specify both a `wcs` and a `dtype` parameter here, to set the underlying
 sky geometry and data type. By default, we assume a two dimensional WCS that is
 effectively meaningless for the sky geometry, and a floating point array type.
 
-Slicing Maps
+Slicing maps
 ------------
 
 Because the :py:class:`pixell.enmap.ndmap` class is a wrapper around numpy, you
@@ -100,7 +100,7 @@ to specify a box from a minimum dec and ra value, to a pair of maximum values - 
         [[-0.43, -1.02], [0.55, -0.93]]
     )
 
-Reprojecting Maps
+Reprojecting maps
 -----------------
 
 Pixell is designed to work with maps using the CAR projection, i.e. such that each pixel
