@@ -4,11 +4,6 @@
 Reference
 =========
 
-.. sectnum:: :start: 2
-
-
-See :ref:`UsagePage` for how to use these functions for common map manipulation tasks.
-
 enmap - General map manipulation
 --------------------------------
 
