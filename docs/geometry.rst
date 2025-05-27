@@ -121,7 +121,7 @@ several roles.
    invalid and may cause problems (e.g. with drawing the coordinate
    grid in ``enplot``), but are supported as an extension for
    cylindrical coordinates in many ``enmap`` functions like
-   :py:meth:`pixell.enmap.ndmap.pix2sky` and :py:meth:`pixell.enmap.ndmap.sky2pix`.
+   :py:meth:`pixell.enmap.pix2sky` and :py:meth:`pixell.enmap.sky2pix`.
 
 Supported geometries
 --------------------
@@ -171,7 +171,7 @@ least 1-dimensional, where the first axis has length two and
 contains the y and x pixel coordinates in that order. Similarly,
 ``pos`` should be ``[{dec,ra},...]```.
 
-``enmap.sky2pix`` tries
+:py:meth:`pixell.enmap.sky2pix` tries
 to ensure that no angle wrapping happens in the output, so that
 there won't be a sudden 2π jump between the coordinates of
 neighboring pixels. This has a small overhead, and sometimes
@@ -182,17 +182,17 @@ of 2π from what one might want, so this can be disabled by passing
 There are many higher-level functions built from these. The most
 useful are
 
-* ``enmap.posmap(shape, wcs)``: returns a new enmap with shape
+* :py:meth:`pixell.enmap.posmap`: returns a new enmap with shape
   ``[{dec,ra},ny,nx]``, containing the coordinates of each pixel.
-* ``enmap.pixsizemap(shape, wcs)``: returns the area of each pixel,
+* :py:meth:`pixell.enmap.pixsizemap`: returns the area of each pixel,
   in steradians.
-* ``enmap.distance_from(shape, wcs, pos)``: returns the distance
+* :py:meth:`pixell.enmap.distance_from`: returns the distance
   of each pixel from the closest of the given list of positions,
   and optionally the index of which point was closest.
-* ``enmap.corners(shape, wcs)`` (alias ``enmap.box``): returns the
+* :py:meth:`pixell.enmap.corners` (alias ``enmap.box``): returns the
   coordinates of the bottom left and top right corners of the map.
   For cylindrical projections, this is the map's bounding box.
-* ``enmap.area(shape, wcs)``: returns the area of the map,
+* :py:meth:`pixell.enmap.area`: returns the area of the map,
   in steradians.
 
 The map geometry also enters into a large number of functions for
@@ -209,12 +209,19 @@ cleaned up in the future.
 Explicit construction
 ^^^^^^^^^^^^^^^^^^^^^
 
-You can construct wcs objects manually using ``wcsutils.explicit``,
+You can construct wcs objects manually using :py:func:`pixell.wcsutils.explicit`,
 which takes lower-case FITS ``wcs`` parameters as arguments, in the FITS convention.
-For example, this constructs a full-sky CAR map with 0.5 arcmin Fejer1 pixelization.::
+For example, this constructs a full-sky CAR map with 0.5 arcmin Fejer1 pixelization.
 
-  shape = (180*120,360*120)
-  wcs   = wcsutils.explicit(ctype=["RA---CAR","DEC--CAR"],crval=[0,0],cdelt=[-0.5/60,0.5/60],crpix=[180*120+1,90*120+0.5])
+.. code-block:: python
+  
+  shape = (180 * 120, 360 * 120)
+  wcs   = wcsutils.explicit(
+    ctype=["RA---CAR", "DEC--CAR"],
+    crval=[0, 0],
+    cdelt=[-0.5/60, 0.5/60],
+    crpix=[180*120+1, 90*120+0.5]
+  )
 
 Notice how the arguments are in RA-dec ordering, in degrees, and with crpix counting
 from 1, unlike the normal ``enmap`` functions.
@@ -222,10 +229,11 @@ from 1, unlike the normal ``enmap`` functions.
 geometry2
 ^^^^^^^^^
 
-``enmap.geometry2`` makes it easy to construct geometries that fulfill boundary
-conditions like Fejer1. It works by first constructing a full-sky geometry, and
-then optionally cropping out a subset of interest from that. For example, this
-constructs a full-sky CAR map with a 0.5 arcmin Fejer1 pixelization.::
+:py:func:`pixell.enmap.geometry2` makes it easy to construct geometries that
+fulfill boundary conditions like Fejer1. It works by first constructing a
+full-sky geometry, and then optionally cropping out a subset of interest from
+that. For example, this constructs a full-sky CAR map with a 0.5 arcmin Fejer1
+pixelization.::
 
   shape, wcs = enmap.geometry2(res=0.5*utils.arcmin)
 
