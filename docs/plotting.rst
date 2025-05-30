@@ -262,6 +262,6 @@ Show maps
 
 
 Plots I/O
-----------------
+---------
 :py:func:`pixell.enplot.write`
 :py:func:`pixell.enplot.get_map`
