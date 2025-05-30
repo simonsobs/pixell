@@ -9,7 +9,7 @@ plotting functionality, such as plot and show, as well as the ability to read an
 write maps.
 
 Plot and show
-----------------------------
+-------------
 
 The main functionality is provided by the :py:func:`pixell.enplot.plot` function, which
 plots a list of maps or map files. Doing
@@ -62,13 +62,13 @@ but does not return a list of plots. Instead, it shows the plot immediately.
 For example:
 .. code-block:: python
 
-    >>> enplot.pshow(imap, colorbar=True, color='planck', grid=True, ticks=1, grid_width=1, font_size=20, downgrade=4)
+    enplot.pshow(imap, colorbar=True, color='planck', grid=True, ticks=1, grid_width=1, font_size=20, downgrade=4)
 
 
 .. _enplot-interface:
 
 Command-line interface
-----------------------------
+----------------------
 
 In addition to the Python API, :py:mod:`pixell.enplot` can be used as a command-line tool.
 The command-line interface is available as ``pixell.enplot``
@@ -256,7 +256,7 @@ Plotting maps
 :py:func:`pixell.enplot.merge_plots`
 
 Show maps
-----------------
+---------
 :py:func:`pixell.enplot.show`
 :py:func:`pixell.enplot.pshow`
 
