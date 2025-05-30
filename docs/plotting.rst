@@ -248,7 +248,7 @@ The command-line interface is available as ``pixell.enplot``
     RA goes from 0 to 360 instead of -180 to 180.
 
 Plotting maps
-----------------
+-------------
 
 :py:func:`pixell.enplot.plot` is the main function for plotting maps. It takes a map and a set of options and produces a plot. The options can be used to control the appearance of the plot, such as the color map, the title, and the axis labels.
 :py:func:`pixell.enplot.plot_iterator`
