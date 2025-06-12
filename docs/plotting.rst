@@ -65,6 +65,30 @@ For example:
     enplot.pshow(imap, colorbar=True, color='planck', grid=True, ticks=1, grid_width=1, font_size=20, downgrade=4)
 
 
+.. _enplot-io:
+Plots I/O
+---------
+
+:py:mod:`pixell.enplot` provides functions to write plots to files. The main function
+is :py:func:`pixell.enplot.write`. It can write a sigle plot or a list of plots while
+defaulting to a png file format.
+
+Trying to save the plot from the previous example would look like this:
+.. code-block:: python
+
+    >>> enplot.write("example_plot", plots[0])
+
+This will write the plot to a file called `example_plot.png`. When you want to write a
+list of plots, you can use the same function, but pass a prefix instead of a filename.
+For example:
+.. code-block:: python
+
+    >>> enplot.write("example_plot", plots)
+
+will write the plots to files called `example_plot_0.png`, `example_plot_1.png`, etc.
+
+
+
 .. _enplot-interface:
 
 Command-line interface
@@ -261,7 +285,3 @@ Show maps
 :py:func:`pixell.enplot.pshow`
 
 
-Plots I/O
----------
-:py:func:`pixell.enplot.write`
-:py:func:`pixell.enplot.get_map`
