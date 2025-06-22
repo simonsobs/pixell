@@ -1,4 +1,4 @@
-import numpy as np, scipy.ndimage, os, errno, scipy.optimize, time, datetime, warnings, re, sys, scipy.special
+import numpy as np, scipy.ndimage, os, errno, scipy.optimize, time, datetime, warnings, re, sys, scipy.special, io
 try: xrange
 except: xrange = range
 try: basestring
@@ -122,6 +122,17 @@ def find_any(array, vals):
 	res = find(array, vals, default=-1)
 	return res[res >= 0]
 
+def find_range(ranges, vals, sorted=False, default=-1):
+	"""Given an array of non-overlapping ranges [nrange,{from,to}]
+	and a set of values vals[n], returns the index of the range
+	each value falls inside, or -1 for values not inside a range.
+	Pass sorted=True if ranges is already sorted, to save some time."""
+	if not sorted: ranges = ranges[np.argsort(ranges[:,0])]
+	inds = np.searchsorted(ranges[:,0], vals, side="right")-1
+	good = (ranges[inds,0]<=vals)&(ranges[inds,1]>vals)
+	inds[~good] = default
+	return inds
+
 def nearest_ind(arr, vals, sorted=False):
 	"""Given array arr and values vals, return the index of the entry in
 	arr with value closest to each entry in val"""
@@ -228,6 +239,17 @@ def dict_apply_listfun(dict, function):
 	vals = [dict[key] for key in keys]
 	res  = function(vals)
 	return {key: res[i] for i, key in enumerate(keys)}
+
+def dict_lookup(dict, vals):
+	"""Vectorized look up of an array of values in a dictionary. Python
+	loop over the elements in the dictionary (but not the array), so
+	only efficient if the dictionary is small, or at least small compared to
+	the array"""
+	vals = np.asarray(vals)
+	# Get the unique entries in vals
+	uvals, inds = np.unique(vals, return_inverse=True)
+	# Remap each using the dict
+	return np.array([dict[uval] for uval in uvals])[inds].reshape(vals.shape)
 
 def fallback(*args):
 	for arg in args:
@@ -2196,6 +2218,13 @@ def block_mean_filter(a, width):
 		a[:]   = work[...,:a.shape[-1]]
 	return a
 
+def downgrade(arr, down, axes=None, op=np.mean, inclusive=True):
+	down = astuple(down)
+	if axes is None: axes = list(range(-len(down),0))
+	for ax, dn in zip(axes, down):
+		arr = block_reduce(arr, dn, axis=ax, op=op, inclusive=inclusive)
+	return arr
+
 def block_reduce(a, bsize, axis=-1, off=0, op=np.mean, inclusive=True):
 	"""Replace each block of length bsize along the given axis of a
 	with an aggregate value given by the operation op. op must
@@ -2742,6 +2771,38 @@ class Printer:
 def ndigit(num):
 	"""Returns the number of digits in non-negative number num"""
 	with nowarn(): return np.int32(np.floor(np.maximum(1,np.log10(num))))+1
+
+def aprint(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
+	"""Shortcut for formatting an array and printing
+	it to screen. Equivalent to print(afmt(...))"""
+	print(afmt(arr, fmt=fmt, ffmt=ffmt, ifmt=ifmt, nmax=nmax, nedge=nedge))
+
+def afmt(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
+	"""Shortcut for np.array2strng, to get a bit more
+	control of the output than just repr(arr).
+
+	arr:  The array to format
+	fmt:  Format to apply to all data types
+	ffmt: Format to apply to floats
+	ifmt: Format to apply to integers
+	nmax: Max number of elements to fully print. Summary-mode
+	      is used above this.
+
+	The format must be understood by the % operator.
+	Missing options default to numpy behavior.
+
+	Like np.array2string, this function uses looping
+	in python, so it's probably slow for huge arrays.
+	"""
+	formatter = {}
+	if fmt:  formatter["all"]        = lambda a: fmt  % a
+	if ffmt: formatter["float_kind"] = lambda a: ffmt % a
+	if ifmt: formatter["int_kind"]   = lambda a: ifmt % a
+	if nmax is not None:
+		if nmax == 0: nmax = 10000000 # "unlimited"
+		if nedge is None: nedge = max(nmax//2-1,1)
+	print(nedge)
+	return np.array2string(arr, formatter=formatter, threshold=nmax, edgeitems=nedge)
 
 def contains_any(a, bs):
 	"""Returns true if any of the strings in list bs are found

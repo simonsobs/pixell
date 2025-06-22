@@ -2048,7 +2048,7 @@ def downgrade_geometry(shape, wcs, factor):
 def upgrade_geometry(shape, wcs, factor):
 	return scale_geometry(shape, wcs, factor)
 
-def crop_geometry(shape, wcs, box=None, pixbox=None, oshape=None):
+def crop_geometry(shape, wcs, box=None, pixbox=None, oshape=None, recenter=False):
 	if pixbox is None:
 		box    = np.asarray(box)
 		# Allow box and pixbox to be 1d, in which case we will
@@ -2076,6 +2076,7 @@ def crop_geometry(shape, wcs, box=None, pixbox=None, oshape=None):
 	oshape = tuple(shape[:-2]) + tuple(np.abs(pixbox[1]-pixbox[0]))
 	owcs   = wcs.deepcopy()
 	owcs.wcs.crpix -= pixbox[0,::-1]
+	if recenter: owcs = wcsutils.recenter_cyl_x(owcs, oshape[-1]//2)
 	return oshape, owcs
 
 def distance_transform(mask, omap=None, rmax=None, method="cellgrid"):

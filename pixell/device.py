@@ -108,7 +108,7 @@ class AllocGpu:
 		import cupy
 		n      = int(n)
 		memptr = self.allocator(n)
-		return cupy.ndarray(n, np.uint8, memptr=self.allocator(n))
+		return cupy.ndarray(n, np.uint8, memptr=memptr)
 
 class AllocAligned:
 	"""Wraps an allocator to make it aligned. Should work for both cpu and gpu.
@@ -134,6 +134,7 @@ class Mempool:
 		# Check if we have room to hand out bytes from our
 		# current allocation.
 		if len(self.arenas) == 0 or self.arenas[-1].size < self.pos + n:
+			print("Growing pool %s to size %d" % (self.name, n))
 			# We don't have room. Make more
 			self.arenas.append(self.allocator.alloc(n))
 			buf = self.arenas[-1][0:n]
@@ -170,8 +171,9 @@ class Mempool:
 			# Free up our old arenas, and make our hopefully final one
 			self.arenas = [self.allocator.alloc(self.capacity)]
 		return self
-
-	def __repr__(self): return "%s(name='%s', capacity=%d, free=%d, align=%d)" % (self.__class__.__name__, self.name, self.capacity, (self.arenas[-1].size-self.pos if len(self.arenas)>0 else 0), self.allocator.align)
+	def __repr__(self):
+		arenas = "["+",".join(["%.3fG" % (arena.size/1024**3) for arena in self.arenas])+"]"
+		return "%s(name='%s', capacity=%.3fG, free=%.3fG, align=%d, arenas=%s)" % (self.__class__.__name__, self.name, self.capacity/1024**3, (self.arenas[-1].size-self.pos if len(self.arenas)>0 else 0)/1024**3, self.allocator.align, arenas)
 
 class ArrayPoolCpu(Mempool):
 	def array(self, arr):
