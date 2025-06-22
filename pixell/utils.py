@@ -2308,6 +2308,12 @@ def triangle_wave(x, period=1):
 	res[m3] = x[m3]-4
 	return res
 
+def type2_wave(x, period=1, amp=np.pi/2, mid=0, tol=1e-12):
+	"""The slowest speed during the wave is 4*amp/period"""
+	x = triangle_wave(x, period=period)*amp+(np.pi/2+mid)
+	x = np.clip(np.abs(rewind(x)),tol,np.pi-tol)
+	return np.log(np.tan(x/2))
+
 def calc_beam_area(beam_profile):
 	"""Calculate the beam area in steradians given a beam profile[{r,b},npoint].
 	r is in radians, b should have a peak of 1.."""

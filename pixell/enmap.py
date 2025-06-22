@@ -615,6 +615,7 @@ def project(map, shape, wcs, mode="spline", order=3, border="constant",
 	# Avoid unneccessary padding for local cases
 	if   ip or (mode == "spline" and order == 0): context = 0
 	elif        mode == "spline" and order == 1 : context = 1
+	elif        mode == "fourier": context = 32
 	# It would have been nice to be able to use padtiles here, but
 	# the input and output tilings are very different
 	for i1 in range(0, shape[-2], bsize):
@@ -631,7 +632,7 @@ def project(map, shape, wcs, mode="spline", order=3, border="constant",
 			band   = map.extract_pixbox([[y1,0],[y2,map.shape[-1]]])
 			# Apodize if necessary
 			if context > 1:
-				band = apod(band, width=(context,0), fill="crossfade")
+				band = apod(band, width=(context,0), fill="zero")
 		# And do the interpolation
 		somap[:] = utils.interpol(band, pix, mode=mode, order=order, border=border, cval=cval, ip=ip)
 	return omap
@@ -1142,9 +1143,6 @@ def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000, bc
 	if one is going to be doing additional manipulation of the pixel size
 	before using it. For a cylindrical map, the result would have shape [ny,1]
 	if broadcastable is True.
-
-	BUG: This function assumes parallelogram-shaped pixels. This breaks for
-	non-cylindrical projections!
 	"""
 	if wcsutils.is_plain(wcs):
 		return full(shape[-2:], wcs, np.abs(wcs.wcs.cdelt[0]*wcs.wcs.cdelt[1])*utils.degree**2)
@@ -1471,7 +1469,7 @@ def samewcs(arr, *args):
 # separate
 def geometry2(pos=None, res=None, shape=None, proj="car", variant=None,
 			deg=False, pre=(), ref=None, **kwargs):
-	"""Consruct a shape,wcs pair suitable for initializing enmaps. Some combination
+	"""Construct a shape,wcs pair suitable for initializing enmaps. Some combination
 	of pos, res and shape must be passed:
 
 	* Only res given: A fullsky geometry with this resolution is constructed
