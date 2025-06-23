@@ -1123,9 +1123,9 @@ class PlotWriter(Writer):
 		if plot.type == "vid":
 			self.vid_writer.process(plot, prefix=prefix)
 		elif plot.type == "pil":
-			plot.img.save(prefix + fname)
+			plot.img.save(prefix + plot.name)
 		elif plot.type == "mpl":
-			plot.img.savefig(prefix + fname,bbox_inches="tight",dpi=plot.dpi)
+			plot.img.savefig(prefix + plot.name,bbox_inches="tight",dpi=plot.dpi)
 		else:
 			raise ValueError("Unknown plot type '%s'" % plot.type)
 	def close(self):
