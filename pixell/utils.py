@@ -133,6 +133,30 @@ def find_range(ranges, vals, sorted=False, default=-1):
 	inds[~good] = default
 	return inds
 
+def find_first(mask, axis=-1, default=-1):
+	"""Return the index of the first nonzero element in mask
+	along the given axis. If there's no such element, returns
+	the default value (-1 by default)"""
+	mask = mask.astype(bool)
+	# argmax returns index of first if there are multiple
+	inds = np.argmax(mask, axis=axis)
+	vals = np.max   (mask, axis=axis)
+	inds[~vals] = default
+	return inds
+
+def find_last(mask, axis=-1, default=-1):
+	"""Return the index of the last nonzero element in mask
+	along the given axis. If there's no such element, returns
+	the default value (-1 by default)"""
+	axis  = axis % mask.ndim
+	rmask = mask[(slice(None),)*axis+(slice(None,None,-1),)]
+	# Find in reversed array
+	inds  = find_first(rmask, axis=axis, default=default)
+	# Fix indices
+	good  = inds!=default
+	inds[good] = mask.shape[axis]-1-inds[good]
+	return inds
+
 def nearest_ind(arr, vals, sorted=False):
 	"""Given array arr and values vals, return the index of the entry in
 	arr with value closest to each entry in val"""
@@ -787,11 +811,11 @@ def pixwin_1d(f, order=0):
 	to standard nearest-neighbor mapmking. order = 1 corresponds to linear interpolation.
 	For a multidimensional (e.g. 2d) image, the full pixel window will be the outer
 	product of this pixel window along each axis."""
-	if order is None:
+	if order is None or order == "none":
 		return f*0+1
-	elif order == 0:
+	elif order == 0 or order == "nn":
 		return np.sinc(f)
-	elif order == 1:
+	elif order == 1 or order == "lin":
 		return np.sinc(f)**2/(1/3*(2+np.cos(2*np.pi*f)))
 	else:
 		raise ValueError("Unsupported order '%s'" % str(order))
@@ -1366,6 +1390,35 @@ def pad_box(box, padding):
 	box[...,0,:] -= padding*sign
 	box[...,1,:] += padding*sign
 	return box
+
+def pad_bins(bins, pad, min=None, max=None):
+	bins = np.array(bins)
+	bins[...,0] -= pad
+	bins[...,1] += pad
+	if min is not None:
+		bins[...,0] = np.maximum(bins[...,0], min)
+	if max is not None:
+		bins[...,1] = np.minimum(bins[...,1], max)
+	return bins
+
+def merge_bins(bins):
+	"""Given a sorted set of bins[nbin,{from,to}], merge
+	overlapping bins, returning the result."""
+	if len(bins) == 0: return bins
+	bwork = bins[0].copy()
+	obins = []
+	for b in bins[1:]:
+		if bwork[1] >= b[0]:
+			# Overlap. Merge
+			bwork[1] = max(bwork[1],b[1])
+		else:
+			# no overlapp output and prepare for next
+			obins.append(bwork)
+			bwork = b.copy()
+	# Handle any last bin
+	if bwork is not None:
+		obins.append(bwork)
+	return obins
 
 def unwrap_range(range, nwrap=2*np.pi):
 	"""Given a logically ordered range[{from,to},...] that
@@ -1973,7 +2026,7 @@ def split_by_group(a, start, end):
 				ind = i
 				n += 1
 		else:
-			if start[ind] == c:
+			if start[ind] == c and start[ind] != end[ind]:
 				n += 1
 			elif end[ind] == c:
 				n-= 1
@@ -2221,6 +2274,7 @@ def block_mean_filter(a, width):
 def downgrade(arr, down, axes=None, op=np.mean, inclusive=True):
 	down = astuple(down)
 	if axes is None: axes = list(range(-len(down),0))
+	axes = astuple(axes)
 	for ax, dn in zip(axes, down):
 		arr = block_reduce(arr, dn, axis=ax, op=op, inclusive=inclusive)
 	return arr
@@ -2515,6 +2569,7 @@ def tsz_tform(r200=1*arcmin, l=None, lmax=40000, xc=0.497, alpha=1.0, beta=-4.65
 ### Binning ####
 
 def edges2bins(edges):
+	edges = np.asarray(edges)
 	res = np.zeros((edges.size-1,2),int)
 	res[:,0] = edges[:-1]
 	res[:,1] = edges[1:]
@@ -2692,15 +2747,18 @@ def build_conditional(ps, inds, axes=[0,1]):
 	cov    = partial_expand(Ciuui, ps.shape, axes)
 	return A, cov
 
-def nint(a):
+def nint(a, mul=1):
 	"""Return a rounded to the nearest integer, as an integer."""
-	return np.round(a).astype(int)
-def ceil(a):
+	if mul==1: return np.round(a).astype(int)
+	else:      return np.round(a/a).astype(int)*mul
+def ceil(a, mul=1):
 	"""Return a rounded to the next integer, as an integer."""
-	return np.ceil(a).astype(int)
-def floor(a):
+	if mul==1: return np.ceil(a).astype(int)
+	else:      return np.ceil(a/mul).astype(int)*mul
+def floor(a, mul=1):
 	"""Return a rounded to the previous integer, as an integer."""
-	return np.floor(a).astype(int)
+	if mul==1: return np.floor(a).astype(int)
+	else:      return np.floor(a/mul).astype(int)*mul
 
 format_regex = r"%(\([a-zA-Z]\w*\)|\(\d+)\)?([ +0#-]*)(\d*|\*)(\.\d+|\.\*)?(ll|[lhqL])?(.)"
 def format_to_glob(format):

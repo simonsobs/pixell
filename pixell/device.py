@@ -35,7 +35,7 @@ class DeviceCpu(Device):
 			from . import memory
 			return memory.current()
 		elif type == "pools":
-			return self.pools.totsize()
+			return self.pools.capacity()
 		elif type == "np":
 			return 0
 		else: raise ValueError("Unknown memuse type: '%s'" % str(type))
@@ -70,7 +70,7 @@ class DeviceGpu(Device):
 			info   = nvidia_smi.nvmlDeviceGetMemoryInfo(self.nvhandle)
 			return info.used
 		elif type == "pools":
-			return self.pools.totsize()
+			return self.pools.capacity()
 		elif type == "np":
 			return self.heap.used_bytes()
 		else: raise ValueError("Unknown memuse type: '%s'" % str(type))
@@ -123,6 +123,68 @@ class AllocAligned:
 		off = (-getptr(buf))%self.align
 		return buf[off:off+n]
 
+#class Mempool:
+#	def __init__(self, aligned_alloc, name="[unnamed]"):
+#		self.allocator = aligned_alloc
+#		self.name      = name
+#		self.free()
+#	def alloc(self, n):
+#		n       = int(n)
+#		effsize = round_up(n, self.allocator.align)
+#		# Check if we have room to hand out bytes from our
+#		# current allocation.
+#		if len(self.arenas) == 0 or self.arenas[-1].size < self.pos + n:
+#			print("Growing pool %s to size %d" % (self.name, n))
+#			if len(self.arenas)>0: print(self.arenas[-1].size, self.pos, n)
+#			# We don't have room. Make more
+#			self.arenas.append(self.allocator.alloc(n))
+#			buf = self.arenas[-1][0:n]
+#			self.pos   = effsize
+#			self.size += effsize
+#		else:
+#			# We have room. Parsel out some more
+#			buf       = self.arenas[-1][self.pos:self.pos+n]
+#			self.pos += effsize
+#		self.capacity = max(self.capacity, self.size)
+#		return buf
+#	def totsize(self): return sum([arena.size for arena in self.arenas])
+#	def free(self):
+#		self.arenas    = []
+#		# capacity is the logical size of the buffer, the size of the single
+#		# arena we will consolidate the others to. This is not the same as
+#		# the total size of all the arenas
+#		self.capacity  = 0
+#		# size is how much space we have logically allocated (so ignoring overhead
+#		# from extra arenas before we reach steady state, but including any
+#		# alignment padding)
+#		self.size      = 0
+#		# pos is our allocation offset in the current arena, which helps us
+#		# keep track of how much free space there there
+#		self.pos       = 0
+#	def reserve(self, n):
+#		"""Reserve space for at least n bytes without reallocation"""
+#		# Reset position
+#		self.reset()
+#		# Perform an allocation
+#		self.alloc(n)
+#		# Mark it as unused
+#		self.reset()
+#	def reset(self):
+#		"""Invalidate the memory we point to, potentially cleaning it up to a single
+#		fixed area we can allocate from. New allocations will reuse this memory
+#		as long as they don't exceed its capacity. If the capacity is exceeded, then
+#		it will start requesting new memory again."""
+#		self.pos = 0
+#		self.size = 0
+#		if   self.capacity == 0: self.arenas = []
+#		elif len(self.arenas) != 1 or self.arenas[0].size != self.capacity:
+#			# Free up our old arenas, and make our hopefully final one
+#			self.arenas = [self.allocator.alloc(self.capacity)]
+#		return self
+#	def __repr__(self):
+#		arenas = "["+",".join(["%.3fG" % (arena.size/1024**3) for arena in self.arenas])+"]"
+#		return "%s(name='%s', capacity=%.3fG, free=%.3fG, align=%d, arenas=%s)" % (self.__class__.__name__, self.name, self.capacity/1024**3, (self.arenas[-1].size-self.pos if len(self.arenas)>0 else 0)/1024**3, self.allocator.align, arenas)
+
 class Mempool:
 	def __init__(self, aligned_alloc, name="[unnamed]"):
 		self.allocator = aligned_alloc
@@ -131,54 +193,53 @@ class Mempool:
 	def alloc(self, n):
 		n       = int(n)
 		effsize = round_up(n, self.allocator.align)
-		# Check if we have room to hand out bytes from our
-		# current allocation.
-		if len(self.arenas) == 0 or self.arenas[-1].size < self.pos + n:
-			print("Growing pool %s to size %d" % (self.name, n))
-			# We don't have room. Make more
+		# We have two modes:
+		# 1. hand out memory from a single existing allocation.
+		#    This is only active when len(arenas) == 1
+		# 2. append new arenas
+		if len(self.arenas) != 1 or self.arenas[0].size < self.used + n:
+			print("Growing pool %s to size %d by %d" % (self.name, self.used + n, n))
+			print([a.size for a in self.arenas])
+			#import traceback
+			#traceback.print_stack()
+			# We're in mode 1
 			self.arenas.append(self.allocator.alloc(n))
 			buf = self.arenas[-1][0:n]
-			self.pos   = effsize
-			self.size += effsize
+			self.used += effsize
 		else:
-			# We have room. Parsel out some more
-			buf       = self.arenas[-1][self.pos:self.pos+n]
-			self.pos += effsize
-		self.capacity = max(self.capacity, self.size)
+			# We're in mode 2. Hand out some more memory
+			buf        = self.arenas[-1][self.used:self.used+n]
+			self.used += effsize
 		return buf
-	def totsize(self): return sum([arena.size for arena in self.arenas])
+	@property
+	def capacity(self): return self.arenas[0].size if len(self.arenas) == 1 else self.used
 	def free(self):
-		self.arenas    = []
-		# capacity is the logical size of the buffer, the size of the single
-		# arena we will consolidate the others to. This is not the same as
-		# the total size of all the arenas
-		self.capacity  = 0
-		# size is how much space we have logically allocated (so ignoring overhead
-		# from extra arenas before we reach steady state)
-		self.size      = 0
-		# pos is our allocation offset in the current arena, which helps us
-		# keep track of how much free space there there
-		self.pos       = 0
+		self.arenas = []
+		self.used   = 0
 	def reset(self):
 		"""Invalidate the memory we point to, potentially cleaning it up to a single
 		fixed area we can allocate from. New allocations will reuse this memory
 		as long as they don't exceed its capacity. If the capacity is exceeded, then
 		it will start requesting new memory again."""
-		self.pos = 0
-		self.size = 0
-		if   self.capacity == 0: self.arenas = []
-		elif len(self.arenas) != 1 or self.arenas[0].size != self.capacity:
-			# Free up our old arenas, and make our hopefully final one
+		if len(self.arenas) != 1:
+			# Go to from mode 1 to mode 2
 			self.arenas = [self.allocator.alloc(self.capacity)]
+		self.used = 0
+		return self
+	def reserve(self, n):
+		"""Reserve space for at least n bytes without reallocation"""
+		self.reset()  # Reset position
+		self.alloc(n) # Perform an allocation
+		self.reset()  # Mark it as unused
 		return self
 	def __repr__(self):
 		arenas = "["+",".join(["%.3fG" % (arena.size/1024**3) for arena in self.arenas])+"]"
-		return "%s(name='%s', capacity=%.3fG, free=%.3fG, align=%d, arenas=%s)" % (self.__class__.__name__, self.name, self.capacity/1024**3, (self.arenas[-1].size-self.pos if len(self.arenas)>0 else 0)/1024**3, self.allocator.align, arenas)
+		return "%s(name='%s', capacity=%.3fG, used=%.3fG, align=%d, arenas=%s)" % (self.__class__.__name__, self.name, self.capacity/1024**3, self.used/1024**3, self.allocator.align, arenas)
 
 class ArrayPoolCpu(Mempool):
-	def array(self, arr):
+	def array(self, arr, reset=True):
 		arr  = np.asarray(arr)
-		oarr = self.empty(arr.shape, dtype=arr.dtype)
+		oarr = self.empty(arr.shape, dtype=arr.dtype, reset=True)
 		oarr[:] = arr
 		return oarr
 	def empty(self, shape, dtype=np.float32, reset=True):
@@ -203,12 +264,12 @@ class ArrayPoolCpu(Mempool):
 		finally: pass
 
 class ArrayPoolGpu(Mempool):
-	def array(self, arr):
+	def array(self, arr, reset=True):
 		# Make sure the array is contiguous, which our memcpy needs
 		import cupy
 		ap   = cupy if isinstance(arr, cupy.ndarray) else np
 		arr  = ap.ascontiguousarray(arr)
-		oarr = self.empty(arr.shape, dtype=arr.dtype)
+		oarr = self.empty(arr.shape, dtype=arr.dtype, reset=True)
 		cuda_memcpy(arr, oarr)
 		return oarr
 	def empty(self, shape, dtype=np.float32, reset=True):
@@ -254,8 +315,8 @@ class ArrayMultipool:
 				self.pools[name] = self.factory(name=name)
 			pools.append(self.pools[name])
 		return pools
-	def size(self): return sum([pool.size() for name, pool in self.pools.items()])
-	def totsize(self): return sum([pool.totsize() for name, pool in self.pools.items()])
+	def used(self): return sum([pool.used for name, pool in self.pools.items()])
+	def capacity(self): return sum([pool.capacity for name, pool in self.pools.items()])
 	def free(self):
 		for name in self.pools:
 			self.pools[name].free()
