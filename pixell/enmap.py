@@ -2051,7 +2051,7 @@ def crop_geometry(shape, wcs, box=None, pixbox=None, oshape=None, recenter=False
 		box    = np.asarray(box)
 		# Allow box and pixbox to be 1d, in which case we will
 		# crop around a central point
-		if box.ndim == 2: pixbox = subinds(shape, wcs, box)
+		if box.ndim == 2: pixbox = subinds(shape, wcs, box, cap=False)
 		else:             pixbox = utils.nint(sky2pix(shape, wcs, box))
 	# We assume that the box selects pixel edges, so any pixel that is
 	# even partially inside the box should be included. This means that
