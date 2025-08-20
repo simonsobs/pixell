@@ -53,10 +53,11 @@ _print   = print
 # Just wall times for now, but could be extended to measure
 # cpu time or leaked memory
 class Bench:
-	def __init__(self):
+	def __init__(self, verbose=False):
 		self.t      = bunch.Bunch()
 		self.t_tot  = bunch.Bunch()
 		self.n      = bunch.Bunch()
+		self.verbose = verbose
 	@contextmanager
 	def mark(self, name, tfun=None):
 		if tfun is None: tfun = time.time
@@ -66,6 +67,8 @@ class Bench:
 		finally:
 			t2 = tfun()
 			self.add(name, t2-t1)
+			if self.verbose:
+				self.print(name)
 	@contextmanager
 	def show(self, name, tfun=None):
 		try:
@@ -82,6 +85,8 @@ class Bench:
 		self.t_tot[name] += t
 	def print(self, name):
 		_print("%7.4f s (last) %7.4f s (mean) %4d (n) %s" % (self.t[name], self.t_tot[name]/self.n[name], self.n[name], name))
+	def set_verbose(self, verbose):
+		self.verbose = verbose
 
 # Global interface
 _default = Bench()
@@ -92,3 +97,4 @@ print = _default.print
 t_tot = _default.t_tot
 t     = _default.t
 n     = _default.n
+set_verbose = _default.set_verbose

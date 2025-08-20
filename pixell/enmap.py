@@ -615,6 +615,7 @@ def project(map, shape, wcs, mode="spline", order=3, border="constant",
 	# Avoid unneccessary padding for local cases
 	if   ip or (mode == "spline" and order == 0): context = 0
 	elif        mode == "spline" and order == 1 : context = 1
+	elif        mode == "fourier": context = 32
 	# It would have been nice to be able to use padtiles here, but
 	# the input and output tilings are very different
 	for i1 in range(0, shape[-2], bsize):
@@ -631,7 +632,7 @@ def project(map, shape, wcs, mode="spline", order=3, border="constant",
 			band   = map.extract_pixbox([[y1,0],[y2,map.shape[-1]]])
 			# Apodize if necessary
 			if context > 1:
-				band = apod(band, width=(context,0), fill="crossfade")
+				band = apod(band, width=(context,0), fill="zero")
 		# And do the interpolation
 		somap[:] = utils.interpol(band, pix, mode=mode, order=order, border=border, cval=cval, ip=ip)
 	return omap
@@ -1142,9 +1143,6 @@ def pixsizemap(shape, wcs, separable="auto", broadcastable=False, bsize=1000, bc
 	if one is going to be doing additional manipulation of the pixel size
 	before using it. For a cylindrical map, the result would have shape [ny,1]
 	if broadcastable is True.
-
-	BUG: This function assumes parallelogram-shaped pixels. This breaks for
-	non-cylindrical projections!
 	"""
 	if wcsutils.is_plain(wcs):
 		return full(shape[-2:], wcs, np.abs(wcs.wcs.cdelt[0]*wcs.wcs.cdelt[1])*utils.degree**2)
@@ -1471,7 +1469,7 @@ def samewcs(arr, *args):
 # separate
 def geometry2(pos=None, res=None, shape=None, proj="car", variant=None,
 			deg=False, pre=(), ref=None, **kwargs):
-	"""Consruct a shape,wcs pair suitable for initializing enmaps. Some combination
+	"""Construct a shape,wcs pair suitable for initializing enmaps. Some combination
 	of pos, res and shape must be passed:
 
 	* Only res given: A fullsky geometry with this resolution is constructed
@@ -1582,7 +1580,7 @@ def fullsky_geometry2(res=None, shape=None, pre=None, deg=False, proj="car", var
 	geometry(). See its docstring for the meaning of the arguments.
 
 	dims is an alias for pre provided for backwards compatibility"""
-	return geometry(res=res, shape=shape, deg=deg, pre=pre or dims or (), proj=proj, variant=variant)
+	return geometry2(res=res, shape=shape, deg=deg, pre=pre or dims or (), proj=proj, variant=variant)
 
 def band_geometry2(decrange, res=None, shape=None, pre=None, deg=False, proj="car", variant=None, dims=None):
 	"""Build a geometry covering a range of declinations. Equivalent to
@@ -1594,7 +1592,7 @@ def band_geometry2(decrange, res=None, shape=None, pre=None, deg=False, proj="ca
 	decrange = (np.zeros(2)+decrange)*unit
 	if decrange.shape != (2,): raise ValueError("decrange must be a number or (dec1,dec2)")
 	pos      = np.array([[decrange[0],np.pi],[decrange[1],-np.pi]])/unit
-	return geometry(pos=pos, res=res, shape=shape, deg=deg, pre=pre or dims or (), proj=proj, variant=variant)
+	return geometry2(pos=pos, res=res, shape=shape, deg=deg, pre=pre or dims or (), proj=proj, variant=variant)
 
 # Idea: Make geometry a class with .shape and .wcs members.
 # Make a function that takes (foo,bar) and returns a geometry,
@@ -2048,12 +2046,12 @@ def downgrade_geometry(shape, wcs, factor):
 def upgrade_geometry(shape, wcs, factor):
 	return scale_geometry(shape, wcs, factor)
 
-def crop_geometry(shape, wcs, box=None, pixbox=None, oshape=None):
+def crop_geometry(shape, wcs, box=None, pixbox=None, oshape=None, recenter=False):
 	if pixbox is None:
 		box    = np.asarray(box)
 		# Allow box and pixbox to be 1d, in which case we will
 		# crop around a central point
-		if box.ndim == 2: pixbox = subinds(shape, wcs, box)
+		if box.ndim == 2: pixbox = subinds(shape, wcs, box, cap=False)
 		else:             pixbox = utils.nint(sky2pix(shape, wcs, box))
 	# We assume that the box selects pixel edges, so any pixel that is
 	# even partially inside the box should be included. This means that
@@ -2076,6 +2074,7 @@ def crop_geometry(shape, wcs, box=None, pixbox=None, oshape=None):
 	oshape = tuple(shape[:-2]) + tuple(np.abs(pixbox[1]-pixbox[0]))
 	owcs   = wcs.deepcopy()
 	owcs.wcs.crpix -= pixbox[0,::-1]
+	if recenter: owcs = wcsutils.recenter_cyl_x(owcs, oshape[-1]//2)
 	return oshape, owcs
 
 def distance_transform(mask, omap=None, rmax=None, method="cellgrid"):
