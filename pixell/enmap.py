@@ -1580,7 +1580,7 @@ def fullsky_geometry2(res=None, shape=None, pre=None, deg=False, proj="car", var
 	geometry(). See its docstring for the meaning of the arguments.
 
 	dims is an alias for pre provided for backwards compatibility"""
-	return geometry(res=res, shape=shape, deg=deg, pre=pre or dims or (), proj=proj, variant=variant)
+	return geometry2(res=res, shape=shape, deg=deg, pre=pre or dims or (), proj=proj, variant=variant)
 
 def band_geometry2(decrange, res=None, shape=None, pre=None, deg=False, proj="car", variant=None, dims=None):
 	"""Build a geometry covering a range of declinations. Equivalent to
@@ -1592,7 +1592,7 @@ def band_geometry2(decrange, res=None, shape=None, pre=None, deg=False, proj="ca
 	decrange = (np.zeros(2)+decrange)*unit
 	if decrange.shape != (2,): raise ValueError("decrange must be a number or (dec1,dec2)")
 	pos      = np.array([[decrange[0],np.pi],[decrange[1],-np.pi]])/unit
-	return geometry(pos=pos, res=res, shape=shape, deg=deg, pre=pre or dims or (), proj=proj, variant=variant)
+	return geometry2(pos=pos, res=res, shape=shape, deg=deg, pre=pre or dims or (), proj=proj, variant=variant)
 
 # Idea: Make geometry a class with .shape and .wcs members.
 # Make a function that takes (foo,bar) and returns a geometry,
