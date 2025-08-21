@@ -329,8 +329,8 @@ def asfcarray(a):
 def empty(shape, dtype):
 	return engines[engine].empty_aligned(shape, dtype=dtype, n=alignment)
 
-def fftfreq(n, d=1.0): return np.fft.fftfreq(n, d=d)
-def rfftfreq(n, d=1.0): return np.arange(n//2+1)/(n*d)
+def fftfreq(n, d=1.0, dtype=np.float64): return np.fft.fftfreq(n, d=d).astype(dtype, copy=False)
+def rfftfreq(n, d=1.0, dtype=np.float64): return np.arange(n//2+1, dtype=dtype)/(n*d)
 
 def ind2freq (n, i, d=1.0): return np.where(i < n/2, i, -n+i)/(d*n)
 def int2rfreq(n, i, d=1.0): return i/(n*d)

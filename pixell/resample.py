@@ -114,7 +114,7 @@ def resample_fft_simple(d, n, ngroup=100):
 		else:
 			fd = np.concatenate([fd[:,:nold//2],np.zeros([len(fd),n-nold],fd.dtype),fd[:,nold//2:]],-1)
 		res[di:di+ngroup] = fft.ifft(fd, normalize=True).real
-	del fd
+		del fd
 	res *= float(n)/nold
 	return res
 

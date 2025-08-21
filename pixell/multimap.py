@@ -240,11 +240,8 @@ def harm2map_adjoint(mmap, nthread=0, normalize=True, iau=False, spin=[0,2]):
 	return map2harm(mmap, nthread=nthread, normalize=normalize, iau=iau, spin=spin, adjoint_harm2map=True)
 
 def queb_rotmat(lmap, inverse=False, iau=False, spin=2):
-	sgn = 1 if iau else -1
-	a    = sgn*spin*np.arctan2(-lmap[1], lmap[0])
-	c, s = np.cos(a), np.sin(a)
-	if inverse: s = -s
-	return samegeos(np.array([[c,-s],[s,c]]),lmap)
+	out = enmap.queb_rotmat(lmap, inverse=inverse, iau=iau, spin=spin)
+	return samegeos(out,lmap)
 
 def rotate_pol(mmap, angle, comps=[-2,-1]):
 	c, s = np.cos(2*angle), np.sin(2*angle)

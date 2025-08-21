@@ -1,5 +1,5 @@
 from __future__ import division, print_function
-import numpy as np, argparse, time, sys, warnings, os, shlex, glob, PIL.Image, PIL.ImageDraw
+import numpy as np, argparse, time, sys, warnings, os, shlex, glob, PIL.Image, PIL.ImageDraw, fractions
 from scipy import ndimage
 from . import enmap, colorize, mpi, cgrid, utils, memory, bunch, wcsutils
 # Optional dependency array_ops needed for contour drawing
@@ -82,6 +82,11 @@ def pshow(*arglist, method="auto", **args):
 	pshow(...) is equivalent to show(plot(...))."""
 	show(plot(*arglist, **args), method=method)
 
+def pwrite(*arglist, **args):
+	"""Convenience function to both build plots and write them.
+	pwrite(...) is equivalent to write(plot(...))."""
+	write(plot(*arglist, **args))
+
 # Compatibility function
 def get_plots(*arglist, **args):
 	"""This function is identical to enplot.plot"""
@@ -143,55 +148,59 @@ def plot_iterator(*arglist, **kwargs):
 			printer.write("color range %d: %12.5e to %15.7e" % (ci, cr[0], cr[1]), 4)
 		# Loop over map fields
 		ncomp  = map.shape[0]
-		ngroup = 3 if args.rgb else 1
-		crange_ind = 0
+		gsize  = 3 if args.rgb else 1
+		ngroup = ncomp//gsize
 		# Collect output images for this map in a list
-		for i in range(0, ncomp, ngroup):
+		for gi in range(ngroup):
 			# The unflattened index of the current field
 			N = minfo.ishape[:-2]
-			I = np.unravel_index(i, N) if len(N) > 0 else []
+			I = np.unravel_index(gi, N) if len(N) > 0 else []
 			if args.symmetric and np.any(np.sort(I) != I):
 				continue
 			# Construct default out format
-			ndigit   = get_num_digits(ncomp)
+			ndigit   = get_num_digits(ngroup)
 			ndigits  = [get_num_digits(n) for n in N]
-			subprint = printer.push(("%%0%dd/%%d " % ndigit) % (i+1,ncomp))
+			subprint = printer.push(("%%0%dd/%%d " % ndigit) % (gi+1,ncomp))
 			dir, base, ext = split_file_name(minfo.fname)
 			if args.odir is not None: dir = args.odir
-			map_field = map[i:i+ngroup]
+			map_field = map[gi*gsize:(gi+1)*gsize]
 			if minfo.wcslist:
 				# HACK: If stamp extraction messed with the wcs, fix it here
 				map_field.wcs = minfo.wcslist[I[0]]
+			# We want field numbers in the output unless there's only one field, or
+			# unless we're outputting a video
+			is_vid    = is_video_ext(args.ext)
+			want_inds = ngroup > 1 and not is_vid
 			# Build output file name
 			oinfo = {"dir":"" if dir == "." else dir + "/", "base":base, "iext":ext,
-					"fi":fi, "fn":len(imaps), "ci":i, "cn":ncomp, "pi":comm.rank, "pn":comm.size,
+					"fi":fi, "fn":len(imaps), "ci":gi, "cn":ngroup, "pi":comm.rank, "pn":comm.size,
 					"pre":args.prefix, "suf":args.suffix,
-					"comp": "_"+"_".join(["%0*d" % (ndig,ind) for ndig,ind in zip(ndigits,I)]) if len(N) > 0 else "",
-					"fcomp": "_%0*d" % (ndigit,i) if len(minfo.ishape) > 2 else "",
+					"comp": "_"+"_".join(["%0*d" % (ndig,ind) for ndig,ind in zip(ndigits,I)]) if want_inds else "",
+					"fcomp": "_%0*d" % (ndigit,gi) if len(minfo.ishape) > 2 else "",
 					"ext":args.ext, "layer":""}
 			oname = args.oname.format(**oinfo)
 			# Draw the map
 			if args.driver.lower() == "pil":
-				img, info = draw_map_field(map_field, args, crange[:,crange_ind:crange_ind+ngroup], return_info=True, return_layers=args.layers, printer=subprint, cache=cache)
+				img, info = draw_map_field(map_field, args, crange[:,gi*gsize:(gi+1)*gsize], return_info=True, return_layers=args.layers, printer=subprint, cache=cache)
 				padding = np.array([-info.bounds[0,::-1],info.bounds[1,::-1]-map_field.shape[-2:]],dtype=int)
 				printer.write("padded by %d %d %d %d" % tuple(padding.reshape(-1)), 4)
+				typ = "vid" if is_vid else "pil"
 				if args.layers:
 					for layer, name in zip(img, info.names):
 						oinfo["layer"] = "_" + name
 						oname = args.oname.format(**oinfo)
-						yield bunch.Bunch(img=layer, name=oname, type="pil", info=info, printer=subprint, **oinfo)
+						yield bunch.Bunch(img=layer, name=oname, type=typ, info=info, printer=subprint, **oinfo)
 				else:
-					yield bunch.Bunch(img=img, name=oname, type="pil", info=info, printer=subprint, **oinfo)
+					yield bunch.Bunch(img=img, name=oname, type=typ, info=info, printer=subprint, **oinfo)
 			elif args.driver.lower() in ["matplotlib","mpl"]:
-				figure = draw_map_field_mpl(map_field, args, crange[:,crange_ind:crange_ind+ngroup], printer=subprint)
+				figure = draw_map_field_mpl(map_field, args, crange[:,gi*gsize:(gi+1)*gsize], printer=subprint)
 				yield bunch.Bunch(img=figure, name=oname, type="mpl", dpi=args.mpl_dpi, printer=subprint, **oinfo)
 			# Progress report
-			printer.write("\r%s %5d/%d" % (iname, i+1,ncomp), 2, exact=True, newline=False)
-			crange_ind += 1
+			printer.write("\r%s %5d/%d" % (iname, gi+1,ngroup), 2, exact=True, newline=False)
 		printer.write("",    2, exact=True)
 		printer.write(iname, 1, exact=True)
 
-def write(fname, plot):
+def write(fname, plots=None, writer=None):
 	"""Write the given plot or plots to file. If plot is a single plot, then
 	it will simply be written to the specified filename. If plot is a list of
 	plots, then it fname will be interpreted as a prefix, and the plots will
@@ -200,30 +209,41 @@ def write(fname, plot):
 	maps or "_0.png", "_1.png", etc. for vector maps. It's also possible to pass in
 	plain images (either PIL or matplotlib), which will be written to the given
 	filename."""
-	"""Write the given plot to the specified file."""
-	if isinstance(plot, list):
-		# Allow writing a whole list of plots at once. In this case the fname is
-		# interpreted as a prefix
-		for p in plot:
-			write(fname + p.name, p)
+	if plots is None: fname, plots = "", fname
+	# Make sure it's a list
+	if not isinstance(plots, list) and not isinstance(plots, tuple):
+		# Copy because we'll override the file name in this mode.
+		# See the docstring
+		plots  = [plots.copy()]
+		plots[0].name = fname
+		prefix = ""
 	else:
-		try:
-			printer = plot.printer if "printer" in plot else noprint
-			if plot.type == "pil":
-				with printer.time("write to %s" % fname, 3):
-					plot.img.save(fname)
-			elif plot.type == "mpl":
-				with printer.time("write to %s" % fname, 3):
-					plot.img.savefig(fname,bbox_inches="tight",dpi=plot.dpi)
-			else:
-				raise ValueError("Unknown plot type '%s'" % plot.type)
-		except (AttributeError, TypeError):
-			# Apparently we don't have a plot object. Check if it's a plain image
-			try: plot.save(fname)
-			except AttributeError:
-				try: plot.savefig(fname,bbox_inches="tight",dpi=75)
-				except AttributeError:
-					raise ValueError("Error writing plot: The plot is not a recognized type")
+		prefix = fname
+	# Set up a Writer. We need this because for the the video output format,
+	# multiple plots will be accumuated into a single output stream
+	if writer is None:
+		with PlotWriter() as writer:
+			# Process each plot in the list
+			for i, plot in enumerate(plots):
+				_write_helper(writer, plot, prefix=prefix)
+	else:
+		for i, plot in enumerate(plots):
+			_write_helper(writer, plot, prefix=prefix)
+
+def _write_helper(writer, plot, prefix=""):
+	# Normally we would have been given a plot object.
+	# If someone passed in a plain img or fig, we need
+	# to turn it into a plot
+	if   isinstance(plot, bunch.Bunch): pass # already a proper plot
+	elif isinstance(plot, PIL.Image):
+		plot = bunch.Bunch(img=plot, type="pil", name="")
+	else:
+		# Assume matplotlib otherwise
+		plot = bunch.Bunch(img=plot, type="mpl", name="", dpi=75)
+	# Send it to the writer
+	printer = plot.printer if "printer" in plot else noprint
+	with printer.time("write to %s" % (prefix + plot.name), 3):
+		writer.process(plot, prefix=prefix)
 
 def define_arg_parser(nodefault=False):
 	argdefs = []
@@ -982,7 +1002,7 @@ def show(img, title=None, method="auto"):
 		raise ImportError("Could not find any working display backends for enplot.show")
 
 def show_ipython(img, title=None):
-	from IPython.core.display import display
+	from IPython.display import display
 	for img_, title_ in _show_helper(img, title):
 		display(img_)
 
@@ -1085,3 +1105,67 @@ def _show_helper(img, title=None):
 			return [(img.img, (title or img.name))]
 		except AttributeError:
 			return [(img, (title or "plot"))]
+
+def is_video_ext(ext):
+	return ext in ["mp4", "mkv", "avi"]
+
+class Writer:
+	def __init__(self, **kwargs): pass
+	def process(self, plot): raise NotImplementedError
+	def close(self): pass
+	def __enter__(self): return self
+	def __exit__(self, type, value, traceback): self.close()
+
+class PlotWriter(Writer):
+	def __init__(self, **kwargs):
+		self.vid_writer = VideoWriter(**kwargs)
+	def process(self, plot, prefix=""):
+		if plot.type == "vid":
+			self.vid_writer.process(plot, prefix=prefix)
+		elif plot.type == "pil":
+			plot.img.save(prefix + plot.name)
+		elif plot.type == "mpl":
+			plot.img.savefig(prefix + plot.name,bbox_inches="tight",dpi=plot.dpi)
+		else:
+			raise ValueError("Unknown plot type '%s'" % plot.type)
+	def close(self):
+		self.vid_writer.close()
+
+class VideoWriter(Writer):
+	def __init__(self, codec="h264", crf=17, pix_fmt="yuv420p", fps=fractions.Fraction(30,1), **kwargs):
+		self.fps    = fps
+		self.crf    = crf
+		self.pix_fmt= pix_fmt
+		self.codec  = codec
+		self.fname  = None
+		self.output = None
+	def process(self, plot, prefix=""):
+		import av
+		fname = prefix + plot.name
+		if fname != self.fname:
+			self.new(fname, plot.img)
+		img    = merge_images([self.bg, plot.img])
+		frame  = av.VideoFrame.from_image(img)
+		packet = self.stream.encode(frame)
+		self.output.mux(packet)
+	def new(self, fname, img):
+		import av
+		# Close any existing output file
+		self.close()
+		# Set up a new one
+		self.fname = fname
+		self.output= av.open(self.fname, "w")
+		stream         = self.output.add_stream("h264", self.fps)
+		stream.width   = img.width
+		stream.height  = img.height
+		stream.pix_fmt = self.pix_fmt
+		stream.options = {"crf": str(self.crf)}
+		self.stream = stream
+		# Background for transparent images
+		self.bg = PIL.Image.new("RGBA", img.size, "WHITE")
+	def close(self):
+		if self.output is None: return
+		packet = self.stream.encode(None)
+		self.output.mux(packet)
+		self.output.close()
+		self.output = None

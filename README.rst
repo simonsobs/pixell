@@ -21,6 +21,7 @@ pixell
 * Free software: BSD license
 * Documentation: https://pixell.readthedocs.io.
 * Tutorials_
+* Summary_ of what pixell can and cannot do
 
 Dependencies
 ------------
@@ -123,3 +124,4 @@ If you do not have write access, create a fork of this repository and proceed as
 .. _Contributing: https://pixell.readthedocs.io/en/latest/contributing.html
 .. _NERSC: https://pixell.readthedocs.io/en/latest/nersc.html
 .. _MACOSX: https://github.com/simonsobs/pspy/blob/master/INSTALL_MACOS.rst
+.. _Summary: https://docs.google.com/presentation/d/1wFQKJ8SGh6yizkcinx72eWeoLJyMpoPTuHgOTjGJD6I/edit?usp=sharing

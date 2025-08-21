@@ -66,16 +66,22 @@ def write(fname, bunch, fmt="auto", group=None, gmode="dot"):
 
 def read_hdf(fname, group=None, gmode="dot"):
 	import h5py
-	if group is None:
-		fname, group = split_hdf_path(fname, group, mode=gmode)
-	with h5py.File(fname, "r") as hfile:
-		if group: hfile = hfile[group]
-		return read_hdf_recursive(hfile)
+	if isinstance(fname, h5py.Group):
+		# Already open hdf file
+		if group is not None: fname = fname[group]
+		return read_hdf_recursive(fname)
+	else:
+		# File name. Optionally extract group
+		if group is None:
+			fname, group = split_hdf_path(fname, group, mode=gmode)
+		with h5py.File(fname, "r") as hfile:
+			if group: hfile = hfile[group]
+			return read_hdf_recursive(hfile)
 
 def read_hdf_recursive(hfile):
 	import h5py
 	if isinstance(hfile, h5py.Dataset):
-		return hfile[()]
+		return decode(hfile[()])
 	else:
 		bunch = Bunch()
 		for key in hfile:
@@ -96,17 +102,31 @@ def write_hdf_recursive(hfile, bunch):
 			hfile.create_group(key)
 			write_hdf_recursive(hfile[key], bunch[key])
 		else:
-			hfile[key] = bunch[key]
+			hfile[key] = encode(bunch[key])
 
-#def make_safe(val):
-#	import numpy as np
-#	if isinstance(val, np.ndarray):
-#		try: return np.char.encode(val)
-#		except TypeError: pass
-#	elif isinstance(val, str):
-#		return val.encode()
-#	else:
-#		return val
+def encode(val):
+	import numpy as np
+	if isinstance(val, np.ndarray):
+		try: return np.char.encode(val)
+		except (TypeError,AttributeError): return val
+	elif isinstance(val, str):
+		return val.encode()
+	elif val is None:
+		return "__None__".encode()
+	else:
+		return val
+
+def decode(val):
+	import numpy as np
+	if isinstance(val, np.ndarray):
+		try: return np.char.decode(val)
+		except (TypeError,AttributeError): return val
+	elif isinstance(val, bytes):
+		val = val.decode()
+		if val == "__None__": return None
+		else: return val
+	else:
+		return val
 
 def is_hdf_path(fname):
 	"""Returns true if the fname would be recognized by split_hdf_path"""
