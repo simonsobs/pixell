@@ -191,6 +191,10 @@ class ArrayPoolCpu(Mempool):
 		return self.full(shape, 0, dtype=dtype, reset=reset)
 	def ones(self, shape, dtype=np.float32, reset=True):
 		return self.full(shape, 1, dtype=dtype, reset=reset)
+	def copy(self, other, reset=True):
+		arr = self.empty(other.shape, other.dtype, reset=reset)
+		arr[:] = other
+		return arr
 	# No allocator support in numpy, so undefined what this
 	# should return. Just return a numpy array of bytes for now
 	def alloc_raw(self, n): return self.alloc(n)
@@ -222,6 +226,10 @@ class ArrayPoolGpu(Mempool):
 		return self.full(shape, 0, dtype=dtype, reset=reset)
 	def ones(self, shape, dtype=np.float32, reset=True):
 		return self.full(shape, 1, dtype=dtype, reset=reset)
+	def copy(self, other, reset=True):
+		arr = self.empty(other.shape, other.dtype, reset=reset)
+		arr[:] = other
+		return arr
 	def alloc_raw(self, n): return self.alloc(n).data
 	@contextlib.contextmanager
 	def as_allocator(self, reset=True):
@@ -262,6 +270,8 @@ class ArrayMultipool:
 	def reset(self):
 		for name in self.pools:
 			self.pools[name].reset()
+	def swap(self, name1, name2):
+		self.pools[name1], self.pools[name2] = self.pools[name2], self.pools[name1]
 	def __getitem__(self, name):
 		"""Returns the memory pool with the given name, creating it if it doesn't exist"""
 		if name not in self.pools:
