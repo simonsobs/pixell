@@ -67,7 +67,8 @@ class Bench:
 			t2 = tfun()
 			self.add(name, t2-t1)
 	@contextmanager
-	def show(self, name, tfun=None):
+	def show(self, name, tfun=None, skip=False):
+        if skip: continue
 		try:
 			with self.mark(name, tfun=None):
 				yield
