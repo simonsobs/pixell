@@ -698,8 +698,10 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 		if reverse: map [islice] = op(map[islice], omap[oslice])
 		else:       omap[oslice] = op(omap[oslice], map[islice])
 	# Optionally recenter cylindrical geometries so the reference point is
-	# in-bounds in RA
-	omap.wcs = recenter_geo(omap.shape, omap.wcs, mode=recenter)[1]
+	# in-bounds in RA, but only do it if we're not in reverse mode,
+	# since we shouldn't be writing to omap then
+	if not reverse:
+		omap.wcs = recenter_geo(omap.shape, omap.wcs, mode=recenter)[1]
 	return omap
 
 def insert(omap, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
