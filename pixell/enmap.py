@@ -2560,34 +2560,7 @@ def stamps(map, pos, shape, aslist=False):
 	return res
 
 def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000):
-	"""Project the enmap "imap" onto the healpix pixelization. If omap is given,
-	the output will be written to it. Otherwise, a new healpix map will be constructed.
-	The healpix map must be in RING order. nside controls the resolution of the output map.
-	If 0, nside is chosen such that the output map is higher resolution than the input.
-	This is needed to avoid losing information. To go to a lower-resolution output map,
-	you should first degrade the input map. The chunk argument affects the speed/memory
-	tradeoff of the function. Higher values use more memory, and might (and might not)
-	give higher speed."""
-	warnings.warn("enmap.to_healpix is deprecated. Reprojecting this way is error-prone due to the potential loss of information, and the (very small) loss of high-l power due to the use of spline interpolation. Use reproject.map2healpix instead. And read its docstring!")
-	import healpy
-	ip = utils.interpolator(imap, order=order)
-	if omap is None:
-		# Generate an output map
-		if not nside:
-			npix_full_cyl = 4*np.pi/imap.pixsize()
-			nside = 2**int(np.floor(np.log2((npix_full_cyl/12)**0.5)))
-		npix = 12*nside**2
-		omap = np.zeros(imap.shape[:-2]+(npix,),imap.dtype)
-	else:
-		nside = healpy.npix2nside(omap.shape[-1])
-	npix = omap.shape[-1]
-	# Interpolate values at output pixel positions
-	for i in range(0, npix, chunk):
-		pos   = np.array(healpy.pix2ang(nside, np.arange(i, min(npix,i+chunk))))
-		# Healpix uses polar angle, not dec
-		pos[0] = np.pi/2 - pos[0]
-		omap[...,i:i+chunk] = imap.at(pos, ip=ip)
-	return omap
+	raise RuntimeError("This function has been removed. Use reproject.map2healpix().")
 
 def to_flipper(imap, omap=None, unpack=True):
 	"""Convert the enmap "imap" into a flipper map with the same geometry. If

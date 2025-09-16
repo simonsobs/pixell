@@ -2,7 +2,7 @@
 pixell
 =======
 
-.. image:: https://github.com/simonsobs/pixell/workflows/Build/badge.svg
+.. image:: https://img.shields.io/github/actions/workflow/status/simonsobs/pixell/build.yml?branch=master
            :target: https://github.com/simonsobs/pixell/actions?query=workflow%3ABuild
 
 .. image:: https://readthedocs.org/projects/pixell/badge/?version=latest
