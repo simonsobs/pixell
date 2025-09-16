@@ -699,7 +699,8 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 		else:       omap[oslice] = op(omap[oslice], map[islice])
 	# Optionally recenter cylindrical geometries so the reference point is
 	# in-bounds in RA
-	omap.wcs = recenter_geo(omap.shape, omap.wcs, mode=recenter)[1]
+	if recenter:
+		omap.wcs = recenter_geo(omap.shape, omap.wcs, mode=recenter)[1]
 	return omap
 
 def insert(omap, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
@@ -2283,13 +2284,15 @@ def find_blank_edges(m, value="auto"):
 		value   = np.asarray(value)
 		# Find which rows and cols consist entirely of the given value
 		hitmask = np.all(np.isclose(m.T, value.T, equal_nan=True, rtol=1e-6, atol=0).T,axis=tuple(range(m.ndim-2)))
-		hitrows = np.all(hitmask,1)
-		hitcols = np.all(hitmask,0)
+		hitrows = np.where(~np.all(hitmask,1))[0]
+		hitcols = np.where(~np.all(hitmask,0))[0]
+		y1, y2  = hitrows[[0,-1]] if len(hitrows) > 0 else (0,m.shape[-2]-1)
+		x1, x2  = hitcols[[0,-1]] if len(hitcols) > 0 else (0,m.shape[-1]-1)
 		# Find the first and last row and col which aren't all the value
 		blanks  = np.array([
-			np.where(~hitrows)[0][[0,-1]],
-			np.where(~hitcols)[0][[0,-1]]]
-			).T
+			[y1, y2],
+			[x1, x2],
+		]).T
 		blanks[1] = m.shape[-2:]-blanks[1]-1
 		return blanks
 

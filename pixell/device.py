@@ -160,6 +160,7 @@ class Mempool:
 		it will start requesting new memory again."""
 		if len(self.arenas) != 1:
 			# Go to from mode 1 to mode 2
+			self.arenas = []
 			self.arenas = [self.allocator.alloc(self.capacity)]
 		self.used = 0
 		return self
@@ -191,10 +192,6 @@ class ArrayPoolCpu(Mempool):
 		return self.full(shape, 0, dtype=dtype, reset=reset)
 	def ones(self, shape, dtype=np.float32, reset=True):
 		return self.full(shape, 1, dtype=dtype, reset=reset)
-	def copy(self, other, reset=True):
-		arr = self.empty(other.shape, other.dtype, reset=reset)
-		arr[:] = other
-		return arr
 	# No allocator support in numpy, so undefined what this
 	# should return. Just return a numpy array of bytes for now
 	def alloc_raw(self, n): return self.alloc(n)
@@ -226,10 +223,6 @@ class ArrayPoolGpu(Mempool):
 		return self.full(shape, 0, dtype=dtype, reset=reset)
 	def ones(self, shape, dtype=np.float32, reset=True):
 		return self.full(shape, 1, dtype=dtype, reset=reset)
-	def copy(self, other, reset=True):
-		arr = self.empty(other.shape, other.dtype, reset=reset)
-		arr[:] = other
-		return arr
 	def alloc_raw(self, n): return self.alloc(n).data
 	@contextlib.contextmanager
 	def as_allocator(self, reset=True):

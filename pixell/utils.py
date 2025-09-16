@@ -338,11 +338,10 @@ def mask2range(mask):
 	"""Convert a binary mask [True,True,False,True,...] into
 	a set of ranges [:,{start,stop}]."""
 	# We consider the outside of the array to be False
-	mask  = np.concatenate([[False],mask,[False]]).astype(np.int8)
-	# Find where we enter and exit ranges with true mask
-	dmask = mask[1:]-mask[:-1]
-	start = np.where(dmask>0)[0]
-	stop  = np.where(dmask<0)[0]
+	mask   = np.concatenate([[False],mask.astype(bool,copy=False),[False]]).astype(np.int8)
+	diffs  = np.diff(mask)
+	start  = np.where(diffs>0)[0]
+	stop   = np.where(diffs<0)[0]
 	return np.array([start,stop]).T
 
 def repeat_filler(d, n):
@@ -2300,6 +2299,7 @@ def block_reduce(a, bsize, axis=-1, off=0, op=np.mean, inclusive=True):
 	if pre.size  > 0 and inclusive: parts.append(np.expand_dims(op(pre, axis),axis))
 	if mid.size  > 0: parts.append(op(mid.reshape(mid.shape[:axis]+(nwhole,bsize)+mid.shape[axis+1:]),axis+1))
 	if tail.size > 0 and inclusive: parts.append(np.expand_dims(op(tail,axis),axis))
+	if len(parts) == 0: return a
 	return np.concatenate(parts, axis)
 
 def block_expand(a, bsize, osize, axis=-1, off=0, op="nearest", inclusive=True):
