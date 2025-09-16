@@ -2865,7 +2865,6 @@ def afmt(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
 	if nmax is not None:
 		if nmax == 0: nmax = 10000000 # "unlimited"
 		if nedge is None: nedge = max(nmax//2-1,1)
-	print(nedge)
 	return np.array2string(arr, formatter=formatter, threshold=nmax, edgeitems=nedge)
 
 def contains_any(a, bs):
