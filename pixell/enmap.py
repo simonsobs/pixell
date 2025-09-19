@@ -687,11 +687,12 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 		oshape, owcs = slice_geometry(map.shape, iwcs, (slice(*pixbox[:,-2]),slice(*pixbox[:,-1])), nowrap=True)
 		omap = full(map.shape[:-2]+tuple(oshape[-2:]), owcs, cval, map.dtype)
 	nphi = utils.nint(360/np.abs(iwcs.wcs.cdelt[0]))
-	# If our map is wider than the wrapping length, assume we're a lower-spin field
-	nphi *= (nphi+map.shape[-1]-1)//nphi
+	## If our map is wider than the wrapping length, assume we're a lower-spin field
+	#nphi *= (nphi+map.shape[-1]-1)//nphi
 	if utils.streq(wrap, "auto"):
 		wrap = [0,0] if wcsutils.is_plain(iwcs) else [0,nphi]
 	else: wrap = np.zeros(2,int)+wrap
+
 	for ibox, obox in utils.sbox_wrap(pixbox.T, wrap=wrap, cap=map.shape[-2:]):
 		islice = utils.sbox2slice(ibox)
 		oslice = utils.sbox2slice(obox)
