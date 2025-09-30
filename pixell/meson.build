@@ -29,6 +29,7 @@ python_sources = [
     'wavelets.py',
     'wcsutils.py',
     'bench.py',
+    'device.py',
     # Not technically a python source file, but is required for pixell
     'arial.ttf',
 ]
