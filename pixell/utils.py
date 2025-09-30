@@ -3324,7 +3324,7 @@ def chord2ang(chord):
 	"""Inverse of ang2chord."""
 	return 2*np.arcsin(chord/2)
 
-def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
+def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto", return_nhit=False):
 	"""Find close matches between positions given by pos1[:,ndim] and pos2[:,ndim],
 	up to a maximum distance of rmax (in the same units as the positions).
 
@@ -3397,14 +3397,16 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 		else:
 			raise ValueError("crossmatch: Unrecognized mode: %s" % (str(mode)))
 		# Filter out all but the first mention of each
-		done1 = np.zeros(n1, bool)
-		done2 = np.zeros(n2, bool)
+		nhit1 = np.zeros(n1, int)
+		nhit2 = np.zeros(n2, int)
 		opairs= []
 		for i1, i2 in pairs:
-			if done1[i1] or done2[i2]: continue
-			done1[i1] = done2[i2] = True
+			nhit1[i1] += 1
+			nhit2[i2] += 1
+			if nhit1[i1] > 1 or nhit2[i2] > 1: continue
 			opairs.append((i1,i2))
-		return opairs
+		if return_nhit: return opairs, nhit1, nhit2
+		else: return opairs
 
 def real_dtype(dtype):
 	"""Return the closest real (non-complex) dtype for the given dtype"""
