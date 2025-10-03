@@ -170,7 +170,7 @@ def plot_iterator(*arglist, **kwargs):
 			# We want field numbers in the output unless there's only one field, or
 			# unless we're outputting a video
 			is_vid    = is_video_ext(args.ext)
-			want_inds = ngroup > 1 and not is_vid
+			want_inds = len(N) > 0 and not is_vid
 			# Build output file name
 			oinfo = {"dir":"" if dir == "." else dir + "/", "base":base, "iext":ext,
 					"fi":fi, "fn":len(imaps), "ci":gi, "cn":ngroup, "pi":comm.rank, "pn":comm.size,
