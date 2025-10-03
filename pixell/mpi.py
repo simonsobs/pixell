@@ -42,7 +42,7 @@ class itemhack:
         assert np.all(bsendoff*bsize==sendoff), "sendoff must be a multiple of bsize"
         assert np.all(brecvoff*bsize==recvoff), "recvoff must be a multiple of bsize"
         # Define new mpi data type for the transfer
-        mtype = MPI.BYTE.Create_contiguous(sendbuf.itemsize*bsize)
+        mtype = BYTE.Create_contiguous(sendbuf.itemsize*bsize)
         mtype.Commit()
         comm.Alltoallv(
             (sendbuf, (bsendn,bsendoff), mtype),

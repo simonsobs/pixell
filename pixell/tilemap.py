@@ -434,7 +434,7 @@ def to_enmap(tile_map):
 
 # The main purpose of a TileMap is to spead the data of a huge map across many mpi tasks.
 
-def redistribute(imap, comm, active=None, omap=None, itemhack=False):
+def redistribute(imap, comm, active=None, omap=None, itemhack=True):
 	"""Redistirbute the data in the mpi-distributed tiles in imap into the
 	active tiles in omap, using the given communicator. If a tile is active in
 	multiple tasks in imap, it will be reduced. If it is active in multiple tiles in
