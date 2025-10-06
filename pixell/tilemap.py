@@ -520,7 +520,7 @@ def get_active_distributed(tile_map, comm):
 	iactive     = utils.allreduce(iactive, comm)
 	return np.nonzero(iactive)[0]
 
-def reduce(tile_map, comm, root=0, itemhack=False):
+def reduce(tile_map, comm, root=0, itemhack=True):
 	"""Given a distributed TileMap tile_map, collect all the tiles
 	on the task with rank root (default is rank 0), and return it.
 	Multiply owned tiles are reduced. Returns a TileMap with no
