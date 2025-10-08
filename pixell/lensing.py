@@ -1,4 +1,3 @@
-import lenspyx
 import numpy as np
 from . import enmap, utils, powspec, curvedsky
 try: from . import interpol
@@ -131,7 +130,7 @@ def kappa_to_phi(kappa_alm,kappa_ainfo=None):
 	oalm[~np.isfinite(oalm)] = 0
 	return oalm
 
-def fix_lenspyx_result(lenspyx_result, lenspyx_geom_info):
+def fix_lenspyx_result(lenspyx_result, lenspyx_geom_info, shape, wcs):
 	"""Lenspyx delivers results for rectangular geometries in not quite the
 	format that we'd like to use. First, it delivers a tuple of 1d arrays,
 	rather than a 3d array of shape (-1, ny, nx). Then, the bottom-left pixel
@@ -149,12 +148,16 @@ def fix_lenspyx_result(lenspyx_result, lenspyx_geom_info):
 		The argument that would need to be supplied to lenspyx.get_geom:
 		* name gives the rectangular projection ('cc' or 'f1')
 		* info_dict gives the map shape as {'ntheta': ny, 'nphi': nx}
+		Note this is a full-sky geom_info, not restricted.
+	shape : (ny, nx) tuple
+		Shape of output map (not necessarily full-sky).
+	wcs : astropy.wcs.WCS
+		WCS of output map (not necessarily full-sky).
 
 	Returns
 	-------
 	(-1, ny, nx) enmap.ndmap
-		The lenspyx_result if the geometry were that corresponding to the output
-		of enmap.fullsky_geometry with the shape (ny, nx).
+		The lenspyx_result projected onto the shape, wcs geometry.
 
 	Raises
 	------
@@ -162,26 +165,28 @@ def fix_lenspyx_result(lenspyx_result, lenspyx_geom_info):
 		If the lenspyx geometry is not shifted by an integer number of pixels
 		from the corresponding pixell geometry.
 	"""
-	# do some sanity checks on the geom_info
+	import lenspyx
+
+	# do some sanity checks on the full-sky geom_info
 	geom = lenspyx.get_geom(lenspyx_geom_info)
 	phi0, nph = geom.phi0, geom.nph
 	assert np.all(phi0 == phi0[0]), 'all phi0 must be the same'
 	assert np.all(nph == nph[0]), 'all nph must be the same'
 
-	# get the pixell fullsky geometry we will paste the results into
+	# get the pixell full-sky geometry we will paste the results into
 	variant = dict(cc='cc', f1='fejer1')[lenspyx_geom_info[0]]
-	shape = (lenspyx_geom_info[1]['ntheta'], lenspyx_geom_info[1]['nphi'])
-	shape, wcs = enmap.fullsky_geometry(shape=shape, variant=variant)
+	fs_shape = (lenspyx_geom_info[1]['ntheta'], lenspyx_geom_info[1]['nphi'])
+	fs_shape, fs_wcs = enmap.fullsky_geometry(shape=fs_shape, variant=variant)
 
 	# lenspyx delivers tuples of arrays, not arrays
-	inp = np.asarray(lenspyx_result).reshape((-1, *shape))
-	out = np.zeros_like(inp)
+	fs_inp = np.asarray(lenspyx_result).reshape((-1, *fs_shape))
+	fs_out = np.zeros_like(fs_inp)
 
 	# now cut and paste data! :(
 
 	# first, handle the x coordinates. first find the location of phi0
-	# in the wcs
-	_, _phi0_ind = enmap.sky2pix(shape, wcs, [0, phi0[0]])
+	# in the full-sky geometry
+	_, _phi0_ind = enmap.sky2pix(fs_shape, fs_wcs, [0, phi0[0]])
 	phi0_ind = np.round(_phi0_ind).astype(int)
 	assert phi0_ind == _phi0_ind, \
 		('we cannot handle the case of a non-integer pixel with cut and paste '
@@ -189,19 +194,21 @@ def fix_lenspyx_result(lenspyx_result, lenspyx_geom_info):
 		'needs to be implemented')
 
 	# then do copy paste, handling whether phi increases
-	if wcs.wcs.cdelt[0] > 0: # wcs is in x,y ordering
-		out[..., phi0_ind:] = inp[..., :shape[-1] - phi0_ind]
-		out[..., :phi0_ind] = inp[..., shape[-1] - phi0_ind:]
+	if fs_wcs.wcs.cdelt[0] > 0: # wcs is in x,y ordering
+		fs_out[..., phi0_ind:] = fs_inp[..., :shape[-1] - phi0_ind]
+		fs_out[..., :phi0_ind] = fs_inp[..., shape[-1] - phi0_ind:]
 	else:
-		out[..., phi0_ind::-1] = inp[..., :phi0_ind+1]
-		out[..., :phi0_ind:-1] = inp[..., phi0_ind+1:]
+		fs_out[..., phi0_ind::-1] = fs_inp[..., :phi0_ind+1]
+		fs_out[..., :phi0_ind:-1] = fs_inp[..., phi0_ind+1:]
 
 	# next, we know lenspyx delivers colatitudes, but fullsky_geometry
 	# is likely the opposite of that
-	if wcs.wcs.cdelt[1] > 0: # wcs is in x,y ordering
-		out = out[..., ::-1, :] # flip the y coordinates if theta increases
+	if fs_wcs.wcs.cdelt[1] > 0: # wcs is in x,y ordering
+		fs_out = fs_out[..., ::-1, :] # flip the y coordinates if theta increases
 
-	return enmap.ndmap(out, wcs)
+	# finally, extract the cutout we want
+	fs_out = enmap.ndmap(fs_out, fs_wcs)
+	return enmap.extract(fs_out, shape, wcs)
 
 def lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, dtype=np.float64,
 							spin=[0, 2], output="l", verbose=False,
@@ -224,7 +231,8 @@ def lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, dtype=np.float64,
 		Spherical harmonic coefficients of the lensing potential.
 	cmb_alm : array-like
 		Spherical harmonic coefficients of the CMB. If (3, nelem) shaped, the
-		coeffients are assumed to be in the form of [T, E, B] in that order.
+		coeffients are assumed to be in the form of [T, E, B] in that order,
+		unless spin is 0.
 	dtype : data-type, optional
 		Data type of the output maps. Default is np.float64.
 	spin : list, optional
@@ -267,32 +275,48 @@ def lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, dtype=np.float64,
 	or T, E, B, respectively (see lenspyx). Otherwise, a fully spin-0 transform
 	must be passed. The default should cover the vast majority of use-cases.
 	"""
+	import lenspyx
+
 	# restrict to target number of components
 	oshape  = shape[-3:]
 	if len(oshape) == 2:
-		shape = (1, *shape)
+		oshape = (1, *shape)
+
+	assert np.asarray(phi_alm).ndim == 1, \
+		'Can only do 1-dimensional phi_alm, set up a loop if you have many'
+	
+	cmb_alm = np.atleast_2d(cmb_alm)
+	assert cmb_alm.ndim <= 2, \
+		'Can only do <=2-dimensional cmb_alm, set up a loop if you have many'
 
 	# map from spin to pol 
 	pol = False
-	pre = shape[0]
+	pre_shape = oshape[0]
+	pre_cmb = cmb_alm.shape[0]
 	if spin == [0, 2]:
-		assert pre in (2, 3), \
-			f'{spin=} indicates TEB but number of components {pre} not 2 or 3'
+		assert pre_cmb in (2, 3), \
+			f'{spin=} indicates TEB but number of components in alm {pre_cmb=}' + \
+			' not 2 or 3'
+		assert pre_shape == 3, \
+			f'{spin=} indicates TEB but number of components in map {pre_shape=}' + \
+			' not 3'
 		pol = True
 	else:
 		assert np.all(spin) == 0, \
-			f'expect spin-0 transform for all {pre} components'
+			f'expect spin-0 transform for all {pre_cmb} components'
+		assert pre_cmb == pre_shape, \
+			f'expect {pre_cmb=} to be the same as {pre_cmb=}'
 	
 	# we need to get the "lenspyx geometry" from the "pixell geometry".
 	# we know pixell will have a ducc-compatible rectangular geometry, so get
 	# its parameters: number of pixels in x and y, and the name of the
 	# rectangular geometry. pixell capitalizes the names, but lenspyx wants them 
-	# lowercase
+	# lowercase. finally, handle cut-sky
 	ducc_geo = curvedsky.analyse_geometry(shape, wcs).ducc_geo
 	ny = ducc_geo.ny
 	nx = ducc_geo.nx
 	name = ducc_geo.name.lower()
-	geom_info = (name, dict(ntheta=ny, nphi=nx))
+	geom_info = (name, dict(ntheta=ny, nphi=nx)) # this is a full-sky geom_info
 
 	# after getting the result from lenspyx, it needs to be fixed to respect
 	# pixell conventions
@@ -302,9 +326,9 @@ def lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, dtype=np.float64,
 		lfilter = np.sqrt(np.arange(phi_lmax + 1) * np.arange(1, phi_lmax + 2))
 		curvedsky.almxfl(phi_alm, lfilter, out=d_alm)
 		cmb_obs = lenspyx.alm2lenmap(cmb_alm, d_alm, geom_info,
-									 epsilon=epsilon, verbose=verbose, 
-									 nthreads=nthreads, pol=pol)
-		cmb_obs = fix_lenspyx_result(cmb_obs, geom_info)
+										epsilon=epsilon, verbose=verbose, 
+									 	nthreads=nthreads, pol=pol)
+		cmb_obs = fix_lenspyx_result(cmb_obs, geom_info, oshape, wcs)
 		cmb_obs = cmb_obs.astype(dtype=dtype, copy=False)
 
 	# possibly get extra outputs
@@ -314,23 +338,23 @@ def lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, dtype=np.float64,
 			print("Computing unlensed map")
 		curvedsky.alm2map(cmb_alm, cmb_raw, spin=spin)
 	if 'p' in output:
-		phi_map = enmap.empty(shape[-2:], wcs, dtype=dtype)
+		phi_map = enmap.empty(oshape[-2:], wcs, dtype=dtype)
 		if verbose:
 			print('Computing phi map')
 		curvedsky.alm2map(phi_alm, phi_map)
 	if 'k' in output:
-		kappa_map = enmap.empty(shape[-2:], wcs, dtype=dtype)
+		kappa_map = enmap.empty(oshape[-2:], wcs, dtype=dtype)
 		kappa_alm = phi_to_kappa(phi_alm)
 		curvedsky.alm2map(kappa_alm, kappa_map)
 	if 'a' in output:
-		grad_map = enmap.empty((2, *shape[-2:]), wcs, dtype=dtype)
+		grad_map = enmap.empty((2, *oshape[-2:]), wcs, dtype=dtype)
 		curvedsky.alm2map(phi_alm, grad_map, deriv=True)
 
 	# Output in same order as specified in output argument
 	res = []
 	for c in output:
-		if   c == 'l': res.append(cmb_obs.reshape(oshape))
-		elif c == "u": res.append(cmb_raw.reshape(oshape))
+		if   c == 'l': res.append(cmb_obs.squeeze())
+		elif c == "u": res.append(cmb_raw.squeeze())
 		elif c == "p": res.append(phi_map)
 		elif c == "k": res.append(kappa_map)
 		elif c == "a": res.append(grad_map)
