@@ -478,7 +478,6 @@ def redistribute(imap, comm, active=None, omap=None, itemhack=False):
 				recv_buf, recv_sizes, recv_offs,
 				comm, bsize=bsize)
 	else:
-		print(np.max(send_offs), np.max(recv_offs))
 		comm.Alltoallv((send_buf, (send_sizes, send_offs)), (recv_buf, (recv_sizes, recv_offs)))
 	del iflat, send_buf
 	# 7. Copy and reduce into flattened output tiles

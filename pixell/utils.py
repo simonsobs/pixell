@@ -1897,12 +1897,16 @@ def ang2rect(angs, zenith=False, axis=0):
 def rect2ang(rect, zenith=False, axis=0, return_r=False):
 	"""The inverse of ang2rect."""
 	x,y,z = np.moveaxis(rect, axis, 0)
-	r     = (x**2+y**2)**0.5
+	rh    = (x**2+y**2)**0.5
 	phi   = np.arctan2(y,x)
-	if zenith: theta = np.arctan2(r,z)
-	else:      theta = np.arctan2(z,r)
+	if zenith: theta = np.arctan2(rh,z)
+	else:      theta = np.arctan2(z,rh)
 	ang = np.moveaxis(np.array([phi,theta]), 0, axis)
-	return (ang,r) if return_r else ang
+	if return_r:
+		r = (rh**2+z**2)**0.5
+		return ang, r
+	else:
+		return ang
 
 def angdist(a, b, zenith=False, axis=0):
 	"""Compute the angular distance between a[{ra,dec},...]
