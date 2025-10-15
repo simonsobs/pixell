@@ -790,6 +790,50 @@ def neighborhood_pixboxes(shape, wcs, poss, r):
 	return res
 
 def at(map, pos, mode="spline", order=3, border="constant", cval=0.0, unit="coord", safe=True, ip=None):
+	"""
+	Evaluate the value(s) of a map at given sky position(s) with interpolation.
+	
+	Parameters
+	----------
+	map : (ndmap)
+		The input map to evaluate. 
+	pos : array-like of shape (2, N)
+		The N positions at which to evaluate the map. Can be in sky coordinates (e.g. pos[0,:] are declination
+		and pos[1,:] are RA) or pixel coordinates, depending on the value of `unit`. Defaults to sky coordinates.
+	mode and order: 
+		The mode and order arguments control the interpolation type. These can be:
+		* mode=="nn"  or (mode=="spline" and order==0): Nearest neighbor interpolation
+		* mode=="lin" or (mode=="spline" and order==1): Linear interpolation
+		* mode=="cub" or (mode=="spline" and order==3): Cubic interpolation
+		* mode=="fourier": Non-uniform fourier interpolation
+        	Defaults to mode="spline" and order=3.
+	border:
+		The border argument controls the boundary condition. This does not apply
+		for fourier interpolation, which always assumes periodic boundary.
+		Valid values are:
+		* "nearest": Indices outside the array use the value from the nearest
+		  point on the edge.
+		* "wrap": Periodic boundary conditions
+		* "mirror": Mirrored boundary conditions
+		* "constant": Use a constant value, given by the cval argument
+	cval : float, optional
+		The constant value to use when `border="constant"`. Defaults to 0.0.
+	unit : {"coord", "pix"}, optional
+		The unit of `pos`. If "coord", positions are interpreted as sky coordinates and converted
+		to pixel coordinates using the map’s WCS. If "pix", positions are treated directly as pixel indices.
+		Defaults to "coord".
+	safe : bool, optional
+		If True (default) make extra effort to resolve 2pi sky
+	  	wrapping degeneracies in the coordinate conversion.
+	ip : object, optional
+		Optional precomputed interpolation object, used to speed up repeated evaluations.
+	
+	Returns
+	-------
+	values : float or ndarray
+		The interpolated value(s) of the map at the requested position(s).
+	
+	"""	
 	if unit != "pix": pos = sky2pix(map.shape, map.wcs, pos, safe=safe)
 	return utils.interpol(map, pos, mode=mode, order=order, border=border, cval=cval, ip=ip)
 
