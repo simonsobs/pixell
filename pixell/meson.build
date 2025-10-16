@@ -29,6 +29,7 @@ python_sources = [
     'wavelets.py',
     'wcsutils.py',
     'bench.py',
+    'device.py',
     'config.py',
     'coordsys.py',
     'ephem.py',
