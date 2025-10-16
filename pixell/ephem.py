@@ -213,11 +213,11 @@ class InterpEphem(Ephem):
 		self.dt    = dt
 	def eval(self, name, ctime, cartesian=False, site=None):
 		ctime  = np.asarray(ctime)
-		step   = np.max(np.abs(np.diff(ctime)))
-		if step >= self.dt:
+		step   = np.max(np.abs(np.diff(ctime))) if len(ctime) > 1 else 0
+		if len(ctime) <= 1 or step >= self.dt:
 			# Don't try to build interpolation if it would be more
 			# costly than just evaluating directly!
-			return other(name, ctime, cartesian=cartesian, site=site)
+			return self.other.eval(name, ctime, cartesian=cartesian, site=site)
 		t1, t2 = utils.minmax(ctime)
 		iptime = np.arange(t1, t2+self.dt, self.dt)
 		data   = self.other.eval(name, iptime, cartesian=True, site=site)
