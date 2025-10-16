@@ -4,7 +4,7 @@ requires = ['meson-python', 'numpy', 'cython', 'versioneer[toml]', 'build']
 
 [project]
 name = 'pixell'
-version = "0.30.1"
+version = "0.30.2"
 description = "A rectangular pixel map manipulation and harmonic analysis library derived from Sigurd Naess' enlib."
 readme = 'README.rst'
 requires-python = '>=3.9'
