@@ -21,7 +21,6 @@ maintainers = [
 dependencies = [
     'numpy',
     'astropy>=2.0',
-    'h5py>=2.7',
     'scipy>=1.0',
     'matplotlib>=2.0',
     'Pillow>=5.3.0, !=10.4.0',
