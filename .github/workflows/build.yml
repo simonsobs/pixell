@@ -79,6 +79,7 @@ jobs:
           CC: gcc-12
           MACOSX_DEPLOYMENT_TARGET: "13.0"
           CIBW_TEST_EXTRAS: "test"
+          CIBW_ENVIRONMENT: "PIP_ONLY_BINARY=h5py"
           
       - uses: actions/upload-artifact@v4
         with:
@@ -103,7 +104,8 @@ jobs:
           CC: gcc-12
           MACOSX_DEPLOYMENT_TARGET: "14.0"
           CIBW_TEST_EXTRAS: "test"
-
+          CIBW_ENVIRONMENT: "PIP_ONLY_BINARY=h5py"
+          
       - uses: actions/upload-artifact@v4
         with:
           name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
