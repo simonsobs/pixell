@@ -2,6 +2,7 @@ import numpy as np
 from . import enmap, utils, powspec, curvedsky
 try: from . import interpol
 except ImportError: pass
+import warnings
 
 ####### Flat sky lensing #######
 
@@ -130,7 +131,7 @@ def kappa_to_phi(kappa_alm,kappa_ainfo=None):
 	oalm[~np.isfinite(oalm)] = 0
 	return oalm
 
-def fix_lenspyx_result(lenspyx_result, lenspyx_geom_info, shape, wcs):
+def _fix_lenspyx_result(lenspyx_result, lenspyx_geom_info, shape, wcs):
 	"""Lenspyx delivers results for rectangular geometries in not quite the
 	format that we'd like to use. First, it delivers a tuple of 1d arrays,
 	rather than a 3d array of shape (-1, ny, nx). Then, the bottom-left pixel
@@ -210,9 +211,9 @@ def fix_lenspyx_result(lenspyx_result, lenspyx_geom_info, shape, wcs):
 	fs_out = enmap.ndmap(fs_out, fs_wcs)
 	return enmap.extract(fs_out, shape, wcs)
 
-def lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, dtype=np.float64,
-							spin=[0, 2], output="l", verbose=False,
-							epsilon=1e-7, nthreads=0):
+def _lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, 
+								dtype=np.float64, spin=[0, 2], output="l",
+								epsilon=1e-7, nthreads=0, verbose=False):
 	"""Lenses a CMB map given the lensing potential harmonic transform and the
 	unlensed CMB harmonic transform.  By default, T, E, B spherical harmonic
 	coefficients are accepted and the returned maps are T, Q, U. Unlike 
@@ -233,6 +234,9 @@ def lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, dtype=np.float64,
 		Spherical harmonic coefficients of the CMB. If (3, nelem) shaped, the
 		coeffients are assumed to be in the form of [T, E, B] in that order,
 		unless spin is 0.
+	phi_ainfo : alm_info, optional
+		alm_info object containing information about the alm layout. Default:
+		standard triangular layout.
 	dtype : data-type, optional
 		Data type of the output maps. Default is np.float64.
 	spin : list, optional
@@ -252,12 +256,12 @@ def lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, dtype=np.float64,
 		"p" - lensing potential map
 		"k" - convergence map
 		"a" - deflection angle maps
-	verbose : bool, optional
-		If True, prints progress information. Default is False.
 	epsilon : float, optional
 		Target result accuracy, by default 1e-7. See lenspyx.
 	nthreads : int, optional
 		number of threads to use, by default 0 (os.cpu_count()). See lenspyx.
+	verbose : bool, optional
+		If True, prints progress information. Default is False.
 
 	Returns
 	-------
@@ -267,7 +271,7 @@ def lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, dtype=np.float64,
 
 	Notes
 	-----
-	This function assumes both phi_alm and cmb_alm are in a triangular layout.
+	This function assumes the cmb_alm is in a triangular layout.
 
 	This function has a restrictive interpretation of spin. If the default
 	[0, 2] is passed, the cmb_alm and output shape must have an axis size of
@@ -344,7 +348,7 @@ def lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, dtype=np.float64,
 		curvedsky.alm2map(phi_alm, phi_map)
 	if 'k' in output:
 		kappa_map = enmap.empty(oshape[-2:], wcs, dtype=dtype)
-		kappa_alm = phi_to_kappa(phi_alm)
+		kappa_alm = phi_to_kappa(phi_alm, phi_ainfo=phi_ainfo)
 		curvedsky.alm2map(kappa_alm, kappa_map)
 	if 'a' in output:
 		grad_map = enmap.empty((2, *oshape[-2:]), wcs, dtype=dtype)
@@ -360,7 +364,7 @@ def lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, dtype=np.float64,
 		elif c == "a": res.append(grad_map)
 	return tuple(res)
 
-def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, dtype=np.float64, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
+def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, dtype=np.float64, spin=[0,2], output="l", method='pixell', geodesic=True, delta_theta=None, epsilon=1e-7, nthreads=0, verbose=False):
 	"""
 	Lenses a CMB map given the lensing potential harmonic transform and the CMB 
 	harmonic transform.  By default, T,E,B spherical harmonic coefficients are
@@ -368,18 +372,18 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 	Parameters:
 	-----------
 	shape : tuple
-		Shape of the output map.
+		Shape of the output map. Only the first pre-dimension (-3), if passed,
+		is kept.
 	wcs : WCS object
 		World Coordinate System object describing the map projection.
 	phi_alm : array-like
 		Spherical harmonic coefficients of the lensing potential.
 	cmb_alm : array-like
-		Spherical harmonic coefficients of the CMB. If (3,nelem) shaped, the
-		coeffients are assumed to be in the form of [T,E,B] in that order.
+		Spherical harmonic coefficients of the CMB. If (3, nelem) shaped, the
+		coeffients are assumed to be in the form of [T, E, B] in that order,
+		unless spin is 0.
 	phi_ainfo : alm_info, optional
 		alm_info object containing information about the alm layout. Default: standard triangular layout.
-	maplmax : int, optional
-		Maximum multipole to use in the map.
 	dtype : data-type, optional
 		Data type of the output maps. Default is np.float64.
 	spin : list, optional
@@ -399,78 +403,107 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, maplmax=None, 
 		"p" - lensing potential map
 		"k" - convergence map
 		"a" - deflection angle maps
+	method : str, optional
+		Select the implementation, either 'pixell' or 'lenspyx'.
 	geodesic : bool, optional
 		Properly parallel transport on the sphere (default). If False, a much faster
 		approximation is used, which is still very accurate unless one is
-		close to the poles.
+		close to the poles. Only for 'pixell' method.
+	delta_theta : float, optional
+		Step size for the theta coordinate. Only for 'pixell' method.
+	epsilon : float, optional
+		Target result accuracy, by default 1e-7. Only for 'lenspyx' method.
+	nthreads : int, optional
+		number of threads to use, by default 0 (os.cpu_count()). Only for 'lenspyx' method.
 	verbose : bool, optional
 		If True, prints progress information. Default is False.
-	delta_theta : float, optional
-		Step size for the theta coordinate. 
 	Returns:
 	--------
 	tuple
-		A tuple containing the requested output maps in the order specified by the `output` parameter.
+		A tuple containing the requested output maps in the order specified by
+		the `output` parameter.
+
+	Notes
+	-----
+	For 'pixell' and 'lenspyx':
+	This function assumes the cmb_alm is in a triangular layout.
+
+	For 'lenspyx':
+	This function has a restrictive interpretation of spin. If the default
+	[0, 2] is passed, the cmb_alm and output shape must have an axis size of
+	2 or 3 in the (-3) axis, in which case the inputs are interpreted as T, E
+	or T, E, B, respectively (see lenspyx). Otherwise, a fully spin-0 transform
+	must be passed. The default should cover the vast majority of use-cases.
 	"""
+	assert method in ('pixell', 'lenspyx'), \
+		"method must be one of 'pixell' or 'lenspyx'"
 
-	from . import curvedsky
-	# Restrict to target number of components
-	oshape  = shape[-3:]
-	if len(oshape) == 2: shape = (1,)+tuple(shape)
-	if delta_theta is None: bsize = shape[-2]
-	else:
-		bsize = utils.nint(abs(delta_theta/utils.degree/wcs.wcs.cdelt[1]))
-		# Adjust bsize so we don't get any tiny blocks at the end
-		nblock= shape[-2]//bsize
-		bsize = int(shape[-2]/(nblock+0.5))
-	# Allocate output maps
-	if "p" in output: phi_map   = enmap.empty(shape[-2:], wcs, dtype=dtype)
-	if "k" in output:
-		kappa_map = enmap.empty(shape[-2:], wcs, dtype=dtype)
-		kappa_alm = phi_to_kappa(phi_alm,phi_ainfo=phi_ainfo)
+	if method=='pixell':
+		warnings.warn('In the future, the default will be switched to lenspyx')
+
+		from . import curvedsky
+		# Restrict to target number of components
+		oshape  = shape[-3:]
+		if len(oshape) == 2: shape = (1,)+tuple(shape)
+		if delta_theta is None: bsize = shape[-2]
+		else:
+			bsize = utils.nint(abs(delta_theta/utils.degree/wcs.wcs.cdelt[1]))
+			# Adjust bsize so we don't get any tiny blocks at the end
+			nblock= shape[-2]//bsize
+			bsize = int(shape[-2]/(nblock+0.5))
+		# Allocate output maps
+		if "p" in output: phi_map   = enmap.empty(shape[-2:], wcs, dtype=dtype)
+		if "k" in output:
+			kappa_map = enmap.empty(shape[-2:], wcs, dtype=dtype)
+			kappa_alm = phi_to_kappa(phi_alm,phi_ainfo=phi_ainfo)
+			for i1 in range(0, shape[-2], bsize):
+				curvedsky.alm2map(kappa_alm, kappa_map[...,i1:i1+bsize,:])
+			del kappa_alm
+		if "a" in output: grad_map  = enmap.empty((2,)+shape[-2:], wcs, dtype=dtype)
+		if "u" in output: cmb_raw   = enmap.empty(shape, wcs, dtype=dtype)
+		if "l" in output: cmb_obs   = enmap.empty(shape, wcs, dtype=dtype)
+		# Then loop over dec bands
 		for i1 in range(0, shape[-2], bsize):
-			curvedsky.alm2map(kappa_alm, kappa_map[...,i1:i1+bsize,:])
-		del kappa_alm
-	if "a" in output: grad_map  = enmap.empty((2,)+shape[-2:], wcs, dtype=dtype)
-	if "u" in output: cmb_raw   = enmap.empty(shape, wcs, dtype=dtype)
-	if "l" in output: cmb_obs   = enmap.empty(shape, wcs, dtype=dtype)
-	# Then loop over dec bands
-	for i1 in range(0, shape[-2], bsize):
-		i2 = min(i1+bsize, shape[-2])
-		lshape, lwcs = enmap.slice_geometry(shape, wcs, (slice(i1,i2),slice(None)))
-		if "p" in output:
-			if verbose: print("Computing phi map")
-			curvedsky.alm2map(phi_alm, phi_map[...,i1:i2,:])
-		if verbose: print("Computing grad map")
-		if "a" in output: grad = grad_map[...,i1:i2,:]
-		else: grad = enmap.zeros((2,)+lshape[-2:], lwcs, dtype=dtype)
-		curvedsky.alm2map(phi_alm, grad, deriv=True)
-		if "l" not in output: continue
-		if verbose: print("Computing observed coordinates")
-		obs_pos = enmap.posmap(lshape, lwcs)
-		if verbose: print("Computing alpha map")
-		raw_pos = enmap.samewcs(offset_by_grad(obs_pos, grad, pol=shape[-3]>1, geodesic=geodesic), obs_pos)
-		del obs_pos, grad
-		if "u" in output:
-			if verbose: print("Computing unlensed map")
-			curvedsky.alm2map(cmb_alm, cmb_raw[...,i1:i2,:], spin=spin)
-		if verbose: print("Computing lensed map")
-		cmb_obs[...,i1:i2,:] = curvedsky.alm2map_pos(cmb_alm, raw_pos[:2], spin=spin)
-		if raw_pos.shape[0] > 2 and np.any(raw_pos[2]):
-			if verbose: print("Rotating polarization")
-			cmb_obs[...,i1:i2,:] = enmap.rotate_pol(cmb_obs[...,i1:i2,:], raw_pos[2])
-		del raw_pos
+			i2 = min(i1+bsize, shape[-2])
+			lshape, lwcs = enmap.slice_geometry(shape, wcs, (slice(i1,i2),slice(None)))
+			if "p" in output:
+				if verbose: print("Computing phi map")
+				curvedsky.alm2map(phi_alm, phi_map[...,i1:i2,:])
+			if verbose: print("Computing grad map")
+			if "a" in output: grad = grad_map[...,i1:i2,:]
+			else: grad = enmap.zeros((2,)+lshape[-2:], lwcs, dtype=dtype)
+			curvedsky.alm2map(phi_alm, grad, deriv=True)
+			if "l" not in output: continue
+			if verbose: print("Computing observed coordinates")
+			obs_pos = enmap.posmap(lshape, lwcs)
+			if verbose: print("Computing alpha map")
+			raw_pos = enmap.samewcs(offset_by_grad(obs_pos, grad, pol=shape[-3]>1, geodesic=geodesic), obs_pos)
+			del obs_pos, grad
+			if "u" in output:
+				if verbose: print("Computing unlensed map")
+				curvedsky.alm2map(cmb_alm, cmb_raw[...,i1:i2,:], spin=spin)
+			if verbose: print("Computing lensed map")
+			cmb_obs[...,i1:i2,:] = curvedsky.alm2map_pos(cmb_alm, raw_pos[:2], spin=spin)
+			if raw_pos.shape[0] > 2 and np.any(raw_pos[2]):
+				if verbose: print("Rotating polarization")
+				cmb_obs[...,i1:i2,:] = enmap.rotate_pol(cmb_obs[...,i1:i2,:], raw_pos[2])
+			del raw_pos
 
-	del cmb_alm, phi_alm
-	# Output in same order as specified in output argument
-	res = []
-	for c in output:
-		if   c == "l": res.append(cmb_obs.reshape(oshape))
-		elif c == "u": res.append(cmb_raw.reshape(oshape))
-		elif c == "p": res.append(phi_map)
-		elif c == "k": res.append(kappa_map)
-		elif c == "a": res.append(grad_map)
-	return tuple(res)
+		del cmb_alm, phi_alm
+		# Output in same order as specified in output argument
+		res = []
+		for c in output:
+			if   c == "l": res.append(cmb_obs.reshape(oshape))
+			elif c == "u": res.append(cmb_raw.reshape(oshape))
+			elif c == "p": res.append(phi_map)
+			elif c == "k": res.append(kappa_map)
+			elif c == "a": res.append(grad_map)
+		return tuple(res)
+	
+	elif method == 'lenspyx':
+		return _lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, phi_ainfo=phi_ainfo,
+										dtype=dtype, spin=spin, output=output,
+										epsilon=epsilon, nthreads=nthreads, verbose=verbose)
 
 def rand_alm(ps_lensinput, lmax=None, dtype=np.float64, seed=None, phi_seed=None, verbose=False, ncomp=None):
 	from . import curvedsky
