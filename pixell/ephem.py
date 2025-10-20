@@ -213,16 +213,22 @@ class InterpEphem(Ephem):
 		self.dt    = dt
 	def eval(self, name, ctime, cartesian=False, site=None):
 		ctime  = np.asarray(ctime)
-		step   = np.max(np.abs(np.diff(ctime))) if len(ctime) > 1 else 0
-		if len(ctime) <= 1 or step >= self.dt:
+		tflat  = ctime.reshape(-1)
+		order  = np.argsort(tflat)
+		tflat  = tflat[order]
+		step   = np.max(np.abs(np.diff(tflat))) if len(tflat) > 1 else 0
+		if len(tflat) <= 1 or step >= self.dt:
 			# Don't try to build interpolation if it would be more
 			# costly than just evaluating directly!
 			return self.other.eval(name, ctime, cartesian=cartesian, site=site)
-		t1, t2 = utils.minmax(ctime)
-		iptime = np.arange(t1, t2+self.dt, self.dt)
+		t1, t2 = utils.minmax(tflat)
+		npoint = max(4,utils.ceil((t2-t1)/self.dt))
+		iptime = np.linspace(t1, t2, npoint)
 		data   = self.other.eval(name, iptime, cartesian=True, site=site)
 		interp = interpolate.interp1d(iptime, data, kind=3, axis=0)
-		rect   = interp(ctime)
+		rect   = np.zeros(ctime.shape+(3,))
+		# Interpolate into original shape and order
+		rect.reshape(-1,3)[order] = interp(tflat)
 		if cartesian:
 			return rect
 		else:

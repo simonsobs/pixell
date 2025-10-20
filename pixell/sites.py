@@ -8,12 +8,26 @@ default_site = bunch.Bunch(
 	weather   = "toco",
 )
 
+default_weather = bunch.Bunch(
+	temperature =   0,
+	humidity    = 0.2,
+	pressure    = 550,
+)
+
+def expand_site(site):
+	if isinstance(site, str):
+		if site in ["default", "toco", "act", "so", "sa"]:
+			return default_site
+		else:
+			raise ValueError("Unknown site '%s'" % str(site))
+	return site
+
 def expand_weather(weather, site=None):
 	if weather is None or weather == "typical":
 		weather = site.weather
 	if isinstance(weather, str):
 		if weather in ["default", "toco", "act", "so", "sa"]:
-			return {"temperature":0, "humidity":0.2, "pressure":550}
+			return default_weather
 		else:
 			raise ValueError("Unknown weather '%s'" % str(weather))
 	else:

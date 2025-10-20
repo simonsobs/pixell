@@ -3588,6 +3588,14 @@ def only_inds(a, inds):
 	inds = astuple(inds)
 	return tuple([a[i] for i in inds])
 
+def can_import(name):
+	import importlib
+	try:
+		importlib.import_module(name)
+		return True
+	except ModuleNotFoundError:
+		return False
+
 def first_importable(*args):
 	"""Given a list of module names, return the name of the first
 	one that can be imported."""

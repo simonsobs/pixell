@@ -122,7 +122,7 @@ def init(name=None, fname=None, must_exist=False):
 			else:
 				fname = os.path.expandvars("$HOME/.%src" % name)
 	try:
-		load(config_file)
+		load(fname)
 	except FileNotFoundError:
 		if must_exist: raise
 

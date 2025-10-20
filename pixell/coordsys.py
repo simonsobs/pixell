@@ -5,25 +5,14 @@ import numpy as np
 import qpoint
 import quaternion
 import copy
-from . import bunch, warray, sites
-
-# TODO:
-# 1. Move to pixell.csys (any better name?)
-# 2. Implement pixell.ephem (any better name? Clashes with pyephem).
-#    Should provide a class for loading and caching my precomputed asteroid
-#    ephemerides as well standard planet stuff from pyephem. Both should
-#    be available through a common interface. May also need to build interpolation
-#    for the planets on-the-fly if pyephem is too slow.
-#    Maybe something like ephem.add_source(path, type), but the simple interpolator
-#    should also be available as its own class, e.g. PrecompEphem.
+from . import bunch, warray, sites, ephem
 
 DEG = np.pi/180
 
-# TODO: unified planet and asteroid ephemeris in pixell? With a load method to load the asteroids?
-
 def transform(isys, osys, coords, ctime=None, site=sites.default_site, weather=None):
-	isys = expand_sys(isys, ctime=site, site=site, weather=weather)
-	osys = expand_sys(osys, ctime=site, site=site, weather=weather)
+	if isys == osys: return coords
+	isys = expand_sys(isys, ctime=ctime, site=site, weather=weather)
+	osys = expand_sys(osys, ctime=ctime, site=site, weather=weather)
 	# expand_sys should return something with .base and .q properties, where .q can be None
 	# 1. Undo any input rotation. I wish this could be done with /=.
 	# I think this is possible by working in the inverse space, e.g.
@@ -66,43 +55,6 @@ def transform(isys, osys, coords, ctime=None, site=sites.default_site, weather=N
 	# Done!
 	return coords
 
-## Test version that tries to save memory by doing as many in-place
-## operations as possible, at the cost of extra inversions
-##
-#def transform2(isys, osys, coords, ctime=None, site=sites.default_site, weather=None):
-#	isys = expand_sys(isys, ctime=site, site=site, weather=weather)
-#	osys = expand_sys(osys, ctime=site, site=site, weather=weather)
-#	coords = coords.copy()
-#	if not trivial_quat(isys.q): coords.iq *= isys.q
-#	if isys.base == osys.base:
-#		# Nothing to do. Saves computation
-#		pass
-#	elif space_sys(isys.base) and space_sys(osys.base):
-#		# Both in space. Simple static rotation
-#		coords.iq /= equ_rots[osys.base]/static_rots[isys.base]
-#	elif space_sys(isys.base) and not space_sys(osys.base):
-#		# Need to cross to earth
-#		if not trivial_quat(equ_rots[isys.base]):
-#			coords.iq *= equ_rots[isys.base]
-#		coords = equ2hor(coords, ctime=ctime, site=site, weather=weather)
-#		if not trivial_quat(hor_rots[osys.base]):
-#			coords.iq /= hor_rots[osys.base]
-#	elif not space_sys(isys.base) and space_sys(osys.base):
-#		# Need to cross to space
-#		if not trivial_quat(hor_rots[isys.base]):
-#			coords.iq *= hor_rots[isys.base]
-#		coords = hor2equ(coords, ctime=ctime, site=site, weather=weather)
-#		if not trivial_quat(equ_rots[osys.base]):
-#			coords.iq /= equ_rots[osys.base]
-#	else:
-#		# Both on earth
-#		coords.iq /= hor_rots[osys.base]/hor_rots[isys.base]
-#	# 3. Apply any output rotation
-#	if not trivial_quat(osys.q):
-#		coords.iq /= osys.q
-#	# Done!
-#	return coords
-
 # Static transforms
 equ_rots = {
 	"equ": 1,
@@ -114,23 +66,35 @@ hor_rots = {
 	"hor": 1,
 }
 
+sys_map = {"hor":"hor", "equ":"equ", "cel":"equ", "gal":"gal"}
+
 # Complicated transforms
 def hor2equ(coords, ctime, site=sites.default_site, weather=None):
+	site    = sites.expand_site(site)
 	weather = sites.expand_weather(weather, site)
 	qp = qpoint.QPoint(accuracy="high", fast_math=True, mean_aber=True,
 		rate_ref="always", **weather)
-	q  = qp.azelpsi2bore(coords.az/DEG, coords.el/DEG, coords.psi/DEG, None, None,
-		lon=site.lon, lat=site.lat, ctime=ctime)
-	q  = quaternion.as_quat_array(q)
+	# seems like azelpsi2bore does something else
+	az, el, ctime, psi = np.broadcast_arrays(coords.az/DEG, coords.el/DEG, ctime, coords.psi)
+	shape = az.shape
+	q  = qp.azel2bore(az, el, None, None, lon=site.lon, lat=site.lat, ctime=ctime)
+	# to proper quat and recover correct shape
+	q  = quaternion.as_quat_array(q).reshape(shape)
+	q *= euler(2, psi)
 	return Coords(q=q)
 
 def equ2hor(coords, ctime, site=sites.default_site, weather=None):
+	site    = sites.expand_site(site)
 	weather = sites.expand_weather(weather, site)
 	qp = qpoint.QPoint(accuracy="high", fast_math=True, mean_aber=True,
 		rate_ref="always", **weather)
 	# I don't recover the original roll exactly here. It's off by about half a degree
-	az, el, pa = qp.radec2azel(coords.ra/DEG, coords.dec/DEG, coords.psi/DEG,
-		lon=site.lon, lat=site.lat, ctime=ctime)
+	ra, dec, psi, ctime = np.broadcast_arrays(coords.ra/DEG, coords.dec/DEG,
+		coords.psi/DEG, ctime)
+	shape = ra.shape
+	az, el, pa = qp.radec2azel(ra, dec, psi, lon=site.lon, lat=site.lat, ctime=ctime)
+	# Recover correct shape
+	az, el, pa = [a.reshape(shape) for a in [az, el, pa]]
 	return Coords(az=az*DEG, el=el*DEG, roll=pa*DEG)
 
 class Coords:
@@ -199,6 +163,9 @@ class Coords:
 	def __truediv__(self, other):
 		try: return Coords(q = self.q / other.q)
 		except AttributeError: return Coords(q = self.q / other)
+	# Needed to avoid having numpy invoke __rmul__ for each individual
+	# element in other!
+	__array_ufunc__ = None
 	def __rmul__(self, other): return Coords(q = other * self.q)
 	def __rtruediv__(self, other): return Coords(q = other / self.q)
 	def __dir__(self):
@@ -209,10 +176,15 @@ class Coords:
 	def has_q(self): return self._q is not None
 	@property
 	def has_iq(self): return self._iq is not None
+	@property
+	def shape(self):
+		if   self.has_iq: return self._iq.shape
+		elif self.has_q:  return self._q.shape
+		else: return self._lon.shape
 	def copy(self): return copy.deepcopy(self)
 	def _handle_update(self, name):
 		if name in ["az", "el", "roll", "ra", "dec", "psi", "lon", "lat"]:
-			self.q = self.iq = None
+			self._q = self._iq = None
 		else:
 			self._lon = self._lat = self._psi = None
 			if   name != "q":  self._q  = None
@@ -267,10 +239,25 @@ def rotation_lonlat(lon, lat, psi=0):
 def decompose_lonlat(q):
 	q = quaternion.as_float_array(q)
 	a, b, c, d = [q[...,i] for i in range(4)]
-	psi   = np.arctan2(a*b+c*d, a*c-b*d)
-	lon   = np.arctan2(c*d-a*b, a*c+b*d)
+	ab, cd, ac, bd = a*b, c*d, a*c, b*d
+	psi   = np.arctan2(ab+cd, ac-bd)
+	lon   = np.arctan2(cd-ab, ac+bd)
 	lat   = np.pi/2 - 2*np.arctan2((b**2+c**2)**0.5, (a**2+d**2)**0.5)
 	return lon, lat, psi
+
+#    const double cos_theta = a*a - b*b - c*c + d*d;
+#    const double half_sin_theta = 0.5 * sqrt(1 - cos_theta*cos_theta);
+#
+#    coords[0] = ATAN2(c*d - a*b, c*a + d*b);
+#    coords[1] = ASIN(cos_theta);   // Yes, cos(theta) = sin(lat).
+#    coords[2] = (a*c - b*d) / half_sin_theta;
+#    coords[3] = (c*d + a*b) / half_sin_theta;
+
+def rotation_xieta(xi, eta, gamma=0):
+	lon = np.arctan2(-xi, -eta)
+	lat = np.arccos((xi**2+eta**2)**0.5)
+	psi = gamma-lon
+	return rotation_lonlat(lon, lat, psi)
 
 def expand_sys(sys, ctime=None, site=None, weather=None):
 	# Parse if necessary
@@ -287,16 +274,22 @@ def expand_sys(sys, ctime=None, site=None, weather=None):
 		pos = sys[key]["pos"]
 		if isinstance(pos, str):
 			# Ok, pos = objname. Get its coordinates
-			coords = pixell.ephem(pos, ctime)
-			# Transform it to our base system
-			coords = transform("equ", sys[key]["sys"], ctime=ctime, site=site, weather=weather)
+			pos, r = ephem.eval(pos, ctime)
+			coords = Coords(ra=pos[...,0], dec=pos[...,1])
+			csys   = "equ"
 		else:
 			# Actual coordinates
 			if left_handed(sys[key]["sys"]):
 				coords = Coords(az=pos[0], el=pos[1])
 			else:
 				coords = Coords(ra=pos[0], dec=pos[1])
+			csys = sys[key]["sys"]
+		# Transform it to our base system
+		coords = transform(csys, base, coords, ctime=ctime, site=site, weather=weather)
+		# Set psi angle to zero, since we just want points at this stage
+		coords.psi = 0
 		qs[key] = coords.q
+
 	# Build up the full rotation from the qs.
 	# Each quaternion represents the euler rotation ZY
 	q = np.quaternion(1,0,0,0)
@@ -308,10 +301,9 @@ def expand_sys(sys, ctime=None, site=None, weather=None):
 		qs["on"] = iup*qs["on"]
 		qs["to"] = iup*qs["to"]
 	# 2. now that the up point is up, we can now do our recentering
-	if not trivial_quat(qs["on"]):
-		q = 1/qs["on"]*q
-	if not trivial_quat(qs["to"]):
-		q = qs["to"]*q
+	qrec = qs["to"]/qs["on"]
+	if not trivial_quat(qrec):
+		q = qrec*q
 	# Tell the user if the result is trivial, so they don't waste tme
 	if trivial_quat(q):
 		q = None
@@ -320,8 +312,8 @@ def expand_sys(sys, ctime=None, site=None, weather=None):
 def parse_sys(desc):
 	info = {
 		"up":{"sys":"equ", "pos":[0,np.pi/2]},
-		"on":{"sys":"equ", "pos":[0,0]},
-		"to":{"sys":"equ", "pos":[0,0]},
+		"on":{"sys":None,  "pos":[0,0]},
+		"to":{"sys":None,  "pos":[0,0]},
 	}
 	toks = desc.split(",")
 	for i, tok in enumerate(toks):
@@ -334,6 +326,10 @@ def parse_sys(desc):
 		if key not in ["up", "on", "to"]:
 			raise ValueError("Only up, on and to can be used when building a coordinate system, but got '%s'" % str(key))
 		info[key] = _parse_sys_pos(val, default_sys=info["up"]["sys"], default_pos=info[key]["pos"])
+	# Fill inn missing
+	base = info["up"]["sys"]
+	if info["on"]["sys"] is None: info["on"]["sys"] = base
+	if info["to"]["sys"] is None: info["to"]["sys"] = base
 	return info
 
 def _parse_sys_pos(pdesc, default_sys="equ", default_pos=[0,0]):
@@ -343,7 +339,7 @@ def _parse_sys_pos(pdesc, default_sys="equ", default_pos=[0,0]):
 		if toks[0].startswith("["): toks = [default_sys,toks[0]]
 		# Otherwise assume system name if one of the known systems.
 		# NOTE: This will need to be updated if we add more systems
-		elif toks[0] in ["hor", "equ", "gal"]: return {"sys":toks[0], "pos":default_pos}
+		elif toks[0] in sys_map: return {"sys":sys_map[toks[0]], "pos":default_pos}
 		# The rest are assumed to be object names
 		else: toks = [default_sys,toks[0]]
 	if len(toks) != 2:
