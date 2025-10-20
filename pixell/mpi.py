@@ -1,31 +1,8 @@
 """Utilities for making mpi use safer and easier."""
 from __future__ import print_function
 import sys, os, traceback, copy, numpy as np
+from .mpiutils import FakeCommunicator, FAKE_WORLD
 
-def _unbuf(bufspec):
-    return bufspec[0] if isinstance(bufspec, tuple) else np.asarray(bufspec)
-
-class FakeCommunicator:
-    def __init__(self):
-        self.size = 1
-        self.rank = 0
-    def Allreduce(self, sendbuf, recvbuf, op=lambda a,b:a+b):
-        _unbuf(recvbuf)[()] = _unbuf(sendbuf)
-    def Allgather(self, sendbuf, recvbuf):
-        _unbuf(recvbuf)[0] = _unbuf(sendbuf)
-    def Allgatherv(self, sendbuf, redvbuf):
-        _unbuf(recvbuf)[()] = _unbuf(sendbuf)
-    def Alltoallv(self, sendbuf, recvbuf):
-        _unbuf(recvbuf)[()] = _unbuf(sendbuf)
-    def Barrier(self): pass
-    def allreduce(self, sendobj, op=lambda a,b:a+b):
-        return copy.deepcopy(sendobj)
-    def allgather(self, sendobj, op=lambda a,b:a+b):
-        return [copy.deepcopy(sendobj)]
-    def allgatherv(self, sendobj, op=lambda a,b:a+b):
-        return [copy.deepcopy(sendobj)]
-
-FAKE_WORLD = FakeCommunicator()
 COMM_WORLD = FAKE_WORLD
 COMM_SELF  = FAKE_WORLD
 disabled   = True
@@ -46,3 +23,29 @@ try:
         disabled = False
 except:
     pass
+
+class itemhack:
+    @staticmethod
+    def Alltoallv(sendbuf, sendn, sendoff, recvbuf, recvn, recvoff, comm, bsize=1):
+        """Version of Alltoallv that does the transfer in terms of items
+        with size bsize of the original data type (or bsize*dtype.itemsize
+        in terms of bytes). The only reason to do this is to work around
+        the signed 32-bit limit on counts and offsets in MPI before
+        version 4."""
+        # Calculate blocked counts and offsets
+        bsendn   = sendn   // bsize
+        brecvn   = recvn   // bsize
+        bsendoff = sendoff // bsize
+        brecvoff = recvoff // bsize
+        assert np.all(bsendn*bsize==sendn), "sendn must be a multiple of bsize"
+        assert np.all(brecvn*bsize==recvn), "recvn must be a multiple of bsize"
+        assert np.all(bsendoff*bsize==sendoff), "sendoff must be a multiple of bsize"
+        assert np.all(brecvoff*bsize==recvoff), "recvoff must be a multiple of bsize"
+        # Define new mpi data type for the transfer
+        mtype = BYTE.Create_contiguous(sendbuf.itemsize*bsize)
+        mtype.Commit()
+        comm.Alltoallv(
+            (sendbuf, (bsendn,bsendoff), mtype),
+            (recvbuf, (brecvn,brecvoff), mtype),
+        )
+        mtype.Free()

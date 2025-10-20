@@ -378,7 +378,7 @@ class TileGeometry:
 	@property
 	def nactive(self): return len(self.active)
 	@property
-	def size(self): return np.product(self.pre)*np.sum(self.npixs[self.active])
+	def size(self): return np.prod(self.pre)*np.sum(self.npixs[self.active])
 	@property
 	def tiles(self):
 		"""Allow us to get the enmap geometry of tile #i by writing
@@ -434,7 +434,7 @@ def to_enmap(tile_map):
 
 # The main purpose of a TileMap is to spead the data of a huge map across many mpi tasks.
 
-def redistribute(imap, comm, active=None, omap=None):
+def redistribute(imap, comm, active=None, omap=None, itemhack=True):
 	"""Redistirbute the data in the mpi-distributed tiles in imap into the
 	active tiles in omap, using the given communicator. If a tile is active in
 	multiple tasks in imap, it will be reduced. If it is active in multiple tiles in
@@ -453,8 +453,8 @@ def redistribute(imap, comm, active=None, omap=None):
 	# 3. Figure out who I should send and receive each of my tiles to/from
 	omask     = oactive_all[:,imap.active] # [ntasks,iactive]
 	imask     = iactive_all[:,omap.active] # [ntasks,oactive]
-	isizes    = imap.geometry.npixs[imap.active] * np.product(imap.pre).astype(int)
-	osizes    = omap.geometry.npixs[omap.active] * np.product(omap.pre).astype(int)
+	isizes    = imap.geometry.npixs[imap.active] * np.prod(imap.pre).astype(int)
+	osizes    = omap.geometry.npixs[omap.active] * np.prod(omap.pre).astype(int)
 	ioffs     = utils.cumsum(isizes)
 	ooffs     = utils.cumsum(osizes)
 	# 4. Build our alltoallv send info
@@ -468,7 +468,17 @@ def redistribute(imap, comm, active=None, omap=None):
 	recv_offs = utils.cumsum(recv_sizes)
 	recv_buf  = np.zeros(np.sum(recv_sizes), omap.dtype)
 	# 6. Perform the actual communication
-	comm.Alltoallv((send_buf, (send_sizes, send_offs)), (recv_buf, (recv_sizes, recv_offs)))
+	if itemhack:
+		from pixell import mpi
+		# This could be bigger if all the tiles were the same size, but
+		# this usually isn't the case at the edges
+		bsize = np.prod(imap.pre).astype(int)
+		mpi.itemhack.Alltoallv(
+				send_buf, send_sizes, send_offs,
+				recv_buf, recv_sizes, recv_offs,
+				comm, bsize=bsize)
+	else:
+		comm.Alltoallv((send_buf, (send_sizes, send_offs)), (recv_buf, (recv_sizes, recv_offs)))
 	del iflat, send_buf
 	# 7. Copy and reduce into flattened output tiles
 	oflat     = np.zeros(omap.size, omap.dtype)
@@ -509,19 +519,19 @@ def get_active_distributed(tile_map, comm):
 	iactive     = utils.allreduce(iactive, comm)
 	return np.nonzero(iactive)[0]
 
-def reduce(tile_map, comm, root=0):
+def reduce(tile_map, comm, root=0, itemhack=True):
 	"""Given a distributed TileMap tile_map, collect all the tiles
 	on the task with rank root (default is rank 0), and return it.
 	Multiply owned tiles are reduced. Returns a TileMap with no
 	active tiles for other tasks than root."""
 	active_distributed = get_active_distributed(tile_map, comm)
 	active = active_distributed if comm.rank == root else []
-	return redistribute(tile_map, comm, active)
+	return redistribute(tile_map, comm, active, itemhack=itemhack)
 
-def write_map(fname, tile_map, comm):
+def write_map(fname, tile_map, comm, extra={}):
 	"""Write a distributed tile_map to disk as a single enmap.
 	Collects all the data on a single task before writing."""
 	omap = reduce(tile_map, comm)
 	if comm.rank == 0:
 		omap = to_enmap(omap)
-		enmap.write_map(fname, omap, allow_modify=True)
+		enmap.write_map(fname, omap, allow_modify=True, extra=extra)

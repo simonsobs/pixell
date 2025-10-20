@@ -60,9 +60,15 @@ float sum_map(float * m, int ny, int nx) {
 	return sum;
 }
 
+typedef struct {
+	int * offs;
+	float * vmaxs;
+} ProfInfo;
+
 float * measure_amax(int nobj, int ncomp, float ** amps);
-float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, float ** prof_rs, float ** prof_vs, float vmin, float rmax, int * prof_info);
-int * build_prof_info(int nprof, int * prof_ns, float ** prof_vs);
+float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, float ** prof_rs, float ** prof_vs, float vmin, float rmax, ProfInfo * prof_info);
+ProfInfo * build_prof_info(int nprof, int * prof_ns, float ** prof_vs);
+void free_prof_info(ProfInfo * prof_info);
 
 int assign_cells(
 		int nobj,         // Number of objects
@@ -187,10 +193,10 @@ void sim_objects(
 	// to precompute information about roughly where in the profile relevant values start.
 	double t1 = wall_time();
 	float * amaxs = measure_amax(nobj, ncomp, amps);
-	int   * prof_info = nobj > nprof*prof_prec_lim ? build_prof_info(nprof, prof_ns, prof_vs) : NULL;
+	ProfInfo * prof_info = nobj > nprof*prof_prec_lim ? build_prof_info(nprof, prof_ns, prof_vs) : NULL;
 	float * rmaxs = measure_rmax(nobj, amaxs, prof_ids, prof_ns, prof_rs, prof_vs, vmin, rmax, prof_info);
 	free(amaxs);
-	free(prof_info);
+	free_prof_info(prof_info);
 	// 2. Find which objects are relevant for which cells
 	double t2 = wall_time();
 	int *cell_nobj, **cell_objs, **cell_boxes; // [ncell], [ncell][objs] and [ncell][{y1,y2,x1,x2}]
@@ -241,8 +247,13 @@ float * measure_amax(int nobj, int ncomp, float ** amps) {
 	return amaxs;
 }
 
-int * build_prof_info(int nprof, int * prof_ns, float ** prof_vs) {
-	int * prof_info = calloc(nprof*prof_levels, sizeof(int));
+// prof_info is conceptually a 2d array with the one-past-the-end
+// index of the relevant part of the profile for exponentially spaced
+// value cutoffs.
+ProfInfo * build_prof_info(int nprof, int * prof_ns, float ** prof_vs) {
+	ProfInfo * prof_info = malloc(sizeof(ProfInfo));
+	prof_info->offs = calloc(nprof*prof_levels, sizeof(int));
+	prof_info->vmaxs= calloc(nprof, sizeof(float));
 	#pragma omp parallel for
 	for(int i = 0; i < nprof; i++) {
 		// First measure the maximum value and index
@@ -255,33 +266,46 @@ int * build_prof_info(int nprof, int * prof_ns, float ** prof_vs) {
 				vmax = v;
 			}
 		}
-		// This corresponds to the 0th exponent
-		prof_info[i*prof_levels+0] = imax;
+		prof_info->vmaxs[i] = vmax;
+
+		// This corresponds to cases where the cutoff is bigger than
+		// any value the beam can reach. Should really set it to 0
+		// in this case, but easier for measure_rmax if se set it to
+		// 1
+		prof_info->offs[i*prof_levels+0] = 1;
 		// The last level just goes all the way out to the end
-		prof_info[i*prof_levels+prof_levels-1] = prof_ns[i];
+		prof_info->offs[i*prof_levels+prof_levels-1] = prof_ns[i];
 		// Populate the others by inwards from the edge
 		int ri = prof_ns[i]-1;
 		for(int li = prof_levels-2; li > 0; li--) {
 			float vlim = vmax * powf(prof_base, -li);
 			for(; ri > imax && fabsf(prof_vs[i][ri]) < vlim; ri--);
-			prof_info[i*prof_levels+li] = ri;
+			prof_info->offs[i*prof_levels+li] = ri;
 		}
 	}
 	return prof_info;
 }
 
-int prof_info_lookup(int * prof_info, int prof, float vrel) {
+void free_prof_info(ProfInfo * prof_info) {
+	if(!prof_info) return;
+	free(prof_info->offs);
+	free(prof_info->vmaxs);
+	free(prof_info);
+}
+
+int prof_info_lookup(ProfInfo * prof_info, int prof, float vrel) {
 	// Calculate what power of our base (e.g. power of ten) we are
 	// away from the profile peak
-	int ind = (int)ceilf(-logf(vrel)/logf(prof_base));
+	float vpeakrel = vrel/prof_info->vmaxs[prof];
+	int ind = (int)ceilf(-logf(vpeakrel)/logf(prof_base));
 	// Cap to [0:nlevel]
 	if(ind < 0) ind = 0;
 	else if(ind >= prof_levels) ind = prof_levels-1;
 	// And look up the relevant starting point in the profile
-	return prof_info[prof_levels*prof+ind];
+	return prof_info->offs[prof_levels*prof+ind];
 }
 
-float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, float ** prof_rs, float ** prof_vs, float vmin, float rmax, int * prof_info) {
+float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, float ** prof_rs, float ** prof_vs, float vmin, float rmax, ProfInfo * prof_info) {
 	float * rmaxs = calloc(nobj, sizeof(float));
 	#pragma omp parallel for
 	for(int oi = 0; oi < nobj; oi++) {
@@ -295,7 +319,7 @@ float * measure_rmax(int nobj, float * amaxs, int * prof_ids, int * prof_ns, flo
 		// non-negligible point. Assuming that profiles tend to be repeated, I could precompute
 		// the inds where profiles reach a set of predefined multiples of their peak height. Then
 		// this loop could use that to reduce the loop range for the individual objects.
-		int i = prof_info ? prof_info_lookup(prof_info, pid, vrel) : n-1;
+		int i = prof_info ? prof_info_lookup(prof_info, pid, vrel)-1 : n-1;
 		for(; i > 0 && fabsf(vs[i]) < vrel; i--);
 		rmaxs[oi] = rs[i];
 		if(rmax > 0) rmaxs[oi] = fminf(rmaxs[oi], rmax);
