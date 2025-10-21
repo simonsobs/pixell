@@ -529,7 +529,7 @@ def rand_alm(ps_lensinput, lmax=None, dtype=np.float64, seed=None, phi_seed=None
 	return alm[0], alm[1:], ainfo
 
 
-def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64, seed=None, phi_seed=None, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
+def rand_map(shape, wcs, ps_lensinput, lmax=None, dtype=np.float64, seed=None, phi_seed=None, spin=[0,2], output="l", geodesic=True, verbose=False, delta_theta=None):
 	# Restrict to target number of components
 	oshape  = shape[-3:]
 	if len(oshape) == 2: shape = (1,)+tuple(shape)
@@ -542,7 +542,7 @@ def rand_map(shape, wcs, ps_lensinput, lmax=None, maplmax=None, dtype=np.float64
 	# for the cmb was the one that fits the resolution. FIXME: Can't slice alm this way.
 	#if maplmax: cmb_alm = cmb_alm[:,:maplmax]
 	return lens_map_curved(shape=shape, wcs=wcs, phi_alm=phi_alm,
-		cmb_alm=cmb_alm, phi_ainfo=ainfo, maplmax=maplmax,
+		cmb_alm=cmb_alm, phi_ainfo=ainfo,
 		dtype=dtype, spin=spin,
 		output=output, geodesic=geodesic, verbose=verbose,
 		delta_theta=delta_theta)
