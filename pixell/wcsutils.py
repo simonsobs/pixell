@@ -599,32 +599,37 @@ def _apply_zenithal_ref(w, ref):
 def angdist(lon1,lat1,lon2,lat2):
 	return np.arccos(np.cos(lat1)*np.cos(lat2)*(np.cos(lon1)*np.cos(lon2)+np.sin(lon1)*np.sin(lon2))+np.sin(lat1)*np.sin(lat2))
 
-def fix_wcs(wcs, axis=0, n=None):
-	"""Returns a new WCS object which has had the reference pixel moved to the
-	middle of the possible pixel space."""
+def center_cyl_wcs(wcs, shape=None, off=0.5):
+	"""Given the wcs for a cylindrical projection, return a new wcs
+	where the reference point has been moved along the equator to
+	the middle of the patch. This ensures that all pixels are within
+	the standard WCS bounds. If shape is not passed, then the patch
+	is assumed to cover the whole width of the sky."""
 	# Can't manipulate crval if coordinates aren't separable
-	if not (is_cyl(wcs) and wcs.wcs.crval[1-axis] == 0):
+	if not is_separable(wcs):
 		raise ValueError("Can't fix wcs for non-separable wcs")
-	if n is None: n = abs(360/wcs.wcs.cdelt[axis])
-	# Get the raw distance from crval
-	ra1   = wcs.wcs.crval[axis] - wcs.wcs.crpix[axis]*wcs.wcs.cdelt[axis]
-	ra2   = ra1 + (n-1)*wcs.wcs.cdelt[axis]
-	left  = abs(wcs.wcs.crval[axis]-ra1)
-	right = abs(wcs.wcs.crval[axis]-ra2)
-	# Stop if we don't need to fix anything
-	if max(left,right) <= 180: return wcs
-	# Otherwise move crval to the middle
-	mid   = 0.5*(ra1+ra2)
-	dra   = mid-wcs.wcs.crval[axis]
-	dpix  = dra/wcs.wcs.cdelt[axis]
-	res = wcs.deepcopy()
-	res.wcs.crval[axis] += mid
-	res.wcs.crpix[axis] += dpix
-	# I don't think this is necessary any more, but apparently I had
-	# problems with wcs not being properly updated if I didn't do this
-	# at som epoint
-	repr(res.wcs)
-	return res
+	# Patch horizontal extent
+	if shape is None: n = abs(360/wcs.wcs.cdelt[axis])
+	else:             n = shape[-1]
+	# x pixel of center  (1-based)
+	x  = (n-1)/2+1
+	# corresponding RA
+	ra = wcs.wcs.crval[0] + (x-wcs.wcs.crpix[0])*wcs.wcs.cdelt[0]
+	# We will allow negative RA, but we prefer small, positive values.
+	# If a patch goes at most 180° away from crval, then we can require
+	# 0 <= crval <= 360. But we add a small offset to not be sensitive to
+	# tiny errors for our common choice of crval[0] = 0
+	ra = (ra-off) % 360 + off
+	# Make a new wcs with this
+	owcs = wcs.deepcopy()
+	owcs.wcs.crval[0] = ra
+	owcs.wcs.crpix[0] = x
+	return owcs
+
+def fix_wcs(wcs, axis=0, n=None):
+	"""Compatibility name for center_cyl_wcs"""
+	if axis != 0: raise NotImplementedError
+	return center_cyl_wcs(wcs, None if n is None else (1,n))
 
 def fix_cdelt(wcs):
 	"""Return a new wcs with pc and cd replaced by cdelt"""

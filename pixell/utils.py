@@ -338,11 +338,10 @@ def mask2range(mask):
 	"""Convert a binary mask [True,True,False,True,...] into
 	a set of ranges [:,{start,stop}]."""
 	# We consider the outside of the array to be False
-	mask  = np.concatenate([[False],mask,[False]]).astype(np.int8)
-	# Find where we enter and exit ranges with true mask
-	dmask = mask[1:]-mask[:-1]
-	start = np.where(dmask>0)[0]
-	stop  = np.where(dmask<0)[0]
+	mask   = np.concatenate([[False],mask.astype(bool,copy=False),[False]]).astype(np.int8)
+	diffs  = np.diff(mask)
+	start  = np.where(diffs>0)[0]
+	stop   = np.where(diffs<0)[0]
 	return np.array([start,stop]).T
 
 def repeat_filler(d, n):
@@ -1898,12 +1897,16 @@ def ang2rect(angs, zenith=False, axis=0):
 def rect2ang(rect, zenith=False, axis=0, return_r=False):
 	"""The inverse of ang2rect."""
 	x,y,z = np.moveaxis(rect, axis, 0)
-	r     = (x**2+y**2)**0.5
+	rh    = (x**2+y**2)**0.5
 	phi   = np.arctan2(y,x)
-	if zenith: theta = np.arctan2(r,z)
-	else:      theta = np.arctan2(z,r)
+	if zenith: theta = np.arctan2(rh,z)
+	else:      theta = np.arctan2(z,rh)
 	ang = np.moveaxis(np.array([phi,theta]), 0, axis)
-	return (ang,r) if return_r else ang
+	if return_r:
+		r = (rh**2+z**2)**0.5
+		return ang, r
+	else:
+		return ang
 
 def angdist(a, b, zenith=False, axis=0):
 	"""Compute the angular distance between a[{ra,dec},...]
@@ -2300,6 +2303,7 @@ def block_reduce(a, bsize, axis=-1, off=0, op=np.mean, inclusive=True):
 	if pre.size  > 0 and inclusive: parts.append(np.expand_dims(op(pre, axis),axis))
 	if mid.size  > 0: parts.append(op(mid.reshape(mid.shape[:axis]+(nwhole,bsize)+mid.shape[axis+1:]),axis+1))
 	if tail.size > 0 and inclusive: parts.append(np.expand_dims(op(tail,axis),axis))
+	if len(parts) == 0: return a
 	return np.concatenate(parts, axis)
 
 def block_expand(a, bsize, osize, axis=-1, off=0, op="nearest", inclusive=True):
@@ -2865,7 +2869,6 @@ def afmt(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
 	if nmax is not None:
 		if nmax == 0: nmax = 10000000 # "unlimited"
 		if nedge is None: nedge = max(nmax//2-1,1)
-	print(nedge)
 	return np.array2string(arr, formatter=formatter, threshold=nmax, edgeitems=nedge)
 
 def contains_any(a, bs):
@@ -3325,7 +3328,7 @@ def chord2ang(chord):
 	"""Inverse of ang2chord."""
 	return 2*np.arcsin(chord/2)
 
-def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
+def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto", return_nhit=False):
 	"""Find close matches between positions given by pos1[:,ndim] and pos2[:,ndim],
 	up to a maximum distance of rmax (in the same units as the positions).
 
@@ -3398,14 +3401,16 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 		else:
 			raise ValueError("crossmatch: Unrecognized mode: %s" % (str(mode)))
 		# Filter out all but the first mention of each
-		done1 = np.zeros(n1, bool)
-		done2 = np.zeros(n2, bool)
+		nhit1 = np.zeros(n1, int)
+		nhit2 = np.zeros(n2, int)
 		opairs= []
 		for i1, i2 in pairs:
-			if done1[i1] or done2[i2]: continue
-			done1[i1] = done2[i2] = True
+			nhit1[i1] += 1
+			nhit2[i2] += 1
+			if nhit1[i1] > 1 or nhit2[i2] > 1: continue
 			opairs.append((i1,i2))
-		return opairs
+		if return_nhit: return opairs, nhit1, nhit2
+		else: return opairs
 
 def real_dtype(dtype):
 	"""Return the closest real (non-complex) dtype for the given dtype"""
@@ -3582,6 +3587,14 @@ def only_inds(a, inds):
 	if inds is None: return ()
 	inds = astuple(inds)
 	return tuple([a[i] for i in inds])
+
+def can_import(name):
+	import importlib
+	try:
+		importlib.import_module(name)
+		return True
+	except ModuleNotFoundError:
+		return False
 
 def first_importable(*args):
 	"""Given a list of module names, return the name of the first

@@ -160,6 +160,7 @@ class Mempool:
 		it will start requesting new memory again."""
 		if len(self.arenas) != 1:
 			# Go to from mode 1 to mode 2
+			self.arenas = []
 			self.arenas = [self.allocator.alloc(self.capacity)]
 		self.used = 0
 		return self
@@ -172,6 +173,12 @@ class Mempool:
 	def __repr__(self):
 		arenas = "["+",".join(["%.3fG" % (arena.size/1024**3) for arena in self.arenas])+"]"
 		return "%s(name='%s', capacity=%.3fG, used=%.3fG, align=%d, arenas=%s)" % (self.__class__.__name__, self.name, self.capacity/1024**3, self.used/1024**3, self.allocator.align, arenas)
+	def swap(self, other):
+		"""Swap internal buffers with other. Useful for avoiding
+		copies in some cases. The name and verbose status is not swapped"""
+		self.arenas,    other.arenas    = other.arenas,    self.arenas
+		self.used,      other.used      = other.used,      self.used
+		self.allocator, other.allocator = other.allocator, self.allocator
 
 class ArrayPoolCpu(Mempool):
 	def array(self, arr, reset=True, verbose=False):
@@ -262,6 +269,8 @@ class ArrayMultipool:
 	def reset(self):
 		for name in self.pools:
 			self.pools[name].reset()
+	def swap(self, name1, name2):
+		self.pools[name1].swap(self.pools[name2])
 	def __getitem__(self, name):
 		"""Returns the memory pool with the given name, creating it if it doesn't exist"""
 		if name not in self.pools:

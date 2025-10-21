@@ -687,19 +687,22 @@ def extract_pixbox(map, pixbox, omap=None, wrap="auto", op=lambda a,b:b, cval=0,
 		oshape, owcs = slice_geometry(map.shape, iwcs, (slice(*pixbox[:,-2]),slice(*pixbox[:,-1])), nowrap=True)
 		omap = full(map.shape[:-2]+tuple(oshape[-2:]), owcs, cval, map.dtype)
 	nphi = utils.nint(360/np.abs(iwcs.wcs.cdelt[0]))
-	# If our map is wider than the wrapping length, assume we're a lower-spin field
-	nphi *= (nphi+map.shape[-1]-1)//nphi
+	## If our map is wider than the wrapping length, assume we're a lower-spin field
+	#nphi *= (nphi+map.shape[-1]-1)//nphi
 	if utils.streq(wrap, "auto"):
 		wrap = [0,0] if wcsutils.is_plain(iwcs) else [0,nphi]
 	else: wrap = np.zeros(2,int)+wrap
+
 	for ibox, obox in utils.sbox_wrap(pixbox.T, wrap=wrap, cap=map.shape[-2:]):
 		islice = utils.sbox2slice(ibox)
 		oslice = utils.sbox2slice(obox)
 		if reverse: map [islice] = op(map[islice], omap[oslice])
 		else:       omap[oslice] = op(omap[oslice], map[islice])
 	# Optionally recenter cylindrical geometries so the reference point is
-	# in-bounds in RA
-	omap.wcs = recenter_geo(omap.shape, omap.wcs, mode=recenter)[1]
+	# in-bounds in RA, but only do it if we're not in reverse mode,
+	# since we shouldn't be writing to omap then
+	if recenter and not reverse:
+		omap.wcs = recenter_geo(omap.shape, omap.wcs, mode=recenter)[1]
 	return omap
 
 def insert(omap, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None):
@@ -2283,13 +2286,15 @@ def find_blank_edges(m, value="auto"):
 		value   = np.asarray(value)
 		# Find which rows and cols consist entirely of the given value
 		hitmask = np.all(np.isclose(m.T, value.T, equal_nan=True, rtol=1e-6, atol=0).T,axis=tuple(range(m.ndim-2)))
-		hitrows = np.all(hitmask,1)
-		hitcols = np.all(hitmask,0)
+		hitrows = np.where(~np.all(hitmask,1))[0]
+		hitcols = np.where(~np.all(hitmask,0))[0]
+		y1, y2  = hitrows[[0,-1]] if len(hitrows) > 0 else (0,m.shape[-2]-1)
+		x1, x2  = hitcols[[0,-1]] if len(hitcols) > 0 else (0,m.shape[-1]-1)
 		# Find the first and last row and col which aren't all the value
 		blanks  = np.array([
-			np.where(~hitrows)[0][[0,-1]],
-			np.where(~hitcols)[0][[0,-1]]]
-			).T
+			[y1, y2],
+			[x1, x2],
+		]).T
 		blanks[1] = m.shape[-2:]-blanks[1]-1
 		return blanks
 
@@ -2556,34 +2561,7 @@ def stamps(map, pos, shape, aslist=False):
 	return res
 
 def to_healpix(imap, omap=None, nside=0, order=3, chunk=100000):
-	"""Project the enmap "imap" onto the healpix pixelization. If omap is given,
-	the output will be written to it. Otherwise, a new healpix map will be constructed.
-	The healpix map must be in RING order. nside controls the resolution of the output map.
-	If 0, nside is chosen such that the output map is higher resolution than the input.
-	This is needed to avoid losing information. To go to a lower-resolution output map,
-	you should first degrade the input map. The chunk argument affects the speed/memory
-	tradeoff of the function. Higher values use more memory, and might (and might not)
-	give higher speed."""
-	warnings.warn("enmap.to_healpix is deprecated. Reprojecting this way is error-prone due to the potential loss of information, and the (very small) loss of high-l power due to the use of spline interpolation. Use reproject.map2healpix instead. And read its docstring!")
-	import healpy
-	ip = utils.interpolator(imap, order=order)
-	if omap is None:
-		# Generate an output map
-		if not nside:
-			npix_full_cyl = 4*np.pi/imap.pixsize()
-			nside = 2**int(np.floor(np.log2((npix_full_cyl/12)**0.5)))
-		npix = 12*nside**2
-		omap = np.zeros(imap.shape[:-2]+(npix,),imap.dtype)
-	else:
-		nside = healpy.npix2nside(omap.shape[-1])
-	npix = omap.shape[-1]
-	# Interpolate values at output pixel positions
-	for i in range(0, npix, chunk):
-		pos   = np.array(healpy.pix2ang(nside, np.arange(i, min(npix,i+chunk))))
-		# Healpix uses polar angle, not dec
-		pos[0] = np.pi/2 - pos[0]
-		omap[...,i:i+chunk] = imap.at(pos, ip=ip)
-	return omap
+	raise RuntimeError("This function has been removed. Use reproject.map2healpix().")
 
 def to_flipper(imap, omap=None, unpack=True):
 	"""Convert the enmap "imap" into a flipper map with the same geometry. If

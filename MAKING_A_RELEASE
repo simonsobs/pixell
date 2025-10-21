@@ -1,0 +1,4 @@
+1. Change the version in pyprojec.toml
+2. Create a git tag:
+   git tag v0.28.0
+   git push simonsobs master --tags

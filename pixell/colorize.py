@@ -70,6 +70,7 @@ def colorize(arr, desc="planck", mode="scalar", driver="auto"):
 	if available, and python otherwise."""
 	if driver == "auto":
 		driver = "fortran" if has_fortran else "python"
+	arr  = np.asarray(arr)
 	desc = Colorscheme(desc)
 	if len(desc.vals) == 0:
 		return np.zeros(arr.shape+(4,),dtype=np.uint8)
