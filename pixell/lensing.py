@@ -364,7 +364,9 @@ def _lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None,
 		elif c == "a": res.append(grad_map)
 	return tuple(res)
 
-def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, dtype=np.float64, spin=[0,2], output="l", method='pixell', geodesic=True, delta_theta=None, epsilon=1e-7, nthreads=0, verbose=False):
+def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, dtype=np.float64, 
+                    spin=[0,2], output="l", method='pixell', geodesic=True, 
+                    delta_theta=None, epsilon=1e-7, nthreads=0, verbose=False):
 	"""
 	Lenses a CMB map given the lensing potential harmonic transform and the CMB 
 	harmonic transform.  By default, T,E,B spherical harmonic coefficients are
