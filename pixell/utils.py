@@ -2846,7 +2846,7 @@ def aprint(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
 	print(afmt(arr, fmt=fmt, ffmt=ffmt, ifmt=ifmt, nmax=nmax, nedge=nedge))
 
 def afmt(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
-	"""Shortcut for np.array2strng, to get a bit more
+	"""Shortcut for np.array2string, to get a bit more
 	control of the output than just repr(arr).
 
 	arr:  The array to format
