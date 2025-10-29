@@ -31,7 +31,7 @@ def transform(isys, osys, coords, ctime=None, site=sites.default_site, weather=N
 		pass
 	elif space_sys(isys.base) and space_sys(osys.base):
 		# Both in space. Simple static rotation
-		coords = equ_rots[osys.base]/static_rots[isys.base] * coords
+		coords = equ_rots[osys.base]/equ_rots[isys.base] * coords
 	elif space_sys(isys.base) and not space_sys(osys.base):
 		# Need to cross to earth
 		if not trivial_quat(equ_rots[isys.base]):
@@ -68,6 +68,15 @@ hor_rots = {
 
 sys_map = {"hor":"hor", "equ":"equ", "cel":"equ", "gal":"gal"}
 
+# For equatorial, this works:
+#  azel2bore(az, el, ctime) * euler(2, roll+np.pi)
+# But for horizontal, this works:
+#  rotation_lonlat(-az, el, roll)
+# Why isn't roll+np.pi for both? Does azel2bore already
+# contain a pi rotation that we must compensate for? Yes,
+# it introduces a pi rotation. So it's not that roll and psi
+# differ, like I thought. I'll make them synonyms.
+
 # Complicated transforms
 def hor2equ(coords, ctime, site=sites.default_site, weather=None):
 	site    = sites.expand_site(site)
@@ -80,7 +89,7 @@ def hor2equ(coords, ctime, site=sites.default_site, weather=None):
 	q  = qp.azel2bore(az, el, None, None, lon=site.lon, lat=site.lat, ctime=ctime)
 	# to proper quat and recover correct shape
 	q  = quaternion.as_quat_array(q).reshape(shape)
-	q *= euler(2, psi)
+	q *= euler(2, psi+np.pi)
 	return Coords(q=q)
 
 def equ2hor(coords, ctime, site=sites.default_site, weather=None):
@@ -95,7 +104,7 @@ def equ2hor(coords, ctime, site=sites.default_site, weather=None):
 	az, el, pa = qp.radec2azel(ra, dec, psi, lon=site.lon, lat=site.lat, ctime=ctime)
 	# Recover correct shape
 	az, el, pa = [a.reshape(shape) for a in [az, el, pa]]
-	return Coords(az=az*DEG, el=el*DEG, roll=pa*DEG)
+	return Coords(az=az*DEG, el=el*DEG, roll=pa*DEG-np.pi)
 
 class Coords:
 	"""Class for representing both az,el,roll and quaternions.
@@ -109,26 +118,17 @@ class Coords:
 		self._lat  = maybearr(dec)
 		if el is not None: self._lat = asfarray(el)
 		self._psi  = maybearr(psi)
-		if roll is not None: self._psi = asfarray(roll)+np.pi
+		if roll is not None: self._psi = asfarray(roll)
 		self._q    = maybearr(q,  default_dtype=np.quaternion)
 		self._iq   = maybearr(iq, default_dtype=np.quaternion)
 		if self._psi is None and self._q is None:
-			# psi/roll missing. Default depends on if we're in az/el or ra/dec
-			# psi and roll correspond to different angle conventions, though
-			# I'm not sure about the details. Is this another consequence of
-			# left-handed coordinates?
 			self._psi = np.zeros_like(self._lon)
-			if az is not None: self._psi += np.pi
 	def __getattr__(self, name):
-		# az and roll are cheap to convert, so we do them on the fly to avoid
+		# az is cheap to convert, so we do them on the fly to avoid
 		# having to store them, and to keep things simple
 		if   name == "az":
 			val = -self.ra
 			def copy_back(): self.ra = val
-			return warray.WatchArray(val, copy_back)
-		elif name == "roll":
-			val = self.psi-np.pi
-			def copy_back(): self.roll = val
 			return warray.WatchArray(val, copy_back)
 		elif name == "theta":
 			val = np.pi/2-self.lat
@@ -137,18 +137,17 @@ class Coords:
 		# the others are handled via the cache system
 		elif name in ["ra", "lon", "phi"]: val = self._cache("_lon", self._calc_coord)
 		elif name in ["el", "dec", "lat"]: val = self._cache("_lat", self._calc_coord)
-		elif name == "psi": val = self._cache("_psi",  self._calc_coord)
+		elif name in ["psi", "roll"]:      val = self._cache("_psi",  self._calc_coord)
 		elif name == "q":   val = self._cache("_q",    self._calc_q)
 		elif name == "iq":  val = self._cache("_iq",   self._calc_iq)
 		else: raise AttributeError(name)
 		return warray.WatchArray(val, lambda: self._handle_update(name))
 	def __setattr__(self, name, val):
 		if   name == "az":    self._lon  = -asfarray(val)
-		elif name == "roll":  self._psi = asfarray(val)+np.pi
 		elif name == "theta": self._lat = np.pi/2-asfarray(val)
 		elif name in ["ra", "lon", "phi"]: self._lon = asfarray(val)
 		elif name in ["el", "dec", "lat"]: self._lat = asfarray(val)
-		elif name == "psi": self._psi = asfarray(val)
+		elif name in ["psi", "roll"]:      self._psi = asfarray(val)
 		elif name == "q":   self._q  = asfarray(val, np.quaternion)
 		elif name == "iq":  self._iq = asfarray(val, np.quaternion)
 		else:
