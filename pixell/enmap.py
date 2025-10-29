@@ -2978,17 +2978,16 @@ class ndmap_proxy_fits(ndmap_proxy):
 				str(fname)))
 		ndmap_proxy.__init__(self, hdu.shape, wcs, dtype, fname=fname, threshold=threshold, preflat=preflat)
 	def __getitem__(self, sel):
-		pre_sel, pix_sel = utils.split_slice(sel, [self.ndim,2])
+		pre_sel, pix_sel = utils.split_slice(sel, [self.ndim-2,2])
 		if len(pix_sel) > 2: raise IndexError("too many indices")
 		if self._preflat: pre_sel = utils.unflatten_slice(pre_sel[0], self.hdu.shape[:-2])
 		_, wcs = slice_geometry(self.shape[-2:], self.wcs, pix_sel)
 		if (self.hdu.size > self.threshold) and self.use_section:
-			# Postpone the x slice until after reading if too big.
-			# This was more efficient, but I don't remember why
+			# Postpone the x slice until after reading if small,
+			# to avoid overhead of x-slicing
 			ysel, xsel = utils.split_slice(pix_sel, [1,1])
 			res = self.hdu.section[pre_sel+ysel][(Ellipsis,)+xsel]
-		else:
-			res = self.hdu.data[pre_sel+pix_sel]
+		else: res = self.hdu.data[pre_sel+pix_sel]
 		# Apply stokes flips if necessary. This is a bit complicated because we have to
 		# take into account that slicing might have already been done. The simplest way
 		# to do this is to make a sign array with the same shape as all the pre-dimensions
