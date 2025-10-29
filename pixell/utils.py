@@ -106,7 +106,7 @@ def streq(x, s):
 
 def find(array, vals, default=None):
 	"""Return the indices of each value of vals in the given array."""
-	if np.asarray(vals).size == 0: return []
+	if np.asarray(vals).size == 0: return np.zeros(0, int)
 	array   = np.asarray(array)
 	order   = np.argsort(array)
 	cands   = np.minimum(np.searchsorted(array, vals, sorter=order),len(array)-1)

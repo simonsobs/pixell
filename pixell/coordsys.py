@@ -86,7 +86,7 @@ def hor2equ(coords, ctime, site=sites.default_site, weather=None):
 	# seems like azelpsi2bore does something else
 	az, el, ctime, psi = np.broadcast_arrays(coords.az/DEG, coords.el/DEG, ctime, coords.psi)
 	shape = az.shape
-	q  = qp.azel2bore(az, el, None, None, lon=site.lon, lat=site.lat, ctime=ctime)
+	q  = qp.azel2bore(az.reshape(-1), el.reshape(-1), None, None, lon=site.lon, lat=site.lat, ctime=ctime)
 	# to proper quat and recover correct shape
 	q  = quaternion.as_quat_array(q).reshape(shape)
 	q *= euler(2, psi+np.pi)
@@ -101,7 +101,7 @@ def equ2hor(coords, ctime, site=sites.default_site, weather=None):
 	ra, dec, psi, ctime = np.broadcast_arrays(coords.ra/DEG, coords.dec/DEG,
 		coords.psi/DEG, ctime)
 	shape = ra.shape
-	az, el, pa = qp.radec2azel(ra, dec, psi, lon=site.lon, lat=site.lat, ctime=ctime)
+	az, el, pa = qp.radec2azel(ra.reshape(-1), dec.reshape(-1), psi.reshape(-1), lon=site.lon, lat=site.lat, ctime=ctime.reshape(-1))
 	# Recover correct shape
 	az, el, pa = [a.reshape(shape) for a in [az, el, pa]]
 	return Coords(az=az*DEG, el=el*DEG, roll=pa*DEG-np.pi)
@@ -243,14 +243,6 @@ def decompose_lonlat(q):
 	lon   = np.arctan2(cd-ab, ac+bd)
 	lat   = np.pi/2 - 2*np.arctan2((b**2+c**2)**0.5, (a**2+d**2)**0.5)
 	return lon, lat, psi
-
-#    const double cos_theta = a*a - b*b - c*c + d*d;
-#    const double half_sin_theta = 0.5 * sqrt(1 - cos_theta*cos_theta);
-#
-#    coords[0] = ATAN2(c*d - a*b, c*a + d*b);
-#    coords[1] = ASIN(cos_theta);   // Yes, cos(theta) = sin(lat).
-#    coords[2] = (a*c - b*d) / half_sin_theta;
-#    coords[3] = (c*d + a*b) / half_sin_theta;
 
 def rotation_xieta(xi, eta, gamma=0):
 	lon = np.arctan2(-xi, -eta)
