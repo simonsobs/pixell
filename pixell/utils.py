@@ -3034,6 +3034,14 @@ def slice_downgrade(d, s, axis=-1):
 		a2 = np.concatenate([a2,[np.mean(rest,0)]],0)
 	return np.moveaxis(a2, 0, axis)
 
+def unflatten_slice(sel, shape):
+	"""If flatmap = map.reshape(-1), then this function
+	finds an unflattened slice usel such that flatmap[sel] = map[usel]."""
+	# This is simple but inefficient. Don't use for big slices
+	mgsel    = tuple([slice(0,n) for n in shape])
+	all_inds = np.mgrid[mgsel].reshape(len(shape),-1)
+	return tuple(all_inds[:,sel])
+
 def outer_stack(arrays):
 	"""Example. outer_stack([[1,2,3],[10,20]]) -> [[[1,1],[2,2],[3,3]],[[10,20],[10,20],[10,2]]]"""
 	res = np.empty([len(arrays)]+[len(a) for a in arrays], arrays[0].dtype)
