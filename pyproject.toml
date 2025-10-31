@@ -1,10 +1,10 @@
 [build-system]
 build-backend = 'mesonpy'
-requires = ['meson-python', 'numpy', 'cython', 'versioneer[toml]', 'build']
+requires = ['meson-python', 'numpy', 'cython', 'versioneer[toml]', 'build', 'pytest']
 
 [project]
 name = 'pixell'
-version = "0.28.4"
+version = "0.31.1"
 description = "A rectangular pixel map manipulation and harmonic analysis library derived from Sigurd Naess' enlib."
 readme = 'README.rst'
 requires-python = '>=3.9'
@@ -13,26 +13,24 @@ authors = [
     {name = "Simons Observatory Collaboration Analysis Library Task Force"},
 ]
 maintainers = [
-    {name = "Mathew Madhavacheril", email = "mathewsyriac@gmail.com"}
+    {name = "Sigurd Naess", email = "s.k.nass@astro.uio.no"},
+    {name = "Mathew Madhavacheril", email = "mathewsyriac@gmail.com"},
+    {name = "Matthew Hasselfield", email = "mhasselfield@flatironinstitute.org"},
+    {name = "Josh Borrow", email = "josh@joshborrow.com"}    
 ]
 dependencies = [
     'numpy',
     'astropy>=2.0',
-    'setuptools>=39',
-    'h5py>=2.7',
     'scipy>=1.0',
-    'python_dateutil>=2.7',
-    'cython',
-    'healpy>=1.13',
     'matplotlib>=2.0',
-    'pyyaml>=5.0',
-    'Pillow>=5.3.0, != 10.4.0',
-    'pytest-cov>=2.6',
-    'coveralls>=1.5',
-    'pytest>=4.6',
+    'Pillow>=5.3.0, !=10.4.0',
     'ducc0>=0.36.0',
-    'numba>=0.54.0'
+    'numba>=0.54.0',
+    'lenspyx>=2.0',
+    'healpy>=1.13',
+    "python_dateutil>=2.7",
 ]
+
 
 [project.scripts]
 # See scripts/meson.build for installation
@@ -52,7 +50,7 @@ test = [
     'numpy',
     'astropy>=2.0',
     'setuptools>=39.2',
-    'h5py>=2.7',
+    'h5py>=3.12.1',
     'scipy>=1.0',
     'python_dateutil>=2.7',
     'cython',
@@ -60,7 +58,7 @@ test = [
     'pyyaml>=5.0',
     'pytest-cov>=2.6',
     'coveralls>=1.5',
-    'pytest>=4.6'
+    'pytest>=4.6',
 ]
 
 [tool.pytest.ini_options]

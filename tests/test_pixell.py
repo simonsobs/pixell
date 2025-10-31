@@ -213,7 +213,7 @@ def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
     ps_lensinput = np.zeros((4,4,ps_cmb.shape[-1]))
     ps_lensinput[0,0] = ps_lens
     ps_lensinput[1:,1:] = ps_cmb
-    lensed = lensing.rand_map(shape, wcs, ps_lensinput, lmax=lmax, maplmax=None, dtype=dtype, seed=seed, phi_seed=None, spin=[0,2], output="lu", geodesic=True, verbose=False, delta_theta=None)
+    lensed = lensing.rand_map(shape, wcs, ps_lensinput, lmax=lmax, dtype=dtype, seed=seed, phi_seed=None, spin=[0,2], output="lu", geodesic=True, verbose=False, delta_theta=None)
     return lensed
 
 # Helper functions for adjointness tests

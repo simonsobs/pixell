@@ -1,4 +1,4 @@
-import numpy as np, scipy.ndimage, os, errno, scipy.optimize, time, datetime, warnings, re, sys, scipy.special
+import numpy as np, scipy.ndimage, os, errno, scipy.optimize, time, datetime, warnings, re, sys, scipy.special, io
 try: xrange
 except: xrange = range
 try: basestring
@@ -106,7 +106,7 @@ def streq(x, s):
 
 def find(array, vals, default=None):
 	"""Return the indices of each value of vals in the given array."""
-	if np.asarray(vals).size == 0: return []
+	if np.asarray(vals).size == 0: return np.zeros(0, int)
 	array   = np.asarray(array)
 	order   = np.argsort(array)
 	cands   = np.minimum(np.searchsorted(array, vals, sorter=order),len(array)-1)
@@ -121,6 +121,41 @@ def find_any(array, vals):
 	"""Like find, but skips missing entries"""
 	res = find(array, vals, default=-1)
 	return res[res >= 0]
+
+def find_range(ranges, vals, sorted=False, default=-1):
+	"""Given an array of non-overlapping ranges [nrange,{from,to}]
+	and a set of values vals[n], returns the index of the range
+	each value falls inside, or -1 for values not inside a range.
+	Pass sorted=True if ranges is already sorted, to save some time."""
+	if not sorted: ranges = ranges[np.argsort(ranges[:,0])]
+	inds = np.searchsorted(ranges[:,0], vals, side="right")-1
+	good = (ranges[inds,0]<=vals)&(ranges[inds,1]>vals)
+	inds[~good] = default
+	return inds
+
+def find_first(mask, axis=-1, default=-1):
+	"""Return the index of the first nonzero element in mask
+	along the given axis. If there's no such element, returns
+	the default value (-1 by default)"""
+	mask = mask.astype(bool)
+	# argmax returns index of first if there are multiple
+	inds = np.argmax(mask, axis=axis)
+	vals = np.max   (mask, axis=axis)
+	inds[~vals] = default
+	return inds
+
+def find_last(mask, axis=-1, default=-1):
+	"""Return the index of the last nonzero element in mask
+	along the given axis. If there's no such element, returns
+	the default value (-1 by default)"""
+	axis  = axis % mask.ndim
+	rmask = mask[(slice(None),)*axis+(slice(None,None,-1),)]
+	# Find in reversed array
+	inds  = find_first(rmask, axis=axis, default=default)
+	# Fix indices
+	good  = inds!=default
+	inds[good] = mask.shape[axis]-1-inds[good]
+	return inds
 
 def nearest_ind(arr, vals, sorted=False):
 	"""Given array arr and values vals, return the index of the entry in
@@ -229,6 +264,17 @@ def dict_apply_listfun(dict, function):
 	res  = function(vals)
 	return {key: res[i] for i, key in enumerate(keys)}
 
+def dict_lookup(dict, vals):
+	"""Vectorized look up of an array of values in a dictionary. Python
+	loop over the elements in the dictionary (but not the array), so
+	only efficient if the dictionary is small, or at least small compared to
+	the array"""
+	vals = np.asarray(vals)
+	# Get the unique entries in vals
+	uvals, inds = np.unique(vals, return_inverse=True)
+	# Remap each using the dict
+	return np.array([dict[uval] for uval in uvals])[inds].reshape(vals.shape)
+
 def fallback(*args):
 	for arg in args:
 		if arg is not None: return arg
@@ -292,11 +338,10 @@ def mask2range(mask):
 	"""Convert a binary mask [True,True,False,True,...] into
 	a set of ranges [:,{start,stop}]."""
 	# We consider the outside of the array to be False
-	mask  = np.concatenate([[False],mask,[False]]).astype(np.int8)
-	# Find where we enter and exit ranges with true mask
-	dmask = mask[1:]-mask[:-1]
-	start = np.where(dmask>0)[0]
-	stop  = np.where(dmask<0)[0]
+	mask   = np.concatenate([[False],mask.astype(bool,copy=False),[False]]).astype(np.int8)
+	diffs  = np.diff(mask)
+	start  = np.where(diffs>0)[0]
+	stop   = np.where(diffs<0)[0]
 	return np.array([start,stop]).T
 
 def repeat_filler(d, n):
@@ -765,11 +810,11 @@ def pixwin_1d(f, order=0):
 	to standard nearest-neighbor mapmking. order = 1 corresponds to linear interpolation.
 	For a multidimensional (e.g. 2d) image, the full pixel window will be the outer
 	product of this pixel window along each axis."""
-	if order is None:
+	if order is None or order == "none":
 		return f*0+1
-	elif order == 0:
+	elif order == 0 or order == "nn":
 		return np.sinc(f)
-	elif order == 1:
+	elif order == 1 or order == "lin":
 		return np.sinc(f)**2/(1/3*(2+np.cos(2*np.pi*f)))
 	else:
 		raise ValueError("Unsupported order '%s'" % str(order))
@@ -1345,6 +1390,35 @@ def pad_box(box, padding):
 	box[...,1,:] += padding*sign
 	return box
 
+def pad_bins(bins, pad, min=None, max=None):
+	bins = np.array(bins)
+	bins[...,0] -= pad
+	bins[...,1] += pad
+	if min is not None:
+		bins[...,0] = np.maximum(bins[...,0], min)
+	if max is not None:
+		bins[...,1] = np.minimum(bins[...,1], max)
+	return bins
+
+def merge_bins(bins):
+	"""Given a sorted set of bins[nbin,{from,to}], merge
+	overlapping bins, returning the result."""
+	if len(bins) == 0: return bins
+	bwork = bins[0].copy()
+	obins = []
+	for b in bins[1:]:
+		if bwork[1] >= b[0]:
+			# Overlap. Merge
+			bwork[1] = max(bwork[1],b[1])
+		else:
+			# no overlapp output and prepare for next
+			obins.append(bwork)
+			bwork = b.copy()
+	# Handle any last bin
+	if bwork is not None:
+		obins.append(bwork)
+	return obins
+
 def unwrap_range(range, nwrap=2*np.pi):
 	"""Given a logically ordered range[{from,to},...] that
 	may have been exposed to wrapping with period nwrap,
@@ -1823,12 +1897,16 @@ def ang2rect(angs, zenith=False, axis=0):
 def rect2ang(rect, zenith=False, axis=0, return_r=False):
 	"""The inverse of ang2rect."""
 	x,y,z = np.moveaxis(rect, axis, 0)
-	r     = (x**2+y**2)**0.5
+	rh    = (x**2+y**2)**0.5
 	phi   = np.arctan2(y,x)
-	if zenith: theta = np.arctan2(r,z)
-	else:      theta = np.arctan2(z,r)
+	if zenith: theta = np.arctan2(rh,z)
+	else:      theta = np.arctan2(z,rh)
 	ang = np.moveaxis(np.array([phi,theta]), 0, axis)
-	return (ang,r) if return_r else ang
+	if return_r:
+		r = (rh**2+z**2)**0.5
+		return ang, r
+	else:
+		return ang
 
 def angdist(a, b, zenith=False, axis=0):
 	"""Compute the angular distance between a[{ra,dec},...]
@@ -1951,7 +2029,7 @@ def split_by_group(a, start, end):
 				ind = i
 				n += 1
 		else:
-			if start[ind] == c:
+			if start[ind] == c and start[ind] != end[ind]:
 				n += 1
 			elif end[ind] == c:
 				n-= 1
@@ -2196,6 +2274,14 @@ def block_mean_filter(a, width):
 		a[:]   = work[...,:a.shape[-1]]
 	return a
 
+def downgrade(arr, down, axes=None, op=np.mean, inclusive=True):
+	down = astuple(down)
+	if axes is None: axes = list(range(-len(down),0))
+	axes = astuple(axes)
+	for ax, dn in zip(axes, down):
+		arr = block_reduce(arr, dn, axis=ax, op=op, inclusive=inclusive)
+	return arr
+
 def block_reduce(a, bsize, axis=-1, off=0, op=np.mean, inclusive=True):
 	"""Replace each block of length bsize along the given axis of a
 	with an aggregate value given by the operation op. op must
@@ -2217,6 +2303,7 @@ def block_reduce(a, bsize, axis=-1, off=0, op=np.mean, inclusive=True):
 	if pre.size  > 0 and inclusive: parts.append(np.expand_dims(op(pre, axis),axis))
 	if mid.size  > 0: parts.append(op(mid.reshape(mid.shape[:axis]+(nwhole,bsize)+mid.shape[axis+1:]),axis+1))
 	if tail.size > 0 and inclusive: parts.append(np.expand_dims(op(tail,axis),axis))
+	if len(parts) == 0: return a
 	return np.concatenate(parts, axis)
 
 def block_expand(a, bsize, osize, axis=-1, off=0, op="nearest", inclusive=True):
@@ -2307,6 +2394,12 @@ def triangle_wave(x, period=1):
 	res[m2] = 2-x[m2]
 	res[m3] = x[m3]-4
 	return res
+
+def type2_wave(x, period=1, amp=np.pi/2, mid=0, tol=1e-12):
+	"""The slowest speed during the wave is 4*amp/period"""
+	x = triangle_wave(x, period=period)*amp+(np.pi/2+mid)
+	x = np.clip(np.abs(rewind(x)),tol,np.pi-tol)
+	return np.log(np.tan(x/2))
 
 def calc_beam_area(beam_profile):
 	"""Calculate the beam area in steradians given a beam profile[{r,b},npoint].
@@ -2480,6 +2573,7 @@ def tsz_tform(r200=1*arcmin, l=None, lmax=40000, xc=0.497, alpha=1.0, beta=-4.65
 ### Binning ####
 
 def edges2bins(edges):
+	edges = np.asarray(edges)
 	res = np.zeros((edges.size-1,2),int)
 	res[:,0] = edges[:-1]
 	res[:,1] = edges[1:]
@@ -2657,15 +2751,18 @@ def build_conditional(ps, inds, axes=[0,1]):
 	cov    = partial_expand(Ciuui, ps.shape, axes)
 	return A, cov
 
-def nint(a):
+def nint(a, mul=1):
 	"""Return a rounded to the nearest integer, as an integer."""
-	return np.round(a).astype(int)
-def ceil(a):
+	if mul==1: return np.round(a).astype(int)
+	else:      return np.round(a/a).astype(int)*mul
+def ceil(a, mul=1):
 	"""Return a rounded to the next integer, as an integer."""
-	return np.ceil(a).astype(int)
-def floor(a):
+	if mul==1: return np.ceil(a).astype(int)
+	else:      return np.ceil(a/mul).astype(int)*mul
+def floor(a, mul=1):
 	"""Return a rounded to the previous integer, as an integer."""
-	return np.floor(a).astype(int)
+	if mul==1: return np.floor(a).astype(int)
+	else:      return np.floor(a/mul).astype(int)*mul
 
 format_regex = r"%(\([a-zA-Z]\w*\)|\(\d+)\)?([ +0#-]*)(\d*|\*)(\.\d+|\.\*)?(ll|[lhqL])?(.)"
 def format_to_glob(format):
@@ -2742,6 +2839,37 @@ class Printer:
 def ndigit(num):
 	"""Returns the number of digits in non-negative number num"""
 	with nowarn(): return np.int32(np.floor(np.maximum(1,np.log10(num))))+1
+
+def aprint(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
+	"""Shortcut for formatting an array and printing
+	it to screen. Equivalent to print(afmt(...))"""
+	print(afmt(arr, fmt=fmt, ffmt=ffmt, ifmt=ifmt, nmax=nmax, nedge=nedge))
+
+def afmt(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
+	"""Shortcut for np.array2string, to get a bit more
+	control of the output than just repr(arr).
+
+	arr:  The array to format
+	fmt:  Format to apply to all data types
+	ffmt: Format to apply to floats
+	ifmt: Format to apply to integers
+	nmax: Max number of elements to fully print. Summary-mode
+	      is used above this.
+
+	The format must be understood by the % operator.
+	Missing options default to numpy behavior.
+
+	Like np.array2string, this function uses looping
+	in python, so it's probably slow for huge arrays.
+	"""
+	formatter = {}
+	if fmt:  formatter["all"]        = lambda a: fmt  % a
+	if ffmt: formatter["float_kind"] = lambda a: ffmt % a
+	if ifmt: formatter["int_kind"]   = lambda a: ifmt % a
+	if nmax is not None:
+		if nmax == 0: nmax = 10000000 # "unlimited"
+		if nedge is None: nedge = max(nmax//2-1,1)
+	return np.array2string(arr, formatter=formatter, threshold=nmax, edgeitems=nedge)
 
 def contains_any(a, bs):
 	"""Returns true if any of the strings in list bs are found
@@ -2905,6 +3033,14 @@ def slice_downgrade(d, s, axis=-1):
 		rest = a[len(a2)*step:]
 		a2 = np.concatenate([a2,[np.mean(rest,0)]],0)
 	return np.moveaxis(a2, 0, axis)
+
+def unflatten_slice(sel, shape):
+	"""If flatmap = map.reshape(-1), then this function
+	finds an unflattened slice usel such that flatmap[sel] = map[usel]."""
+	# This is simple but inefficient. Don't use for big slices
+	mgsel    = tuple([slice(0,n) for n in shape])
+	all_inds = np.mgrid[mgsel].reshape(len(shape),-1)
+	return tuple(all_inds[:,sel])
 
 def outer_stack(arrays):
 	"""Example. outer_stack([[1,2,3],[10,20]]) -> [[[1,1],[2,2],[3,3]],[[10,20],[10,20],[10,2]]]"""
@@ -3200,7 +3336,7 @@ def chord2ang(chord):
 	"""Inverse of ang2chord."""
 	return 2*np.arcsin(chord/2)
 
-def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
+def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto", return_nhit=False):
 	"""Find close matches between positions given by pos1[:,ndim] and pos2[:,ndim],
 	up to a maximum distance of rmax (in the same units as the positions).
 
@@ -3273,14 +3409,16 @@ def crossmatch(pos1, pos2, rmax, mode="closest", coords="auto"):
 		else:
 			raise ValueError("crossmatch: Unrecognized mode: %s" % (str(mode)))
 		# Filter out all but the first mention of each
-		done1 = np.zeros(n1, bool)
-		done2 = np.zeros(n2, bool)
+		nhit1 = np.zeros(n1, int)
+		nhit2 = np.zeros(n2, int)
 		opairs= []
 		for i1, i2 in pairs:
-			if done1[i1] or done2[i2]: continue
-			done1[i1] = done2[i2] = True
+			nhit1[i1] += 1
+			nhit2[i2] += 1
+			if nhit1[i1] > 1 or nhit2[i2] > 1: continue
 			opairs.append((i1,i2))
-		return opairs
+		if return_nhit: return opairs, nhit1, nhit2
+		else: return opairs
 
 def real_dtype(dtype):
 	"""Return the closest real (non-complex) dtype for the given dtype"""
@@ -3457,6 +3595,14 @@ def only_inds(a, inds):
 	if inds is None: return ()
 	inds = astuple(inds)
 	return tuple([a[i] for i in inds])
+
+def can_import(name):
+	import importlib
+	try:
+		importlib.import_module(name)
+		return True
+	except ModuleNotFoundError:
+		return False
 
 def first_importable(*args):
 	"""Given a list of module names, return the name of the first

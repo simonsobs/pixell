@@ -23,3 +23,29 @@ try:
         disabled = False
 except:
     pass
+
+class itemhack:
+    @staticmethod
+    def Alltoallv(sendbuf, sendn, sendoff, recvbuf, recvn, recvoff, comm, bsize=1):
+        """Version of Alltoallv that does the transfer in terms of items
+        with size bsize of the original data type (or bsize*dtype.itemsize
+        in terms of bytes). The only reason to do this is to work around
+        the signed 32-bit limit on counts and offsets in MPI before
+        version 4."""
+        # Calculate blocked counts and offsets
+        bsendn   = sendn   // bsize
+        brecvn   = recvn   // bsize
+        bsendoff = sendoff // bsize
+        brecvoff = recvoff // bsize
+        assert np.all(bsendn*bsize==sendn), "sendn must be a multiple of bsize"
+        assert np.all(brecvn*bsize==recvn), "recvn must be a multiple of bsize"
+        assert np.all(bsendoff*bsize==sendoff), "sendoff must be a multiple of bsize"
+        assert np.all(brecvoff*bsize==recvoff), "recvoff must be a multiple of bsize"
+        # Define new mpi data type for the transfer
+        mtype = BYTE.Create_contiguous(sendbuf.itemsize*bsize)
+        mtype.Commit()
+        comm.Alltoallv(
+            (sendbuf, (bsendn,bsendoff), mtype),
+            (recvbuf, (brecvn,brecvoff), mtype),
+        )
+        mtype.Free()
