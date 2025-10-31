@@ -2679,7 +2679,7 @@ def write_map(fname, emap, fmt=None, address=None, extra={}, allow_modify=False)
 	else:
 		raise ValueError
 
-def _tokenized(tokenize):
+def _tokenized(fname,tokenize):
 	# Helper to sanitize filename tokenization
 	if not((isinstance(tokenize, str) and len(tokenize) == 1) or (tokenize is None)): raise ValueError
 	toks = fname.split(tokenize) if (tokenize is not None) else [fname]
@@ -2829,7 +2829,7 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None,
 	"""
 	has_selections = any(x is not None for x in (geometry, sel, box, pixbox))
 	if delayed and has_selections: raise ValueError
-	fname, toks = _tokenized(tokenize)
+	fname, toks = _tokenized(fname,tokenize)
 	if fmt == None:
 		if   fname.endswith(".hdf"):     fmt = "hdf"
 		elif fname.endswith(".npy"):     fmt = "npy"
@@ -2853,7 +2853,7 @@ def read_map_geometry(fname, fmt=None, hdu=None, address=None, tokenize=':'):
 	"""Read an enmap geometry from file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'."""
-	fname, toks = _tokenized(tokenize)
+	fname, toks = _tokenized(fname,tokenize)
 	if fmt == None:
 		if   fname.endswith(".hdf"):     fmt = "hdf"
 		elif fname.endswith(".fits"):    fmt = "fits"

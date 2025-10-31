@@ -16,6 +16,14 @@ class IOTests(unittest.TestCase):
     def _tempfile(self, basename):
         return os.path.join(self.tempdir.name, basename)
 
+    def test_read_write(self):
+        for fname in  [self._tempfile('test_file_:.fits'),self._tempfile('test file.fits'),self._tempfile('test_file.fits')]:
+            a = enmap.enmap(np.ones((100,100)))
+            enmap.write_map(fname,a)
+            a = enmap.read_map(fname,tokenize=None)
+            if ':' not in fname:
+                a = enmap.read_map(fname,tokenize=':')
+
     def test_100_hdf(self):
         box = np.array([[-5,10],[5,-10]]) * utils.degree
         shape, wcs = enmap.geometry(
