@@ -2685,6 +2685,31 @@ def _tokenized(fname,tokenize):
 	toks = fname.split(tokenize) if (tokenize is not None) else [fname]
 	fname = toks[0]
 	return fname, toks
+
+
+def parse_slice(s):
+	"""
+	A minimal string-> numpy slice converter.
+	Does not support ..., None or newaxis.
+	"""
+	s = s.strip()
+	if not (s.startswith('[') and s.endswith(']')):
+		raise ValueError("Invalid slice format")
+	if ('None' in s) or ('...' in s) or ('newaxis' in s): raise NotImplementedError
+	s = s[1:-1]
+	parts = s.split(',') if s else []
+	indices = []
+	for part in parts:
+		part = part.strip()
+		if ':' in part:
+			args = [int(x) if x else None for x in part.split(':')]
+			indices.append(slice(*args))
+		elif part:
+			indices.append(int(part))
+		else:
+			indices.append(slice(None))
+	return tuple(indices)
+
 	
 def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None,
 	     wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None,
@@ -2846,7 +2871,7 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None,
 	else:
 		raise ValueError
 	if len(toks) > 1:
-		res = eval("res"+tokenize.join(toks[1:]))
+		res = res[parse_slice(tokenize.join(toks[1:]))]
 	return res
 
 def read_map_geometry(fname, fmt=None, hdu=None, address=None, tokenize=':'):
@@ -2868,7 +2893,7 @@ def read_map_geometry(fname, fmt=None, hdu=None, address=None, tokenize=':'):
 	else:
 		raise ValueError
 	if len(toks) > 1:
-		sel = eval("utils.sliceeval"+tokenize.join(toks[1:]))[-2:]
+		sel = parse_slice(tokenize.join(toks[1:]))
 		shape, wcs = slice_geometry(shape, wcs, sel)
 	return shape, wcs
 
