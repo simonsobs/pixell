@@ -2712,7 +2712,6 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None,
 		character from a colon to something else by using the `tokenize`
 		argument. You may also just use `tokenize=None` to turn this off
 		(if for example your filename itself contains a colon).
-	
 	fmt : {"fits", "hdf", "npy"}, optional
 		Explicit file format. If None, inferred from the filename extension.
 	sel : numpy slice, optional
@@ -2726,7 +2725,7 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None,
 		as close as possible to this, but will differ slightly due to
 		the finite pixel size. For typical maps in equatorial coordinates,
 		the y and x directions are Dec. and RA respectively, and the units
-		are in radians. This operation is applied after `geometry`, if
+		are in radians. This operation is applied after `geometry`,
 		if provided.
 	pixbox : array_like, optional
 		Similar to box, but in pixel coordinates rather than sky coordinates.
@@ -2751,7 +2750,6 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None,
 			"ceil":  both upper and lower bounds will be rounded up
 			"inclusive": lower bounds are rounded down, and upper bounds up
 			"exclusive": lower bounds are rounded up, and upper bounds down
-
 	sel_threshold : int or float, optional
 		Size threshold (in **total pixels** of the on-disk HDU array) that
 		switches the read strategy. If `hdu.size > sel_threshold` **and**
@@ -2771,7 +2769,6 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None,
 		        the standard `.data[...]` path.
 
 		Default is `1.0e7` (10 million).
-	
 	wcs : astropy.wcs.WCS, optional
 		Optional WCS object to override the one in the file header.
 	hdu : int or str, optional
@@ -2781,7 +2778,6 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None,
 		If True, return a lazy view of the data, i.e. no values are read
 		from disk until the returned array is explicitly accessed. Cannot
 		be used together with `geometry`, `box`, `pixbox` or `sel`.
-	
 	preflat : bool, optional
 		Interpret selections on the **non-spatial (“pre”) axes** as if those axes
 		had been flattened into a single leading dimension. For example, 
