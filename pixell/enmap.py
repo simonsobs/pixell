@@ -193,7 +193,7 @@ def submap(map, box, mode=None, wrap="auto", recenter=False, iwcs=None):
 	if xflip: omap = omap[...,:,::-1]
 	return omap
 
-def subgeo(shape, wcs, box=None, pixbox=None, mode=None, wrap="auto", noflip=False, recenter=False):
+def subgeo(shape, wcs, box=None, pixbox=None, mode=None, noflip=False, recenter=False):
 	"""Extract the part of the geometry inside the coordinate box
 	box : array_like
 		The [[fromy,fromx],[toy,tox]] coordinate box to select.
@@ -2635,10 +2635,17 @@ def write_map(fname, emap, fmt=None, address=None, extra={}, allow_modify=False)
 	else:
 		raise ValueError
 
-def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None, delayed=False, preflat=False, verbose=False, address=None, recenter=False):
-	"""Read an enmap from file. The file type is inferred
-	from the file extension, unless fmt is passed.
-	fmt must be one of 'fits' and 'hdf'.
+def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None,
+	     wrap="auto", mode=None, sel_threshold=10e6, wcs=None, hdu=None,
+	     delayed=False, preflat=False, verbose=False, address=None,
+	     recenter=False, tokenize=':'):
+	"""
+	Read an enmap from a file.
+
+	The file format is inferred from the file extension unless `fmt` is explicitly
+	provided. Supported formats include FITS (`.fits`, `.fits.gz`), HDF5 (`.hdf`),
+	and NumPy (`.npy`). Additional sub-selection, geometry manipulation, and
+	wrapping behavior can be controlled via optional arguments.
 
 	The sel, box, pixbox, geometry, wrap, mode, and delayed arguments
 	are all used by read_helper to (optionally) select a subregion of
@@ -2646,8 +2653,136 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wr
 
 	The hdu and verbose arguments are only used for FITS (see
 	read_fits).  The address argument is only used for HDF (see
-	read_hdf)."""
-	toks = fname.split(":")
+	read_hdf).
+
+
+	Parameters
+	----------
+	fname : str
+		Filename to load.
+	
+		You may optionally include an arbitrary expression to evaluate on
+		the map once it is loaded. By default, this expression is separated
+		from the filename by a colon, e.g. `map.fits:[0]` will return `data[0]`
+		from the map. You can change the tokenization
+		character from a colon to something else by using the `tokenize`
+		argument. You may also just use `tokenize=None` to turn this off
+		(if for example your filename itself contains a colon).
+	
+	fmt : {"fits", "hdf", "npy"}, optional
+		Explicit file format. If None, inferred from the filename extension.
+	sel : numpy slice, optional
+		Final slicing of the data to be applied. e.g. if the data in the
+		file is `data`, then `data[sel]` will be returned. You may use
+		`np.s_` to construct slices for additional flexibility. This
+		slicing is applied after `pixbox`, if provided.
+	box : array_like, optional
+		The [[from_y,from_x],[to_y,to_x]] sky coordinate box to select.
+		The resulting map will have bottom-left and top-right corners
+		as close as possible to this, but will differ slightly due to
+		the finite pixel size. For typical maps in equatorial coordinates,
+		the y and x directions are Dec. and RA respectively, and the units
+		are in radians. This operation is applied after `geometry`, if
+		if provided.
+	pixbox : array_like, optional
+		Similar to box, but in pixel coordinates rather than sky coordinates.
+		This operation is applied after `box`, if provided.
+	geometry : tuple, optional
+		Desired output geometry (shape, wcs) to extract the data on to.
+		The output geometry must be WCS-compatible with the geometry
+		on disk.
+	wrap : {"auto", int, (int, int)}
+		If `geometry`, `box` or `pixbox` are provided, this sets the
+		wrapping length(s) in pixels for the (y, x) axes. Controls
+		periodic wrap-around when the requested box crosses an edge;
+		0 disables wrapping on an axis. The default "auto" sets
+		[0, nphi] for cylindrical WCS (wrap only in x, with
+		nphi ~ round(360/|cdelt_x|)), otherwise [0, 0]. A scalar applies
+		to both axes; a 2-tuple/list sets per-axis lengths explicitly.	
+	mode : str
+		How to handle partially selected pixels when using `box` to extract
+		a submap:
+			"round": round bounds using standard rules
+			"floor": both upper and lower bounds will be rounded down
+			"ceil":  both upper and lower bounds will be rounded up
+			"inclusive": lower bounds are rounded down, and upper bounds up
+			"exclusive": lower bounds are rounded up, and upper bounds down
+
+	sel_threshold : int or float, optional
+		Size threshold (in **total pixels** of the on-disk HDU array) that
+		switches the read strategy. If `hdu.size > sel_threshold` **and**
+		the backend supports sectioned reads, the loader uses a two-stage
+		slice: it applies the **row (y)** part of the selection at I/O time
+		via `hdu.section` and defers the **column (x)** slice to the
+		in-memory result. Otherwise it reads via `hdu.data` with the full
+		selection in one step.
+
+		This affects performance only (not the returned values). It has an
+		effect primarily for FITS backends (and any backend that provides a
+		`.section` interface); formats like `.npy` ignore it.
+
+		Tips:
+			- Set to `0` to always use sectioned reads when available.
+			- Set to a very large value (e.g., `float("inf")`) to always use
+		        the standard `.data[...]` path.
+
+		Default is `1.0e7` (10 million).
+	
+	wcs : astropy.wcs.WCS, optional
+		Optional WCS object to override the one in the file header.
+	hdu : int or str, optional
+		For FITS files, by default, the map and coordinate system will be read from HDU 0. Use
+		this argument to override it. Used only when reading FITS files.
+	delayed : bool, optional
+		If True, return a lazy view of the data, i.e. no values are read
+		from disk until the returned array is explicitly accessed. Cannot
+		be used together with `geometry`, `box`, `pixbox` or `sel`.
+	
+	preflat : bool, optional
+		Interpret selections on the **non-spatial (“pre”) axes** as if those axes
+		had been flattened into a single leading dimension. For example, 
+		`read_map(...,preflat=True,sel=0)` would return either the (Ny,Nx) component
+		map in the file if there were only a single map in it, or would return
+		the first component in the flattened version of a (...,Ny,Nx) 
+		multi-component map.
+	verbose : bool, optional
+		If True, print progress and diagnostic messages.
+	address : str, optional
+		Dataset path within HDF file (only for HDF format).
+	recenter : bool, optional
+		When `box` or `pixbox` are provided, optionally recenter cylindrical
+		geometries so the reference point is in-bounds in RA.
+	tokenize : str, optional
+		The symbol (default: a colon) used to tokenize the filename to
+		evaluate an arbitrary expression on the map, e.g. `"map.fits:[::-1]"`).
+		Tokenization can be turned off by passing `tokenize=None`, if for example
+		your filename already has a colon.
+
+	
+	Returns
+	-------
+	enmap : enmap-like object
+		The map with associated WCS geometry.
+
+	Raises
+	------
+	ValueError
+		If the file format is unrecognized or unsupported.
+		If `geometry`, `box`, `pixbox` or `sel` are provided
+		when `delayed=True`.
+
+	
+
+	Examples
+	--------
+	>>> m = read_map("sky_map.fits")
+	>>> m_sub = read_map("sky_map.fits", box=[[0,0],[10,10]] * utils.degree)
+	>>> m_hdf = read_map("maps.hdf", address="cmbmap", delayed=True)
+	>>> m = enmap.read_map('map.fits', preflat=True, sel=0)
+	"""
+	has_selections = any(x is not None for x in (geometry, sel, box, pixbox))
+	if delayed and has_selections: raise ValueError
+	toks = fname.split(tokenize)
 	fname = toks[0]
 	if fmt == None:
 		if   fname.endswith(".hdf"):     fmt = "hdf"
@@ -2658,20 +2793,21 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None, wr
 	if fmt == "fits":
 		res = read_fits(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, hdu=hdu, delayed=delayed, recenter=recenter, preflat=preflat, verbose=verbose)
 	elif fmt == "hdf":
-		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed, hdu=hdu, recenter=recenter, preflat=preflat, address=address)
+		res = read_hdf(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed, recenter=recenter, preflat=preflat, address=address)
 	elif fmt == "npy":
-		res = read_npy(fname, sel=sel, box=box, pixbox=pixbox, geometry=geometry, wrap=wrap, mode=mode, sel_threshold=sel_threshold, wcs=wcs, delayed=delayed, hdu=hdu, recenter=recenter, preflat=preflat, address=address)
+		if has_selections: raise ValueError
+		res = read_npy(fname, wcs=wcs, preflat=preflat)
 	else:
 		raise ValueError
 	if len(toks) > 1:
-		res = eval("res"+":".join(toks[1:]))
+		res = eval("res"+tokenize.join(toks[1:]))
 	return res
 
-def read_map_geometry(fname, fmt=None, hdu=None, address=None):
+def read_map_geometry(fname, fmt=None, hdu=None, address=None, tokenize=':'):
 	"""Read an enmap geometry from file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'."""
-	toks = fname.split(":")
+	toks = fname.split(tokenize)
 	fname = toks[0]
 	if fmt == None:
 		if   fname.endswith(".hdf"):     fmt = "hdf"
@@ -2687,12 +2823,12 @@ def read_map_geometry(fname, fmt=None, hdu=None, address=None):
 	else:
 		raise ValueError
 	if len(toks) > 1:
-		sel = eval("utils.sliceeval"+":".join(toks[1:]))[-2:]
+		sel = eval("utils.sliceeval"+tokenize.join(toks[1:]))[-2:]
 		shape, wcs = slice_geometry(shape, wcs, sel)
 	return shape, wcs
 
-def read_map_dtype(fname, fmt=None, hdu=None, address=None):
-	toks = fname.split(":")
+def read_map_dtype(fname, fmt=None, hdu=None, address=None, tokenize=':'):
+	toks = fname.split(tokenize)
 	fname = toks[0]
 	if fmt == None:
 		if   fname.endswith(".hdf"):     fmt = "hdf"
@@ -2704,11 +2840,11 @@ def read_map_dtype(fname, fmt=None, hdu=None, address=None):
 	elif fmt == "hdf":     return read_hdf_dtype (fname, address=address)
 	else: raise ValueError
 
-def write_map_geometry(fname, shape, wcs, fmt=None):
+def write_map_geometry(fname, shape, wcs, fmt=None, tokenize=':'):
 	"""Write an enmap geometry to file. The file type is inferred
 	from the file extension, unless fmt is passed.
 	fmt must be one of 'fits' and 'hdf'. Only fits is supported for now, though."""
-	toks = fname.split(":")
+	toks = fname.split(tokenize)
 	fname = toks[0]
 	if fmt == None:
 		if   fname.endswith(".hdf"):     fmt = "hdf"
@@ -2846,7 +2982,7 @@ def write_hdf(fname, emap, address=None, extra={}):
 		for key, val in extra.items():
 			hfile[key] = val
 
-def read_hdf(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None, recenter=False, preflat=False):
+def read_hdf(fname, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None, recenter=False, preflat=False):
 	"""Read an enmap from the specified hdf file. Two formats
 	are supported. The old enmap format, which simply used
 	a bounding box to specify the coordinates, and the new
@@ -2900,7 +3036,7 @@ def read_hdf_dtype(fname, address=None):
 			hfile = hfile[address]
 		return hfile["data"].dtype
 
-def read_npy(fname, hdu=None, sel=None, box=None, pixbox=None, geometry=None, wrap="auto", mode=None, sel_threshold=10e6, wcs=None, delayed=False, address=None, recenter=False):
+def read_npy(fname, wcs=None):
 	"""Read an enmap from the specified npy file. Only minimal support.
 	No wcs information."""
 	map = enmap(np.load(fname), wcs)
@@ -2919,7 +3055,7 @@ def read_helper(data, sel=None, box=None, pixbox=None, geometry=None, wrap="auto
 	"""Helper function for map reading. Handles the slicing, sky-wrapping and capping, etc."""
 	if delayed: return data # Slicing not supported yet when we want to return a proxy object
 	if geometry is not None: data = extract(data, *geometry, wrap=wrap)
-	if box      is not None: data = submap(data, box, wrap=wrap, recenter=recenter)
+	if box      is not None: data = submap(data, box, wrap=wrap, recenter=recenter, mode=mode)
 	if pixbox   is not None: data = extract_pixbox(data, pixbox, wrap=wrap, recenter=recenter)
 	if sel      is not None: data = data[sel]
 	data = data[:] # Get rid of the wrapper if it still remains
