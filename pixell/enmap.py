@@ -810,7 +810,7 @@ def at(map, pos, mode="spline", order=3, border="constant", cval=0.0, unit="coor
 		* mode=="lin" or (mode=="spline" and order==1): Linear interpolation
 		* mode=="cub" or (mode=="spline" and order==3): Cubic interpolation
 		* mode=="fourier": Non-uniform fourier interpolation
-        	Defaults to mode="spline" and order=3.
+		Defaults to mode="spline" and order=3.
 	border:
 		The border argument controls the boundary condition. This does not apply
 		for fourier interpolation, which always assumes periodic boundary.
