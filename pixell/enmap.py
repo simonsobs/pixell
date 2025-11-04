@@ -2737,13 +2737,16 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None,
 	fname : str
 		Filename to load.
 	
-		You may optionally include an arbitrary expression to evaluate on
+		You may optionally include a slicing expression to evaluate on
 		the map once it is loaded. By default, this expression is separated
 		from the filename by a colon, e.g. `map.fits:[0]` will return `data[0]`
-		from the map. You can change the tokenization
-		character from a colon to something else by using the `tokenize`
+		from the map and `map.fits:[10:,10:]` will apply that slicing to the
+		data. You can change the tokenization character from
+		a colon to something else by using the `tokenize`
 		argument. You may also just use `tokenize=None` to turn this off
-		(if for example your filename itself contains a colon).
+		(if for example your filename itself contains a colon). Slicing
+		expressions that include an ellipsis, `None` or `newaxis` are not
+		supported.
 	fmt : {"fits", "hdf", "npy"}, optional
 		Explicit file format. If None, inferred from the filename extension.
 	sel : numpy slice, optional
@@ -2826,7 +2829,7 @@ def read_map(fname, fmt=None, sel=None, box=None, pixbox=None, geometry=None,
 		geometries so the reference point is in-bounds in RA.
 	tokenize : str, optional
 		The symbol (default: a colon) used to tokenize the filename to
-		evaluate an arbitrary expression on the map, e.g. `"map.fits:[::-1]"`).
+		evaluate a slicing expression on the map, e.g. `"map.fits:[10:,10:]"`).
 		Tokenization can be turned off by passing `tokenize=None`, if for example
 		your filename already has a colon.
 
