@@ -518,7 +518,7 @@ def sky2pix(shape, wcs, coords, safe=True, corner=False, bcheck=False):
 			if safe == 1:
 				wpix[i] = utils.rewind(wpix[i], wrefpix[i], wn)
 			else:
-				wpix[i] = utils.unwind(wpix[i], period=wn, ref=wrefpix[i])
+				wpix[i] = utils.unwind(wpix[i], period=wn, ref=wrefpix[i], refmode="middle")
 	return wpix[::-1].reshape(coords.shape)
 
 def pix2l(shape, wcs, pix):

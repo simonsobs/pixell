@@ -280,6 +280,7 @@ def fallback(*args):
 		if arg is not None: return arg
 	return None
 
+# ref and refmode are messy here. Should rethink how this is done
 def unwind(a, period=2*np.pi, axes=[-1], ref=0, refmode="left", mask_nan=False):
 	"""Given a list of angles or other cyclic coordinates
 	where a and a+period have the same physical meaning,
@@ -3464,7 +3465,9 @@ class CG:
 		self.M   = M
 		self.dot = dot
 		if x0 is None:
-			self.x = np.zeros_like(b)
+			# used to be np.zeros_like, but writing it like this makes it
+			# numpy/cupy-agnostic for a tiny cost
+			self.x = b*0
 			self.r = b.copy() if not destroy_b else b
 		else:
 			self.x  = x0.copy()
