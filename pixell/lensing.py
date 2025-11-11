@@ -332,7 +332,7 @@ def _lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None,
 		cmb_obs = lenspyx.alm2lenmap(cmb_alm, d_alm, geom_info,
 										epsilon=epsilon, verbose=verbose, 
 									 	nthreads=nthreads, pol=pol)
-		cmb_obs = fix_lenspyx_result(cmb_obs, geom_info, oshape, wcs)
+		cmb_obs = _fix_lenspyx_result(cmb_obs, geom_info, oshape, wcs)
 		cmb_obs = cmb_obs.astype(dtype=dtype, copy=False)
 
 	# possibly get extra outputs
