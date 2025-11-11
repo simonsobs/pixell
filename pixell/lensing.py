@@ -189,7 +189,7 @@ def _fix_lenspyx_result(lenspyx_result, lenspyx_geom_info, shape, wcs):
 	# in the full-sky geometry
 	_, _phi0_ind = enmap.sky2pix(fs_shape, fs_wcs, [0, phi0[0]])
 	phi0_ind = np.round(_phi0_ind).astype(int)
-	assert phi0_ind == _phi0_ind, \
+	assert np.allclose(phi0_ind, _phi0_ind, rtol=0, atol=1e-5), \
 		('we cannot handle the case of a non-integer pixel with cut and paste '
 		'but could roll the whole array by a fractional pixel using ffts, this '
 		'needs to be implemented')
