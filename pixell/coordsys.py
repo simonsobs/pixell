@@ -9,8 +9,9 @@ from . import bunch, warray, sites, ephem
 
 DEG = np.pi/180
 
-def transform(isys, osys, coords, ctime=None, site=sites.default_site, weather=None):
+def transform(isys, osys, coords, ctime=None, site=None, weather=None):
 	if isys == osys: return coords
+	if site is None: site = sites.default_site
 	isys = expand_sys(isys, ctime=ctime, site=site, weather=weather)
 	osys = expand_sys(osys, ctime=ctime, site=site, weather=weather)
 	# expand_sys should return something with .base and .q properties, where .q can be None
@@ -78,7 +79,8 @@ sys_map = {"hor":"hor", "equ":"equ", "cel":"equ", "gal":"gal"}
 # differ, like I thought. I'll make them synonyms.
 
 # Complicated transforms
-def hor2equ(coords, ctime, site=sites.default_site, weather=None):
+def hor2equ(coords, ctime, site=None, weather=None):
+	if site is None: site = sites.default_site
 	site    = sites.expand_site(site)
 	weather = sites.expand_weather(weather, site)
 	qp = qpoint.QPoint(accuracy="high", fast_math=True, mean_aber=True,
@@ -92,7 +94,8 @@ def hor2equ(coords, ctime, site=sites.default_site, weather=None):
 	q *= euler(2, psi+np.pi)
 	return Coords(q=q)
 
-def equ2hor(coords, ctime, site=sites.default_site, weather=None):
+def equ2hor(coords, ctime, site=None, weather=None):
+	if site is None: site = sites.default_site
 	site    = sites.expand_site(site)
 	weather = sites.expand_weather(weather, site)
 	qp = qpoint.QPoint(accuracy="high", fast_math=True, mean_aber=True,
