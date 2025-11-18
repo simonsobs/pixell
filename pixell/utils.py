@@ -376,6 +376,12 @@ def argmax(arr):
 	arr = np.asanyarray(arr)
 	return np.unravel_index(np.argmax(arr), arr.shape)
 
+def argmin(arr):
+	"""Multidimensional argmax. Returns a tuple indexing the full array
+	instead of just a number indexing the flattened array like np.argmax does"""
+	arr = np.asanyarray(arr)
+	return np.unravel_index(np.argmin(arr), arr.shape)
+
 def ctime2mjd(ctime):
 	"""Converts from unix time to modified julian date."""
 	return np.asarray(ctime)/86400. + 40587.0
@@ -390,6 +396,9 @@ def ctime2djd(ctime): return mjd2djd(ctime2mjd(ctime))
 def djd2ctime(djd):   return mjd2ctime(djd2mjd(djd))
 def ctime2jd(ctime):  return mjd2jd(ctime2mjd(ctime))
 def jd2ctime(jd):     return mjd2ctime(jd2mjd(jd))
+# These aren't calendar accurate. Use timedate for that
+def yr2ctime(yr):     return (yr-2025)*31556925.216 + 1735689600
+def ctime2yr(ctime):  return (ctime-1735689600)/31556925.216+2025
 
 def mjd2ctime(mjd):
 	"""Converts from modified julian date to unix time"""
