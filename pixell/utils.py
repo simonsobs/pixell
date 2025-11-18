@@ -2115,13 +2115,13 @@ def label_multi(valss):
 	label like (1, "foo", 1.24) to having a single integer as the label.
 
 	Example: label_multi([[0,0,1,1,2],["a","b","b","b","b"]]) → [0,1,2,2,3]"""
-	oinds = 0
-	nprev = 1
+	oinds  = 0
+	stride = 1
 	for vals in valss:
 		# remap arbitrary values in vals to integers in inds
 		uvals, inds = np.unique(vals, return_inverse=True)
-		oinds = oinds*nprev + inds
-		nprev = len(uvals)
+		oinds  += inds*stride
+		stride *= len(uvals)
 	# At this point oinds has unique indices, but there could be gaps.
 	# Remove those
 	oinds = np.unique(oinds, return_inverse=True)[1]
