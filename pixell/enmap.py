@@ -3105,7 +3105,7 @@ def read_hdf_dtype(fname, address=None):
 			hfile = hfile[address]
 		return hfile["data"].dtype
 
-def read_npy(fname, wcs=None):
+def read_npy(fname, wcs=None, preflat=False):
 	"""Read an enmap from the specified npy file. Only minimal support.
 	No wcs information."""
 	map = enmap(np.load(fname), wcs)
