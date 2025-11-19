@@ -49,3 +49,10 @@ class itemhack:
             (recvbuf, (brecvn,brecvoff), mtype),
         )
         mtype.Free()
+
+def install_abort_hook(comm=COMM_WORLD):
+    def abort_hook(type, value, traceback):
+        sys.__excepthook__(type, value, traceback)
+        if not Is_finalized():
+            comm.Abort()
+    sys.excepthook = abort_hook

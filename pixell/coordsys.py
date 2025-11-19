@@ -86,9 +86,14 @@ def hor2equ(coords, ctime, site=None, weather=None):
 	qp = qpoint.QPoint(accuracy="high", fast_math=True, mean_aber=True,
 		rate_ref="always", **weather)
 	# seems like azelpsi2bore does something else
-	az, el, ctime, psi = np.broadcast_arrays(coords.az/DEG, coords.el/DEG, ctime, coords.psi)
+	# broadcast_arrays and set writeable to false just to quiet a
+	# numpy false positive warning in qpoint
+	az, el, ctime, psi = [np.ascontiguousarray(arr) for arr in
+		np.broadcast_arrays(coords.az/DEG, coords.el/DEG, ctime, coords.psi)]
+	for arr in [az, el, ctime, psi]:
+		arr.flags["WRITEABLE"] = False
 	shape = az.shape
-	q  = qp.azel2bore(az.reshape(-1), el.reshape(-1), None, None, lon=site.lon, lat=site.lat, ctime=ctime)
+	q  = qp.azel2bore(az.reshape(-1), el.reshape(-1), None, None, lon=site.lon, lat=site.lat, ctime=ctime.reshape(-1))
 	# to proper quat and recover correct shape
 	q  = quaternion.as_quat_array(q).reshape(shape)
 	q *= euler(2, psi+np.pi)
@@ -101,8 +106,10 @@ def equ2hor(coords, ctime, site=None, weather=None):
 	qp = qpoint.QPoint(accuracy="high", fast_math=True, mean_aber=True,
 		rate_ref="always", **weather)
 	# I don't recover the original roll exactly here. It's off by about half a degree
-	ra, dec, psi, ctime = np.broadcast_arrays(coords.ra/DEG, coords.dec/DEG,
-		coords.psi/DEG, ctime)
+	ra, dec, ctime, psi = [np.ascontiguousarray(arr) for arr in
+		np.broadcast_arrays(coords.ra/DEG, coords.dec/DEG, ctime, coords.psi)]
+	for arr in [ra, dec, ctime, psi]:
+		arr.flags["WRITEABLE"] = False
 	shape = ra.shape
 	az, el, pa = qp.radec2azel(ra.reshape(-1), dec.reshape(-1), psi.reshape(-1), lon=site.lon, lat=site.lat, ctime=ctime.reshape(-1))
 	# Recover correct shape

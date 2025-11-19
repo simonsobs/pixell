@@ -2097,7 +2097,34 @@ def find_equal_groups_fast(vals):
 	edges = np.concatenate([edges,[len(vals)]])
 	return uvals, order, edges
 
-def label_multi(valss):
+def find_similar_groups_fast(vals, tol=0):
+	"""Like find_equal_groups_fast, but accepts a tolerance, and
+	returns ngroup, order, edges, instead of uvals, order edges,
+	since there's no unique value to represent each group, and
+	it isn't obvious which to choose.
+
+	Here are some choices and how to get them:
+	* smallest: vals[order[edges[:-1]]]
+	* biggest:  vals[order[edges[1:]-1]]
+	* median:   vals[order[(edges[:-1]+edges[1:]-1)//2]]
+	"""
+	order = np.argsort(vals, kind="stable")
+	vsort = vals[order]
+	diffs = np.diff(vsort)
+	gaps  = np.where(diffs > tol)[0]+1
+	edges = np.concatenate([[0],gaps,[len(vals)]])
+	ngroup= len(edges)-1
+	return ngroup, order, edges
+
+def label_similar_groups_fast(vals, tol=0):
+	"""Like find_similar_groups_fast, but returns the group index of each entry"""
+	order = np.argsort(vals, kind="stable")
+	diffs = np.diff(vals[order])
+	labels= np.empty(len(vals),int)
+	labels[order] = cumsum(diffs>tol, endpoint=True)
+	return labels
+
+def label_multi(valss, return_index=False):
 	"""Given the argument valss[:][n], which is a list of 1d arrays of the same
 	length n but potentially different data types, return a single 1d array
 	labels[n] of integers such that unique lables correspond to unique valss[:].
@@ -2115,8 +2142,9 @@ def label_multi(valss):
 		stride *= len(uvals)
 	# At this point oinds has unique indices, but there could be gaps.
 	# Remove those
-	oinds = np.unique(oinds, return_inverse=True)[1]
-	return oinds
+	iinds, oinds = np.unique(oinds, return_index=True, return_inverse=True)[1:]
+	if return_index: return oinds, iinds
+	else: return oinds
 
 def pathsplit(path):
 	"""Like os.path.split, but for all components, not just the last one.

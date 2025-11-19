@@ -236,15 +236,6 @@ class ArrayPoolGpu(Mempool):
 		if reset: self.reset()
 		old_allocator = cupy.cuda.get_allocator()
 		try:
-			# This causes a crash. I think it happens because
-			# reset() can end up freeing the memory we handed
-			# out here. In the old design, things were done a bit
-			# differently. The memory needed was pre-allocated
-			# and parseled out. However, if a later to was bigger than
-			# an earlier, then memory would still be reallocated, so I
-			# don't see why that worked.
-			# TODO: Make a small test case that demonstrates the problem
-			# without all this abstraction.
 			cupy.cuda.set_allocator(self.alloc_raw)
 			yield
 		finally:
