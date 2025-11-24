@@ -2876,7 +2876,7 @@ class Printer:
 
 def ndigit(num):
 	"""Returns the number of digits in non-negative number num"""
-	with nowarn(): return np.int32(np.floor(np.maximum(1,np.log10(num))))+1
+	with nowarn(): return int(np.floor(np.maximum(1,np.log10(num))))+1
 
 def aprint(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
 	"""Shortcut for formatting an array and printing
