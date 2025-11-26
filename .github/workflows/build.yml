@@ -75,9 +75,9 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.23.3
         env:
-          CC: gcc-14
-          CXX: gcc-14
-          FC: gfortran-14
+          CC: gcc-12
+          CXX: gcc-12
+          FC: gfortran-12
           CIBW_TEST_EXTRAS: "test"
           CIBW_ENVIRONMENT: "PIP_ONLY_BINARY=h5py"
           MACOSX_DEPLOYMENT_TARGET: "13.0"
