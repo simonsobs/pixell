@@ -402,6 +402,7 @@ def enmap(arr, wcs=None, dtype=None, copy=True):
 		elif isinstance(arr, list) and len(arr) > 0 and has_wcs(arr[0]):
 			wcs = arr[0].wcs
 		else:
+			warnings.warn("An empty WCS with default values is being attached, since no WCS was specified. This may result in unexpected results.")
 			wcs = wcsutils.WCS(naxis=2)
 	if copy:
 		arr = np.asanyarray(arr, dtype=dtype).copy()
