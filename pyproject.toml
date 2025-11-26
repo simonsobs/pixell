@@ -28,6 +28,7 @@ dependencies = [
     'numba>=0.54.0',
     'healpy>=1.13',
     "python_dateutil>=2.7",
+    'ephem'
 ]
 
 
