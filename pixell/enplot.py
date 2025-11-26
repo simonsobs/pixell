@@ -1007,7 +1007,7 @@ def show_ipython(img, title=None):
 		display(img_)
 
 def show_tk(img, title=None):
-	from six.moves import tkinter
+	import tkinter
 	from PIL import ImageTk
 	class Displayer:
 		def __init__(self):
@@ -1030,6 +1030,7 @@ def show_tk(img, title=None):
 				window.destroy()
 				if self.nclosed >= len(self.windows): self.root.destroy()
 			window.protocol("WM_DELETE_WINDOW", closer)
+			window.bind("q", lambda e: closer())
 	try:
 		app = Displayer()
 		for img_, title_ in _show_helper(img, title):
