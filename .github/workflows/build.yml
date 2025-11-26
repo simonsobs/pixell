@@ -75,9 +75,9 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.23.3
         env:
-          FC: gfortran-12
-          CC: gcc-12
-          MACOSX_DEPLOYMENT_TARGET: "13.0"
+          CC: gcc-14
+          CXX: gcc-14
+          FC: gfortran-14
           CIBW_TEST_EXTRAS: "test"
           CIBW_ENVIRONMENT: "PIP_ONLY_BINARY=h5py"
           
@@ -100,8 +100,9 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.23.3
         env:
-          FC: gfortran-12
-          CC: gcc-12
+          CC: gcc-14
+          CXX: gcc-14
+          FC: gfortran-14
           MACOSX_DEPLOYMENT_TARGET: "14.0"
           CIBW_TEST_EXTRAS: "test"
           CIBW_ENVIRONMENT: "PIP_ONLY_BINARY=h5py"
