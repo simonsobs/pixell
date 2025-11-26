@@ -67,7 +67,7 @@ jobs:
     strategy:
       matrix:
         # macos-13 is an intel runner, macos-14 is apple silicon
-        os: [ubuntu-latest, macos-13]
+        os: [ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -75,12 +75,10 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.23.3
         env:
-          CC: gcc-12
-          CXX: gcc-12
           FC: gfortran-12
+          CC: gcc-12
           CIBW_TEST_EXTRAS: "test"
           CIBW_ENVIRONMENT: "PIP_ONLY_BINARY=h5py"
-          MACOSX_DEPLOYMENT_TARGET: "13.0"
           
       - uses: actions/upload-artifact@v4
         with:
