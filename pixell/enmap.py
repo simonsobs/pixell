@@ -320,7 +320,7 @@ class Geometry:
 	def nopre(self): return Geometry(self.shape[-2:], self.wcs)
 	def with_pre(self, pre): return Geometry(tuple(pre) + self.shape[-2:], self.wcs)
 	def submap(self, box=None, pixbox=None, mode=None, wrap="auto", noflip=False, recenter=False):
-		return Geometry(*subgeo(*self, box=box, pixbox=pixbox, mode=mode, wrap=wrap, noflip=noflip, recenter=recenter))
+		return Geometry(*subgeo(*self, box=box, pixbox=pixbox, mode=mode, noflip=noflip, recenter=recenter))
 	def scale(self, scale):
 		shape, wcs = scale_geometry(self.shape, self.wcs, scale)
 		return Geometry(shape, wcs)
