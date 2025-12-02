@@ -62,7 +62,7 @@ jobs:
           pytest -s
 
   test-macos-intel:
-    name: "Run tests on MacOS"
+    name: "Run tests on MacOS x86"
     runs-on: macos-15-intel
     env:
       CC: gcc-14
