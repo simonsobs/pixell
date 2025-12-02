@@ -23,7 +23,7 @@ jobs:
           python -m pip install --no-build-isolation --editable '.[test]'
           pytest --cov --cov-report html --cov-report xml --cov-report annotate -s
 
-      - uses: codecov/codecov-action@v2
+      - uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
           verbose: true # optional (default = false)
@@ -94,6 +94,7 @@ jobs:
           pytest -s
 
   build_wheels:
+    needs: [test-linux]
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -118,6 +119,7 @@ jobs:
           path: ./wheelhouse/*.whl
 
   build_wheels_macos_arm:
+    needs: [test-macos]
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -132,7 +134,7 @@ jobs:
         uses: pypa/cibuildwheel@v2.23.3
         env:
           CC: gcc-14
-          CXX: gcc-14
+          CXX: g++-14
           FC: gfortran-14
           MACOSX_DEPLOYMENT_TARGET: "15.0"
           CIBW_TEST_EXTRAS: "test"
@@ -144,6 +146,7 @@ jobs:
           path: ./wheelhouse/*.whl
 
   build_wheels_macos_x86:
+    needs: [test-macos-intel]
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -171,6 +174,7 @@ jobs:
           path: ./wheelhouse/*.whl
 
   build_sdist:
+    needs: [test-linux]
     name: Build source distribution
     runs-on: ubuntu-latest
     steps:
