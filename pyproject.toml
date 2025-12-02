@@ -7,7 +7,7 @@ name = 'pixell'
 version = "0.31.5"
 description = "A rectangular pixel map manipulation and harmonic analysis library derived from Sigurd Naess' enlib."
 readme = 'README.rst'
-requires-python = '>=3.9'
+requires-python = '>=3.10'
 license = {file = 'LICENSE'}
 authors = [
     {name = "Simons Observatory Collaboration Analysis Library Task Force"},
