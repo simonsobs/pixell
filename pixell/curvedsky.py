@@ -14,8 +14,6 @@ import ducc0
 
 class ShapeError(Exception): pass
 
-print('dp-accumulator')
-
 def rand_map(shape, wcs, ps, lmax=None, dtype=np.float64, seed=None, spin=[0,2], method="auto", verbose=False):
 	"""Generates a CMB realization with the given power spectrum for an enmap
 	with the specified shape and WCS. This is identical to enlib.rand_map, except
