@@ -684,6 +684,12 @@ def alm2cl(alm, alm2=None, ainfo=None, return_dtype=None, double_accum=False):
 	in the last example, the TE power spectrum would be found in cl[0,1], and the
 	ET power spectrum (which is different for the cross-spectrum case) is in cl[1,0].
 	If a Healpix-style compressed spectrum is desired, use pixell.powspec.sym_compress.
+
+	Passing double_accum=True will accumulate the m-sums for single-precision 
+	inputs at double-precision rather than single-precision, eliminating the
+	possibility of floating-point errors in the sum. The performance penalty of
+	doing this is only 5-10%. The return type will be double in this case; users
+	can overwrite the return type with the return_dtype argument.
 	"""
 	alm = np.asarray(alm)
 	ainfo = alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
