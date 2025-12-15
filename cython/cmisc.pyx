@@ -5,7 +5,7 @@ cimport cmisc
 from libc.math cimport atan2
 from libc.stdint cimport uintptr_t, int64_t
 
-def alm2cl(ainfo, alm, alm2=None):
+def alm2cl(ainfo, alm, alm2=None, double_accum=False):
 	"""Computes the cross power spectrum for the given alm and alm2, which
 	must have the same dtype and broadcast. For example, to get the TEB,TEB
 	cross spectra for a single map you would do
@@ -41,7 +41,10 @@ def alm2cl(ainfo, alm, alm2=None):
 	# cross-spectrum of any given pair of arrays more than once.
 	cache = {}
 	if alm.dtype == np.complex64:
-		cl = np.empty(alm.shape[:-1]+(ainfo.lmax+1,), np.float32)
+		if double_accum:
+			cl = np.empty(alm.shape[:-1]+(ainfo.lmax+1,), np.float64)
+		else:
+			cl = np.empty(alm.shape[:-1]+(ainfo.lmax+1,), np.float32)
 		# We will loop over individual spectra
 		for i in range(npre):
 			I = np.unravel_index(i, pshape)
@@ -52,8 +55,12 @@ def alm2cl(ainfo, alm, alm2=None):
 			else:
 				alm_single_sp1 = np.ascontiguousarray(alm [I]).view(np.float32)
 				alm_single_sp2 = np.ascontiguousarray(alm2[I]).view(np.float32)
-				cl_single_sp = cl[I]
-				cmisc.alm2cl_sp(ainfo.lmax, ainfo.mmax, &mstart[0], &alm_single_sp1[0], &alm_single_sp2[0], &cl_single_sp[0])
+				if double_accum:
+					cl_single_dp = cl[I]
+					cmisc.alm2cl_sp_double_accum(ainfo.lmax, ainfo.mmax, &mstart[0], &alm_single_sp1[0], &alm_single_sp2[0], &cl_single_dp[0])
+				else:
+					cl_single_sp = cl[I]
+					cmisc.alm2cl_sp(ainfo.lmax, ainfo.mmax, &mstart[0], &alm_single_sp1[0], &alm_single_sp2[0], &cl_single_sp[0])
 				cache[key] = cl[I]
 		return cl
 	elif alm.dtype == np.complex128:
