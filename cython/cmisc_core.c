@@ -45,7 +45,7 @@ void alm2cl_sp(int lmax, int mmax, int64_t * mstart, float * alm1, float * alm2,
 	free(buf);
 }
 
-void alm2cl_sp_double_accum(int lmax, int mmax, int64_t * mstart, float * alm1, float * alm2, double * cl) {
+void alm2cl_sp_to_dp(int lmax, int mmax, int64_t * mstart, float * alm1, float * alm2, double * cl) {
 	int nthread = omp_get_max_threads();
 	int nl      = lmax+1;
 	double * buf = calloc(nthread*nl, sizeof(double));
