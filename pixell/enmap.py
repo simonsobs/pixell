@@ -320,7 +320,7 @@ class Geometry:
 	def nopre(self): return Geometry(self.shape[-2:], self.wcs)
 	def with_pre(self, pre): return Geometry(tuple(pre) + self.shape[-2:], self.wcs)
 	def submap(self, box=None, pixbox=None, mode=None, wrap="auto", noflip=False, recenter=False):
-		return Geometry(*subgeo(*self, box=box, pixbox=pixbox, mode=mode, wrap=wrap, noflip=noflip, recenter=recenter))
+		return Geometry(*subgeo(*self, box=box, pixbox=pixbox, mode=mode, noflip=noflip, recenter=recenter))
 	def scale(self, scale):
 		shape, wcs = scale_geometry(self.shape, self.wcs, scale)
 		return Geometry(shape, wcs)
@@ -518,7 +518,7 @@ def sky2pix(shape, wcs, coords, safe=True, corner=False, bcheck=False):
 			if safe == 1:
 				wpix[i] = utils.rewind(wpix[i], wrefpix[i], wn)
 			else:
-				wpix[i] = utils.unwind(wpix[i], period=wn, ref=wrefpix[i])
+				wpix[i] = utils.unwind(wpix[i], period=wn, ref=wrefpix[i], refmode="middle")
 	return wpix[::-1].reshape(coords.shape)
 
 def pix2l(shape, wcs, pix):
@@ -3105,7 +3105,7 @@ def read_hdf_dtype(fname, address=None):
 			hfile = hfile[address]
 		return hfile["data"].dtype
 
-def read_npy(fname, wcs=None):
+def read_npy(fname, wcs=None, preflat=False):
 	"""Read an enmap from the specified npy file. Only minimal support.
 	No wcs information."""
 	map = enmap(np.load(fname), wcs)
