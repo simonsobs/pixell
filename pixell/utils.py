@@ -2356,7 +2356,7 @@ def block_expand(a, bsize, osize, axis=-1, off=0, op="nearest", inclusive=True):
 	axis  %= a.ndim
 	if op == "nearest":
 		if inclusive:
-			pre, mid, tail = np.split(a, [off>0,(off>0)+nwhole], axis)
+			pre, mid, tail = np.split(a, [int(off>0),int(off>0)+nwhole], axis)
 			parts = []
 			if pre.size > 0: parts.append(np.repeat(pre, off,   axis))
 			if mid.size > 0: parts.append(np.repeat(mid, bsize, axis))
