@@ -444,7 +444,7 @@ class alm_info:
 		argument is not specified, then a new array will be constructed
 		and returned."""
 		return cmisc.transpose_alm(self, alm, out=out)
-	def alm2cl(self, alm, alm2=None):
+	def alm2cl(self, alm, alm2=None, dtype=None):
 		"""Computes the cross power spectrum for the given alm and alm2, which
 		must have the same dtype and broadcast. For example, to get the TEB,TEB
 		cross spectra for a single map you would do
@@ -454,7 +454,7 @@ class alm_info:
 		 cl = ainfo.alm2cl(alm1[:,None,:], alm2[None,:,:])
 		In both these cases the output will be [{T,E,B},{T,E,B},nl].
         The returned cls start at ell=0."""
-		return cmisc.alm2cl(self, alm, alm2=alm2)
+		return cmisc.alm2cl(self, alm, alm2=alm2, cl_dtype=dtype)
 	def lmul(self, alm, lmat, out=None):
 		"""Computes res[a,lm] = lmat[a,b,l]*alm[b,lm], where lm is the position of the
 		element with (l,m) in the alm array, as defined by this class."""
@@ -656,7 +656,7 @@ def filter(imap,lfilter,ainfo=None,lmax=None):
 	return alm2map(almxfl(map2alm(imap,ainfo=ainfo,lmax=lmax,spin=0),lfilter=lfilter,ainfo=ainfo),enmap.empty(imap.shape,imap.wcs,dtype=imap.dtype),spin=0,ainfo=ainfo)
 
 
-def alm2cl(alm, alm2=None, ainfo=None):
+def alm2cl(alm, alm2=None, ainfo=None, dtype=None):
 	"""Compute the power spectrum for alm, or if alm2 is given, the cross-spectrum
 	between alm and alm2, which must broadcast.
 
@@ -678,10 +678,25 @@ def alm2cl(alm, alm2=None, ainfo=None):
 	in the last example, the TE power spectrum would be found in cl[0,1], and the
 	ET power spectrum (which is different for the cross-spectrum case) is in cl[1,0].
 	If a Healpix-style compressed spectrum is desired, use pixell.powspec.sym_compress.
+
+	Regarding the dtype parameter:
+	1. If dtype is None (the default), accumulation of the sums over m occurs at
+	the precision of the alms. If the alms are single, the accuracy of the sum
+	may degrade (see https://github.com/simonsobs/pixell/pull/324). The return
+	type will be that of the alms.
+
+	2. Passing dtype=np.float64 will accumulate the sums for single-precision 
+	alms at double-precision rather than single-precision, eliminating the
+	possibility of floating-point errors in the sum. The performance penalty of
+	doing this is only 5-10%. The return type will be double in this case. There
+	is no difference vs. dtype=None if the alms are already double-precision.
+
+	3. Passing dtype=np.float32 will return an error if the alms are double. There
+	is no difference vs. dtype=None if the alms are already single-precision.
 	"""
 	alm = np.asarray(alm)
 	ainfo = alm_info(nalm=alm.shape[-1]) if ainfo is None else ainfo
-	return ainfo.alm2cl(alm, alm2=alm2)
+	return ainfo.alm2cl(alm, alm2=alm2, dtype=dtype)
 
 euler_angs={}
 euler_angs[("gal","equ")] = np.array([57.06793215,  62.87115487, -167.14056929])*utils.degree
