@@ -189,9 +189,8 @@ def rfft(tod, ft=None, nthread=0, axes=[-1], flags=None, engine="auto"):
 	tod  = asfcarray(tod)
 	axes = utils.astuple(-1 if axes is None else axes)
 	if ft is None:
-		oshape = list(tod.shape)
-		oshape[axes[-1]] = oshape[axes[-1]]//2+1
-		dtype = np.result_type(tod.dtype,0j)
+		oshape = rfft_shape(tod.shape, axes=axes)
+		dtype  = np.result_type(tod.dtype,0j)
 		ft = empty(oshape, dtype)
 	return fft(tod, ft, nthread, axes, flags=flags, engine=engine)
 
@@ -204,9 +203,8 @@ def irfft(ft, tod=None, n=None, nthread=0, normalize=False, axes=[-1], flags=Non
 	ft   = asfcarray(ft)
 	axes = utils.astuple(-1 if axes is None else axes)
 	if tod is None:
-		oshape = list(ft.shape)
-		oshape[axes[-1]] = n or (oshape[axes[-1]]-1)*2
-		dtype = np.zeros([],ft.dtype).real.dtype
+		oshape = irfft_shape(ft.shape, axes=axes, n=n)
+		dtype  = np.zeros([],ft.dtype).real.dtype
 		tod = empty(oshape, dtype)
 	return ifft(ft, tod, nthread, normalize, axes, flags=flags, engine=engine)
 
@@ -338,6 +336,16 @@ def freq2ind(n, f, d=1.0):
 	j = f*(d*n)
 	return np.where(j >= 0, j, n+j)
 def rfreq2ind(n, f, d=1.0): return f*(n*d)
+
+def rfft_shape(ishape, axes=[-1]):
+	oshape = list(ishape)
+	oshape[axes[-1]] = oshape[axes[-1]]//2+1
+	return oshape
+
+def irfft_shape(ishape,  n=None, axes=[-1]):
+	oshape = list(ishape)
+	oshape[axes[-1]] = n or (oshape[axes[-1]]-1)*2
+	return oshape
 
 def shift(a, shift, axes=None, nofft=False, deriv=None, engine="auto"):
 	"""Shift the array a by a (possibly fractional) number of samples "shift"

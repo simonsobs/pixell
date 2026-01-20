@@ -422,6 +422,7 @@ class alm_info:
 		self.mmax  = mmax
 		self.stride= int(stride)
 		self.nelem = int(np.max(mstart) + (lmax+1)*stride)
+		self.nreal = lmax**2+2*lmax+2
 		if nalm is not None:
 			assert self.nelem == nalm, "lmax must be explicitly specified when lmax != mmax"
 		self.mstart= mstart.astype(np.uint64, copy=False)
@@ -1416,3 +1417,27 @@ def prepare_raw(alm, map, ainfo=None, lmax=None, deriv=False, verbose=False, nth
 
 def dangerous_dtype(dtype):
 	return dtype.byteorder != "="
+
+def alm_complex2real(alm, ainfo=None):
+	dtype = utils.real_dtype(alm.dtype)
+	if ainfo is None:
+		ainfo = alm_info(nalm=alm.shape[-1])
+	i = int(ainfo.mstart[1]+1)
+	return np.concatenate([alm[...,:i].real,2**0.5*alm[...,i:].view(dtype)],-1)
+
+def alm_real2complex(ralm, ainfo=None):
+	ctype = utils.complex_dtype(ralm.dtype)
+	if ainfo is None:
+		# For complex alms, we have
+		# lm: 00 10 20 30 .. L0 11 21 31 ... L1
+		# (L+1)+(L+1-1)+...(1) = sum 1..L+1 = (L+1)*(L+2)/2
+		# example: L=1: 00 10 11 = 3, vs. 2*3/2 = 3 ok.
+		# For ralm, we instead have (L+1)+2*sum_1..L = L+1 + L(L+1) = L²+2L+2 = n
+		# => L = sqrt(n-1)-1
+		lmax = utils.nint((ralm.shape[-1]-1)**0.5)-1
+		ainfo= alm_info(lmax=lmax)
+	i = int(ainfo.mstart[1]+1)
+	oalm = np.zeros(ralm.shape[:-1]+(ainfo.nelem,), ctype)
+	oalm[...,:i] = ralm[...,:i]
+	oalm[...,i:] = ralm[...,i:].view(ctype)/2**0.5
+	return oalm
