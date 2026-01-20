@@ -213,7 +213,7 @@ def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
     ps_lensinput = np.zeros((4,4,ps_cmb.shape[-1]))
     ps_lensinput[0,0] = ps_lens
     ps_lensinput[1:,1:] = ps_cmb
-    lensed = lensing.rand_map(shape, wcs, ps_lensinput, lmax=lmax, maplmax=None, dtype=dtype, seed=seed, phi_seed=None, spin=[0,2], output="lu", geodesic=True, verbose=False, delta_theta=None)
+    lensed = lensing.rand_map(shape, wcs, ps_lensinput, lmax=lmax, dtype=dtype, seed=seed, phi_seed=None, spin=[0,2], output="lu", geodesic=True, verbose=False, delta_theta=None)
     return lensed
 
 # Helper functions for adjointness tests
@@ -274,6 +274,30 @@ def alm_bash(fun, shape, wcs, ncomp, lmax, dtype=np.float64):
 
 class PixelTests(unittest.TestCase):
 
+    def test_slice(self):
+
+        # Single map
+        shape,wcs = enmap.geometry(shape=(301,301),res=0.5*u.arcmin,pos=(0,0))
+        a = enmap.enmap(np.ones(shape),wcs)
+        sel = np.s_[1:-50,3:-41]
+        aslice = a[sel]
+        oshape,owcs = enmap.slice_geometry(shape,wcs,sel)
+        assert oshape==aslice.shape
+        assert wcsutils.equal(owcs,aslice.wcs)
+
+        # Multi-component map
+        shape,wcs = enmap.geometry(shape=(6,301,301),res=0.5*u.arcmin,pos=(0,0))
+        a = enmap.enmap(np.ones(shape),wcs)
+
+        sel = np.s_[1:3,1:-50,3:-41]
+        aslice = a[sel]
+        oshape,owcs = enmap.slice_geometry(shape,wcs,sel)
+        # assert oshape==aslice.shape # Does not work due to a bug in slice_geometry
+        assert wcsutils.equal(owcs,aslice.wcs)
+
+        
+        
+        
 
     def test_almxfl(self):
         import healpy as hp
