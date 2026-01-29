@@ -79,7 +79,11 @@ jobs:
       - name: Install Dependencies (MacOS)
         run: |
           brew install llvm
-          echo 'export LDFLAGS="-L/usr/local/opt/llvm/lib"' >> $GITHUB_ENV && echo 'export CPPFLAGS="-I/usr/local/opt/llvm/include"' >> $GITHUB_ENV
+          export LLVM_CONFIG="/usr/local/opt/llvm/bin/llvm-config"
+          echo "LLVM_CONFIG=/usr/local/opt/llvm/bin/llvm-config" >> $GITHUB_ENV
+          echo "LDFLAGS=-L/usr/local/opt/llvm/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I/usr/local/opt/llvm/include" >> $GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=/usr/local/opt/llvm" >> $GITHUB_ENV
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install numpy "Cython<3.0.4"
           python -m pip install --no-binary ducc0 ducc0
@@ -116,6 +120,7 @@ jobs:
           CC: gcc-12
           CIBW_TEST_EXTRAS: "test"
           CIBW_ENVIRONMENT: "PIP_ONLY_BINARY=h5py"
+          CIBW_MANYLINUX_X86_64_IMAGE: quay.io/pypa/manylinux_2_28_x86_64
           
       - uses: actions/upload-artifact@v4
         with:
