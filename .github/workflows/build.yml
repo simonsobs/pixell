@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install OpenBLAS
-        run: apt-get update && apt-get install -y libopenblas-dev
+        run: sudo apt-get update && sudo apt-get install -y libopenblas-dev
       - name: Run Tests (Linux)
         run: |
           python -m pip install --upgrade pip setuptools wheel meson ninja meson-python cython numpy
