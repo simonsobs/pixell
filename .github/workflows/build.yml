@@ -78,7 +78,7 @@ jobs:
 
       - name: Install Dependencies (MacOS)
         run: |
-          brew install llvm
+          brew install llvm@20
           export LLVM_CONFIG="/usr/local/opt/llvm/bin/llvm-config"
           echo "LLVM_CONFIG=/usr/local/opt/llvm/bin/llvm-config" >> $GITHUB_ENV
           echo "LDFLAGS=-L/usr/local/opt/llvm/lib" >> $GITHUB_ENV
