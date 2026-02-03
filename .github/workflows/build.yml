@@ -79,11 +79,11 @@ jobs:
       - name: Install Dependencies (MacOS)
         run: |
           brew install llvm@20
-          export LLVM_CONFIG="/usr/local/opt/llvm/bin/llvm-config"
-          echo "LLVM_CONFIG=/usr/local/opt/llvm/bin/llvm-config" >> $GITHUB_ENV
-          echo "LDFLAGS=-L/usr/local/opt/llvm/lib" >> $GITHUB_ENV
-          echo "CPPFLAGS=-I/usr/local/opt/llvm/include" >> $GITHUB_ENV
-          echo "CMAKE_PREFIX_PATH=/usr/local/opt/llvm" >> $GITHUB_ENV
+          export LLVM_CONFIG="/usr/local/opt/llvm@20/bin/llvm-config"
+          echo "LLVM_CONFIG=/usr/local/opt/llvm@20/bin/llvm-config" >> $GITHUB_ENV
+          echo "LDFLAGS=-L/usr/local/opt/llvm@20/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I/usr/local/opt/llvm@20/include" >> $GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=/usr/local/opt/llvm@20" >> $GITHUB_ENV
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install numpy "Cython<3.0.4"
           python -m pip install --no-binary ducc0 ducc0
