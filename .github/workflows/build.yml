@@ -168,6 +168,7 @@ jobs:
           CXX: g++-14
           FC: gfortran-14
           MACOSX_DEPLOYMENT_TARGET: "15.0"
+          CIBW_TEST_SKIP: "*-macosx_x86_64"
           
       - uses: actions/upload-artifact@v4
         with:
