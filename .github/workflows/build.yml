@@ -168,9 +168,6 @@ jobs:
           CXX: g++-14
           FC: gfortran-14
           MACOSX_DEPLOYMENT_TARGET: "15.0"
-          CIBW_TEST_EXTRAS: "test"
-          CIBW_ENVIRONMENT: "PIP_ONLY_BINARY='h5py llvmlite'"
-          CIBW_BEFORE_TEST_MACOS: "pip install --no-binary ducc0 ducc0"
           
       - uses: actions/upload-artifact@v4
         with:
