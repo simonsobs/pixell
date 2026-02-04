@@ -71,7 +71,8 @@ class Bench:
 			if self.verbose:
 				self.print(name)
 	@contextmanager
-	def show(self, name, tfun=None):
+	def show(self, name, tfun=None, skip=False):
+        if skip: continue
 		try:
 			with self.mark(name, tfun=tfun):
 				yield
