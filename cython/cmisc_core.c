@@ -45,6 +45,38 @@ void alm2cl_sp(int lmax, int mmax, int64_t * mstart, float * alm1, float * alm2,
 	free(buf);
 }
 
+void alm2cl_sp_to_dp(int lmax, int mmax, int64_t * mstart, float * alm1, float * alm2, double * cl) {
+	int nthread = omp_get_max_threads();
+	int nl      = lmax+1;
+	double * buf = calloc(nthread*nl, sizeof(double));
+	#pragma omp parallel
+	{
+		int id = omp_get_thread_num();
+		if(id == 0) {
+			for(int l = 0; l <= lmax; l++) {
+				int64_t i = mstart[0]*2 + l*2;
+				buf[nl*id+l] = alm1[i]*alm2[i]/2;
+			}
+		}
+		#pragma omp for schedule(dynamic)
+		for(int m = 1; m <= mmax; m++) {
+			for(int l = m; l <= lmax; l++) {
+				int64_t i = mstart[m]*2 + l*2;
+				buf[nl*id+l] += alm1[i]*alm2[i] + alm1[i+1]*alm2[i+1];
+			}
+		}
+		#pragma omp barrier
+		#pragma omp for
+		for(int l = 0; l < nl; l++) {
+			cl[l] = 0;
+			for(int i = 0; i < nthread; i++)
+				cl[l] += buf[nl*i+l];
+			cl[l] *= 2.0/(2*l+1);
+		}
+	}
+	free(buf);
+}
+
 void alm2cl_dp(int lmax, int mmax, int64_t * mstart, double * alm1, double * alm2, double * cl) {
 	int nthread = omp_get_max_threads();
 	int nl      = lmax+1;
