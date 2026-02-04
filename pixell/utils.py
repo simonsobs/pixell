@@ -280,6 +280,7 @@ def fallback(*args):
 		if arg is not None: return arg
 	return None
 
+# ref and refmode are messy here. Should rethink how this is done
 def unwind(a, period=2*np.pi, axes=[-1], ref=0, refmode="left", mask_nan=False):
 	"""Given a list of angles or other cyclic coordinates
 	where a and a+period have the same physical meaning,
@@ -375,6 +376,12 @@ def argmax(arr):
 	arr = np.asanyarray(arr)
 	return np.unravel_index(np.argmax(arr), arr.shape)
 
+def argmin(arr):
+	"""Multidimensional argmax. Returns a tuple indexing the full array
+	instead of just a number indexing the flattened array like np.argmax does"""
+	arr = np.asanyarray(arr)
+	return np.unravel_index(np.argmin(arr), arr.shape)
+
 def ctime2mjd(ctime):
 	"""Converts from unix time to modified julian date."""
 	return np.asarray(ctime)/86400. + 40587.0
@@ -389,6 +396,9 @@ def ctime2djd(ctime): return mjd2djd(ctime2mjd(ctime))
 def djd2ctime(djd):   return mjd2ctime(djd2mjd(djd))
 def ctime2jd(ctime):  return mjd2jd(ctime2mjd(ctime))
 def jd2ctime(jd):     return mjd2ctime(jd2mjd(jd))
+# These aren't calendar accurate. Use timedate for that
+def yr2ctime(yr):     return (yr-2025)*31556925.216 + 1735689600
+def ctime2yr(ctime):  return (ctime-1735689600)/31556925.216+2025
 
 def mjd2ctime(mjd):
 	"""Converts from modified julian date to unix time"""
@@ -2096,7 +2106,34 @@ def find_equal_groups_fast(vals):
 	edges = np.concatenate([edges,[len(vals)]])
 	return uvals, order, edges
 
-def label_multi(valss):
+def find_similar_groups_fast(vals, tol=0):
+	"""Like find_equal_groups_fast, but accepts a tolerance, and
+	returns ngroup, order, edges, instead of uvals, order edges,
+	since there's no unique value to represent each group, and
+	it isn't obvious which to choose.
+
+	Here are some choices and how to get them:
+	* smallest: vals[order[edges[:-1]]]
+	* biggest:  vals[order[edges[1:]-1]]
+	* median:   vals[order[(edges[:-1]+edges[1:]-1)//2]]
+	"""
+	order = np.argsort(vals, kind="stable")
+	vsort = vals[order]
+	diffs = np.diff(vsort)
+	gaps  = np.where(diffs > tol)[0]+1
+	edges = np.concatenate([[0],gaps,[len(vals)]])
+	ngroup= len(edges)-1
+	return ngroup, order, edges
+
+def label_similar_groups_fast(vals, tol=0):
+	"""Like find_similar_groups_fast, but returns the group index of each entry"""
+	order = np.argsort(vals, kind="stable")
+	diffs = np.diff(vals[order])
+	labels= np.empty(len(vals),int)
+	labels[order] = cumsum(diffs>tol, endpoint=True)
+	return labels
+
+def label_multi(valss, return_index=False):
 	"""Given the argument valss[:][n], which is a list of 1d arrays of the same
 	length n but potentially different data types, return a single 1d array
 	labels[n] of integers such that unique lables correspond to unique valss[:].
@@ -2105,17 +2142,18 @@ def label_multi(valss):
 	label like (1, "foo", 1.24) to having a single integer as the label.
 
 	Example: label_multi([[0,0,1,1,2],["a","b","b","b","b"]]) → [0,1,2,2,3]"""
-	oinds = 0
-	nprev = 1
+	oinds  = 0
+	stride = 1
 	for vals in valss:
 		# remap arbitrary values in vals to integers in inds
 		uvals, inds = np.unique(vals, return_inverse=True)
-		oinds = oinds*nprev + inds
-		nprev = len(uvals)
+		oinds  += inds*stride
+		stride *= len(uvals)
 	# At this point oinds has unique indices, but there could be gaps.
 	# Remove those
-	oinds = np.unique(oinds, return_inverse=True)[1]
-	return oinds
+	iinds, oinds = np.unique(oinds, return_index=True, return_inverse=True)[1:]
+	if return_index: return oinds, iinds
+	else: return oinds
 
 def pathsplit(path):
 	"""Like os.path.split, but for all components, not just the last one.
@@ -2838,7 +2876,7 @@ class Printer:
 
 def ndigit(num):
 	"""Returns the number of digits in non-negative number num"""
-	with nowarn(): return np.int32(np.floor(np.maximum(1,np.log10(num))))+1
+	with nowarn(): return int(np.floor(np.maximum(1,np.log10(num))))+1
 
 def aprint(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
 	"""Shortcut for formatting an array and printing
@@ -3464,7 +3502,9 @@ class CG:
 		self.M   = M
 		self.dot = dot
 		if x0 is None:
-			self.x = np.zeros_like(b)
+			# used to be np.zeros_like, but writing it like this makes it
+			# numpy/cupy-agnostic for a tiny cost
+			self.x = b*0
 			self.r = b.copy() if not destroy_b else b
 		else:
 			self.x  = x0.copy()

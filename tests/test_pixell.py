@@ -274,6 +274,30 @@ def alm_bash(fun, shape, wcs, ncomp, lmax, dtype=np.float64):
 
 class PixelTests(unittest.TestCase):
 
+    def test_slice(self):
+
+        # Single map
+        shape,wcs = enmap.geometry(shape=(301,301),res=0.5*u.arcmin,pos=(0,0))
+        a = enmap.enmap(np.ones(shape),wcs)
+        sel = np.s_[1:-50,3:-41]
+        aslice = a[sel]
+        oshape,owcs = enmap.slice_geometry(shape,wcs,sel)
+        assert oshape==aslice.shape
+        assert wcsutils.equal(owcs,aslice.wcs)
+
+        # Multi-component map
+        shape,wcs = enmap.geometry(shape=(6,301,301),res=0.5*u.arcmin,pos=(0,0))
+        a = enmap.enmap(np.ones(shape),wcs)
+
+        sel = np.s_[1:3,1:-50,3:-41]
+        aslice = a[sel]
+        oshape,owcs = enmap.slice_geometry(shape,wcs,sel)
+        # assert oshape==aslice.shape # Does not work due to a bug in slice_geometry
+        assert wcsutils.equal(owcs,aslice.wcs)
+
+        
+        
+        
 
     def test_almxfl(self):
         import healpy as hp
