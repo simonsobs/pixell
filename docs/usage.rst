@@ -225,7 +225,7 @@ Relating pixels to the sky
 The geometry specified through ``shape`` and ``wcs`` contains all the information to get properties of the map related to the sky. ``pixell`` always specifies the Y coordinate first. So a sky position is often in the form ``(dec,ra)`` where ``dec`` could be the declination and ``ra`` could be the right ascension in radians in the equatorial coordinate system.
 
 Conversions
-~~~~~~
+```````````
 
 The pixel corresponding to ra=180,dec=20 can be obtained like
 
@@ -251,7 +251,7 @@ with similar considerations as above for passing a large number of coordinates.
 
 
 Position map
-~~~~~
+````````````
 
 Using the ``enmap.posmap`` function, you can get a map of shape (2,Ny,Nx)
 containing the coordinate positions in radians of each pixel of the map.
@@ -264,7 +264,7 @@ containing the coordinate positions in radians of each pixel of the map.
 
 
 Pixel map
-~~~~~
+`````````
 
 Using the ``enmap.pixmap`` function, you can get a map of shape (2,Ny,Nx)
 containing the integer pixel coordinates of each pixel of the map.
@@ -272,12 +272,12 @@ containing the integer pixel coordinates of each pixel of the map.
 .. code-block:: python
 
 		>>> pixmap = imap.pixmap()
-		>>> pixy = posmap[0] 
-		>>> pixx = posmap[1] 
+		>>> pixy = pixmap[0] 
+		>>> pixx = pixmap[1] 
 
 
 Distance from center -- ``modrmap``
-~~~~~~
+```````````````````````````````````
 
 Using the ``enmap.modrmap`` function, you can get a map of shape (Ny,Nx)
 containing the physical coordinate distance of each pixel from a given reference
@@ -290,15 +290,16 @@ of each pixel from the center of the map is returned.
 
 
 Fourier operations
---------
+-------------------
 
 Maps can be 2D Fourier-transformed for manipulation in Fourier space. The 2DFT
 of the (real) map is generally a complex ``ndmap`` with the same shape as the
-original map (unless a real transform function is used). To facilitate 2DFTs, there are functions that do the Fourier transforms themselves,
+original map (unless a real transform function is used). To facilitate 2DFTs, 
+there are functions that do the Fourier transforms themselves,
 and functions that provide metadata associated with such transforms.
 
 What are the wavenumbers or multipoles of the map?
-~~~~~~
+``````````````````````````````````````````````````
 
 Since an `ndmap` contains information about the physical extent of the map and
 the physical width of the pixels, the discrete frequencies corresponding to its
@@ -311,14 +312,14 @@ function returns the "modulus of lmap", i.e. a map of the distances of each
 Fourier-pixel from ``(ly=0,lx=0)``.
 
 FFTs and inverse FFTs
-~~~~~~~~~
+`````````````````````
 
 You can perform a fast Fourier transform of an (...,Ny,Nx) dimensional `ndmap`
 to return an (...,Ny,Nx) dimensional complex map using ``enmap.fft`` and
 ``enmap.ifft`` (inverse FFT).
 
 Filtering maps in Fourier space
---------
+-------------------------------
 
 A filter can be applied to a map in three steps:
 
@@ -331,10 +332,10 @@ A filter can be applied to a map in three steps:
 .. _geometry-section:
 
 Building a map geometry
-----------
+-----------------------
 
 Patches
-~~~~~~~
+```````
 
 You can create a geometry if you know what its bounding box and pixel size are:
 
@@ -349,7 +350,7 @@ This creates a CAR geometry centered on RA=0d,DEC=0d with a width of
 arcminutes.
 
 Full sky
-~~~~~~~~
+````````
 
 You can create a full-sky geometry by just specifying the resolution:
 
@@ -362,7 +363,7 @@ This creates a CAR geometry with pixel size of 0.5 arcminutes that wraps around
 the whole sky.
 
 Declination-cut sky
-~~~~~~~~
+```````````````````
 
 You can create a geometry that wraps around the full sky but does not extend
 everywhere in declination:
@@ -381,54 +382,94 @@ except with a declination extent from -60d to 30d.
 
 
 Resampling maps
---------
+---------------
 
 Masking and windowing
---------
+---------------------
 
 Flat-sky diagnostic power spectra
----------
+-----------------------------------
 
 Curved-sky operations
---------
+---------------------
 
 Spherical harmonic transforms
-~~~~~~~~
+`````````````````````````````
 
 Filtering in spherical harmonic space
-~~~~~~~~
+`````````````````````````````````````
 
 The resulting spherical harmonic `alm` coefficients of an SHT are stored in the
 same convention as with ``HEALPIX``, so one can use ``healpy.almxfl`` to apply
 an isotropic filter to an SHT.
 
 Diagnostic power spectra
-~~~~~~~~
+````````````````````````
 
 
 Reprojecting maps
----------
+------------------
 
 Map re-centering
-~~~~~~
+````````````````
 
 Postage stamp extraction
-~~~~~~
+````````````````````````
 
 To and from ``healpix``
-~~~~~~
+```````````````````````
+`pixell`` allows to reproject (convert) maps from CAR pixelization to HEALPix, and back.
+
+Let's start by converting the ACT CAR map to HEALPix with `reproject.map2healpix`, 
+optionally including a rotation from Celestial/Equatorial (native ACT) to Galactic 
+(native Planck) coordinates.
+
+We will assume that the ACT map is stored in a file called "act_d56_map.fits".	
+
+.. code-block:: python
+
+	>>> from pixell import reproject, enmap
+	>>> import healpy as hp
+	>>> act_car_map = enmap.read_map("act_d56_map.fits")
+	>>> healpix_map = reproject.map2healpix(act_car_map, nside=2048, lmax=4000)
+
+We can then plot the HEALPix map using healpy's mollview function to verify the result.:
+
+.. code-block:: python
+
+	>>> hp.mollview(healpix_map, title="ACT D56 Map in HEALPix", min = -300, max = 300)
+
+
+Now we can reproject the HEALPix map back to CAR pixelization using `reproject.healpix2map`.
+We can specify the shape, wcs, lmax as well as whether we want to include rotation. 
+The method option controls how to interpolate between the input and output pixelization; 
+the default option is harm, which uses spherical harmonics to do the interpolation.
+
+In this example we also rotate from Galactic coordinates to Celestial with `rot="gal,cel"`.
+
+.. code-block:: python
+
+	>>> car_map_reprojected = reproject.healpix2map(healpix_map, shape=act_car_map.shape, wcs=act_car_map.wcs, lmax=4000, rot="gal,cel", method="harm")
+
+
+In the case where the interpolation didn't work very well due to bright sources in the 
+map, we can use a different method, like spline. Keep in mind that spline might not 
+necessarily preserve power.
+
+.. code-block:: python
+
+	>>> car_map_reprojected_spline = reproject.healpix2map(healpix_map, shape=act_car_map.shape, wcs=act_car_map.wcs, lmax=4000, rot="gal,cel", method="spline")
 
 Simulating maps
-----------
+---------------
 
 Gaussian random field generation
-~~~~~
+````````````````````````````````
 
 Lensing and delensing
-~~~~~
+`````````````````````
 
 Point source simulation
-~~~~~
-
+```````````````````````
 
 
