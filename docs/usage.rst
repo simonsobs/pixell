@@ -384,17 +384,93 @@ except with a declination extent from -60d to 30d.
 Resampling maps
 ---------------
 
+:py:func:`pixell.enmap.resample` changes the number of pixels while keeping the
+same footprint on the sky. The default FFT-based method preserves the power
+spectrum up to the Nyquist frequency of the output:
+
+.. code-block:: python
+
+    >>> m = enmap.read_map("my_map.fits")
+    >>> new_shape = (m.shape[-2] // 2, m.shape[-1] // 2)
+    >>> m_half = m.resample(new_shape)   # ~half the pixels per axis
+
+For coarser (degraded) resolution where you want to average pixels rather than
+interpolate, use :py:func:`pixell.enmap.downgrade` instead:
+
+.. code-block:: python
+
+    >>> m_low = m.downgrade(2)   # average 2x2 blocks
+
+See :doc:`objects <./objects>` for more on ``downgrade`` and ``upgrade``.
+
 Masking and windowing
 ---------------------
 
+A mask is an ``ndmap`` of boolean or float values indicating valid sky pixels.
+Applying an apodization window smoothly tapers the map to zero at mask edges,
+preventing Fourier-space ringing.
+
+.. code-block:: python
+
+    >>> from pixell import enmap, utils
+    >>> m    = enmap.read_map("my_map.fits")
+    >>> ivar = enmap.read_map("my_ivar.fits")
+
+    >>> # Build a mask from the coverage map
+    >>> mask = (ivar > 0.1 * np.max(ivar))
+
+    >>> # Smooth the mask edges over 1 degree, and taper the boundary
+    >>> win = enmap.apod_mask(mask, width=1.0 * utils.degree)
+    >>> win = enmap.apod(win, width=5 * utils.arcmin)
+
+    >>> # Apply window before computing power spectra
+    >>> m_windowed = m * win
+    >>> w2 = np.mean(win**2)   # normalization correction
+
+See :doc:`masking <./masking>` for a full discussion including distance
+transforms and mask growing/shrinking.
+
 Flat-sky diagnostic power spectra
 -----------------------------------
+
+For a quick estimate of the power spectrum of a map patch, compute the 2D FFT
+and bin azimuthally in :math:`|\ell|`:
+
+.. code-block:: python
+
+    >>> from pixell import enmap, utils
+    >>> import numpy as np
+
+    >>> m     = enmap.read_map("my_patch.fits")
+    >>> m_ap  = enmap.apod(m, width=5 * utils.arcmin)   # apodize first
+
+    >>> fmap  = enmap.fft(m_ap, normalize="phys")
+    >>> p2d   = np.abs(fmap)**2
+    >>> ls, cl = enmap.lbin(p2d, bsize=100)
+
+See :doc:`fourier <./fourier>` for a full treatment of flat-sky Fourier analysis.
 
 Curved-sky operations
 ---------------------
 
 Spherical harmonic transforms
 `````````````````````````````
+
+For large patches or full-sky maps, use :py:mod:`pixell.curvedsky` to decompose
+a map into spherical harmonic coefficients (alms):
+
+.. code-block:: python
+
+    >>> from pixell import enmap, curvedsky, utils
+    >>> shape, wcs = enmap.geometry2(res=1 * utils.arcmin)   # full sky
+    >>> m = enmap.read_map("my_fullsky_map.fits")
+
+    >>> lmax = 5000
+    >>> alm  = curvedsky.map2alm(m, lmax=lmax)
+
+    >>> # Reconstruct the map from alms
+    >>> m_rec = enmap.zeros(shape, wcs)
+    >>> curvedsky.alm2map(alm, m_rec)
 
 Filtering in spherical harmonic space
 `````````````````````````````````````
@@ -403,9 +479,36 @@ The resulting spherical harmonic `alm` coefficients of an SHT are stored in the
 same convention as with ``HEALPIX``, so one can use ``healpy.almxfl`` to apply
 an isotropic filter to an SHT.
 
+.. code-block:: python
+
+    >>> from pixell import curvedsky, utils
+    >>> import numpy as np
+
+    >>> lmax  = 5000
+    >>> ainfo = curvedsky.alm_info(lmax=lmax)
+    >>> alm   = curvedsky.map2alm(m, lmax=lmax)
+
+    >>> # Gaussian beam smoothing
+    >>> fwhm  = 5 * utils.arcmin
+    >>> sigma = fwhm / (8 * np.log(2))**0.5
+    >>> ells  = np.arange(lmax + 1)
+    >>> beam  = np.exp(-0.5 * ells * (ells + 1) * sigma**2)
+    >>> alm_smooth = ainfo.lmul(alm, beam)
+
+    >>> m_smooth = enmap.zeros(m.shape, m.wcs)
+    >>> curvedsky.alm2map(alm_smooth, m_smooth)
+
+See :doc:`harmonic <./harmonic>` for a full discussion of curved-sky analysis.
+
 Diagnostic power spectra
 ````````````````````````
 
+The angular power spectrum from alms:
+
+.. code-block:: python
+
+    >>> ainfo = curvedsky.alm_info(lmax=lmax)
+    >>> cl    = ainfo.alm2cl(alm, alm)   # auto-spectrum: shape (lmax+1,)
 
 Reprojecting maps
 ------------------
@@ -413,8 +516,41 @@ Reprojecting maps
 Map re-centering
 ````````````````
 
+To extract a patch of the sky centered on a specific position, use
+:py:meth:`pixell.enmap.ndmap.submap` with a coordinate box, or
+:py:func:`pixell.reproject.thumbnails` for catalog-based cutouts with proper
+tangent-plane reprojection:
+
+.. code-block:: python
+
+    >>> from pixell import enmap, utils
+    >>> import numpy as np
+    >>> m = enmap.read_map("my_map.fits")
+
+    >>> # Extract a 2x2 degree patch centered on (dec=0, ra=0)
+    >>> box = np.array([[-1, 1], [1, -1]]) * utils.degree
+    >>> patch = m.submap(box)
+
 Postage stamp extraction
 ````````````````````````
+
+For catalog-based cutouts with reprojection onto a local tangent plane, use
+:py:func:`pixell.reproject.thumbnails`:
+
+.. code-block:: python
+
+    >>> from pixell import reproject, utils
+    >>> import numpy as np
+
+    >>> # catalog: shape (N, 2), columns [dec, ra] in radians
+    >>> catalog = np.array([[0.0, 0.0], [0.05, 0.1], [-0.03, 0.07]])
+
+    >>> thumbs = reproject.thumbnails(
+    ...     m, catalog, r=5*utils.arcmin, res=0.5*utils.arcmin
+    ... )
+    >>> print(thumbs.shape)  # (3, ny_thumb, nx_thumb)
+
+See :doc:`thumbnails <./thumbnails>` for stacking and radial profiles.
 
 To and from ``healpix``
 ```````````````````````
@@ -463,13 +599,66 @@ necessarily preserve power.
 Simulating maps
 ---------------
 
+See :doc:`simulation <./simulation>` for a full treatment. Quick-start examples:
+
 Gaussian random field generation
 ````````````````````````````````
+
+.. code-block:: python
+
+    >>> from pixell import enmap, curvedsky, powspec, utils
+    >>> import numpy as np
+
+    >>> shape, wcs = enmap.geometry2(res=1.5 * utils.arcmin)
+
+    >>> # Read theory power spectrum (CAMB format)
+    >>> ps  = powspec.read_spectrum("camb_lensedCls.dat", scale=True)
+
+    >>> # Curved-sky CMB simulation
+    >>> sim = curvedsky.rand_map(shape, wcs, ps[0:1, 0:1], lmax=6000, seed=1)
 
 Lensing and delensing
 `````````````````````
 
+.. code-block:: python
+
+    >>> from pixell import lensing, curvedsky, powspec, utils
+    >>> import numpy as np
+
+    >>> # Draw unlensed CMB and lensing potential alms
+    >>> ps      = powspec.read_spectrum("camb_scalCls.dat", scale=True)
+    >>> cmb_alm = curvedsky.rand_alm(ps[0:1, 0:1], lmax=6000, seed=1)
+    >>> phi_alm = curvedsky.rand_alm(ps[0:1, 0:1], lmax=6000, seed=2)
+
+    >>> # Apply curved-sky lensing
+    >>> m_lensed = lensing.lens_map_curved(
+    ...     shape, wcs, phi_alm, cmb_alm, lmax=6000
+    ... )
+
 Point source simulation
 ```````````````````````
+
+.. code-block:: python
+
+    >>> from pixell import enmap, pointsrcs, utils
+    >>> import numpy as np
+
+    >>> shape, wcs = enmap.geometry2(
+    ...     pos=np.array([[-5, -5], [5, 5]]) * utils.degree,
+    ...     res=0.5 * utils.arcmin,
+    ... )
+
+    >>> # 50 point sources at random positions
+    >>> rng  = np.random.default_rng(0)
+    >>> poss = rng.uniform(-5, 5, size=(2, 50)) * utils.degree  # (2, nsrc)
+    >>> amps = rng.uniform(100, 500, size=(1, 50))              # (1, nsrc)
+
+    >>> # Gaussian beam profile
+    >>> fwhm    = 1.4 * utils.arcmin
+    >>> sigma   = fwhm / (8 * np.log(2))**0.5
+    >>> r       = np.linspace(0, 5 * sigma, 500)
+    >>> profile = np.array([r, np.exp(-0.5 * r**2 / sigma**2)])
+
+    >>> sim = pointsrcs.sim_objects(shape, wcs, poss, amps, profile)
 
 
