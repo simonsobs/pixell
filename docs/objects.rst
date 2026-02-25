@@ -91,14 +91,13 @@ sky coordinates directly.
     dec_map = posmap[0]   # declination of each pixel, in radians
     ra_map  = posmap[1]   # right ascension of each pixel, in radians
 
-    #TODO: add figure -- run code:
-    # import matplotlib.pyplot as plt
-    # fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    # axes[0].imshow(np.rad2deg(dec_map), origin="lower")
-    # axes[0].set_title("Declination map (deg)")
-    # axes[1].imshow(np.rad2deg(ra_map), origin="lower")
-    # axes[1].set_title("RA map (deg)")
-    # plt.tight_layout(); plt.savefig("posmap.png", dpi=150)
+
+.. figure:: plots/posmap.png
+   :width: 80%
+   :alt: Declination and RA maps for each pixel
+
+   Per-pixel sky coordinates: declination (left) and right ascension (right),
+   both in degrees.
 
 Fourier-space coordinate maps
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -118,13 +117,13 @@ Alongside the sky-space coordinate maps, ``ndmap`` provides Fourier-space equiva
     # Radial angular-scale map (in radians) from the map center
     modr = m.modrmap()   # shape (ny, nx), units radians
 
-    #TODO: add figure -- run code:
-    # fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    # axes[0].imshow(modl, origin="lower")
-    # axes[0].set_title("|ell| map")
-    # axes[1].imshow(np.rad2deg(modr), origin="lower")
-    # axes[1].set_title("Angular radius map (deg)")
-    # plt.tight_layout(); plt.savefig("lmap.png", dpi=150)
+
+.. figure:: plots/lmap.png
+   :width: 80%
+   :alt: |ell| map and angular radius map
+
+   Left: the 2D :math:`|\ell|` map (multipole magnitude at each Fourier pixel).
+   Right: angular radius from the map centre, in degrees.
 
 Pixel size and area
 ^^^^^^^^^^^^^^^^^^^

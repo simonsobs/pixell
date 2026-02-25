@@ -50,15 +50,6 @@ For a disk-shaped mask around a catalog of sources:
 
     m_masked = m * mask
 
-    #TODO: add figure -- run code:
-    # from pixell import enplot
-    # import matplotlib.pyplot as plt
-    # fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    # axes[0].imshow(m, origin="lower"); axes[0].set_title("Input map")
-    # axes[1].imshow(mask.astype(float), origin="lower", cmap="gray")
-    # axes[1].set_title("Source mask")
-    # plt.tight_layout(); plt.savefig("source_mask.png", dpi=150)
-
 Distance transforms
 --------------------
 
@@ -82,13 +73,12 @@ to the nearest of a set of positions:
     # Convert to arcmin
     dist_arcmin = np.rad2deg(dist_map) * 60.0
 
-    #TODO: add figure -- run code:
-    # import matplotlib.pyplot as plt
-    # plt.figure(figsize=(5, 4))
-    # plt.imshow(dist_arcmin, origin="lower")
-    # plt.colorbar(label="Distance from center (arcmin)")
-    # plt.title("Angular distance map")
-    # plt.tight_layout(); plt.savefig("distance_map.png", dpi=150)
+
+.. figure:: plots/distance_map.png
+   :width: 60%
+   :alt: Angular distance map from map centre
+
+   Angular distance of each pixel from the map centre, in arcminutes.
 
 :py:func:`pixell.enmap.distance_transform` computes, for each pixel, the distance
 to the nearest *nonzero* pixel in a binary map — useful for growing or shrinking
@@ -139,12 +129,6 @@ Edge apodization
     # Subtract mean before tapering (useful for maps with a non-zero mean)
     m_apod_mean = enmap.apod(m, width=5 * utils.arcmin, fill="mean")
 
-    #TODO: add figure -- run code:
-    # import matplotlib.pyplot as plt
-    # fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    # axes[0].imshow(m, origin="lower"); axes[0].set_title("Original")
-    # axes[1].imshow(m_apod, origin="lower"); axes[1].set_title("Apodized (5' edge)")
-    # plt.tight_layout(); plt.savefig("apodization_edge.png", dpi=150)
 
 Mask apodization
 ^^^^^^^^^^^^^^^^^
@@ -170,14 +154,13 @@ window, tapering from 0 (bad) to 1 (good) over a specified width:
     # Apodize the mask edges over 0.5 degrees
     win = enmap.apod_mask(mask.astype(bool), width=0.5 * utils.degree)
 
-    #TODO: add figure -- run code:
-    # import matplotlib.pyplot as plt
-    # fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    # axes[0].imshow(mask, origin="lower", cmap="gray")
-    # axes[0].set_title("Binary mask")
-    # axes[1].imshow(win, origin="lower", cmap="viridis", vmin=0, vmax=1)
-    # axes[1].set_title("Apodization window")
-    # plt.tight_layout(); plt.savefig("apod_mask.png", dpi=150)
+
+.. figure:: plots/apod_mask.png
+   :width: 80%
+   :alt: Binary mask and apodization window
+
+   Left: binary source mask (white = good pixels). Right: smooth apodization
+   window tapering the mask edges over 0.5°.
 
 Combined apodization workflow
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -238,11 +221,10 @@ or contract a binary mask by a fixed angular radius:
     # Shrink the mask (contract the good region) by 10 arcmin
     mask_shrunk = enmap.shrink_mask(mask, 10 * utils.arcmin)
 
-    #TODO: add figure -- run code:
-    # import matplotlib.pyplot as plt
-    # fig, axes = plt.subplots(1, 3, figsize=(14, 4))
-    # for ax, mk, title in zip(axes, [mask, mask_grown, mask_shrunk],
-    #                           ["Original", "Grown (+30')", "Shrunk (-10')"]):
-    #     ax.imshow(mk.astype(float), origin="lower", cmap="gray", vmin=0, vmax=1)
-    #     ax.set_title(title)
-    # plt.tight_layout(); plt.savefig("mask_grow_shrink.png", dpi=150)
+
+.. figure:: plots/mask_grow_shrink.png
+   :width: 90%
+   :alt: Original mask, grown mask, and shrunk mask
+
+   From left to right: original disk mask, mask grown by 30\', and mask
+   shrunk by 10\'.

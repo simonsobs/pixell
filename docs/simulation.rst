@@ -40,14 +40,28 @@ field with a given 2D power spectrum directly in pixel space using the FFT:
     cov = cl[None, None, :]
     m_colored = enmap.rand_map(shape, wcs, cov, scalar=True, seed=42)
 
-    #TODO: add figure -- run code:
-    # from pixell import enplot
-    # import matplotlib.pyplot as plt
-    # fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-    # axes[0].imshow(m_noise, origin="lower"); axes[0].set_title("White noise")
-    # axes[1].imshow(m_colored, origin="lower", vmin=-3, vmax=3)
-    # axes[1].set_title("Colored Gaussian field (Cl ~ ell^-2)")
-    # plt.tight_layout(); plt.savefig("rand_flat.png", dpi=150)
+.. code-block:: python
+
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    axes[0].imshow(m_noise, origin="lower", cmap="RdBu_r",
+                   vmin=-3*m_noise.std(), vmax=3*m_noise.std())
+    axes[0].set_title("White noise")
+    axes[1].imshow(m_colored, origin="lower", cmap="RdBu_r",
+                   vmin=-3*m_colored.std(), vmax=3*m_colored.std())
+    axes[1].set_title(r"$C_\ell \propto \ell^{-2}$")
+    for ax in axes:
+        ax.axis("off")
+    plt.tight_layout()
+    plt.savefig("rand_flat.png", dpi=80, bbox_inches="tight")
+
+.. figure:: plots/rand_flat.png
+   :width: 80%
+   :alt: White noise vs colored Gaussian random field
+
+   Left: white-noise realization. Right: colored Gaussian random field with
+   :math:`C_\ell \propto \ell^{-2}`, showing visible large-scale structure.
 
 Curved-sky CMB simulations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -76,12 +90,41 @@ which correctly accounts for sky curvature via spherical harmonic transforms:
         (3,) + shape, wcs, ps, lmax=lmax, spin=[0, 2], seed=2
     )
 
-    #TODO: add figure -- run code:
-    # from pixell import enplot
-    # plot = enplot.plot(sim_T, colorbar=True, range="250")
-    # enplot.write("sim_cmb_T", plot)
-    # plot = enplot.plot(sim_TQU[0], colorbar=True, range="250")
-    # enplot.write("sim_cmb_T_pol", plot)
+.. code-block:: python
+
+    import matplotlib.pyplot as plt
+
+    # sim_cmb_T.png — T-only simulation (downgrade 1.5 arcmin → 12 arcmin for display)
+    sim_T_disp = sim_T[0].downgrade(8)
+    vmax = 3 * sim_T_disp.std()
+    plt.figure(figsize=(10, 5))
+    plt.imshow(sim_T_disp, origin="lower", cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+    plt.axis("off")
+    plt.tight_layout()
+    plt.savefig("sim_cmb_T.png", dpi=80, bbox_inches="tight")
+    plt.close()
+
+    # sim_cmb_T_pol.png — T component of joint T,Q,U simulation
+    sim_T_pol_disp = sim_TQU[0].downgrade(8)
+    vmax = 3 * sim_T_pol_disp.std()
+    plt.figure(figsize=(10, 5))
+    plt.imshow(sim_T_pol_disp, origin="lower", cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+    plt.axis("off")
+    plt.tight_layout()
+    plt.savefig("sim_cmb_T_pol.png", dpi=80, bbox_inches="tight")
+    plt.close()
+
+.. figure:: plots/sim_cmb_T.png
+   :width: 70%
+   :alt: Simulated full-sky CMB temperature map
+
+   Simulated full-sky CMB temperature map drawn from a CAMB theory spectrum.
+
+.. figure:: plots/sim_cmb_T_pol.png
+   :width: 70%
+   :alt: CMB temperature from a joint T,Q,U simulation
+
+   Temperature component of a jointly simulated CMB T, Q, U map.
 
 Reading power spectra
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -219,10 +262,12 @@ Point sources (delta-function profile convolved with beam)
 
     sim = pointsrcs.sim_objects(shape, wcs, poss, amps, profile)
 
-    #TODO: add figure -- run code:
-    # from pixell import enplot
-    # plot = enplot.plot(sim[0], colorbar=True, range="200")
-    # enplot.write("point_sources", plot)
+
+.. figure:: plots/point_sources.png
+   :width: 70%
+   :alt: Simulated point sources
+
+   100 random point sources convolved with a 1.4\' FWHM Gaussian beam.
 
 Extended sources (e.g. galaxy clusters with beta profile)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -259,13 +304,16 @@ A typical simulation pipeline:
     from pixell import enmap, curvedsky, pointsrcs, powspec, utils
     import numpy as np
 
-    shape, wcs = enmap.geometry2(res=1.5 * utils.arcmin)
+    shape, wcs = enmap.geometry2(
+        pos=np.array([[-5, -5], [5, 5]]) * utils.degree,
+        res=1.5 * utils.arcmin,
+    )
     lmax = 6000
     rng  = np.random.default_rng(42)
 
     # 1. CMB
     ps  = powspec.read_spectrum("camb_lensedCls.dat", scale=True)
-    cmb = curvedsky.rand_map(shape, wcs, ps[0:1, 0:1], lmax=lmax, seed=1)
+    cmb = curvedsky.rand_map(shape, wcs, ps[0, 0], lmax=lmax, seed=1)
 
     # 2. White noise (e.g. 10 uK-arcmin)
     noise_level = 10.0 * utils.arcmin   # uK * rad
@@ -275,7 +323,7 @@ A typical simulation pipeline:
     nsrc = 200
     box  = enmap.box(shape, wcs)
     poss = rng.uniform(box[0], box[1], size=(nsrc, 2)).T
-    amps = rng.uniform(50, 500, size=(1, nsrc))
+    amps = rng.uniform(50, 500, size=nsrc)
     fwhm  = 1.4 * utils.arcmin
     sigma = fwhm / (8 * np.log(2))**0.5
     r     = np.linspace(0, 5 * sigma, 500)
@@ -285,11 +333,23 @@ A typical simulation pipeline:
     # 4. Combine
     sim_total = cmb + noise + srcs
 
-    #TODO: add figure -- run code:
-    # from pixell import enplot
-    # fig, axes = plt.subplots(1, 3, figsize=(18, 4))
-    # for ax, m, title in zip(axes, [cmb, noise, sim_total],
-    #                          ["CMB", "Noise", "CMB + Noise + Sources"]):
-    #     ax.imshow(m[500:700, 500:700], origin="lower")
-    #     ax.set_title(title)
-    # plt.tight_layout(); plt.savefig("sim_total.png", dpi=150)
+.. code-block:: python
+
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    for ax, mp, title in zip(axes, [cmb, noise, sim_total],
+                              ["CMB", "Noise", "Combined"]):
+        vmax = 3 * np.std(mp)
+        ax.imshow(mp, origin="lower", cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+        ax.set_title(title)
+        ax.axis("off")
+    plt.tight_layout()
+    plt.savefig("sim_total.png", dpi=80, bbox_inches="tight")
+
+.. figure:: plots/sim_total.png
+   :width: 90%
+   :alt: CMB, noise, and combined simulation
+
+   From left to right: simulated CMB temperature, white noise, and the combined
+   map (CMB + noise + point sources).

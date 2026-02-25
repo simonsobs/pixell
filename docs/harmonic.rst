@@ -136,15 +136,12 @@ it from alms:
     alm2 = curvedsky.map2alm(m2, lmax=lmax)
     cl_cross = ainfo.alm2cl(alm, alm2)
 
-    #TODO: add figure -- run code:
-    # import matplotlib.pyplot as plt
-    # ells = np.arange(lmax + 1)
-    # plt.figure(figsize=(7, 4))
-    # plt.loglog(ells[2:], cl[2:], label="auto")
-    # plt.xlabel(r"$\ell$"); plt.ylabel(r"$C_\ell$")
-    # plt.title("Angular power spectrum")
-    # plt.legend(); plt.grid(True, alpha=0.3)
-    # plt.tight_layout(); plt.savefig("cl_curved.png", dpi=150)
+.. figure:: plots/cl_curved.png
+   :width: 70%
+   :alt: Angular power spectrum of a white-noise curved-sky map
+
+   Angular power spectrum :math:`C_\ell` of a white-noise map, computed via
+   curved-sky spherical harmonic transforms.
 
 Filtering in harmonic space
 -----------------------------
@@ -176,13 +173,27 @@ To apply a multipole filter :math:`F(\ell)` to a map via SHTs:
     m_smooth = enmap.zeros(shape, wcs)
     curvedsky.alm2map(alm_filtered, m_smooth)
 
-    #TODO: add figure -- run code:
-    # from pixell import enplot
-    # fig, axes = plt.subplots(1, 2, figsize=(14, 4))
-    # axes[0].imshow(m[500:700, 500:700], origin="lower"); axes[0].set_title("Input")
-    # axes[1].imshow(m_smooth[500:700, 500:700], origin="lower")
-    # axes[1].set_title("Beam-smoothed (5' FWHM)")
-    # plt.tight_layout(); plt.savefig("beam_smooth_curved.png", dpi=150)
+.. code-block:: python
+
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    vmax = 3 * m.downgrade(8).std()
+    for ax, mp, title in zip(axes,
+                              [m.downgrade(8), m_smooth.downgrade(8)],
+                              ["Input", "Beam smoothed (5')"]):
+        ax.imshow(mp, origin="lower", cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+        ax.set_title(title)
+        ax.axis("off")
+    plt.tight_layout()
+    plt.savefig("beam_smooth_curved.png", dpi=80, bbox_inches="tight")
+
+.. figure:: plots/beam_smooth_curved.png
+   :width: 80%
+   :alt: Input map vs Gaussian beam-smoothed map (curved-sky)
+
+   Left: input white-noise map. Right: after convolving with a 5\' FWHM
+   Gaussian beam via curved-sky spherical harmonic transforms.
 
 The alm coefficients are compatible with ``healpy``. You can therefore use
 ``healpy.almxfl`` as an alternative to ``ainfo.lmul``:
@@ -222,13 +233,26 @@ Generating random curved-sky maps
 
     shape, wcs = enmap.geometry2(res=1 * utils.arcmin)
 
-    ps  = powspec.read_spectrum("camb_lensedCls.dat", scale=True)
+    ps  = powspec.read_spectrum("tests/data/cosmo2017_10K_acc3_lensedCls.dat", scale=True)
     sim = curvedsky.rand_map(shape, wcs, ps, lmax=3000, seed=1)
 
-    #TODO: add figure -- run code:
-    # from pixell import enplot
-    # plot = enplot.plot(sim, colorbar=True, range="250")
-    # enplot.write("rand_curved", plot)
+.. code-block:: python
+
+    import matplotlib.pyplot as plt
+
+    sim_disp = sim.downgrade(8)   # 1 arcmin → 8 arcmin for display
+    vmax = 3 * sim_disp.std()
+    plt.figure(figsize=(10, 5))
+    plt.imshow(sim_disp, origin="lower", cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+    plt.axis("off")
+    plt.tight_layout()
+    plt.savefig("rand_curved.png", dpi=80, bbox_inches="tight")
+
+.. figure:: plots/rand_curved.png
+   :width: 70%
+   :alt: Simulated curved-sky CMB map
+
+   Simulated full-sky CMB temperature map drawn from a lensed CAMB spectrum.
 
 Evaluating alms at arbitrary positions
 ----------------------------------------

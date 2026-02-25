@@ -102,15 +102,29 @@ as module-level functions:
     # 1D ell axes (separable for CAR)
     ly, lx = enmap.laxes(shape, wcs)
 
-    #TODO: add figure -- run code:
-    # import matplotlib.pyplot as plt
-    # fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    # axes[0].imshow(modl, origin="lower", vmax=3000)
-    # axes[0].set_title("|ell| map in Fourier space")
-    # fmap = enmap.fft(enmap.rand_gauss(shape, wcs))
-    # axes[1].imshow(np.log10(np.abs(fmap)**2 + 1), origin="lower")
-    # axes[1].set_title("log10 power in Fourier space")
-    # plt.tight_layout(); plt.savefig("fourier_lmap.png", dpi=150)
+.. code-block:: python
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    m = enmap.rand_gauss(shape, wcs)
+    fmap = enmap.fft(m, normalize="phys")
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    axes[0].imshow(modl, origin="lower", cmap="viridis")
+    axes[0].set_title(r"$|\ell|$ map")
+    axes[1].imshow(np.log10(np.abs(fmap)**2 + 1e-30), origin="lower", cmap="inferno")
+    axes[1].set_title(r"$\log_{10}$ power")
+    for ax in axes:
+        ax.axis("off")
+    plt.tight_layout()
+    plt.savefig("fourier_lmap.png", dpi=80, bbox_inches="tight")
+
+.. figure:: plots/fourier_lmap.png
+   :width: 80%
+   :alt: |ell| map and log-power in Fourier space
+
+   Left: the 2D :math:`|\ell|` map in Fourier space. Right: log\ :sub:`10`
+   power of a white-noise map, showing the isotropic noise structure.
 
 Isotropic filtering
 --------------------
@@ -143,12 +157,27 @@ The recipe is:
     fmap    = enmap.fft(m)
     m_smooth = enmap.ifft(fmap * beam).real
 
-    #TODO: add figure -- run code:
-    # from pixell import enplot
-    # fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    # axes[0].imshow(m, origin="lower"); axes[0].set_title("Input (white noise)")
-    # axes[1].imshow(m_smooth, origin="lower"); axes[1].set_title("Smoothed (5' FWHM beam)")
-    # plt.tight_layout(); plt.savefig("beam_smooth.png", dpi=150)
+.. code-block:: python
+
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    vmax = 3 * m.std()
+    axes[0].imshow(m, origin="lower", cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+    axes[0].set_title("Input")
+    axes[1].imshow(m_smooth, origin="lower", cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+    axes[1].set_title("Beam smoothed (5')")
+    for ax in axes:
+        ax.axis("off")
+    plt.tight_layout()
+    plt.savefig("beam_smooth.png", dpi=80, bbox_inches="tight")
+
+.. figure:: plots/beam_smooth.png
+   :width: 80%
+   :alt: Input white-noise map vs Gaussian beam-smoothed map
+
+   Left: input white-noise map. Right: after convolving with a 5\' FWHM
+   Gaussian beam.
 
 High-pass and low-pass filters work the same way:
 
@@ -185,15 +214,12 @@ To compute the azimuthally averaged 1D power spectrum (for diagnostic purposes):
     # Bin into 1D using lbin()
     ls, cl = enmap.lbin(p2d, bsize=50)
 
-    #TODO: add figure -- run code:
-    # import matplotlib.pyplot as plt
-    # plt.figure(figsize=(6, 4))
-    # plt.loglog(ls, cls)
-    # plt.xlabel(r"$\ell$")
-    # plt.ylabel(r"$C_\ell$")
-    # plt.title("Flat-sky 1D power spectrum")
-    # plt.grid(True, alpha=0.3)
-    # plt.tight_layout(); plt.savefig("cl_flatsky.png", dpi=150)
+.. figure:: plots/cl_flatsky.png
+   :width: 70%
+   :alt: Flat-sky 1D angular power spectrum
+
+   Azimuthally averaged flat-sky power spectrum :math:`C_\ell` of a white-noise
+   map, binned with ``lbin``.
 
 For cross-spectra between two maps:
 

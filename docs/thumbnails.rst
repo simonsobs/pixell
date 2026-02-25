@@ -126,13 +126,6 @@ Unweighted (equal-weight) stack
     # Unweighted mean stack
     stack = np.mean(thumbs, axis=0)
 
-    #TODO: add figure -- run code:
-    # import matplotlib.pyplot as plt
-    # fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    # axes[0].imshow(thumbs[0], origin="lower"); axes[0].set_title("Single thumbnail")
-    # axes[1].imshow(stack, origin="lower"); axes[1].set_title("Stack (N=500)")
-    # plt.tight_layout(); plt.savefig("stack_result.png", dpi=150)
-
 Inverse-variance weighted stack
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -175,16 +168,6 @@ After stacking, you can extract a radial profile using :py:func:`pixell.enmap.rb
     # center on the middle pixel
     rs, profile = enmap.rbin(stack, bsize=0.5 * utils.arcmin)
 
-    #TODO: add figure -- run code:
-    # import matplotlib.pyplot as plt
-    # plt.figure(figsize=(6, 4))
-    # plt.plot(np.rad2deg(rs) * 60, profile)
-    # plt.xlabel("Angular radius (arcmin)")
-    # plt.ylabel("Stacked signal (uK)")
-    # plt.title("Radial profile from stack")
-    # plt.axhline(0, color="k", linestyle="--", alpha=0.5)
-    # plt.grid(True, alpha=0.3)
-    # plt.tight_layout(); plt.savefig("stack_radial_profile.png", dpi=150)
 
 Simple pixel-index stamps
 --------------------------

@@ -95,14 +95,29 @@ that may vary across the sky (given by an inverse-variance map ``ivar``):
     snr   = flux / dflux
     print(f"flux = {flux:.1f} ± {dflux:.1f} uK  (SNR = {snr:.1f})")
 
-    #TODO: add figure -- run code:
-    # import matplotlib.pyplot as plt
-    # snr_map = rho / kappa**0.5
-    # fig, axes = plt.subplots(1, 3, figsize=(14, 4))
-    # axes[0].imshow(sky, origin="lower"); axes[0].set_title("Input map")
-    # axes[1].imshow(rho, origin="lower"); axes[1].set_title("rho (response)")
-    # axes[2].imshow(snr_map, origin="lower"); axes[2].set_title("SNR map")
-    # plt.tight_layout(); plt.savefig("matched_filter_white.png", dpi=150)
+.. code-block:: python
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    snr_map = rho / kappa**0.5
+    fig, axes = plt.subplots(1, 3, figsize=(12, 3.5))
+    for ax, mp, title in zip(axes, [sky, rho, snr_map],
+                              ["Input sky", r"$\rho$",
+                               r"SNR $\rho/\sqrt{\kappa}$"]):
+        vmax = 3 * np.std(mp)
+        ax.imshow(mp, origin="lower", cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+        ax.set_title(title)
+        ax.axis("off")
+    plt.tight_layout()
+    plt.savefig("matched_filter_white.png", dpi=80, bbox_inches="tight")
+
+.. figure:: plots/matched_filter_white.png
+   :width: 90%
+   :alt: Input map, matched-filter response, and SNR map
+
+   Left: input sky map (point source + white noise). Centre: matched-filter
+   response :math:`\rho`. Right: SNR map :math:`\rho/\sqrt{\kappa}`.
 
 Constant-covariance matched filter
 ------------------------------------
@@ -271,11 +286,10 @@ detection by thresholding:
     peak_snr = snr_map[peaks]
     print(f"Found {len(peak_snr)} detections above SNR={snr_thresh}")
 
-    #TODO: add figure -- run code:
-    # import matplotlib.pyplot as plt
-    # plt.figure(figsize=(6, 5))
-    # plt.imshow(snr_map, origin="lower", vmin=-5, vmax=10)
-    # plt.colorbar(label="SNR")
-    # plt.scatter(peak_pix[1], peak_pix[0], c="red", s=80, marker="x", label="Detections")
-    # plt.legend(); plt.title("SNR map with detections")
-    # plt.tight_layout(); plt.savefig("snr_detections.png", dpi=150)
+
+.. figure:: plots/snr_detections.png
+   :width: 70%
+   :alt: SNR map with source detections marked
+
+   SNR map :math:`\rho/\sqrt{\kappa}` with sources detected above SNR = 5
+   marked with red crosses.
