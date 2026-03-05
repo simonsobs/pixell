@@ -190,7 +190,7 @@ def _fix_lenspyx_result(lenspyx_result, lenspyx_geom_info, shape, wcs):
 	# in the full-sky geometry
 	_, _phi0_ind = enmap.sky2pix(fs_shape, fs_wcs, [0, phi0[0]])
 	phi0_ind = np.round(_phi0_ind).astype(int)
-	assert phi0_ind == _phi0_ind, \
+	assert np.allclose(phi0_ind, _phi0_ind, rtol=0, atol=1e-5), \
 		('we cannot handle the case of a non-integer pixel with cut and paste '
 		'but could roll the whole array by a fractional pixel using ffts, this '
 		'needs to be implemented')
@@ -333,7 +333,7 @@ def _lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None,
 		cmb_obs = lenspyx.alm2lenmap(cmb_alm, d_alm, geom_info,
 										epsilon=epsilon, verbose=verbose, 
 									 	nthreads=nthreads, pol=pol)
-		cmb_obs = fix_lenspyx_result(cmb_obs, geom_info, oshape, wcs)
+		cmb_obs = _fix_lenspyx_result(cmb_obs, geom_info, oshape, wcs)
 		cmb_obs = cmb_obs.astype(dtype=dtype, copy=False)
 
 	# possibly get extra outputs
