@@ -73,7 +73,7 @@ def lens_map_flat(cmb_map, phi_map):
 	# mode="wrap", we must handle wrapping ourselves.
 	npad = int(np.ceil(max(np.max(-raw_pix),np.max(raw_pix-np.array(cmb_map.shape[-2:])[:,None,None]))))
 	pmap = enmap.pad(cmb_map, npad, wrap=True)
-	return enmap.samewcs(utils.interpol(pmap, raw_pix+npad, order=4, mode="wrap"), cmb_map)
+	return enmap.samewcs(utils.interpol(pmap, raw_pix+npad, order=4, mode="fourier"), cmb_map)
 
 ######## Curved sky lensing ########
 
