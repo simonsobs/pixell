@@ -17,12 +17,12 @@ class Device:
 		return time.time()
 
 class DeviceCpu(Device):
-	def __init__(self, align=None, alloc_factory=None, verbose=False):
+	def __init__(self, align=None, alloc_factory=None, logger=None):
 		super().__init__()
 		if align is None: align = 16
 		if alloc_factory is None:
 			def alloc_factory(name):
-				return ArrayPoolCpu(AllocAligned(AllocCpu(), align=align), name=name, verbose=verbose)
+				return ArrayPoolCpu(AllocAligned(AllocCpu(), align=align), name=name, logger=logger)
 		self.pools = ArrayMultipool(alloc_factory)
 		self.np    = np
 	def get(self, arr): return arr.copy()
@@ -44,13 +44,13 @@ class DeviceCpu(Device):
 		ato[:] = afrom
 
 class DeviceGpu(Device):
-	def __init__(self, align=None, alloc_factory=None, verbose=False):
+	def __init__(self, align=None, alloc_factory=None, logger=None):
 		super().__init__()
 		if align is None: align = 512
 		import cupy
 		if alloc_factory is None:
 			def alloc_factory(name):
-				return ArrayPoolGpu(AllocAligned(AllocGpu(), align=align), name=name, verbose=verbose)
+				return ArrayPoolGpu(AllocAligned(AllocGpu(), align=align), name=name, logger=logger)
 		self.pools = ArrayMultipool(alloc_factory)
 		self.np    = cupy
 		self.heap  = cupy.get_default_memory_pool()
@@ -124,10 +124,10 @@ class AllocAligned:
 		return buf[off:off+n]
 
 class Mempool:
-	def __init__(self, aligned_alloc, name="[unnamed]", verbose=False):
+	def __init__(self, aligned_alloc, name="[unnamed]", logger=None):
 		self.allocator = aligned_alloc
 		self.name      = name
-		self.verbose   = verbose
+		self.logger    = logger
 		self.free()
 	def alloc(self, n):
 		n       = int(n)
@@ -137,14 +137,25 @@ class Mempool:
 		#    This is only active when len(arenas) == 1
 		# 2. append new arenas
 		if len(self.arenas) != 1 or self.arenas[0].size < self.used + n:
-			if self.verbose:
-				print("Growing pool %s to size %d by %d. %s" % (self.name, self.used + n, n, str([a.size for a in self.arenas])))
-			# We're in mode 1
-			self.arenas.append(self.allocator.alloc(n))
+			# Mode 2
+			if self.logger:
+				if len(self.arenas) == 0:
+					self.logger("Set   mode 1   mempool {:s} to {:,d}".format(self.name, n))
+				elif len(self.arenas) == 1:
+					self.logger("Grow  mode 1→2 mempool {:s} by {:,d} (size {:,d}, used {:,d})".format(self.name, n, self.arenas[0].size, self.used))
+				else:
+					self.logger("Grow  mode 2   mempool {:s} by {:,d} (arenas {:s})".format(self.name, n, str([len(a) for a in self.arenas])))
+			try:
+				self.arenas.append(self.allocator.alloc(n))
+			except MemoryError as e:
+				if len(self.arenas) == 1:
+					raise MemoryError("Error growing mode-1 mempool {:s} by {:,d} (size {:,d}, used {:,d})".format(self.name, n, self.arenas[0].size, self.used))
+				else:
+					raise MemoryError("Error growing mode-2 mempool {:s} by {:,d} (arenas {:s})".format(self.name, n, str([len(a) for a in self.arenas])))
 			buf = self.arenas[-1][0:n]
 			self.used += effsize
 		else:
-			# We're in mode 2. Hand out some more memory
+			# We're in mode 1. Hand out some more memory
 			buf        = self.arenas[-1][self.used:self.used+n]
 			self.used += effsize
 		return buf
@@ -159,9 +170,13 @@ class Mempool:
 		as long as they don't exceed its capacity. If the capacity is exceeded, then
 		it will start requesting new memory again."""
 		if len(self.arenas) != 1:
-			# Go to from mode 1 to mode 2
+			# Go to from mode 2 to mode 1. Since len(arenas) != 1, .capacity
+			# wont't be changed by setting it to empty, as it would be if len was 1
 			self.arenas = []
-			self.arenas = [self.allocator.alloc(self.capacity)]
+			if self.capacity > 0:
+				if self.logger:
+					self.logger("Reset mode 2→1 mempool {:s} to size {:,d}".format(self.name, self.capacity))
+				self.arenas = [self.allocator.alloc(self.capacity)]
 		self.used = 0
 		return self
 	def reserve(self, n):
@@ -175,14 +190,14 @@ class Mempool:
 		return "%s(name='%s', capacity=%.3fG, used=%.3fG, align=%d, arenas=%s)" % (self.__class__.__name__, self.name, self.capacity/1024**3, self.used/1024**3, self.allocator.align, arenas)
 	def swap(self, other):
 		"""Swap internal buffers with other. Useful for avoiding
-		copies in some cases. The name and verbose status is not swapped"""
+		copies in some cases. The name and logger are not swapped"""
 		self.arenas,    other.arenas    = other.arenas,    self.arenas
 		self.used,      other.used      = other.used,      self.used
 		self.allocator, other.allocator = other.allocator, self.allocator
 
 class ArrayPoolCpu(Mempool):
-	def array(self, arr, reset=True, verbose=False):
-		self.verbose = verbose
+	def array(self, arr, reset=True, logger=None):
+		self.logger = logger
 		arr  = np.asarray(arr)
 		oarr = self.empty(arr.shape, dtype=arr.dtype, reset=True)
 		oarr[:] = arr
@@ -209,10 +224,10 @@ class ArrayPoolCpu(Mempool):
 		finally: pass
 
 class ArrayPoolGpu(Mempool):
-	def array(self, arr, reset=True, verbose=False):
+	def array(self, arr, reset=True, logger=None):
 		# Make sure the array is contiguous, which our memcpy needs
 		import cupy
-		self.verbose = verbose
+		self.logger = logger
 		ap   = cupy if isinstance(arr, cupy.ndarray) else np
 		arr  = ap.ascontiguousarray(arr)
 		oarr = self.empty(arr.shape, dtype=arr.dtype, reset=True)

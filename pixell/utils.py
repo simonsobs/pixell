@@ -107,22 +107,25 @@ def streq(x, s):
 	that causes a numpy warning and will fail in the future."""
 	return isinstance(x, basestring) and x == s
 
-def find(array, vals, default=None):
+def find(array, vals, default=None, sorted=False):
 	"""Return the indices of each value of vals in the given array."""
 	if np.asarray(vals).size == 0: return np.zeros(0, int)
 	array   = np.asarray(array)
-	order   = np.argsort(array)
-	cands   = np.minimum(np.searchsorted(array, vals, sorter=order),len(array)-1)
-	res     = order[cands]
-	bad     = array[res] != vals
+	if sorted:
+		res = np.minimum(np.searchsorted(array, vals),len(array)-1)
+	else:
+		order = np.argsort(array)
+		cands = np.minimum(np.searchsorted(array, vals, sorter=order),len(array)-1)
+		res   = order[cands]
+	bad = array[res] != vals
 	if np.any(bad):
 		if default is None: raise ValueError("Value not found in array")
 		else: res[bad] = default
 	return res
 
-def find_any(array, vals):
+def find_any(array, vals, sorted=False):
 	"""Like find, but skips missing entries"""
-	res = find(array, vals, default=-1)
+	res = find(array, vals, default=-1, sorted=sorted)
 	return res[res >= 0]
 
 def find_range(ranges, vals, sorted=False, default=-1):
@@ -3970,3 +3973,12 @@ def infer_bin_edges(centers, ref=1):
 # frequency interval is 1/nsamp/dt = 1/dur
 def freq2ind(freq, dur): return freq*dur
 def ind2freq(ind, dur): return ind/dur
+
+def firstin(ref, alts):
+	for name in alts:
+		if name in ref:
+			return name
+	raise ValueError("none of %s exist" % ", ".join(potential_colnames))
+
+def getrec(struct_arr, potential_colnames):
+	return struct_arr[firstin(struct_arr.dtype.names, potential_colnames)]
