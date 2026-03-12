@@ -339,6 +339,25 @@ def rewind(a, ref=0, period=2*np.pi):
 	if streq(ref, "auto"): ref = np.sort(a.reshape(-1))[a.size//2]
 	return ref + (a-ref+period/2.)%period - period/2.
 
+def rewind_compact(phis, period=2*np.pi, axis=-1):
+	ref = find_rewind_compact_ref(phis, period=period, axis=axis)
+	return rewind(phis, ref, period=period)
+
+def find_rewind_compact_ref(phis, period=2*np.pi, axis=-1):
+	# Start by rewinding with an arbitrary ref
+	phis = rewind(phis, ref=0, period=period)
+	# Sort and concatenate with period-shifted duplicate of itself
+	phis = np.sort(phis, axis=axis)
+	pnext= np.take(phis, [0], axis=axis)+period
+	phis = np.concatenate([phis,pnext], axis=axis)
+	# The best cut-point is where the biggest jump in values is.
+	# The cut will happen between icut and icut+1
+	icut = np.argmax(np.diff(phis, axis=axis), axis=axis, keepdims=True)
+	vcut = (np.take_along_axis(phis, icut,   axis=axis) +
+	        np.take_along_axis(phis, icut+1, axis=axis))/2
+	ref  = rewind(vcut+period/2, period=period)
+	return ref
+
 def cumsplit(sizes, capacities):
 	"""Given a set of sizes (of files for example) and a set of capacities
 	(of disks for example), returns the index of the sizes for which
