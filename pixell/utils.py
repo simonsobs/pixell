@@ -346,6 +346,7 @@ def rewind_compact(phis, period=2*np.pi, axis=-1):
 def find_rewind_compact_ref(phis, period=2*np.pi, axis=-1):
 	# Start by rewinding with an arbitrary ref
 	phis = rewind(phis, ref=0, period=period)
+	if phis.shape[axis] == 0: return phis
 	# Sort and concatenate with period-shifted duplicate of itself
 	phis = np.sort(phis, axis=axis)
 	pnext= np.take(phis, [0], axis=axis)+period
