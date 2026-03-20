@@ -128,7 +128,8 @@ class Mempool:
 		self.allocator = aligned_alloc
 		self.name      = name
 		self.logger    = logger
-		self.free()
+		self.arenas    = []
+		self.used      = 0
 	def alloc(self, n):
 		n       = int(n)
 		effsize = round_up(n, self.allocator.align)
@@ -137,21 +138,18 @@ class Mempool:
 		#    This is only active when len(arenas) == 1
 		# 2. append new arenas
 		if len(self.arenas) != 1 or self.arenas[0].size < self.used + n:
+			if len(self.arenas) == 0:
+				msg = "init  mode 1   mempool {:s} to {:,d}".format(self.name, n)
+			elif len(self.arenas) == 1:
+				msg = "grow  mode 1→2 mempool {:s} by {:,d} (size {:,d}, used {:,d})".format(self.name, n, self.arenas[0].size, self.used)
+			else:
+				msg = "grow  mode 2   mempool {:s} by {:,d} (arenas {:s})".format(self.name, n, str([len(a) for a in self.arenas]))
 			# Mode 2
-			if self.logger:
-				if len(self.arenas) == 0:
-					self.logger("Set   mode 1   mempool {:s} to {:,d}".format(self.name, n))
-				elif len(self.arenas) == 1:
-					self.logger("Grow  mode 1→2 mempool {:s} by {:,d} (size {:,d}, used {:,d})".format(self.name, n, self.arenas[0].size, self.used))
-				else:
-					self.logger("Grow  mode 2   mempool {:s} by {:,d} (arenas {:s})".format(self.name, n, str([len(a) for a in self.arenas])))
+			if self.logger: self.logger(msg)
 			try:
 				self.arenas.append(self.allocator.alloc(n))
 			except MemoryError as e:
-				if len(self.arenas) == 1:
-					raise MemoryError("Error growing mode-1 mempool {:s} by {:,d} (size {:,d}, used {:,d})".format(self.name, n, self.arenas[0].size, self.used))
-				else:
-					raise MemoryError("Error growing mode-2 mempool {:s} by {:,d} (arenas {:s})".format(self.name, n, str([len(a) for a in self.arenas])))
+				raise MemoryError("Error: " + msg)
 			buf = self.arenas[-1][0:n]
 			self.used += effsize
 		else:
@@ -162,6 +160,7 @@ class Mempool:
 	@property
 	def capacity(self): return self.arenas[0].size if len(self.arenas) == 1 else self.used
 	def free(self):
+		if self.logger: self.logger("free mempool {:s}".format(self.name))
 		self.arenas = []
 		self.used   = 0
 	def reset(self):
@@ -175,7 +174,7 @@ class Mempool:
 			self.arenas = []
 			if self.capacity > 0:
 				if self.logger:
-					self.logger("Reset mode 2→1 mempool {:s} to size {:,d}".format(self.name, self.capacity))
+					self.logger("reset mode 2→1 mempool {:s} to size {:,d}".format(self.name, self.capacity))
 				self.arenas = [self.allocator.alloc(self.capacity)]
 		self.used = 0
 		return self
@@ -194,6 +193,7 @@ class Mempool:
 		self.arenas,    other.arenas    = other.arenas,    self.arenas
 		self.used,      other.used      = other.used,      self.used
 		self.allocator, other.allocator = other.allocator, self.allocator
+		# self.name, other.name = other.name, self.name
 
 class ArrayPoolCpu(Mempool):
 	def array(self, arr, reset=True, logger=None):
