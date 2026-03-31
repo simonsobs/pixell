@@ -131,10 +131,10 @@ the square of the Fourier amplitudes.  ``enmap.lbin`` does this automatically:
 
    >>> kmap = enmap.fft(imap, normalize="phys")
    >>> ps   = np.abs(kmap)**2
-   >>> ls, cl = enmap.lbin(ps, bsize=40)
+   >>> cl, ls = enmap.lbin(ps, bsize=40)
 
 The ``bsize`` argument controls the width of each multipole bin.  ``ls`` contains the
-bin centres and ``cl`` the mean power in each bin.  For a multi-component map of shape
+bin centers and ``cl`` the mean power in each bin.  For a multi-component map of shape
 ``(ncomp, ny, nx)``, ``ps`` will have shape ``(ncomp, ny, nx)`` and each component is
 binned independently.
 
@@ -143,7 +143,7 @@ taking the real part and binning::
 
    kmap1 = enmap.fft(imap1, normalize="phys")
    kmap2 = enmap.fft(imap2, normalize="phys")
-   ls, cl_cross = enmap.lbin((kmap1 * kmap2.conj()).real, bsize=40)
+   cl_cross, ls = enmap.lbin((kmap1 * kmap2.conj()).real, bsize=40)
 
 
 Apodisation
