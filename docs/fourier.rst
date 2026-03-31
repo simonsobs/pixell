@@ -69,9 +69,10 @@ input is real-valued, the output is Hermitian-symmetric, but ``enmap.fft`` retur
 full complex array for convenience.
 
 **Physical normalisation.**  By default the normalisation is chosen so that
-``ifft(fft(m)) == m``.  If instead you want the power spectrum of ``kmap`` to be
-directly comparable to a theory ``C_ℓ`` (corrected for pixel area), pass
-``normalize="phys"``::
+``ifft(fft(m)) == m``.  If you want the absolute square of ``kmap`` to be
+directly comparable to a theory power spectrum ``C_ℓ`` appropriately corrected for
+pixel area), pass ``normalize="phys"`` (but make sure to pass the same to ``ifft``
+if converting back) ::
 
    kmap_phys = enmap.fft(imap, normalize="phys")
 
@@ -102,11 +103,12 @@ High-pass / low-pass filter
 
    >>> lmod = enmap.modlmap(shape, wcs)
    >>> # Keep only ℓ < 3000
-   >>> lpf  = (lmod < 3000).astype(float)
-   >>> omap = enmap.ifft(enmap.fft(imap) * lpf).real
+   >>> kmap  = enmap.fft(imap)
+   >>> kmap[lmod < 3000] = 0
+   >>> omap = enmap.ifft(kmap).real
 
-Matched filter
-^^^^^^^^^^^^^^
+Wiener filter
+^^^^^^^^^^^^^
 
 For a signal with known power spectrum ``C_ℓ^s`` and noise power spectrum ``C_ℓ^n``,
 the optimal (Wiener) filter is ``W_ℓ = C_ℓ^s / (C_ℓ^s + C_ℓ^n)``:
@@ -130,7 +132,7 @@ the square of the Fourier amplitudes.  ``enmap.lbin`` does this automatically:
 .. code-block:: python
 
    >>> kmap = enmap.fft(imap, normalize="phys")
-   >>> ps   = np.abs(kmap)**2
+   >>> ps   = (kmap * kmap.conj()).real
    >>> cl, ls = enmap.lbin(ps, bsize=40)
 
 The ``bsize`` argument controls the width of each multipole bin.  ``ls`` contains the
