@@ -25,7 +25,7 @@ pixel.  ``enmap`` provides three functions for this.
    ...                              res=0.5*utils.arcmin, proj="car")
    >>> ly, lx = enmap.laxes(shape, wcs)
    >>> print(ly.shape, lx.shape)
-   (600,) (1200,)
+   (1200,) (2400,)
 
 ``lmap`` returns a 2-D ``ndmap`` of shape ``(2, ny, nx)`` containing the ``(ly, lx)``
 multipole pair for every Fourier pixel:
