@@ -68,10 +68,6 @@ pixel space and Fourier space.  The transforms are normalised so that ``ifft(fft
 input is real-valued, the output is Hermitian-symmetric, but ``enmap.fft`` returns the
 full complex array for convenience.
 
-The equivalent method call is::
-
-   kmap = imap.lform()   # alias for fft with method="auto"
-
 **Physical normalisation.**  By default the normalisation is chosen so that
 ``ifft(fft(m)) == m``.  If instead you want the power spectrum of ``kmap`` to be
 directly comparable to a theory ``C_ℓ`` (corrected for pixel area), pass
