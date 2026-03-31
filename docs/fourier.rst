@@ -34,7 +34,7 @@ multipole pair for every Fourier pixel:
 
    >>> lm = enmap.lmap(shape, wcs)
    >>> print(lm.shape)   # (2, ny, nx)
-   (2, 600, 1200)
+   (2, 1200, 2400)
    >>> ly_2d = lm[0]     # multipole along y for each Fourier pixel
    >>> lx_2d = lm[1]     # multipole along x for each Fourier pixel
 
@@ -45,7 +45,7 @@ the most commonly needed quantity:
 
    >>> lmod = enmap.modlmap(shape, wcs)
    >>> print(lmod.shape)     # (ny, nx)
-   (600, 1200)
+   (1200, 2400)
 
 These functions can also be called as methods on an existing ``ndmap``::
 
@@ -174,7 +174,7 @@ of the taper to correct for the power lost::
    taper     = enmap.apod(enmap.ones(shape, wcs), width=60)
    imap_apo  = imap * taper
    kmap      = enmap.fft(imap_apo, normalize="phys")
-   cl_raw    = np.abs(kmap)**2
+   cl_raw    = (kmap * kmap.conj()).real
    # Correct for the taper (W2 factor)
    W2        = np.mean(taper**2)
    cl_corr   = cl_raw / W2
