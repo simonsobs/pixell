@@ -36,7 +36,7 @@ This :py:func:`pixell.enmap.read_map` has a number of important (optional) param
 - `box=None`, whether to only read out a sub-map based upon a particular geometry.
 - `sel=None`, a mask array if you only want to read certain elements of the map. Useful
   if you wish to slice a map to only read out one Stokes component, for example.
-- `geometry=None`, whether to force a particlar geometry onto your map; generally
+- `geometry=None`, whether to force a particular geometry onto your map; generally
   this is not used.
 
 There is much more information on the :py:class:`pixell.enmap.ndmap` class in the
@@ -60,7 +60,7 @@ maps:
     zeros = enmap.zeros((128, 64))
     ones = enmap.ones((128, 64))
 
-You can specify both a `wcs` and a `dtype` parameter here, to set the underlying 
+You can specify both a `wcs` and a `dtype` parameter here, to set the underlying
 sky geometry and data type. By default, we assume a two dimensional WCS that is
 effectively meaningless for the sky geometry, and a floating point array type.
 
@@ -69,7 +69,7 @@ Slicing Maps
 
 Because the :py:class:`pixell.enmap.ndmap` class is a wrapper around numpy, you
 can always slice it in exactly the same way. ``pixell`` will automatically handle
-assocating the correct geometry with your cut-out:
+associating the correct geometry with your cut-out:
 
 .. code-block:: python
 
@@ -83,8 +83,8 @@ will provide the correct sky positions relative to the indexing in that cut-out.
 It's important here to understand the conventions that pixell uses for array ordering,
 with there being much more detail in the :doc:`documentation on geometry <./geometry>`.
 Generally, you can expect pixell's array indexing to occur in the following pattern:
-``[ARRAY, Dec, RA]``, with ``ARRAY`` corresponding to e.g. the stokes parameter, and
-``Dec`` and ``RA`` corresponding to pixel indicies in those axes on the sky.
+``[ARRAY, Dec, RA]``, with ``ARRAY`` corresponding to e.g. the Stokes parameter, and
+``Dec`` and ``RA`` corresponding to pixel indices in those axes on the sky.
 
 It's not always as easy as extracting a specific pixel value on the sky, though. Usually,
 you will know some *sky position* you wish to extract, and you'll need to convert
@@ -100,17 +100,93 @@ to specify a box from a minimum dec and ra value, to a pair of maximum values - 
         [[-0.43, -1.02], [0.55, -0.93]]
     )
 
+Writing Maps
+------------
+
+Maps can be saved to disk in FITS or HDF5 format.  The format is inferred from the
+file extension:
+
+.. code-block:: python
+
+    from pixell import enmap
+
+    enmap.write_map("output.fits", imap)
+    enmap.write_map("output.hdf", imap)
+
+The method form on the map itself is equivalent::
+
+    imap.write("output.fits")
+
+To save only the map geometry (useful as a lightweight reference for constructing
+compatible maps later)::
+
+    enmap.write_map_geometry("footprint.fits", shape, wcs)
+    shape2, wcs2 = enmap.read_map_geometry("footprint.fits")
+
+Map Arithmetic
+--------------
+
+Because :py:class:`pixell.enmap.ndmap` is a numpy array, all standard arithmetic
+works directly and preserves the WCS:
+
+.. code-block:: python
+
+    from pixell import enmap
+
+    # Scale a map
+    scaled = imap * 1e6
+
+    # Add or subtract maps with the same geometry
+    diff = imap1 - imap2
+
+    # Multiply by a weight map (e.g. inverse variance)
+    weighted = imap * weight_map
+
+    # Apply a numpy ufunc
+    import numpy as np
+    log_map = np.log(np.abs(imap))
+
+If a function strips the WCS from the result, you can restore it::
+
+    result = enmap.samewcs(some_numpy_result, imap)
+
+Inspecting a Map
+----------------
+
+An ``ndmap`` has all the attributes of a numpy ``ndarray``, so you can inspect its
+shape, dtype, and WCS:
+
+.. code-block:: python
+
+    >>> print(imap.shape)
+    (3, 500, 1000)
+
+    >>> print(imap.dtype)
+    float32
+
+    >>> print(imap.wcs)
+    car:{cdelt:[0.03333,0.03333],crval:[0,0],crpix:[500.5,250.5]}
+
+    >>> print(imap.area() / utils.steradian)   # total solid angle in steradians
+
+A shape of ``(3, 500, 1000)`` means three Stokes components, each 500 pixels in
+declination and 1000 pixels in RA.  To access individual components::
+
+    T_map = imap[0]
+    Q_map = imap[1]
+    U_map = imap[2]
+
 Reprojecting Maps
 -----------------
 
 Pixell is designed to work with maps using the CAR projection, i.e. such that each pixel
 is a square with a uniform side length across the sky (again, see :doc:`geometry <./geometry>`
-for more details). However, it is common to have maps in other pixelisations, like healpix -
-or need to retrieve them from healpix. Pixell provides utilities for this in
+for more details). However, it is common to have maps in other pixelisations, like HEALPix -
+or need to retrieve them from HEALPix. Pixell provides utilities for this in
 :py:mod:`pixell.reproject`. Of particular interest will be
 :py:func:`pixell.reproject.map2healpix` and :py:func:`pixell.reproject.healpix2map`.
 
-To convert a pixell map to healpix:
+To convert a pixell map to HEALPix:
 
 .. code-block:: python
 
@@ -118,9 +194,19 @@ To convert a pixell map to healpix:
     from pixell.reproject import map2healpix
 
     act_dr6 = enmap.read_map("act_dr6.02_std_AA_day_pa4_f150_4way_coadd_map.fits")
-    healpix = map2healpix(act_dr6, nsize=8192)
+    healpix = map2healpix(act_dr6, nside=8192)
 
-where ``healpix`` is now an ``nsize=8192`` healpix map. Doing such reprojections is
-by its very nature lossy, and should be treated with caution; reprojecting to healpix,
+where ``healpix`` is now an ``nside=8192`` HEALPix map. Doing such reprojections is
+by its very nature lossy, and should be treated with caution; reprojecting to HEALPix,
 performing an operation, and coming back to CAR (via :py:func:`pixell.reproject.healpix2map`)
-will introduce reprojection artifacts and may impact the results of your analysis.
+will introduce reprojection artefacts and may impact the results of your analysis.
+
+To reproject between two CAR geometries (e.g. to change resolution or footprint),
+use :py:func:`pixell.enmap.project` for general reprojection, or
+:py:func:`pixell.enmap.extract` when the two geometries are pixel-compatible
+(see :doc:`geometry` for what that means)::
+
+    from pixell import enmap, utils
+
+    target_shape, target_wcs = enmap.geometry2(pos=box, res=1.0*utils.arcmin)
+    omap = enmap.project(imap, target_shape, target_wcs)

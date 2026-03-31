@@ -247,21 +247,77 @@ The command-line interface is available as ``pixell.enplot``
 ``--pos-ra`` (action: store_true)  
     RA goes from 0 to 360 instead of -180 to 180.
 
-Plotting maps
--------------
+Plotting multi-component maps
+-----------------------------
 
-:py:func:`pixell.enplot.plot` is the main function for plotting maps. It takes a map and a set of options and produces a plot. The options can be used to control the appearance of the plot, such as the color map, the title, and the axis labels.
-:py:func:`pixell.enplot.plot_iterator`
-:py:func:`pixell.enplot.get_plots`
-:py:func:`pixell.enplot.merge_plots`
+When the input map has more than two dimensions (e.g. shape ``(3, ny, nx)`` for T, Q, U),
+:py:func:`pixell.enplot.plot` produces one image per component by default.  The returned
+list therefore has one entry per component:
 
-Show maps
----------
-:py:func:`pixell.enplot.show`
-:py:func:`pixell.enplot.pshow`
+.. code-block:: python
+
+    >>> plots = enplot.plot(imap)   # imap.shape == (3, ny, nx)
+    >>> print(len(plots))
+    3
+    >>> enplot.show(plots)          # displays all three side by side
+
+To give each component a different color range, pass a colon-separated string to
+``range``::
+
+    plots = enplot.plot(imap, range="250:100:50")
+
+This sets the first component's range to ±250, the second's to ±100, and the third's
+(and any subsequent ones) to ±50.
+
+To combine three components into a single RGB image pass ``rgb=True``.  This treats
+the three components as red, green, and blue channels::
+
+    plots = enplot.plot(imap, rgb=True)
 
 
-Plots I/O
----------
-:py:func:`pixell.enplot.write`
-:py:func:`pixell.enplot.get_map`
+Saving plots to disk
+---------------------
+
+:py:func:`pixell.enplot.write` saves a plot (or list of plots) to a file.  The
+output format is controlled by the ``ext`` argument (default ``"png"``):
+
+.. code-block:: python
+
+    >>> plots = enplot.plot(imap, colorbar=True, color="planck")
+    >>> enplot.write("my_map", plots)           # writes my_map.png
+
+To write each component of a multi-component map to its own file, pass the full
+list returned by ``plot``::
+
+    enplot.write("my_map", plots)   # writes my_map_c0.png, my_map_c1.png, ...
+
+Any format that PIL recognises is accepted, including ``"pdf"`` and ``"jpg"``::
+
+    enplot.write("my_map", plots, ext="pdf")
+
+
+Using matplotlib for further customisation
+-------------------------------------------
+
+:py:mod:`pixell.enplot` produces PIL images, but these can be embedded in a
+matplotlib figure for annotating, combining with other panels, or fine-grained
+layout control:
+
+.. code-block:: python
+
+    import matplotlib.pyplot as plt
+    from pixell import enplot
+
+    plots = enplot.plot(imap, colorbar=True, color="planck", downgrade=4)
+    img   = plots[0].img          # PIL Image object
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.imshow(img)
+    ax.axis("off")
+    ax.set_title("My map")
+    plt.tight_layout()
+    plt.savefig("my_map_mpl.pdf")
+
+The ``downgrade`` argument reduces the map resolution before plotting, which
+speeds up rendering and shrinks file sizes for large maps without affecting the
+visual appearance in publications.
