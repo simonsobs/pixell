@@ -167,7 +167,7 @@ shape, dtype, and WCS:
     >>> print(imap.wcs)
     car:{cdelt:[0.03333,0.03333],crval:[0,0],crpix:[500.5,250.5]}
 
-    >>> print(imap.area() / utils.steradian)   # total solid angle in steradians
+    >>> print(imap.area())   # total solid angle in steradians
 
 A shape of ``(3, 500, 1000)`` means three Stokes components, each 500 pixels in
 declination and 1000 pixels in RA.  To access individual components::
@@ -179,9 +179,10 @@ declination and 1000 pixels in RA.  To access individual components::
 Reprojecting Maps
 -----------------
 
-Pixell is designed to work with maps using the CAR projection, i.e. such that each pixel
-is a square with a uniform side length across the sky (again, see :doc:`geometry <./geometry>`
-for more details). However, it is common to have maps in other pixelisations, like HEALPix -
+Pixell is designed to work with maps using the CAR (Plate Carrée) projection, where each
+pixel has a constant angular extent in RA and Dec. Note that pixels are not square on the
+physical sky: their on-sky width in the RA direction shrinks as cos(dec) toward the poles.
+See :doc:`geometry <./geometry>` for more details. However, it is common to have maps in other pixelisations, like HEALPix -
 or need to retrieve them from HEALPix. Pixell provides utilities for this in
 :py:mod:`pixell.reproject`. Of particular interest will be
 :py:func:`pixell.reproject.map2healpix` and :py:func:`pixell.reproject.healpix2map`.

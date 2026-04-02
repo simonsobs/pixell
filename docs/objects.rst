@@ -36,7 +36,7 @@ For a small patch::
 To wrap an existing numpy array in an ``ndmap``::
 
    arr  = np.random.randn(*shape)
-   imap = enmap.enmap(arr, wcs)     # always copies
+   imap = enmap.enmap(arr, wcs)     # copies by default (pass copy=False to avoid)
    imap = enmap.ndmap(arr, wcs)     # zero-copy view
 
 If a function strips the WCS from an ``ndmap`` and returns a plain numpy array,

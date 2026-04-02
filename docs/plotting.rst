@@ -36,7 +36,7 @@ will display:
    :alt: Example plot
    :width: 800px
 
-:py:func:`pixell.enplot.plots` allows you to further customize your plots. A list of 
+:py:func:`pixell.enplot.plot` allows you to further customize your plots. A list of 
 all possible arguments are shown in :ref:`enplot-interface` below. Please note that you
 need to change the dashes `--` to underscores `_` when using the function in Python. For example, 
 ``--mask-tol`` becomes ``mask_tol``.
@@ -55,11 +55,12 @@ will display:
    :width: 800px
 
 
-Furthermote, you can also use the :py:func:`pixell.enplot.pshow` function to create and show
+Furthermore, you can also use the :py:func:`pixell.enplot.pshow` function to create and show
 a plot immediately. This function is a wrapper around :py:func:`pixell.enplot.plot` and
 :py:func:`pixell.enplot.show`. It takes the same arguments as :py:func:`pixell.enplot.plot`,
 but does not return a list of plots. Instead, it shows the plot immediately.
 For example:
+
 .. code-block:: python
 
     enplot.pshow(imap, colorbar=True, color='planck', grid=True, ticks=1, grid_width=1, font_size=20, downgrade=4)
