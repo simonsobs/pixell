@@ -46,7 +46,7 @@ sky map into an existing ``enmap``.  The map must be allocated first:
 
 .. code-block:: python
 
-   >>> shape, wcs = enmap.geometry2(res=1.5*utils.arcmin)   # full-sky Fejer1 geometry
+   >>> shape, wcs = enmap.fullsky_geometry(res=1.5*utils.arcmin)   # full-sky Fejer1 geometry
    >>> omap = enmap.zeros((3,)+shape[-2:], wcs)             # TQU map
    >>> curvedsky.alm2map(alm, omap, spin=[0, 2])
 
@@ -77,19 +77,10 @@ coefficients.
 
 For accurate results the input map should use a Fejer1 (or other quadrature-compatible)
 geometry.  See :doc:`geometry` for how to construct one with
-:py:func:`pixell.enmap.geometry2`.
+:py:func:`pixell.enmap.fullsky_geometry`.
 
 ``map2alm`` returns an alm array of shape ``(..., ncomp, nelem)`` matching the leading
 dimensions of the map.
-
-**Iterative refinement.**  The default ``map2alm`` does a single pass, which is
-accurate to roughly 1 part in 10\ :sup:`5` for a flat spectrum.  For higher accuracy,
-pass ``niter > 0`` to perform Jacobi iteration steps::
-
-   alm = curvedsky.map2alm(imap, lmax=3000, niter=3)   # accurate to ~1e-8
-
-For most science cases ``niter=0`` is sufficient.
-
 
 Choosing a transform method
 ----------------------------
@@ -170,7 +161,7 @@ Generating random realisations
 
 :py:func:`pixell.curvedsky.rand_alm` draws random alm coefficients consistent with a
 given power spectrum.  The spectrum can be a 1-D array ``C_ℓ`` for a single component,
-or a 2-D symmetric array ``C_ℓ[ncomp, ncomp]`` for correlated components:
+or a 2-D symmetric array ``C_ℓ[ncomp, ncomp, nl]`` for correlated components:
 
 .. code-block:: python
 
@@ -182,15 +173,29 @@ Pass a ``seed`` for reproducibility::
 
    alm = curvedsky.rand_alm(cl, lmax=3000, seed=42)
 
+``rand_alm_healpy`` — alm coefficients via healpy
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                                                                                          
+                                                                  
+:py:func:`pixell.curvedsky.rand_alm_healpy` is a thin wrapper around
+``healpy.synalm``.  It accepts the same spectrum formats as ``rand_alm``
+(1-D ``[nl]``, 2-D compressed ``[nspec, nl]``, or 3-D ``[ncomp, ncomp, nl]``)
+and returns alm coefficients in the standard HEALPix m-major ordering.
+
+Unlike ``rand_alm``, this function generates random numbers in healpy's native
+ordering, so low-res and high-res realisations with the same seed will **not**
+agree on large scales.  Use ``rand_alm`` when you need that property
+(e.g. for multi-resolution consistency checks).  ``rand_alm_healpy`` is used
+internally by ``rand_map``.
+
 ``rand_map`` — pixel-space map from a power spectrum
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-:py:func:`pixell.curvedsky.rand_map` combines ``rand_alm`` and ``alm2map`` into one
+:py:func:`pixell.curvedsky.rand_map` combines ``rand_alm_healpy`` and ``alm2map`` into one
 convenience call that returns a pixel-space ``ndmap`` directly:
 
 .. code-block:: python
 
-   >>> shape, wcs = enmap.geometry2(res=1.5*utils.arcmin)
+   >>> shape, wcs = enmap.fullsky_geometry(res=1.5*utils.arcmin)
    >>> # CMB-like TQU power spectra (shape [3, 3, nl] or [nl] for scalar)
    >>> sim = curvedsky.rand_map((3,)+shape[-2:], wcs, ps, lmax=3000, seed=0)
 
@@ -204,7 +209,7 @@ transforming, so you can pass any CAR sub-map without any extra setup:
 .. code-block:: python
 
    >>> box   = np.array([[-20, 40], [20, -40]]) * utils.degree
-   >>> shape, wcs = enmap.geometry2(pos=box, res=1.5*utils.arcmin)
+   >>> shape, wcs = enmap.geometry(pos=box, res=1.5*utils.arcmin)
    >>> omap  = enmap.zeros((3,)+shape[-2:], wcs)
    >>> curvedsky.alm2map(alm, omap, spin=[0, 2])   # pads internally, no user action needed
 
@@ -228,7 +233,7 @@ onto a CAR grid:
 
    >>> import healpy as hp
    >>> alm_hp = hp.map2alm(healpix_map, lmax=3000)   # standard healpy
-   >>> shape, wcs = enmap.geometry2(res=1.5*utils.arcmin)
+   >>> shape, wcs = enmap.fullsky_geometry(res=1.5*utils.arcmin)
    >>> omap = enmap.zeros(shape, wcs)
    >>> curvedsky.alm2map(alm_hp, omap, spin=[0])
 
