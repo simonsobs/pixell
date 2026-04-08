@@ -49,26 +49,27 @@ Intermediate Coordinates
 ------------------------
 
 Intermediate coordinates are equivalent to pixel coordinates, just
-scaled to angle units. In most cases they are simply given by
-subtracting ``crpix`` from the pixel coordinates, scaling them by ``cdelt``,
-and adding ``crval`` to the result:::
+scaled to angle units. They are given by subtracting ``crpix`` from
+the pixel coordinates and scaling by ``cdelt``::
 
-  q = (p-crpix)*cdelt + crval
+  q = (p-crpix)*cdelt
 
 or if written out explicitly for the components,::
 
-  q[i] = (p[i] - crpix[i])*cdelt[i] + crval[i]
+  q[i] = (p[i] - crpix[i])*cdelt[i]
 
 where ``i`` runs over the values 0 (y) and 1 (x). In the FITS
 convention this is::
 
-  Q = (P-CRPIX)*CDELT + CRVAL
+  Q = (P-CRPIX)*CDELT
 
-where ``P = p[::-1]+1``, ``CRPIX = crpix[::-1]+1``, ``CDELT = cdelt[::-1]*180/pi``,
-``CRVAL = crval[::-1]*180/pi`` and ``Q = q[::-1]*180/pi``.
+where ``P = p[::-1]+1``, ``CRPIX = crpix[::-1]+1``, ``CDELT = cdelt[::-1]*180/pi``
+and ``Q = q[::-1]*180/pi``.
 
-In either case, the result is that pixel coordinates are linearly mapped
-to a flat, equirectangular coordinate system.
+The result is that pixel coordinates are linearly mapped to a flat
+coordinate system centered on the reference point. The translation
+from intermediate coordinates to sky coordinates is handled by the
+projection (see below), which also involves ``crval``.
 
 Sky Coordinates
 ---------------
@@ -87,8 +88,9 @@ where "XXX" describes the projection type. Common values are
   the Plate Carrée projection, and sky coordinates end up being
   the same as intermediate coordinates.
 * CEA: Cylindrical Equal-Area projection. Like CAR, but pixels get
-  taller as one approaches the poles to keep their physical area
-  constant.
+  shorter in the declination direction as one approaches the poles
+  to compensate for the convergence of meridians, keeping their
+  physical area constant.
 * TAN: Tangent plane (gnominic) projection. Only covers at most
   half the sky.  This is the projection a pinhole camera produces.
 
@@ -130,13 +132,13 @@ There are three tiers of geometry support in ``pixell``:
 
 * Bronze: Most functions work, but some are slower or use
   more memory, and a few give invalid results. For example,
-  some functions assume that every pixel has valid coordinats,
+  some functions assume that every pixel has valid coordinates,
   but this is not always the case. Example: MOL (Mollweide)
   or ARC (zenithal).
 * Silver: Everything works, except only slow, low-accuracy
   versions of ``map2alm`` spherical harmonics analysis is
-  available. Spherical harmonics anlaysis requires integration
-  weights to be avilable in ``ducc``, and this is currently
+  available. Spherical harmonics analysis requires integration
+  weights to be available in ``ducc``, and this is currently
   only the case for a few pixelizations. Example: CEA,
   most variants of CAR.
 * Gold: Full support. This is only available for specific
@@ -196,8 +198,7 @@ useful are
   in steradians.
 
 The map geometry also enters into a large number of functions for
-working with full ``enmap.ndmap`` objects. These are covered
-`HERE <fixme>`.
+working with full ``enmap.ndmap`` objects. These are covered in :doc:`objects`.
 
 Building geometries
 -------------------
@@ -245,7 +246,7 @@ has been given as ``np.array([[-4,100],[5,120]])*utils.degree``, then
 the map would cover the same area, but RA would be increasing towards
 the right instead, which usually isn't what you want.
 
-You can also build geometriees by giving a center point, resolution and
+You can also build geometries by giving a center point, resolution and
 shape. For example, this builds a small tangent plane (Gnomonic)
 patch centered on RA=dec=0°.::
 
@@ -325,7 +326,7 @@ Geometry I/O
 
 Geometries can be read and written to disk much like maps. They
 are represented as a FITS header without the corresponding FITS
-body, so they are tiny and fast to read.::
+body, so they are tiny and fast to read.
 
 * ``enmap.write_map_geometry(fname, shape, wcs)``
 * ``shape, wcs = enmap.read_map_geometry(fname)``
