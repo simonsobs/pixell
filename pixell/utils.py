@@ -966,7 +966,7 @@ def find_sweeps(az, tol=0.2):
 	constant minimum and maximum values, returns an array sweeps[:,{i1,i2}],
 	which gives the start and end index of each such sweep. For example, if
 	az starts at 0 at sample 0, increases to 1 at sample 1000 and then falls
-	to -1 at sample 2000, increase to 1 at sample 2500 and then falls to 0.5
+	to -1 at sample 2000, increases to 1 at sample 2500 and then falls to 0.5
 	at sample 3000 where it ends, then the function will return
 	[[0,1000],[1000,2000],[2000,2500],[2500,3000]].
 	The tol parameter determines how close to the extremum values of the array
@@ -1565,7 +1565,7 @@ def allgatherv(a, comm, axis=0):
 	fa = fa.reshape((len(fa),)+shapes[0])
 	# mpi4py doesn't handle all types. But why not just do this
 	# for everything?
-	must_fix = np.issubdtype(a.dtype, np.str_) or a.dtype == bool
+	must_fix = np.issubdtype(a.dtype, np.str_) or a.dtype == bool or a.dtype.kind == 'V'
 	if must_fix:
 		fa = fa.view(dtype=np.uint8)
 	#print(comm.rank, "fa.shape", fa.shape)
@@ -3727,13 +3727,25 @@ def first_importable(*args):
 		except ModuleNotFoundError:
 			continue
 
-def glob(desc):
+def glob(desc, sort=True):
 	"""Like glob.glob, but without nullglob turned on. This is useful for not
-	just silently throwing away arguments with spelling mistakes."""
+	just silently throwing away arguments with spelling mistakes. The result
+	is sorted by default. Pass sort=False to disable this."""
 	import glob as g
 	res = g.glob(desc)
 	if len(res) == 0: return [desc]
-	else: return res
+	if sort: res = sorted(res)
+	return res
+
+def globlist(fnames):
+	"""Given a list of filenames, which each can contain wildcards,
+	expand into a single list of filenames. This is useful for e.g.
+	programs that take a list of files as input, but which want to
+	handle the case where the list could be longer than the maximum
+	number of allowed arguments. So e.g. both prog file*.txt and
+	prog "file*.txt" would work, except that the latter isn't subject
+	to max args limitations."""
+	return sum([glob(fname) for fname in fnames],[])
 
 def cache_get(cache, key, op):
 	if not cache: return op()
