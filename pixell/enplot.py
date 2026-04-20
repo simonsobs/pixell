@@ -268,6 +268,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("--method", default="auto", help="Which colorization implementation to use: auto, fortran or python.")
 	add_argument("--slice", type=str, help="Apply this numpy slice to the map before plotting.")
 	add_argument("--sub",   type=str, help="Slice a map based on dec1:dec2,ra1:ra2.")
+	add_argument("--geometry", type=str, help="Plot part of map covered by specified geometry file (e.g. another map)")
 	add_argument("-H", "--hdu",  type=int, default=0, help="Header unit of the fits file to use")
 	add_argument("--address", type=str, default=None, help="Which hdf group or dataset to use, if reading from hdf")
 	add_argument("--op", type=str, help="Apply this general operation to the map before plotting. For example, 'log(abs(m))' would give you a lograithmic plot.")
@@ -392,6 +393,8 @@ def get_map(ifile, args, return_info=False, name=None):
 		# This fills in a dummy, plain wcs if one does not exist
 		try: m0.wcs
 		except AttributeError: m0 = enmap.enmap(m0[:], copy=False)
+		if args.geometry:
+			m0 = m0.extract(*enmap.read_map_geometry(args.geometry))
 		# Optionally fix the wcs to avoid crpix being too far away
 		if args.fix_wcs:
 			m0.wcs = wcsutils.fix_wcs(m0.wcs)

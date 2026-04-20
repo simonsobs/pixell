@@ -194,6 +194,8 @@ class Mempool:
 		self.used,      other.used      = other.used,      self.used
 		self.allocator, other.allocator = other.allocator, self.allocator
 		# self.name, other.name = other.name, self.name
+	def proxy(self, name):
+		return ArrayPoolProxy(self, name=name)
 
 class ArrayPoolCpu(Mempool):
 	def array(self, arr, reset=True, logger=None):
@@ -255,6 +257,35 @@ class ArrayPoolGpu(Mempool):
 			yield
 		finally:
 			cupy.cuda.set_allocator(old_allocator)
+
+class ArrayPoolProxy(Mempool):
+	def __init__(self, pool, name="[unnamed]"):
+		self.name = name
+		self.pool = pool
+		self.arenas = []
+		self.used = 0
+	@property
+	def capacity(self): return 0
+	@property
+	def logger(self): return self.pool.logger
+	def alloc(self, n): return self.pool.alloc(n)
+	# Don't free because another pool manages this
+	def free(self): pass
+	def reset(self): self.pool.reset()
+	def reserve(self, n): self.poo.reserve(n)
+	def __repr__(self):
+		return "%s(name='%s', pool='%s')" % (self.__class__.__name__, self.name, self.pool.name)
+	def swap(self, other): raise NotImplementedError
+	def array(self, arr, reset=True, logger=None): return self.pool.array(arr, reset=reset, logger=logger)
+	def empty(self, shape, dtype=np.float32, reset=True): return self.pool.empty(shape, dtype=dtype, reset=reset)
+	def full(self, shape, val, dtype=np.float32, reset=True): return self.pool.full(shape, val, dtype=dtype, reset=reset)
+	def zeros(self, shape, dtype=np.float32, reset=True): return self.pool.zeros(shape, dtype=dtype, reset=reset)
+	def ones(self, shape, dtype=np.float32, reset=True): return self.pool.ones(shape, dtype=dtype, reset=reset)
+	def alloc_raw(self, n): return self.pool.alloc_raw(n)
+	@contextlib.contextmanager
+	def as_allocator(self, reset=True):
+		with self.pool.as_allocator(reset=reset):
+			yield
 
 class ArrayMultipool:
 	def __init__(self, factory):
