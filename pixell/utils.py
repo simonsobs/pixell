@@ -3027,6 +3027,19 @@ def ubash(Afun, n, idtype=np.float64, odtype=None):
 		Amat[:,i] = Afun(uvec(n,i,dtype=idtype))
 	return Amat
 
+def matvec(A, x):
+	"""Perform the equivalent of einsum("...ab,...b->...a",A,x)"""
+	# Note that both of these are much slower than ab...,b...->a...
+	# for small dimensions in my tests, but that requires a different
+	# memory layout
+	if A.shape[-1] < 5:
+		# Faster for tiny matrix dimensions, which is pretty common
+		return np.eisum("...ab,...b->...a", A, x)
+	else:
+		# This uses blas, but has function call overhead, making it
+		# lose for tiny dimensions
+		return (A @ x[...,None])[...,0]
+
 def load_ascii_table(fname, desc, sep=None, dsep=None):
 	"""Load an ascii table with heterogeneous columns.
 	fname: Path to file
