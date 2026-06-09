@@ -6,7 +6,9 @@ class Device:
 		self.pools = None # Memory pools
 		self.np    = None # numpy or equivalent
 		self.lib   = bunch.Bunch() # place to store library functions
-	def get(self, arr): raise NotImplementedError # copy device array to cpu
+	def get(self, arr):
+		"""Return arr on the CPU, copying it from the device if necessary"""
+		raise NotImplementedError # copy device array to cpu
 	def ptr(self, arr): return getptr(arr)
 	def synchronize(self): raise NotImplementedError
 	def garbage_collect(self): raise NotImplementedError
@@ -25,7 +27,11 @@ class DeviceCpu(Device):
 				return ArrayPoolCpu(AllocAligned(AllocCpu(), align=align), name=name, logger=logger)
 		self.pools = ArrayMultipool(alloc_factory)
 		self.np    = np
-	def get(self, arr): return arr.copy()
+	def get(self, arr):
+		# Doing it this way lets us call get generically, even when it might not be
+		# an array
+		try: return arr.copy()
+		except AttributeError: return arr
 	def synchronize(self): pass
 	def garbage_collect(self):
 		import gc
@@ -55,7 +61,11 @@ class DeviceGpu(Device):
 		self.np    = cupy
 		self.heap  = cupy.get_default_memory_pool()
 		self.nvhandle = None
-	def get(self, arr): return arr.get()
+	def get(self, arr):
+		# Doing it this way lets us call get generically, even when it might not be
+		# an array on the gpu
+		try: return arr.get()
+		except AttributeError: return arr
 	def synchronize(self):
 		import cupy
 		cupy.cuda.runtime.deviceSynchronize()

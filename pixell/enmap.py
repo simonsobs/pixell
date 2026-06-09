@@ -106,7 +106,7 @@ class ndmap(np.ndarray):
 	def insert_at(self, pix, imap, wrap="auto", op=lambda a,b:b, cval=0, iwcs=None): return insert_at(self, pix, imap, wrap=wrap, op=op, cval=cval, iwcs=iwcs)
 	def at(self, pos, mode="spline", order=3, border="constant", cval=0.0, unit="coord", safe=True, ip=None): return at(self, pos, mode=mode, order=order, border=border, cval=0, unit=unit, safe=safe, ip=ip)
 	def argmax(self, unit="coord"): return argmax(self, unit=unit)
-	def autocrop(self, method="plain", value="auto", margin=0, factors=None, return_info=False): return autocrop(self, method, value, margin, factors, return_info)
+	def autocrop(self, method="plain", value=0, margin=0, factors=None, return_info=False): return autocrop(self, method, value, margin, factors, return_info)
 	def apod(self, width, profile="cos", fill="zero"): return apod(self, width, profile=profile, fill=fill)
 	def stamps(self, pos, shape, aslist=False): return stamps(self, pos, shape, aslist=aslist)
 	def distance_from(self, points, omap=None, odomains=None, domains=False, method="cellgrid", rmax=None, step=1024): return distance_from(self.shape, self.wcs, points, omap=omap, odomains=odomains, domains=domains, method=method, rmax=rmax, step=step)
