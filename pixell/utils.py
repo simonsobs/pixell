@@ -2355,6 +2355,13 @@ def poly_edge_dist(points, polygons):
 	dists = np.min(dists,0)
 	return dists
 
+def blockify(a, bsize):
+	"""Given a[...,nsamp] return blocks[...,nblock,bsize]
+	such that blocks[...,i,j] = a[...,i*bsize+j]. Any fractional
+	block at the end is discarded."""
+	nblock = a.shape[-1]//bsize
+	return a[...,:nblock*bsize].reshape(a.shape[:-1]+(nblock,bsize))
+
 def block_mean_filter(a, width):
 	"""Perform a binwise smoothing of a, where all samples
 	in each bin of the given width are replaced by the mean
@@ -3936,6 +3943,7 @@ def lairy(x):
 	return (np.arccos(x)-x*(1-x**2)**0.5)/(np.pi/2)
 
 def airy_lmax(D, λ): return 2*np.pi*D/λ
+def airy_res (D, λ): return l2ang(airy_lmax(D, λ))
 
 def airy_area(D, λ):
 	"""Area (steradians) of airy beam for an aperture of size D and wavelength λ.
