@@ -330,6 +330,9 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, adjoint=False,
 	nside   = npix2nside(map_full.shape[-1])
 	rinfo   = get_ring_info_healpix(nside)
 	rinfo   = apply_minfo_theta_lim(rinfo, theta_min, theta_max)
+	if theta_min is not None or theta_max is not None:
+		# Must zero parts of output map ducc won't write to
+		map_full[:] = 0
 	nthread = int(utils.fallback(utils.getenv("OMP_NUM_THREADS", nthread),0))
 	kwargs  = {"theta":rinfo.theta, "nphi":rinfo.nphi, "phi0":rinfo.phi0,
 		"ringstart":rinfo.offsets, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
@@ -337,7 +340,7 @@ def alm2map_healpix(alm, healmap=None, spin=[0,2], deriv=False, adjoint=False,
 	# Loop over pre-dimensions
 	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
-			func(alm=alm_full[I], map=map_full[I], mode="DERIV1", spin=1, **kwargs)
+			func(alm=alm_full[I+(None,)], map=map_full[I], mode="DERIV1", spin=1, **kwargs)
 			# Flip sign of theta derivative to get dec derivative
 			map_full[I+(0,)] *= -1
 		else:
@@ -353,7 +356,8 @@ def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], weight
 		if copy and map is not None: map = map.copy()
 	else:
 		if copy and alm is not None: alm = alm.copy()
-	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=healmap.shape[:-1], dtype=utils.native_dtype(healmap.dtype), convert=adjoint)
+	pre = healmap.shape[:-2] if deriv else healmap.shape[:-1]
+	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=pre, dtype=utils.native_dtype(healmap.dtype), convert=adjoint)
 	alm_full   = utils.atleast_Nd(alm, 2 if deriv else 3)
 	map_full   = utils.atleast_Nd(healmap, 3)
 	alm_full   = utils.fix_zero_strides(alm_full)
@@ -364,25 +368,34 @@ def map2alm_healpix(healmap, alm=None, ainfo=None, lmax=None, spin=[0,2], weight
 	nthread    = int(utils.fallback(utils.getenv("OMP_NUM_THREADS",nthread),0))
 	kwargs     = {"theta":rinfo.theta, "nphi":rinfo.nphi, "phi0":rinfo.phi0,
 		"ringstart":rinfo.offsets, "lmax":ainfo.lmax, "mmax":ainfo.mmax,
-		"mstart": ainfo.mstart, "nthreads":nthread}
+	 "mstart": ainfo.mstart, "nthreads":nthread}
 	if weights is None: weights = 4*np.pi/rinfo.npix
 	# Helper for weights multiplication
 	def wmul(map_flat, weights): return map_flat*weights
 	# Iterate over all the predimensions
 	for I in utils.nditer(map_full.shape[:-2]):
 		if deriv:
-			def Y(alm):   return ducc0.sht.experimental.synthesis(alm=alm, mode="DERIV1", spin=1, **kwargs)
-			def YT(map):  return ducc0.sht.experimental.adjoint_synthesis(map=map, mode="DERIV1", spin=1, **kwargs)
+			raise NotImplementedError("map2alm_healpix with deriv=True is broken")
+			def Y(alm):
+				# ducc generates too few rows if we restricted theta range, so alloc ourselves
+				# will be [2,npix]
+				omap = np.zeros((2,12*nside**2),map_full.dtype)
+				return utils.call_help(ducc0.sht.experimental.synthesis, map=omap, alm=alm, mode="DERIV1", spin=1, **kwargs)
+			def YT(map):
+				oalm = np.zeros_like(alm_full[I][None])
+				return utils.call_help(ducc0.sht.experimental.adjoint_synthesis, alm=oalm, map=map, mode="DERIV1", spin=1, **kwargs)
 			def YTW(map): return YT(wmul(map,weights))
 			def WY(alm):  return wmul(Y(alm),weights)
-			decflip = np.array([-1,1])[:,None,None]
+			decflip = np.array([-1,1], dtype=map_full.dtype)[:,None]
 			if adjoint: map_full[I] = jacobi_inverse(YT, WY, utils.fix_zero_strides(alm_full[I][None]), niter=niter)*decflip
 			# does this need an [0] at the end like the other versions have?
 			else:       alm_full[I] = jacobi_inverse(Y, YTW, map_full[I]*decflip, niter=niter)
 		else:
 			for s, j1, j2 in enmap.spin_helper(spin, alm_full.shape[-2]):
 				Ij = I+(slice(j1,j2),)
-				def Y(alm):   return ducc0.sht.experimental.synthesis(alm=alm, spin=s, **kwargs)
+				def Y(alm):
+					# ducc generates too few rows if we restricted theta range, so alloc ourselves
+					return ducc0.sht.experimental.synthesis(map=np.zeros_like(map_full[Ij]), alm=alm, spin=s, **kwargs)
 				def YT(map):  return ducc0.sht.experimental.adjoint_synthesis(map=map, spin=s, **kwargs)
 				def YTW(map): return YT(wmul(map,weights))
 				def WY(alm):  return wmul(Y(alm),weights)
@@ -583,7 +596,7 @@ def apply_minfo_theta_lim(minfo, theta_min=None, theta_max=None):
 	if theta_min is not None: mask &= minfo.theta >= theta_min
 	if theta_max is not None: mask &= minfo.theta <= theta_max
 	res = minfo.copy()
-	for key in ["theta", "nphi", "phi0"]: res[key] = res[key][mask]
+	for key in ["theta", "nphi", "phi0", "offsets"]: res[key] = res[key][mask]
 	return res
 
 def fill_gauss(arr, bsize=0x10000):
