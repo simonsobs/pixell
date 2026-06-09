@@ -5,10 +5,14 @@ cumbersome to get at otherwise"""
 import sqlite3, pprint, contextlib, tempfile, os
 
 class SQL:
-	def __init__(self, fname=":memory:"):
+	def __init__(self, fname=":memory:", mode="ro"):
 		# Is it a file name?
 		if isinstance(fname, str):
-			try: self.conn = sqlite3.connect(fname)
+			try:
+				if fname == ":memory:" or fname.startswith("file:") or mode is None:
+					self.conn = sqlite3.connect(fname)
+				else:
+					self.conn = sqlite3.connect("file:%s?mode=%s" % (fname, mode), uri=True)
 			except sqlite3.OperationalError as e:
 				# Make sqlite3 exception more informative
 				raise sqlite3.OperationalError(str(e) + " " + fname)
@@ -118,7 +122,7 @@ def attach(conn_base, conn_other, name="other", mode="r"):
 			conn_base.execute("detach database %s" % name)
 	else:
 		with tempfile.NamedTemporaryFile(suffix=".sqlite") as tfile:
-			with SQL(tfile.name) as tmp_db: # this ensures it's auto-closed
+			with SQL(tfile.name, mode="rwc") as tmp_db: # this ensures it's auto-closed
 				if "r" in mode: backup(conn_other, tmp_db)
 				conn_base.execute("attach database '%s' as %s" % (tfile.name, name))
 				try:
@@ -170,4 +174,16 @@ keywords = set([
 	"rows", "savepoint", "select", "set", "table", "temp", "temporary", "then", "ties",
 	"to", "transaction", "trigger", "unbounded", "union", "unique", "update", "using",
 	"vacuum", "values", "view", "virtual", "when", "where", "window", "with", "without",
+])
+
+functions = set(["abs", "changes", "char", "coalesce", "concat", "concat_ws", "format", 
+	"glob", "hex", "if", "ifnull", "iif", "instr", "last_insert_rowid", "length", 
+	"like", "like", "likelihood", "likely", "load_extension", "load_extension", 
+	"lower", "ltrim", "ltrim", "max", "min", "nullif", "octet_length", "printf", 
+	"quote", "random", "randomblob", "replace", "round", "round", "rtrim", 
+	"rtrim", "sign", "soundex", "sqlite_compileoption_get", "sqlite_compileoption_used", 
+	"sqlite_offset", "sqlite_source_id", "sqlite_version", "substr", "substr", 
+	"substring", "substring", "total_changes", "trim", "trim", "typeof", "unhex", 
+	"unhex", "unicode", "unistr", "unistr_quote", "unlikely", "upper", 
+	"zeroblob",
 ])

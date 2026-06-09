@@ -1602,6 +1602,11 @@ def tuplify(a):
 	try: return tuple(a)
 	except TypeError: return (a,)
 
+def iorlast(a, i):
+	"""Return a[min(i,len(a)-1)], or just a if a isn't indexable"""
+	try: return a[min(i,len(a)-1)]
+	except TypeError: return a
+
 def resize_array(arr, size, axis=None, val=0):
 	"""Return a new array equal to arr but with the given
 	axis reshaped to the given sizes. Inserted elements will
@@ -2742,7 +2747,7 @@ def bin_data(bins, d, op=np.mean):
 	shape d.shape[:-1] + (nbin,)."""
 	nbin  = bins.shape[0]
 	dflat = d.reshape(-1,d.shape[-1])
-	dbin  = np.zeros([dflat.shape[0], nbin])
+	dbin  = np.zeros([dflat.shape[0], nbin], dtype=d.dtype)
 	for bi, b in enumerate(bins):
 		dbin[:,bi] = op(dflat[:,b[0]:b[1]],1)
 	return dbin.reshape(d.shape[:-1]+(nbin,))

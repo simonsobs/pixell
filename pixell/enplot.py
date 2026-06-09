@@ -142,6 +142,9 @@ def plot_iterator(*arglist, **kwargs):
 			#else: iname = "map%0*d.fits" % (get_num_digits(len(imaps)), fi)
 		with printer.time("read %s" % iname, 3):
 			map, minfo = get_map(imap, args, return_info=True, name=iname)
+		if args.nonempty and np.all(~np.isfinite(map)):
+			printer.write("Skipping empty %s" % iname, 1)
+			continue
 		with printer.time("ranges", 3):
 			crange= get_color_range(map, args)
 		for ci, cr in enumerate(crange.T):
@@ -321,6 +324,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("-z", "--zenith",    action="store_true", help="Plot the zenith angle instead of the declination.")
 	add_argument("-F", "--fix-wcs",   action="store_true", help="Fix the wcs for maps in cylindrical projections where the reference point was placed too far away from the map center.")
 	add_argument(      "--pos-ra",    action="store_true", help="RA goes from 0 to 360 instead of -180 to 180")
+	add_argument("-E", "--nonempty",  action="store_true", help="Skip output of fully masked maps")
 
 	# Define the argument parser
 	parser   = argparse.ArgumentParser()
