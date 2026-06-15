@@ -6,6 +6,18 @@ import sqlite3, pprint, contextlib, tempfile, os
 
 class SQL:
 	def __init__(self, fname=":memory:", mode="ro"):
+		"""Open an sqlite database.
+		Arguments:
+		* fname: Either a path to an sqlite file, or a file:-url, or :memory:
+		  to create a memory-only database. If non-memory-only, the database
+		  will be readable and writable. For the url-format, the format specifies
+		  the mode. For a normal file name, the mode is controlled by the mode
+		  argument.
+		* mode:
+		  * ro  = read-only (default)
+		  * rw  = read+write, but file must already exist
+		  * rwc = read+write, create file if it doesn't exist
+		"""
 		# Is it a file name?
 		if isinstance(fname, str):
 			try:
