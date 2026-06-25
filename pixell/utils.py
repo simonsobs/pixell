@@ -16,6 +16,7 @@ e  = 1.60217662e-19
 G  = 6.67430e-11
 sb = 5.670374419e-8
 AU = 149597870700.0
+hbar = h/(2*np.pi)
 minute = 60
 hour   = 60*minute
 day    = 24*hour
@@ -2195,7 +2196,7 @@ def label_similar_groups_fast(vals, tol=0):
 	labels[order] = cumsum(diffs>tol, endpoint=True)
 	return labels
 
-def label_multi(valss, return_index=False):
+def label_multi(valss, return_index=False, return_nlabel=False):
 	"""Given the argument valss[:][n], which is a list of 1d arrays of the same
 	length n but potentially different data types, return a single 1d array
 	labels[n] of integers such that unique lables correspond to unique valss[:].
@@ -2218,8 +2219,13 @@ def label_multi(valss, return_index=False):
 	# At this point oinds has unique indices, but there could be gaps.
 	# Remove those
 	iinds, oinds = np.unique(oinds, return_index=True, return_inverse=True)[1:]
-	if return_index: return oinds, iinds
-	else: return oinds
+	res = [oinds]
+	if return_index:  res.append(iinds)
+	if return_nlabel: res.append(len(iinds))
+	# Return just the labels instead of a tuple in the common case where only the
+	# labels were asked for
+	if len(res) == 1: return res[0]
+	else: return tuple(res)
 
 def pathsplit(path):
 	"""Like os.path.split, but for all components, not just the last one.
