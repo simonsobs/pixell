@@ -105,6 +105,7 @@ def format_result(result, limit=None):
 	return "\n".join(lines)
 
 def get_fname(conn):
+	if isinstance(conn, str): return conn
 	row = next(conn.execute("pragma database_list"))
 	return row[2]
 
