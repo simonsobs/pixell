@@ -1,5 +1,5 @@
 """Plain coordinate transformations using qpoint and numpy-quaternion.
-Used to implement the fast pointing interpolation in pmat.py"""
+Used to implement the fast pointing interpolation in sogma pmat.py"""
 import re
 import numpy as np
 import qpoint
@@ -9,65 +9,83 @@ from . import bunch, warray, sites, ephem
 
 DEG = np.pi/180
 
-def transform(isys, osys, coords, ctime=None, site=None, weather=None):
+def transform(isys, osys, coords, ctime=None, site=None, weather=None, bore=None):
 	if isys == osys: return coords
 	if site is None: site = sites.default_site
-	isys = expand_sys(isys, ctime=ctime, site=site, weather=weather)
-	osys = expand_sys(osys, ctime=ctime, site=site, weather=weather)
+	isys = expand_sys(isys, ctime=ctime, site=site, weather=weather, bore=bore)
+	osys = expand_sys(osys, ctime=ctime, site=site, weather=weather, bore=bore)
 	# expand_sys should return something with .base and .q properties, where .q can be None
-	# 1. Undo any input rotation. I wish this could be done with /=.
-	# I think this is possible by working in the inverse space, e.g.
-	# coords **= -1; coords *= isys.q; coords *= hor_rots[isys.base]; coords **= -1;
-	# coords = hor2equ; coords **= -1; etc. This would avoid unneccessary copies, but
-	# would be confusing, and it would be hard to avoid some unnecessary inversions.
-	# Could handle with .iq member. Implemented in transform2, but slower for common
-	# cases.
+	# 1. Undo any input rotation.
 	if not trivial_quat(isys.q):
 		coords = 1/isys.q * coords
-	# 2. Rotate to the target system. In general this would need pathfinding through
-	# a space of stepwise transformations. But I'll just hardcode the steps here.
-	# It's just the hor <-> equ step that's troublesome anyway
-	if isys.base == osys.base:
-		# Nothing to do. Saves computation
-		pass
-	elif space_sys(isys.base) and space_sys(osys.base):
-		# Both in space. Simple static rotation
-		coords = equ_rots[osys.base]/equ_rots[isys.base] * coords
-	elif space_sys(isys.base) and not space_sys(osys.base):
-		# Need to cross to earth
-		if not trivial_quat(equ_rots[isys.base]):
-			coords = 1/equ_rots[isys.base] * coords
-		coords = equ2hor(coords, ctime=ctime, site=site, weather=weather)
-		if not trivial_quat(hor_rots[osys.base]):
-			coords = hor_rots[osys.base] * coords
-	elif not space_sys(isys.base) and space_sys(osys.base):
-		# Need to cross to space
-		if not trivial_quat(hor_rots[isys.base]):
-			coords = 1/hor_rots[isys.base] * coords
-		coords = hor2equ(coords, ctime=ctime, site=site, weather=weather)
-		if not trivial_quat(equ_rots[osys.base]):
-			coords = equ_rots[osys.base] * coords
-	else:
-		# Both on earth
-		coords  = hor_rots[osys.base]/hor_rots[isys.base] * coords
+	# 2. Rotate to the target system
+	for atom in find_path(atoms, isys.base, osys.base):
+		coords = atom.apply(coords, ctime=ctime, site=site, weather=weather, bore=bore)
 	# 3. Apply any output rotation
 	if not trivial_quat(osys.q):
 		coords = osys.q * coords
 	# Done!
 	return coords
 
-# Static transforms
-equ_rots = {
-	"equ": 1,
-	# euler(2, Galactic._lon0_J2000.radian-np.pi)*euler(1, Galactic._ngp_J2000.dec.radian-np.pi/2)*euler(2, -Galactic._ngp_J2000.ra.radian) with astropy.coordinates.builtin_frames.galactic.Galactic
-	"gal": np.quaternion(-0.488947507617903, 0.483210683963407, -0.196253758294796, -0.699229741968278),
-}
+#def transform(isys, osys, coords, ctime=None, site=None, weather=None):
+#	if isys == osys: return coords
+#	if site is None: site = sites.default_site
+#	isys = expand_sys(isys, ctime=ctime, site=site, weather=weather)
+#	osys = expand_sys(osys, ctime=ctime, site=site, weather=weather)
+#	# expand_sys should return something with .base and .q properties, where .q can be None
+#	# 1. Undo any input rotation. I wish this could be done with /=.
+#	# I think this is possible by working in the inverse space, e.g.
+#	# coords **= -1; coords *= isys.q; coords *= hor_rots[isys.base]; coords **= -1;
+#	# coords = hor2equ; coords **= -1; etc. This would avoid unneccessary copies, but
+#	# would be confusing, and it would be hard to avoid some unnecessary inversions.
+#	# Could handle with .iq member. Tested but slower for common
+#	# cases.
+#	if not trivial_quat(isys.q):
+#		coords = 1/isys.q * coords
+#	# 2. Rotate to the target system. In general this would need pathfinding through
+#	# a space of stepwise transformations. But I'll just hardcode the steps here.
+#	# It's just the hor <-> equ step that's troublesome anyway
+#	if isys.base == osys.base:
+#		# Nothing to do. Saves computation
+#		pass
+#	elif space_sys(isys.base) and space_sys(osys.base):
+#		# Both in space. Simple static rotation
+#		coords = equ_rots[osys.base]/equ_rots[isys.base] * coords
+#	elif space_sys(isys.base) and not space_sys(osys.base):
+#		# Need to cross to earth
+#		if not trivial_quat(equ_rots[isys.base]):
+#			coords = 1/equ_rots[isys.base] * coords
+#		coords = equ2hor(coords, ctime=ctime, site=site, weather=weather)
+#		if not trivial_quat(hor_rots[osys.base]):
+#			coords = hor_rots[osys.base] * coords
+#	elif not space_sys(isys.base) and space_sys(osys.base):
+#		# Need to cross to space
+#		if not trivial_quat(hor_rots[isys.base]):
+#			coords = 1/hor_rots[isys.base] * coords
+#		coords = hor2equ(coords, ctime=ctime, site=site, weather=weather)
+#		if not trivial_quat(equ_rots[osys.base]):
+#			coords = equ_rots[osys.base] * coords
+#	else:
+#		# Both on earth
+#		coords  = hor_rots[osys.base]/hor_rots[isys.base] * coords
+#	# 3. Apply any output rotation
+#	if not trivial_quat(osys.q):
+#		coords = osys.q * coords
+#	# Done!
+#	return coords
+#
+## Static transforms
+#equ_rots = {
+#	"equ": 1,
+#	# euler(2, Galactic._lon0_J2000.radian-np.pi)*euler(1, Galactic._ngp_J2000.dec.radian-np.pi/2)*euler(2, -Galactic._ngp_J2000.ra.radian) with astropy.coordinates.builtin_frames.galactic.Galactic
+#	"gal": np.quaternion(-0.488947507617903, 0.483210683963407, -0.196253758294796, -0.699229741968278),
+#}
+#
+#hor_rots = {
+#	"hor": 1,
+#}
 
-hor_rots = {
-	"hor": 1,
-}
-
-sys_map = {"hor":"hor", "equ":"equ", "cel":"equ", "gal":"gal"}
+sys_map = {"hor":"hor", "equ":"equ", "cel":"equ", "gal":"gal", "sidelobe":"sidelobe"}
 
 # For equatorial, this works:
 #  azel2bore(az, el, ctime) * euler(2, roll+np.pi)
@@ -79,7 +97,7 @@ sys_map = {"hor":"hor", "equ":"equ", "cel":"equ", "gal":"gal"}
 # differ, like I thought. I'll make them synonyms.
 
 # Complicated transforms
-def hor2equ(coords, ctime, site=None, weather=None):
+def hor2equ(coords, ctime, site=None, weather=None, **kwargs):
 	if site is None: site = sites.default_site
 	site    = sites.expand_site(site)
 	weather = sites.expand_weather(weather, site)
@@ -109,7 +127,7 @@ def hor2equ(coords, ctime, site=None, weather=None):
 	q  = q.reshape(shape)
 	return Coords(q=q)
 
-def equ2hor(coords, ctime, site=None, weather=None):
+def equ2hor(coords, ctime, site=None, weather=None, **kwargs):
 	"""FIXME: This function is only approximately the inverse of hor2equ.
 	The round-trip error is around 0.025 degree in el and 10 degrees in psi."""
 	if site is None: site = sites.default_site
@@ -130,6 +148,70 @@ def equ2hor(coords, ctime, site=None, weather=None):
 	# Recover correct shape
 	az, el, pa = [a.reshape(shape) for a in [az, el, pa]]
 	return Coords(az=az*DEG, el=el*DEG, roll=pa*DEG-np.pi)
+
+def hor2sidelobe(coords, bore, **kwargs):
+	"""Transform to a coordinate system where the center of the focal plane is at the north pole
+	and up is in the +eta direction (so it rotates with the telescope roll). This is useful
+	for sidelobe mapping when combined with on=Sun or similar."""
+	return euler(1,np.pi/2)/bore * coords
+
+def sidelobe2hor(coords, bore, **kwargs):
+	"""Transform from a coordinate system where the center of the focal plane is at the north pole
+	and up is in the +eta direction (so it rotates with the telescope roll) to normal horizontal
+	coordinates."""
+	return bore/euler(1,np.pi/2) * coords
+
+# Building blocks all supported transforms are built from
+class Atom:
+	def __init__(self, ibase, obase, cost=0):
+		self.ibase, self.obase, self.cost = ibase, obase, cost
+	def apply(self, coords, **kwargs): raise NotImplementedError
+	def __repr__(self): return "%s(%s,%s,cost=%g)" % (self.__class__.__name__, self.ibase, self.obase, self.cost)
+
+class AtomQuat(Atom):
+	def __init__(self, ibase, obase, q, cost=1):
+		Atom.__init__(self, ibase, obase, cost=cost)
+		self.q = q
+	def apply(self, coords, **kwargs):
+		return self.q * coords
+
+class AtomFun(Atom):
+	def __init__(self, ibase, obase, fun, cost=10):
+		Atom.__init__(self, ibase, obase, cost=cost)
+		self.fun = fun
+	def apply(self, coords, **kwargs):
+		return self.fun(coords, **kwargs)
+
+atoms = [
+	AtomQuat("equ","gal",  np.quaternion(-0.488947507617903,0.483210683963407,-0.196253758294796,-0.699229741968278)),
+	AtomQuat("gal","equ",1/np.quaternion(-0.488947507617903,0.483210683963407,-0.196253758294796,-0.699229741968278)),
+	AtomFun ("equ","hor",  equ2hor),
+	AtomFun ("hor","equ",  hor2equ),
+	AtomFun ("hor","sidelobe", hor2sidelobe),
+	AtomFun ("sidelobe","hor", sidelobe2hor),
+]
+
+def find_path(atoms, ibase, obase):
+	pbest = None
+	cbest = np.inf
+	for path in _find_path_helper(atoms, ibase, obase):
+		cost = sum([atom.cost for atom in path])
+		if cost < cbest: pbest, cbest = path, cost
+	if pbest is None: raise ValueError("No path for \"%s\" to \"%s\"" % (ibase, obase))
+	return pbest
+
+def _find_path_helper(atoms, ibase, obase, seen=[]):
+	# Naive implementation, but since we have so few transforms,
+	# it will still be fast
+	if obase == ibase:
+		yield ()
+	else:
+		seen = seen + [ibase]
+		for atom in atoms:
+			if atom.ibase != ibase: continue
+			if atom.obase in seen: continue
+			for path in _find_path_helper(atoms, atom.obase, obase, seen=seen):
+				yield (atom,)+path
 
 class Coords:
 	"""Class for representing both az,el,roll and quaternions.
@@ -208,6 +290,13 @@ class Coords:
 	def copy(self): return copy.deepcopy(self)
 	def _handle_update(self, name):
 		if name in ["az", "el", "roll", "ra", "dec", "psi", "lon", "lat"]:
+			# If we don't have all of _lon, _lat, _psi, then get them before we
+			# eradicate q
+			if self._lon is None or self._lat is None or self._psi is None:
+				lon, lat, psi = decompose_lonlat(self.q)
+				if self._lon is None: self._lon = lon
+				if self._lat is None: self._lat = lat
+				if self._psi is None: self._psi = psi
 			self._q = self._iq = None
 		else:
 			self._lon = self._lat = self._psi = None
@@ -284,7 +373,7 @@ def decompose_xieta(q):
 	eta   = -np.cos(lon)*r
 	return xi, eta, gamma
 
-def expand_sys(sys, ctime=None, site=None, weather=None):
+def expand_sys(sys, ctime=None, site=None, weather=None, bore=None):
 	# Parse if necessary
 	if isinstance(sys, str):
 		sys = parse_sys(sys)
@@ -310,7 +399,7 @@ def expand_sys(sys, ctime=None, site=None, weather=None):
 				coords = Coords(ra=pos[0], dec=pos[1])
 			csys = sys[key]["sys"]
 		# Transform it to our base system
-		coords = transform(csys, base, coords, ctime=ctime, site=site, weather=weather)
+		coords = transform(csys, base, coords, ctime=ctime, site=site, weather=weather, bore=bore)
 		# Set psi angle to zero, since we just want points at this stage
 		coords.psi = 0
 		qs[key] = coords.q
