@@ -5,7 +5,7 @@ import numpy as np
 import qpoint
 import quaternion
 import copy
-from . import bunch, warray, sites, ephem
+from . import bunch, warray, sites, ephem, utils
 
 DEG = np.pi/180
 
@@ -27,74 +27,7 @@ def transform(isys, osys, coords, ctime=None, site=None, weather=None, bore=None
 	# Done!
 	return coords
 
-#def transform(isys, osys, coords, ctime=None, site=None, weather=None):
-#	if isys == osys: return coords
-#	if site is None: site = sites.default_site
-#	isys = expand_sys(isys, ctime=ctime, site=site, weather=weather)
-#	osys = expand_sys(osys, ctime=ctime, site=site, weather=weather)
-#	# expand_sys should return something with .base and .q properties, where .q can be None
-#	# 1. Undo any input rotation. I wish this could be done with /=.
-#	# I think this is possible by working in the inverse space, e.g.
-#	# coords **= -1; coords *= isys.q; coords *= hor_rots[isys.base]; coords **= -1;
-#	# coords = hor2equ; coords **= -1; etc. This would avoid unneccessary copies, but
-#	# would be confusing, and it would be hard to avoid some unnecessary inversions.
-#	# Could handle with .iq member. Tested but slower for common
-#	# cases.
-#	if not trivial_quat(isys.q):
-#		coords = 1/isys.q * coords
-#	# 2. Rotate to the target system. In general this would need pathfinding through
-#	# a space of stepwise transformations. But I'll just hardcode the steps here.
-#	# It's just the hor <-> equ step that's troublesome anyway
-#	if isys.base == osys.base:
-#		# Nothing to do. Saves computation
-#		pass
-#	elif space_sys(isys.base) and space_sys(osys.base):
-#		# Both in space. Simple static rotation
-#		coords = equ_rots[osys.base]/equ_rots[isys.base] * coords
-#	elif space_sys(isys.base) and not space_sys(osys.base):
-#		# Need to cross to earth
-#		if not trivial_quat(equ_rots[isys.base]):
-#			coords = 1/equ_rots[isys.base] * coords
-#		coords = equ2hor(coords, ctime=ctime, site=site, weather=weather)
-#		if not trivial_quat(hor_rots[osys.base]):
-#			coords = hor_rots[osys.base] * coords
-#	elif not space_sys(isys.base) and space_sys(osys.base):
-#		# Need to cross to space
-#		if not trivial_quat(hor_rots[isys.base]):
-#			coords = 1/hor_rots[isys.base] * coords
-#		coords = hor2equ(coords, ctime=ctime, site=site, weather=weather)
-#		if not trivial_quat(equ_rots[osys.base]):
-#			coords = equ_rots[osys.base] * coords
-#	else:
-#		# Both on earth
-#		coords  = hor_rots[osys.base]/hor_rots[isys.base] * coords
-#	# 3. Apply any output rotation
-#	if not trivial_quat(osys.q):
-#		coords = osys.q * coords
-#	# Done!
-#	return coords
-#
-## Static transforms
-#equ_rots = {
-#	"equ": 1,
-#	# euler(2, Galactic._lon0_J2000.radian-np.pi)*euler(1, Galactic._ngp_J2000.dec.radian-np.pi/2)*euler(2, -Galactic._ngp_J2000.ra.radian) with astropy.coordinates.builtin_frames.galactic.Galactic
-#	"gal": np.quaternion(-0.488947507617903, 0.483210683963407, -0.196253758294796, -0.699229741968278),
-#}
-#
-#hor_rots = {
-#	"hor": 1,
-#}
-
 sys_map = {"hor":"hor", "equ":"equ", "cel":"equ", "gal":"gal", "sidelobe":"sidelobe"}
-
-# For equatorial, this works:
-#  azel2bore(az, el, ctime) * euler(2, roll+np.pi)
-# But for horizontal, this works:
-#  rotation_lonlat(-az, el, roll)
-# Why isn't roll+np.pi for both? Does azel2bore already
-# contain a pi rotation that we must compensate for? Yes,
-# it introduces a pi rotation. So it's not that roll and psi
-# differ, like I thought. I'll make them synonyms.
 
 # Complicated transforms
 def hor2equ(coords, ctime, site=None, weather=None, **kwargs):
@@ -429,7 +362,7 @@ def parse_sys(desc):
 		"on":{"sys":None,  "pos":[0,0]},
 		"to":{"sys":None,  "pos":[0,0]},
 	}
-	toks = desc.split(",")
+	toks = utils.split_outside(desc, ",")
 	for i, tok in enumerate(toks):
 		subs = tok.split("=")
 		if i == 0 and len(subs) == 1:
@@ -464,7 +397,7 @@ def _parse_sys_pos(pdesc, default_sys="equ", default_pos=[0,0]):
 		subs = pos[1:-1].split(",")
 		if len(subs) != 2:
 			raise ValueError("Coordinates must be [ra,dec] in degrees, but got '%s'" % str(pos))
-		pos = [float(w)*utils.degree for w in pos.split(",")]
+		pos = [float(sub)*utils.degree for sub in subs]
 	else:
 		# just keep it as a string, that represents the object's name.
 		# This will be evaluated in eval_sys
