@@ -5,7 +5,7 @@ cimport cmisc
 from libc.math cimport atan2
 from libc.stdint cimport uintptr_t, int64_t
 
-def alm2cl(ainfo, alm, alm2=None):
+def alm2cl(ainfo, alm, alm2=None, cl_dtype=None):
 	"""Computes the cross power spectrum for the given alm and alm2, which
 	must have the same dtype and broadcast. For example, to get the TEB,TEB
 	cross spectra for a single map you would do
@@ -20,6 +20,8 @@ def alm2cl(ainfo, alm, alm2=None):
 	dtype= np.result_type(alm, alm2)
 	alm  = alm.astype (dtype, copy=False)
 	alm2 = alm2.astype(dtype, copy=False)
+	if cl_dtype is None:
+		cl_dtype = alm.real.dtype
 	def getaddr(a): return a.__array_interface__["data"][0]
 	# Broadcast alms. This looks scary, but just results in views of the original
 	# arrays according to the documentation. Hence, it shouldn't use more memory.
@@ -32,6 +34,7 @@ def alm2cl(ainfo, alm, alm2=None):
 	# when combined with np.broadcast. So instead I will use manual raveling
 	pshape = alm.shape[:-1]
 	npre   = int(np.prod(pshape))
+	cl = np.empty(pshape+(ainfo.lmax+1,), cl_dtype)
 	cdef float[::1]  cl_single_sp, alm_single_sp1, alm_single_sp2
 	cdef double[::1] cl_single_dp, alm_single_dp1, alm_single_dp2
 	cdef int64_t[::1] mstart = np.ascontiguousarray(ainfo.mstart).view(np.int64)
@@ -41,7 +44,6 @@ def alm2cl(ainfo, alm, alm2=None):
 	# cross-spectrum of any given pair of arrays more than once.
 	cache = {}
 	if alm.dtype == np.complex64:
-		cl = np.empty(alm.shape[:-1]+(ainfo.lmax+1,), np.float32)
 		# We will loop over individual spectra
 		for i in range(npre):
 			I = np.unravel_index(i, pshape)
@@ -52,12 +54,15 @@ def alm2cl(ainfo, alm, alm2=None):
 			else:
 				alm_single_sp1 = np.ascontiguousarray(alm [I]).view(np.float32)
 				alm_single_sp2 = np.ascontiguousarray(alm2[I]).view(np.float32)
-				cl_single_sp = cl[I]
-				cmisc.alm2cl_sp(ainfo.lmax, ainfo.mmax, &mstart[0], &alm_single_sp1[0], &alm_single_sp2[0], &cl_single_sp[0])
+				if cl.dtype == np.float64:
+					cl_single_dp = cl[I]
+					cmisc.alm2cl_sp_to_dp(ainfo.lmax, ainfo.mmax, &mstart[0], &alm_single_sp1[0], &alm_single_sp2[0], &cl_single_dp[0])
+				elif cl.dtype == np.float32:
+					cl_single_sp = cl[I]
+					cmisc.alm2cl_sp(ainfo.lmax, ainfo.mmax, &mstart[0], &alm_single_sp1[0], &alm_single_sp2[0], &cl_single_sp[0])
 				cache[key] = cl[I]
 		return cl
 	elif alm.dtype == np.complex128:
-		cl = np.empty(alm.shape[:-1]+(ainfo.lmax+1,), np.float64)
 		# We will loop over individual spectra
 		for i in range(npre):
 			I = np.unravel_index(i, pshape)
@@ -67,8 +72,11 @@ def alm2cl(ainfo, alm, alm2=None):
 			else:
 				alm_single_dp1 = np.ascontiguousarray(alm [I]).view(np.float64)
 				alm_single_dp2 = np.ascontiguousarray(alm2[I]).view(np.float64)
-				cl_single_dp = cl[I]
-				cmisc.alm2cl_dp(ainfo.lmax, ainfo.mmax, &mstart[0], &alm_single_dp1[0], &alm_single_dp2[0], &cl_single_dp[0])
+				if cl.dtype == np.float64:
+					cl_single_dp = cl[I]
+					cmisc.alm2cl_dp(ainfo.lmax, ainfo.mmax, &mstart[0], &alm_single_dp1[0], &alm_single_dp2[0], &cl_single_dp[0])
+				elif cl.dtype == np.float32:
+					raise TypeError('alm is double-prec but cl is single-prec, downgrading accumulation precision not allowed')
 				cache[key] = cl[I]
 		return cl
 	else:

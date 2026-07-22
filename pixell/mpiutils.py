@@ -11,7 +11,7 @@ class FakeCommunicator:
         _unbuf(recvbuf)[()] = _unbuf(sendbuf)
     def Allgather(self, sendbuf, recvbuf):
         _unbuf(recvbuf)[0] = _unbuf(sendbuf)
-    def Allgatherv(self, sendbuf, redvbuf):
+    def Allgatherv(self, sendbuf, recvbuf):
         _unbuf(recvbuf)[()] = _unbuf(sendbuf)
     def Alltoallv(self, sendbuf, recvbuf):
         _unbuf(recvbuf)[()] = _unbuf(sendbuf)

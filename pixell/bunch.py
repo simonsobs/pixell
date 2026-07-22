@@ -21,7 +21,12 @@ class Bunch:
 		else:
 			self.__dict__[name] = value
 	def __getitem__(self, name):
-		return self._dict[name]
+		if isinstance(name, str):
+			# Normal case: dictionary lookup with string
+			return self._dict[name]
+		else:
+			# Struct-of-arrays case: forward slice to members
+			return Bunch({key:val[name] for key, val in self.items()})
 	def __setitem__(self, name, value):
 		self._dict[name] = value
 	def __delattr__(self, name):

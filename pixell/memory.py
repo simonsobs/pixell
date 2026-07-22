@@ -5,7 +5,7 @@
 # though I would avoid it if possible.
 # It looks like ctypes would work for this. It has some overhead, but this
 # doesn't need to be that fast (and proc reading has overhead too)
-import resource, os, ctypes
+import resource, os, ctypes, contextlib, tracemalloc
 
 def current():  return fallback([(linux_current,  IOError), (mac_current,  AttributeError)])
 def resident(): return fallback([(linux_resident, IOError), (mac_resident, AttributeError)])
@@ -16,6 +16,47 @@ def fallback(things, default=lambda:0):
 		try: return func()
 		except exceptions: pass
 	return default()
+
+@contextlib.contextmanager
+def trace():
+	"""Measure the peak and net memory usage of a block of code
+	by tracing each allocation and deallocation using tracemalloc
+
+	Example:
+
+	  with memory.trace() as memuse:
+	    np.zeros(1000000, np.float32)
+	  print("Peak usage: %d bytes") # "Peak usage 4000096 bytes"
+	  print("Net  usage: %d bytes") # "Net  usage 0 bytes"
+
+	Example:
+
+	  a = np.arange(10000)
+	  with memory.trace() as memuse:
+	    b = np.diff(a, prepend=0, append=0)
+	  print(memuse) # MemUse(net=80288, peak=161136)
+
+	This shows that np.diff allocates an extra internal copy (beyond
+	the output array b) when the prepend and append arguments are
+	used.
+
+	The memuse object isn't valid until after the with block exits.
+	"""
+	memuse = MemUse()
+	try:
+		tracemalloc.start()
+		mem1, max1 = tracemalloc.get_traced_memory()
+		yield memuse
+	finally:
+		mem2, max2 = tracemalloc.get_traced_memory()
+		tracemalloc.stop()
+		memuse.peak = max2-max1
+		memuse.net  = mem2-mem1
+
+class MemUse:
+	def __init__(self, net=0, peak=0):
+		self.net, self.peak = net, peak
+	def __repr__(self): return "MemUse(net=%d, peak=%d)" % (self.net, self.peak)
 
 #### Linux stuff ####
 

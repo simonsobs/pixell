@@ -16,6 +16,7 @@ e  = 1.60217662e-19
 G  = 6.67430e-11
 sb = 5.670374419e-8
 AU = 149597870700.0
+hbar = h/(2*np.pi)
 minute = 60
 hour   = 60*minute
 day    = 24*hour
@@ -48,6 +49,9 @@ R_saturn  =60268e3    ; M_saturn  = 568e24      ; r_saturn  =1433.5e9
 R_uranus  =25559e3    ; M_uranus  = 86.8e24     ; r_uranus  =2872.5e9
 R_neptune =24764e3    ; M_neptune = 102e24      ; r_neptune =4495.1e9
 R_pluto   = 1185e3    ; M_pluto   = 0.0146e24   ; r_pluto   =5906.4e9
+
+r_l1 = R_earth - 1.4916e9
+r_L2 = R_earth + 1.5016e9
 
 # These are like degree, arcmin and arcsec, but turn any lists
 # they touch into arrays.
@@ -104,22 +108,25 @@ def streq(x, s):
 	that causes a numpy warning and will fail in the future."""
 	return isinstance(x, basestring) and x == s
 
-def find(array, vals, default=None):
+def find(array, vals, default=None, sorted=False):
 	"""Return the indices of each value of vals in the given array."""
-	if np.asarray(vals).size == 0: return []
+	if np.asarray(vals).size == 0: return np.zeros(0, int)
 	array   = np.asarray(array)
-	order   = np.argsort(array)
-	cands   = np.minimum(np.searchsorted(array, vals, sorter=order),len(array)-1)
-	res     = order[cands]
-	bad     = array[res] != vals
+	if sorted:
+		res = np.minimum(np.searchsorted(array, vals),len(array)-1)
+	else:
+		order = np.argsort(array)
+		cands = np.minimum(np.searchsorted(array, vals, sorter=order),len(array)-1)
+		res   = order[cands]
+	bad = array[res] != vals
 	if np.any(bad):
 		if default is None: raise ValueError("Value not found in array")
 		else: res[bad] = default
 	return res
 
-def find_any(array, vals):
+def find_any(array, vals, sorted=False):
 	"""Like find, but skips missing entries"""
-	res = find(array, vals, default=-1)
+	res = find(array, vals, default=-1, sorted=sorted)
 	return res[res >= 0]
 
 def find_range(ranges, vals, sorted=False, default=-1):
@@ -127,10 +134,16 @@ def find_range(ranges, vals, sorted=False, default=-1):
 	and a set of values vals[n], returns the index of the range
 	each value falls inside, or -1 for values not inside a range.
 	Pass sorted=True if ranges is already sorted, to save some time."""
-	if not sorted: ranges = ranges[np.argsort(ranges[:,0])]
+	if not sorted:
+		order  = np.argsort(ranges[:,0])
+		ranges = ranges[order]
 	inds = np.searchsorted(ranges[:,0], vals, side="right")-1
 	good = (ranges[inds,0]<=vals)&(ranges[inds,1]>vals)
 	inds[~good] = default
+	if not sorted:
+		# inds[good] are now indices into the sorted ranges,
+		# but we want indices into the original ranges
+		inds[good] = order[inds[good]]
 	return inds
 
 def find_first(mask, axis=-1, default=-1):
@@ -280,6 +293,7 @@ def fallback(*args):
 		if arg is not None: return arg
 	return None
 
+# ref and refmode are messy here. Should rethink how this is done
 def unwind(a, period=2*np.pi, axes=[-1], ref=0, refmode="left", mask_nan=False):
 	"""Given a list of angles or other cyclic coordinates
 	where a and a+period have the same physical meaning,
@@ -325,6 +339,26 @@ def rewind(a, ref=0, period=2*np.pi):
 	a = np.asanyarray(a)
 	if streq(ref, "auto"): ref = np.sort(a.reshape(-1))[a.size//2]
 	return ref + (a-ref+period/2.)%period - period/2.
+
+def rewind_compact(phis, period=2*np.pi, axis=-1):
+	ref = find_rewind_compact_ref(phis, period=period, axis=axis)
+	return rewind(phis, ref, period=period)
+
+def find_rewind_compact_ref(phis, period=2*np.pi, axis=-1):
+	# Start by rewinding with an arbitrary ref
+	phis = rewind(phis, ref=0, period=period)
+	if phis.shape[axis] == 0: return phis
+	# Sort and concatenate with period-shifted duplicate of itself
+	phis = np.sort(phis, axis=axis)
+	pnext= np.take(phis, [0], axis=axis)+period
+	phis = np.concatenate([phis,pnext], axis=axis)
+	# The best cut-point is where the biggest jump in values is.
+	# The cut will happen between icut and icut+1
+	icut = np.argmax(np.diff(phis, axis=axis), axis=axis, keepdims=True)
+	vcut = (np.take_along_axis(phis, icut,   axis=axis) +
+	        np.take_along_axis(phis, icut+1, axis=axis))/2
+	ref  = rewind(vcut+period/2, period=period)
+	return ref
 
 def cumsplit(sizes, capacities):
 	"""Given a set of sizes (of files for example) and a set of capacities
@@ -375,6 +409,12 @@ def argmax(arr):
 	arr = np.asanyarray(arr)
 	return np.unravel_index(np.argmax(arr), arr.shape)
 
+def argmin(arr):
+	"""Multidimensional argmax. Returns a tuple indexing the full array
+	instead of just a number indexing the flattened array like np.argmax does"""
+	arr = np.asanyarray(arr)
+	return np.unravel_index(np.argmin(arr), arr.shape)
+
 def ctime2mjd(ctime):
 	"""Converts from unix time to modified julian date."""
 	return np.asarray(ctime)/86400. + 40587.0
@@ -389,6 +429,9 @@ def ctime2djd(ctime): return mjd2djd(ctime2mjd(ctime))
 def djd2ctime(djd):   return mjd2ctime(djd2mjd(djd))
 def ctime2jd(ctime):  return mjd2jd(ctime2mjd(ctime))
 def jd2ctime(jd):     return mjd2ctime(jd2mjd(jd))
+# These aren't calendar accurate. Use timedate for that
+def yr2ctime(yr):     return (yr-2025)*31556925.216 + 1735689600
+def ctime2yr(ctime):  return (ctime-1735689600)/31556925.216+2025
 
 def mjd2ctime(mjd):
 	"""Converts from modified julian date to unix time"""
@@ -628,7 +671,8 @@ def interpol(arr, inds, out=None, mode="spline", border="nearest",
 	"""
 	arr  = np.asanyarray(arr)
 	inds = np.asanyarray(inds)
-	npre = arr.ndim - len(inds)
+	ndim = 1 if inds.ndim == 0 else len(inds)
+	npre = arr.ndim - ndim
 	if ip is None:
 		ip = interpolator(arr, npre, mode=mode, border=border, order=order,
 				cval=cval, epsilon=epsilon)
@@ -658,16 +702,20 @@ class SplineInterpolator:
 		self.border = border
 		if self.mode != "spline": raise ValueError("Unrecognized spline interpolation mode '%s'" % str(mode))
 		arr = np.asanyarray(arr)
+		# Need floating-point array (so not an integer array) to do interpolation aside from nearest
+		# neighbor. If we don't do this, then the function will silently return the wrong result
+		if order != 0:
+			arr = asfarray(arr)
 		if self.order > 1:
 			arr = arr.copy()
 			for I in nditer(arr.shape[:npre]):
 				arr[I] = scipy.ndimage.spline_filter(arr[I], order=self.order, mode=self.border)
 		self.arr = arr
 	def __call__(self, inds, out=None):
-		inds, out = _ip_prepare(self, inds, out=out)
+		inds, out, wsel = _ip_prepare(self, inds, out=out)
 		# Do the actual interpolation
 		for I in nditer(self.arr.shape[:self.npre]):
-			out[I] = scipy.ndimage.map_coordinates(self.arr[I], inds, order=self.order,
+			out[wsel][I] = scipy.ndimage.map_coordinates(self.arr[I], inds[wsel], order=self.order,
 				mode=self.border, cval=self.cval, prefilter=False)
 		return out
 
@@ -698,14 +746,14 @@ class FourierInterpolator:
 			raise ValueError("Invalid value of precompute: '%s'. Valid values are plan, fft or none" % str(precompute))
 	def __call__(self, inds, out=None):
 		from . import fft
-		inds, out = _ip_prepare(self, inds, out=out)
+		inds, out, wsel = _ip_prepare(self, inds, out=out)
 		if self.precompute == "plan":
 			out = self.plan.eval(inds, out=out)
 		elif self.precompute == "fft":
-			out = fft.interpol_nufft(self.farr, inds, out=out, nofft=True,
+			out = fft.interpol_nufft(self.farr, inds[wsel], out=out[wsel], nofft=True,
 				epsilon=self.epsilon, complex=self.complex)
 		else:
-			out = fft.interpol_nufft(self.arr, inds, out=out,
+			out = fft.interpol_nufft(self.arr, inds[wsel], out=out[wsel],
 				epsilon=self.epsilon, complex=self.complex)
 		return out
 
@@ -720,17 +768,19 @@ def _ip_get_mode(mode, order):
 
 def _ip_prepare(self, inds, out=None):
 		inds = np.asanyarray(inds)
-		ndim = inds.ndim
-		if self.arr.ndim-len(inds) != self.npre:
+		ndim = 1 if inds.ndim == 0 else len(inds)
+		if self.arr.ndim-ndim != self.npre:
 			raise ValueError("arr.ndim-len(inds) != npre")
-		# Allow us to use ndim<2 inputs, e.g. interpol(np.arange(6),3) instead of
-		# interpol(np.arange(6),[[3]])
-		while inds.ndim < 2: inds = inds[...,None]
+		# Part 1 of supporting ndim<2 inputs, so we can do e.g.
+		# interpol(np.arange(6),3) instead of interpol(np.arange(6),[[3]])
+		while inds.ndim < 1: inds = inds[...,None]
 		if out is None:
 			# Doing it this way lets interpol inherit the array subclass from inds, which
 			# is useful when interpolating one enmap with another enmap
 			out = np.zeros_like(inds, shape=self.arr.shape[:self.npre]+inds.shape[1:], dtype=self.arr.dtype)
-		return inds, out
+		# Part 2 of supporting ndim<2 inputs
+		wsel = (Ellipsis,None) if inds.ndim < 2 else Ellipsis
+		return inds, out, wsel
 
 def interp(x, xp, fp, left=None, right=None, period=None):
 	"""Unlike utils.interpol, this is a simple wrapper around np.interp that extends it
@@ -861,6 +911,11 @@ def symlink(src, dest):
 	except FileNotFoundError: pass
 	os.symlink(os.path.relpath(src, os.path.dirname(dest)), dest)
 
+def rm(fname):
+	"""Remove file if it exists. Do nothing otherwise"""
+	try: os.remove(fname)
+	except FileNotFoundError: pass
+
 def decomp_basis(basis, vec):
 	return np.linalg.solve(basis.dot(basis.T),basis.dot(vec.T)).T
 
@@ -912,7 +967,7 @@ def find_sweeps(az, tol=0.2):
 	constant minimum and maximum values, returns an array sweeps[:,{i1,i2}],
 	which gives the start and end index of each such sweep. For example, if
 	az starts at 0 at sample 0, increases to 1 at sample 1000 and then falls
-	to -1 at sample 2000, increase to 1 at sample 2500 and then falls to 0.5
+	to -1 at sample 2000, increases to 1 at sample 2500 and then falls to 0.5
 	at sample 3000 where it ends, then the function will return
 	[[0,1000],[1000,2000],[2000,2500],[2500,3000]].
 	The tol parameter determines how close to the extremum values of the array
@@ -1482,7 +1537,7 @@ def allgather(a, comm):
 	rather than needing an output argument."""
 	a   = np.asarray(a)
 	res = np.zeros((comm.size,)+a.shape,dtype=a.dtype)
-	if np.issubdtype(a.dtype, np.bytes_):
+	if np.issubdtype(a.dtype, np.bytes_) or np.issubdtype(a.dtype, str):
 		comm.Allgather(a.view(dtype=np.uint8), res.view(dtype=np.uint8))
 	else:
 		comm.Allgather(a, res)
@@ -1511,7 +1566,7 @@ def allgatherv(a, comm, axis=0):
 	fa = fa.reshape((len(fa),)+shapes[0])
 	# mpi4py doesn't handle all types. But why not just do this
 	# for everything?
-	must_fix = np.issubdtype(a.dtype, np.str_) or a.dtype == bool
+	must_fix = np.issubdtype(a.dtype, np.str_) or a.dtype == bool or a.dtype.kind == 'V'
 	if must_fix:
 		fa = fa.view(dtype=np.uint8)
 	#print(comm.rank, "fa.shape", fa.shape)
@@ -1547,6 +1602,11 @@ def recv(comm, source=0, tag=0):
 def tuplify(a):
 	try: return tuple(a)
 	except TypeError: return (a,)
+
+def iorlast(a, i):
+	"""Return a[min(i,len(a)-1)], or just a if a isn't indexable"""
+	try: return a[min(i,len(a)-1)]
+	except TypeError: return a
 
 def resize_array(arr, size, axis=None, val=0):
 	"""Return a new array equal to arr but with the given
@@ -2052,6 +2112,17 @@ def split_outside(a, sep, start="([{", end=")]}"):
 			res += toks[1:]
 	return res
 
+def replace_outside(pattern, repl, string, start="([{", end=")]}"):
+	toks = split_by_group(string, start=start, end=end)
+	otoks= []
+	for tok in toks:
+		if   len(tok) == 0: continue
+		elif tok[0] not in start:
+			# Ok, we're in a segment where we should do a substitution
+			tok = re.subn(pattern, repl, tok)[0]
+		otoks.append(tok)
+	return "".join(otoks)
+
 def find_equal_groups(a, tol=0):
 	"""Given a[nsamp,...], return groups[ngroup][{ind,ind,ind,...}]
 	of indices into a for which all the values in the second index
@@ -2090,32 +2161,71 @@ def find_equal_groups_fast(vals):
 	1. Only works on 1d arrays
 	2. Only works with exact quality, with no support for approximate equality
 	3. Returns 3 numpy arrays instead of a list of lists.
+
+	Groups will be returned in ascending order of val.
 	"""
 	order = np.argsort(vals, kind="stable")
 	uvals, edges = np.unique(vals[order], return_index=True)
 	edges = np.concatenate([edges,[len(vals)]])
 	return uvals, order, edges
 
-def label_multi(valss):
+def find_similar_groups_fast(vals, tol=0):
+	"""Like find_equal_groups_fast, but accepts a tolerance, and
+	returns ngroup, order, edges, instead of uvals, order edges,
+	since there's no unique value to represent each group, and
+	it isn't obvious which to choose.
+
+	Here are some choices and how to get them:
+	* smallest: vals[order[edges[:-1]]]
+	* biggest:  vals[order[edges[1:]-1]]
+	* median:   vals[order[(edges[:-1]+edges[1:]-1)//2]]
+	"""
+	order = np.argsort(vals, kind="stable")
+	vsort = vals[order]
+	diffs = np.diff(vsort)
+	gaps  = np.where(diffs > tol)[0]+1
+	edges = np.concatenate([[0],gaps,[len(vals)]])
+	ngroup= len(edges)-1
+	return ngroup, order, edges
+
+def label_similar_groups_fast(vals, tol=0):
+	"""Like find_similar_groups_fast, but returns the group index of each entry"""
+	order = np.argsort(vals, kind="stable")
+	diffs = np.diff(vals[order])
+	labels= np.empty(len(vals),int)
+	labels[order] = cumsum(diffs>tol, endpoint=True)
+	return labels
+
+def label_multi(valss, return_index=False, return_nlabel=False):
 	"""Given the argument valss[:][n], which is a list of 1d arrays of the same
 	length n but potentially different data types, return a single 1d array
 	labels[n] of integers such that unique lables correspond to unique valss[:].
 	More precisely, valss[:][labels[i]] == valss[:][labels[j]] only if
-	labels[i] == labels[j]. The purpose of this is to go from having a heterogenous
+	labels[i] == labels[j]. The integers are assigned in ascending order starting
+	from 0, so if e.g. there are 3 unique combinations in vals, labels will consist
+	of values from the set 0, 1 and 2.
+
+	The purpose of this function is to go from having a heterogenous
 	label like (1, "foo", 1.24) to having a single integer as the label.
 
 	Example: label_multi([[0,0,1,1,2],["a","b","b","b","b"]]) → [0,1,2,2,3]"""
-	oinds = 0
-	nprev = 1
+	oinds  = 0
+	stride = 1
 	for vals in valss:
 		# remap arbitrary values in vals to integers in inds
 		uvals, inds = np.unique(vals, return_inverse=True)
-		oinds = oinds*nprev + inds
-		nprev = len(uvals)
+		oinds  += inds*stride
+		stride *= len(uvals)
 	# At this point oinds has unique indices, but there could be gaps.
 	# Remove those
-	oinds = np.unique(oinds, return_inverse=True)[1]
-	return oinds
+	iinds, oinds = np.unique(oinds, return_index=True, return_inverse=True)[1:]
+	res = [oinds]
+	if return_index:  res.append(iinds)
+	if return_nlabel: res.append(len(iinds))
+	# Return just the labels instead of a tuple in the common case where only the
+	# labels were asked for
+	if len(res) == 1: return res[0]
+	else: return tuple(res)
 
 def pathsplit(path):
 	"""Like os.path.split, but for all components, not just the last one.
@@ -2256,6 +2366,13 @@ def poly_edge_dist(points, polygons):
 	dists = np.min(dists,0)
 	return dists
 
+def blockify(a, bsize):
+	"""Given a[...,nsamp] return blocks[...,nblock,bsize]
+	such that blocks[...,i,j] = a[...,i*bsize+j]. Any fractional
+	block at the end is discarded."""
+	nblock = a.shape[-1]//bsize
+	return a[...,:nblock*bsize].reshape(a.shape[:-1]+(nblock,bsize))
+
 def block_mean_filter(a, width):
 	"""Perform a binwise smoothing of a, where all samples
 	in each bin of the given width are replaced by the mean
@@ -2280,6 +2397,15 @@ def downgrade(arr, down, axes=None, op=np.mean, inclusive=True):
 	axes = astuple(axes)
 	for ax, dn in zip(axes, down):
 		arr = block_reduce(arr, dn, axis=ax, op=op, inclusive=inclusive)
+	return arr
+
+def upgrade(arr, factor, axes=None, oshape=None, inclusive=True):
+	factor = astuple(factor)
+	if axes is None: axes = list(range(-len(factor),0))
+	axes = astuple(axes)
+	for ax, up in zip(axes, factor):
+		n = oshape[ax] if oshape is not None else arr.shape[ax]*up
+		arr = block_expand(arr, up, n, axis=ax, inclusive=inclusive)
 	return arr
 
 def block_reduce(a, bsize, axis=-1, off=0, op=np.mean, inclusive=True):
@@ -2318,7 +2444,7 @@ def block_expand(a, bsize, osize, axis=-1, off=0, op="nearest", inclusive=True):
 	axis  %= a.ndim
 	if op == "nearest":
 		if inclusive:
-			pre, mid, tail = np.split(a, [off>0,(off>0)+nwhole], axis)
+			pre, mid, tail = np.split(a, [int(off>0),int(off>0)+nwhole], axis)
 			parts = []
 			if pre.size > 0: parts.append(np.repeat(pre, off,   axis))
 			if mid.size > 0: parts.append(np.repeat(mid, bsize, axis))
@@ -2627,7 +2753,7 @@ def bin_data(bins, d, op=np.mean):
 	shape d.shape[:-1] + (nbin,)."""
 	nbin  = bins.shape[0]
 	dflat = d.reshape(-1,d.shape[-1])
-	dbin  = np.zeros([dflat.shape[0], nbin])
+	dbin  = np.zeros([dflat.shape[0], nbin], dtype=d.dtype)
 	for bi, b in enumerate(bins):
 		dbin[:,bi] = op(dflat[:,b[0]:b[1]],1)
 	return dbin.reshape(d.shape[:-1]+(nbin,))
@@ -2838,7 +2964,7 @@ class Printer:
 
 def ndigit(num):
 	"""Returns the number of digits in non-negative number num"""
-	with nowarn(): return np.int32(np.floor(np.maximum(1,np.log10(num))))+1
+	with nowarn(): return int(np.floor(np.maximum(1,np.log10(num))))+1
 
 def aprint(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
 	"""Shortcut for formatting an array and printing
@@ -2846,7 +2972,7 @@ def aprint(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
 	print(afmt(arr, fmt=fmt, ffmt=ffmt, ifmt=ifmt, nmax=nmax, nedge=nedge))
 
 def afmt(arr, fmt=None, ffmt=None, ifmt=None, nmax=None, nedge=None):
-	"""Shortcut for np.array2strng, to get a bit more
+	"""Shortcut for np.array2string, to get a bit more
 	control of the output than just repr(arr).
 
 	arr:  The array to format
@@ -2918,6 +3044,19 @@ def ubash(Afun, n, idtype=np.float64, odtype=None):
 	for i in range(1,n):
 		Amat[:,i] = Afun(uvec(n,i,dtype=idtype))
 	return Amat
+
+def matvec(A, x):
+	"""Perform the equivalent of einsum("...ab,...b->...a",A,x)"""
+	# Note that both of these are much slower than ab...,b...->a...
+	# for small dimensions in my tests, but that requires a different
+	# memory layout
+	if A.shape[-1] < 5:
+		# Faster for tiny matrix dimensions, which is pretty common
+		return np.eisum("...ab,...b->...a", A, x)
+	else:
+		# This uses blas, but has function call overhead, making it
+		# lose for tiny dimensions
+		return (A @ x[...,None])[...,0]
 
 def load_ascii_table(fname, desc, sep=None, dsep=None):
 	"""Load an ascii table with heterogeneous columns.
@@ -3033,6 +3172,16 @@ def slice_downgrade(d, s, axis=-1):
 		rest = a[len(a2)*step:]
 		a2 = np.concatenate([a2,[np.mean(rest,0)]],0)
 	return np.moveaxis(a2, 0, axis)
+
+def unflatten_slice(sel, shape):
+	"""If flatmap = map.reshape(-1), then this function
+	finds an unflattened slice usel such that flatmap[sel] = map[usel]."""
+	# Handle 0d case, which breaks below due to a numpy 0d limitation
+	if len(shape) == 0: return ()
+	# This is simple but inefficient. Don't use for big slices
+	mgsel    = tuple([slice(0,n) for n in shape])
+	all_inds = np.mgrid[mgsel].reshape(len(shape),-1)
+	return tuple(all_inds[:,sel])
 
 def outer_stack(arrays):
 	"""Example. outer_stack([[1,2,3],[10,20]]) -> [[[1,1],[2,2],[3,3]],[[10,20],[10,20],[10,2]]]"""
@@ -3456,7 +3605,9 @@ class CG:
 		self.M   = M
 		self.dot = dot
 		if x0 is None:
-			self.x = np.zeros_like(b)
+			# used to be np.zeros_like, but writing it like this makes it
+			# numpy/cupy-agnostic for a tiny cost
+			self.x = b*0
 			self.r = b.copy() if not destroy_b else b
 		else:
 			self.x  = x0.copy()
@@ -3607,13 +3758,25 @@ def first_importable(*args):
 		except ModuleNotFoundError:
 			continue
 
-def glob(desc):
+def glob(desc, sort=True):
 	"""Like glob.glob, but without nullglob turned on. This is useful for not
-	just silently throwing away arguments with spelling mistakes."""
+	just silently throwing away arguments with spelling mistakes. The result
+	is sorted by default. Pass sort=False to disable this."""
 	import glob as g
 	res = g.glob(desc)
 	if len(res) == 0: return [desc]
-	else: return res
+	if sort: res = sorted(res)
+	return res
+
+def globlist(fnames):
+	"""Given a list of filenames, which each can contain wildcards,
+	expand into a single list of filenames. This is useful for e.g.
+	programs that take a list of files as input, but which want to
+	handle the case where the list could be longer than the maximum
+	number of allowed arguments. So e.g. both prog file*.txt and
+	prog "file*.txt" would work, except that the latter isn't subject
+	to max args limitations."""
+	return sum([glob(fname) for fname in fnames],[])
 
 def cache_get(cache, key, op):
 	if not cache: return op()
@@ -3791,6 +3954,7 @@ def lairy(x):
 	return (np.arccos(x)-x*(1-x**2)**0.5)/(np.pi/2)
 
 def airy_lmax(D, λ): return 2*np.pi*D/λ
+def airy_res (D, λ): return l2ang(airy_lmax(D, λ))
 
 def airy_area(D, λ):
 	"""Area (steradians) of airy beam for an aperture of size D and wavelength λ.
@@ -3869,3 +4033,16 @@ def infer_bin_edges(centers, ref=1):
 	rhs   = np.concatenate([centers,[centers[ref+1]-centers[ref]]])
 	edges = sparse.linalg.spsolve(P.T.dot(P), P.T.dot(rhs))
 	return edges
+
+# frequency interval is 1/nsamp/dt = 1/dur
+def freq2ind(freq, dur): return freq*dur
+def ind2freq(ind, dur): return ind/dur
+
+def firstin(ref, alts):
+	for name in alts:
+		if name in ref:
+			return name
+	raise ValueError("none of %s exist" % ", ".join(potential_colnames))
+
+def getrec(struct_arr, potential_colnames):
+	return struct_arr[firstin(struct_arr.dtype.names, potential_colnames)]

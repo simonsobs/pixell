@@ -217,7 +217,7 @@ class InterpEphem(Ephem):
 		order  = np.argsort(tflat)
 		tflat  = tflat[order]
 		step   = np.max(np.abs(np.diff(tflat))) if len(tflat) > 1 else 0
-		if len(tflat) <= 1 or step >= self.dt:
+		if len(tflat) <= 1 or step >= self.dt or step == 0:
 			# Don't try to build interpolation if it would be more
 			# costly than just evaluating directly!
 			return self.other.eval(name, ctime, cartesian=cartesian, site=site)

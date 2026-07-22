@@ -142,6 +142,9 @@ def plot_iterator(*arglist, **kwargs):
 			#else: iname = "map%0*d.fits" % (get_num_digits(len(imaps)), fi)
 		with printer.time("read %s" % iname, 3):
 			map, minfo = get_map(imap, args, return_info=True, name=iname)
+		if args.nonempty and np.all(~np.isfinite(map)):
+			printer.write("Skipping empty %s" % iname, 1)
+			continue
 		with printer.time("ranges", 3):
 			crange= get_color_range(map, args)
 		for ci, cr in enumerate(crange.T):
@@ -268,7 +271,9 @@ def define_arg_parser(nodefault=False):
 	add_argument("--method", default="auto", help="Which colorization implementation to use: auto, fortran or python.")
 	add_argument("--slice", type=str, help="Apply this numpy slice to the map before plotting.")
 	add_argument("--sub",   type=str, help="Slice a map based on dec1:dec2,ra1:ra2.")
+	add_argument("--geometry", type=str, help="Plot part of map covered by specified geometry file (e.g. another map)")
 	add_argument("-H", "--hdu",  type=int, default=0, help="Header unit of the fits file to use")
+	add_argument("--address", type=str, default=None, help="Which hdf group or dataset to use, if reading from hdf")
 	add_argument("--op", type=str, help="Apply this general operation to the map before plotting. For example, 'log(abs(m))' would give you a lograithmic plot.")
 	add_argument("--op2", type=str, help="Like op, but allows multiple statements")
 	add_argument("-d", "--downgrade", type=str, default="1", help="Downsacale the map by this factor before plotting. This is done by averaging nearby pixels. See --upgrade for syntax.")
@@ -319,6 +324,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("-z", "--zenith",    action="store_true", help="Plot the zenith angle instead of the declination.")
 	add_argument("-F", "--fix-wcs",   action="store_true", help="Fix the wcs for maps in cylindrical projections where the reference point was placed too far away from the map center.")
 	add_argument(      "--pos-ra",    action="store_true", help="RA goes from 0 to 360 instead of -180 to 180")
+	add_argument("-E", "--nonempty",  action="store_true", help="Skip output of fully masked maps")
 
 	# Define the argument parser
 	parser   = argparse.ArgumentParser()
@@ -382,7 +388,7 @@ def get_map(ifile, args, return_info=False, name=None):
 		if isinstance(ifile, basestring):
 			toks  = ifile.split(":")
 			ifile, slice = toks[0], ":".join(toks[1:])
-			m0    = enmap.read_map(ifile, hdu=args.hdu, delayed=True)
+			m0    = enmap.read_map(ifile, hdu=args.hdu, address=args.address, delayed=True)
 			if name is None: name = ifile
 		else:
 			m0    = ifile
@@ -391,6 +397,8 @@ def get_map(ifile, args, return_info=False, name=None):
 		# This fills in a dummy, plain wcs if one does not exist
 		try: m0.wcs
 		except AttributeError: m0 = enmap.enmap(m0[:], copy=False)
+		if args.geometry:
+			m0 = m0.extract(*enmap.read_map_geometry(args.geometry))
 		# Optionally fix the wcs to avoid crpix being too far away
 		if args.fix_wcs:
 			m0.wcs = wcsutils.fix_wcs(m0.wcs)
@@ -420,7 +428,6 @@ def get_map(ifile, args, return_info=False, name=None):
 				except AttributeError: m = eval("m[:]"+args.slice) # handle proxy case
 			# Unwrap any remaining proxy
 			m    = m[:]
-			flip = (m.wcs.wcs.cdelt*m0.wcs.wcs.cdelt)[::-1]<0
 			assert m.ndim >= 2, "Image must have at least 2 dimensions"
 			# Apply arbitrary map operations
 			m1 = m
@@ -435,14 +442,11 @@ def get_map(ifile, args, return_info=False, name=None):
 			scale = parse_list(args.upgrade, int)
 			if np.any(np.array(scale)>1):
 				m = enmap.upgrade(m, scale)
-			# Flip such that pixels are in PIL or matplotlib convention,
-			# such that RA increases towards the left and dec upwards in
-			# the final image. Unless a slicing operation on the image
-			# overrrode this.
-			if m.wcs.wcs.cdelt[1] > 0: m = m[...,::-1,:]
-			if m.wcs.wcs.cdelt[0] > 0: m = m[...,:,::-1]
-			if flip[0]: m = m[...,::-1,:]
-			if flip[1]: m = m[...,:,::-1]
+			# Used to force RA increasing to the left and dec increasing
+			# upwards here, but better to just display the files as they
+			# are, and just always flipping y to account for FITS vs. PIL
+			# convention differences
+			m = m[...,::-1,:]
 			# Update stamp list
 			mlist[i] = m
 		wcslist = [m.wcs for m in mlist]
@@ -1007,7 +1011,7 @@ def show_ipython(img, title=None):
 		display(img_)
 
 def show_tk(img, title=None):
-	from six.moves import tkinter
+	import tkinter
 	from PIL import ImageTk
 	class Displayer:
 		def __init__(self):
@@ -1030,6 +1034,7 @@ def show_tk(img, title=None):
 				window.destroy()
 				if self.nclosed >= len(self.windows): self.root.destroy()
 			window.protocol("WM_DELETE_WINDOW", closer)
+			window.bind("q", lambda e: closer())
 	try:
 		app = Displayer()
 		for img_, title_ in _show_helper(img, title):

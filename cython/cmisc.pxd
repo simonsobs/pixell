@@ -1,6 +1,7 @@
 from libc.stdint cimport int64_t
 cdef extern from "cmisc_core.h":
 	void alm2cl_sp(int lmax, int mmax, int64_t * mstart, float  * alm1, float  * alm2, float * cl)
+	void alm2cl_sp_to_dp(int lmax, int mmax, int64_t * mstart, float  * alm1, float  * alm2, double * cl)
 	void alm2cl_dp(int lmax, int mmax, int64_t * mstart, double * alm1, double * alm2, double * cl)
 	void transpose_alm_dp(int lmax, int mmax, int64_t * mstart, double * ialm, double * oalm)
 	void transpose_alm_sp(int lmax, int mmax, int64_t * mstart, float * ialm, float * oalm)

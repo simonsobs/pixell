@@ -1,101 +1,150 @@
 """Plain coordinate transformations using qpoint and numpy-quaternion.
-Used to implement the fast pointing interpolation in pmat.py"""
+Used to implement the fast pointing interpolation in sogma pmat.py"""
 import re
 import numpy as np
 import qpoint
 import quaternion
 import copy
-from . import bunch, warray, sites, ephem
+from . import bunch, warray, sites, ephem, utils
 
 DEG = np.pi/180
 
-def transform(isys, osys, coords, ctime=None, site=sites.default_site, weather=None):
+def transform(isys, osys, coords, ctime=None, site=None, weather=None, bore=None):
 	if isys == osys: return coords
-	isys = expand_sys(isys, ctime=ctime, site=site, weather=weather)
-	osys = expand_sys(osys, ctime=ctime, site=site, weather=weather)
+	if site is None: site = sites.default_site
+	isys = expand_sys(isys, ctime=ctime, site=site, weather=weather, bore=bore)
+	osys = expand_sys(osys, ctime=ctime, site=site, weather=weather, bore=bore)
 	# expand_sys should return something with .base and .q properties, where .q can be None
-	# 1. Undo any input rotation. I wish this could be done with /=.
-	# I think this is possible by working in the inverse space, e.g.
-	# coords **= -1; coords *= isys.q; coords *= hor_rots[isys.base]; coords **= -1;
-	# coords = hor2equ; coords **= -1; etc. This would avoid unneccessary copies, but
-	# would be confusing, and it would be hard to avoid some unnecessary inversions.
-	# Could handle with .iq member. Implemented in transform2, but slower for common
-	# cases.
+	# 1. Undo any input rotation.
 	if not trivial_quat(isys.q):
 		coords = 1/isys.q * coords
-	# 2. Rotate to the target system. In general this would need pathfinding through
-	# a space of stepwise transformations. But I'll just hardcode the steps here.
-	# It's just the hor <-> equ step that's troublesome anyway
-	if isys.base == osys.base:
-		# Nothing to do. Saves computation
-		pass
-	elif space_sys(isys.base) and space_sys(osys.base):
-		# Both in space. Simple static rotation
-		coords = equ_rots[osys.base]/static_rots[isys.base] * coords
-	elif space_sys(isys.base) and not space_sys(osys.base):
-		# Need to cross to earth
-		if not trivial_quat(equ_rots[isys.base]):
-			coords = 1/equ_rots[isys.base] * coords
-		coords = equ2hor(coords, ctime=ctime, site=site, weather=weather)
-		if not trivial_quat(hor_rots[osys.base]):
-			coords = hor_rots[osys.base] * coords
-	elif not space_sys(isys.base) and space_sys(osys.base):
-		# Need to cross to space
-		if not trivial_quat(hor_rots[isys.base]):
-			coords = 1/hor_rots[isys.base] * coords
-		coords = hor2equ(coords, ctime=ctime, site=site, weather=weather)
-		if not trivial_quat(equ_rots[osys.base]):
-			coords = equ_rots[osys.base] * coords
-	else:
-		# Both on earth
-		coords  = hor_rots[osys.base]/hor_rots[isys.base] * coords
+	# 2. Rotate to the target system
+	for atom in find_path(atoms, isys.base, osys.base):
+		coords = atom.apply(coords, ctime=ctime, site=site, weather=weather, bore=bore)
 	# 3. Apply any output rotation
 	if not trivial_quat(osys.q):
 		coords = osys.q * coords
 	# Done!
 	return coords
 
-# Static transforms
-equ_rots = {
-	"equ": 1,
-	# euler(2, Galactic._lon0_J2000.radian-np.pi)*euler(1, Galactic._ngp_J2000.dec.radian-np.pi/2)*euler(2, -Galactic._ngp_J2000.ra.radian) with astropy.coordinates.builtin_frames.galactic.Galactic
-	"gal": np.quaternion(-0.488947507617903, 0.483210683963407, -0.196253758294796, -0.699229741968278),
-}
-
-hor_rots = {
-	"hor": 1,
-}
-
-sys_map = {"hor":"hor", "equ":"equ", "cel":"equ", "gal":"gal"}
+sys_map = {"hor":"hor", "equ":"equ", "cel":"equ", "gal":"gal", "sidelobe":"sidelobe"}
 
 # Complicated transforms
-def hor2equ(coords, ctime, site=sites.default_site, weather=None):
+def hor2equ(coords, ctime, site=None, weather=None, **kwargs):
+	if site is None: site = sites.default_site
 	site    = sites.expand_site(site)
 	weather = sites.expand_weather(weather, site)
 	qp = qpoint.QPoint(accuracy="high", fast_math=True, mean_aber=True,
 		rate_ref="always", **weather)
+	# Get the shape here and not after ascontiguousarray because that
+	# function will turn a 0d array into a 1d one
+	shape = coords.az.shape
+	# broadcast_arrays and set writeable to false just to quiet a
+	# numpy false positive warning in qpoint.
+	az, el, ctime, psi = [np.ascontiguousarray(arr) for arr in
+		np.broadcast_arrays(coords.az/DEG, coords.el/DEG, ctime, coords.psi)]
+	# If empty, just return input unchanged
+	if el.size == 0: return coords
+	# qpoint is buggy for el > 90 deg. Expensive to test all inputs, but they are
+	# usually either all above or below the limit, so we can perform a cheap test of
+	# just the first element
+	if not el_in_range(el.reshape(-1)[0]*DEG):
+		raise ValueError("qpoint does not handle el>pi/2 correctly. To normalize the coordinates, you can do (az,el,psi)→(az+pi,pi-el,psi+pi) where pi/2<el<pi")
+	for arr in [az, el, ctime, psi]:
+		arr.flags["WRITEABLE"] = False
 	# seems like azelpsi2bore does something else
-	az, el, ctime, psi = np.broadcast_arrays(coords.az/DEG, coords.el/DEG, ctime, coords.psi)
-	shape = az.shape
-	q  = qp.azel2bore(az, el, None, None, lon=site.lon, lat=site.lat, ctime=ctime)
+	q  = qp.azel2bore(az.reshape(-1), el.reshape(-1), None, None, lon=site.lon, lat=site.lat, ctime=ctime.reshape(-1))
 	# to proper quat and recover correct shape
-	q  = quaternion.as_quat_array(q).reshape(shape)
-	q *= euler(2, psi)
+	q  = quaternion.as_quat_array(q)
+	q *= euler(2, psi.reshape(-1)+np.pi)
+	q  = q.reshape(shape)
 	return Coords(q=q)
 
-def equ2hor(coords, ctime, site=sites.default_site, weather=None):
+def equ2hor(coords, ctime, site=None, weather=None, **kwargs):
+	"""FIXME: This function is only approximately the inverse of hor2equ.
+	The round-trip error is around 0.025 degree in el and 10 degrees in psi."""
+	if site is None: site = sites.default_site
 	site    = sites.expand_site(site)
 	weather = sites.expand_weather(weather, site)
 	qp = qpoint.QPoint(accuracy="high", fast_math=True, mean_aber=True,
 		rate_ref="always", **weather)
+	# Get the shape here and not after ascontiguousarray because that
+	# function will turn a 0d array into a 1d one
+	shape = coords.ra.shape
 	# I don't recover the original roll exactly here. It's off by about half a degree
-	ra, dec, psi, ctime = np.broadcast_arrays(coords.ra/DEG, coords.dec/DEG,
-		coords.psi/DEG, ctime)
-	shape = ra.shape
-	az, el, pa = qp.radec2azel(ra, dec, psi, lon=site.lon, lat=site.lat, ctime=ctime)
+	ra, dec, ctime, psi = [np.ascontiguousarray(arr) for arr in
+		np.broadcast_arrays(coords.ra/DEG, coords.dec/DEG, ctime, coords.psi)]
+	if ra.size == 0: return coords
+	for arr in [ra, dec, ctime, psi]:
+		arr.flags["WRITEABLE"] = False
+	az, el, pa = qp.radec2azel(ra.reshape(-1), dec.reshape(-1), psi.reshape(-1), lon=site.lon, lat=site.lat, ctime=ctime.reshape(-1))
 	# Recover correct shape
 	az, el, pa = [a.reshape(shape) for a in [az, el, pa]]
-	return Coords(az=az*DEG, el=el*DEG, roll=pa*DEG)
+	return Coords(az=az*DEG, el=el*DEG, roll=pa*DEG-np.pi)
+
+def hor2sidelobe(coords, bore, **kwargs):
+	"""Transform to a coordinate system where the center of the focal plane is at the north pole
+	and up is in the +eta direction (so it rotates with the telescope roll). This is useful
+	for sidelobe mapping when combined with on=Sun or similar."""
+	return euler(1,np.pi/2)/bore * coords
+
+def sidelobe2hor(coords, bore, **kwargs):
+	"""Transform from a coordinate system where the center of the focal plane is at the north pole
+	and up is in the +eta direction (so it rotates with the telescope roll) to normal horizontal
+	coordinates."""
+	return bore/euler(1,np.pi/2) * coords
+
+# Building blocks all supported transforms are built from
+class Atom:
+	def __init__(self, ibase, obase, cost=0):
+		self.ibase, self.obase, self.cost = ibase, obase, cost
+	def apply(self, coords, **kwargs): raise NotImplementedError
+	def __repr__(self): return "%s(%s,%s,cost=%g)" % (self.__class__.__name__, self.ibase, self.obase, self.cost)
+
+class AtomQuat(Atom):
+	def __init__(self, ibase, obase, q, cost=1):
+		Atom.__init__(self, ibase, obase, cost=cost)
+		self.q = q
+	def apply(self, coords, **kwargs):
+		return self.q * coords
+
+class AtomFun(Atom):
+	def __init__(self, ibase, obase, fun, cost=10):
+		Atom.__init__(self, ibase, obase, cost=cost)
+		self.fun = fun
+	def apply(self, coords, **kwargs):
+		return self.fun(coords, **kwargs)
+
+atoms = [
+	AtomQuat("equ","gal",  np.quaternion(-0.488947507617903,0.483210683963407,-0.196253758294796,-0.699229741968278)),
+	AtomQuat("gal","equ",1/np.quaternion(-0.488947507617903,0.483210683963407,-0.196253758294796,-0.699229741968278)),
+	AtomFun ("equ","hor",  equ2hor),
+	AtomFun ("hor","equ",  hor2equ),
+	AtomFun ("hor","sidelobe", hor2sidelobe),
+	AtomFun ("sidelobe","hor", sidelobe2hor),
+]
+
+def find_path(atoms, ibase, obase):
+	pbest = None
+	cbest = np.inf
+	for path in _find_path_helper(atoms, ibase, obase):
+		cost = sum([atom.cost for atom in path])
+		if cost < cbest: pbest, cbest = path, cost
+	if pbest is None: raise ValueError("No path for \"%s\" to \"%s\"" % (ibase, obase))
+	return pbest
+
+def _find_path_helper(atoms, ibase, obase, seen=[]):
+	# Naive implementation, but since we have so few transforms,
+	# it will still be fast
+	if obase == ibase:
+		yield ()
+	else:
+		seen = seen + [ibase]
+		for atom in atoms:
+			if atom.ibase != ibase: continue
+			if atom.obase in seen: continue
+			for path in _find_path_helper(atoms, atom.obase, obase, seen=seen):
+				yield (atom,)+path
 
 class Coords:
 	"""Class for representing both az,el,roll and quaternions.
@@ -109,26 +158,17 @@ class Coords:
 		self._lat  = maybearr(dec)
 		if el is not None: self._lat = asfarray(el)
 		self._psi  = maybearr(psi)
-		if roll is not None: self._psi = asfarray(roll)+np.pi
+		if roll is not None: self._psi = asfarray(roll)
 		self._q    = maybearr(q,  default_dtype=np.quaternion)
 		self._iq   = maybearr(iq, default_dtype=np.quaternion)
 		if self._psi is None and self._q is None:
-			# psi/roll missing. Default depends on if we're in az/el or ra/dec
-			# psi and roll correspond to different angle conventions, though
-			# I'm not sure about the details. Is this another consequence of
-			# left-handed coordinates?
 			self._psi = np.zeros_like(self._lon)
-			if az is not None: self._psi += np.pi
 	def __getattr__(self, name):
-		# az and roll are cheap to convert, so we do them on the fly to avoid
+		# az is cheap to convert, so we do them on the fly to avoid
 		# having to store them, and to keep things simple
 		if   name == "az":
 			val = -self.ra
 			def copy_back(): self.ra = val
-			return warray.WatchArray(val, copy_back)
-		elif name == "roll":
-			val = self.psi-np.pi
-			def copy_back(): self.roll = val
 			return warray.WatchArray(val, copy_back)
 		elif name == "theta":
 			val = np.pi/2-self.lat
@@ -137,18 +177,17 @@ class Coords:
 		# the others are handled via the cache system
 		elif name in ["ra", "lon", "phi"]: val = self._cache("_lon", self._calc_coord)
 		elif name in ["el", "dec", "lat"]: val = self._cache("_lat", self._calc_coord)
-		elif name == "psi": val = self._cache("_psi",  self._calc_coord)
+		elif name in ["psi", "roll"]:      val = self._cache("_psi",  self._calc_coord)
 		elif name == "q":   val = self._cache("_q",    self._calc_q)
 		elif name == "iq":  val = self._cache("_iq",   self._calc_iq)
 		else: raise AttributeError(name)
 		return warray.WatchArray(val, lambda: self._handle_update(name))
 	def __setattr__(self, name, val):
 		if   name == "az":    self._lon  = -asfarray(val)
-		elif name == "roll":  self._psi = asfarray(val)+np.pi
 		elif name == "theta": self._lat = np.pi/2-asfarray(val)
 		elif name in ["ra", "lon", "phi"]: self._lon = asfarray(val)
 		elif name in ["el", "dec", "lat"]: self._lat = asfarray(val)
-		elif name == "psi": self._psi = asfarray(val)
+		elif name in ["psi", "roll"]:      self._psi = asfarray(val)
 		elif name == "q":   self._q  = asfarray(val, np.quaternion)
 		elif name == "iq":  self._iq = asfarray(val, np.quaternion)
 		else:
@@ -184,6 +223,13 @@ class Coords:
 	def copy(self): return copy.deepcopy(self)
 	def _handle_update(self, name):
 		if name in ["az", "el", "roll", "ra", "dec", "psi", "lon", "lat"]:
+			# If we don't have all of _lon, _lat, _psi, then get them before we
+			# eradicate q
+			if self._lon is None or self._lat is None or self._psi is None:
+				lon, lat, psi = decompose_lonlat(self.q)
+				if self._lon is None: self._lon = lon
+				if self._lat is None: self._lat = lat
+				if self._psi is None: self._psi = psi
 			self._q = self._iq = None
 		else:
 			self._lon = self._lat = self._psi = None
@@ -233,25 +279,24 @@ def euler(axis, angle):
 	q     = quaternion.as_quat_array(q)
 	return q
 
+def rotation_phitheta(phi, theta, psi=0):
+	return euler(2, phi) * euler(1, theta) * euler(2, psi)
+
 def rotation_lonlat(lon, lat, psi=0):
 	return euler(2, lon) * euler(1, np.pi/2-lat) * euler(2, psi)
 
-def decompose_lonlat(q):
+def decompose_phitheta(q):
 	q = quaternion.as_float_array(q)
 	a, b, c, d = [q[...,i] for i in range(4)]
 	ab, cd, ac, bd = a*b, c*d, a*c, b*d
 	psi   = np.arctan2(ab+cd, ac-bd)
-	lon   = np.arctan2(cd-ab, ac+bd)
-	lat   = np.pi/2 - 2*np.arctan2((b**2+c**2)**0.5, (a**2+d**2)**0.5)
-	return lon, lat, psi
+	phi   = np.arctan2(cd-ab, ac+bd)
+	theta = 2*np.arctan2((b**2+c**2)**0.5, (a**2+d**2)**0.5)
+	return phi, theta, psi
 
-#    const double cos_theta = a*a - b*b - c*c + d*d;
-#    const double half_sin_theta = 0.5 * sqrt(1 - cos_theta*cos_theta);
-#
-#    coords[0] = ATAN2(c*d - a*b, c*a + d*b);
-#    coords[1] = ASIN(cos_theta);   // Yes, cos(theta) = sin(lat).
-#    coords[2] = (a*c - b*d) / half_sin_theta;
-#    coords[3] = (c*d + a*b) / half_sin_theta;
+def decompose_lonlat(q):
+	lon, theta, psi = decompose_phitheta(q)
+	return lon, np.pi/2-theta, psi
 
 def rotation_xieta(xi, eta, gamma=0):
 	lon = np.arctan2(-xi, -eta)
@@ -259,7 +304,16 @@ def rotation_xieta(xi, eta, gamma=0):
 	psi = gamma-lon
 	return rotation_lonlat(lon, lat, psi)
 
-def expand_sys(sys, ctime=None, site=None, weather=None):
+def decompose_xieta(q):
+	lon, lat, psi = decompose_lonlat(q)
+	gamma = psi+lon
+	# sin(lon) = -xi/r, cos(lon) = -eta/r, r = (xi**2+eta**2)**0.5
+	r     = np.cos(lat)
+	xi    = -np.sin(lon)*r
+	eta   = -np.cos(lon)*r
+	return xi, eta, gamma
+
+def expand_sys(sys, ctime=None, site=None, weather=None, bore=None):
 	# Parse if necessary
 	if isinstance(sys, str):
 		sys = parse_sys(sys)
@@ -285,7 +339,7 @@ def expand_sys(sys, ctime=None, site=None, weather=None):
 				coords = Coords(ra=pos[0], dec=pos[1])
 			csys = sys[key]["sys"]
 		# Transform it to our base system
-		coords = transform(csys, base, coords, ctime=ctime, site=site, weather=weather)
+		coords = transform(csys, base, coords, ctime=ctime, site=site, weather=weather, bore=bore)
 		# Set psi angle to zero, since we just want points at this stage
 		coords.psi = 0
 		qs[key] = coords.q
@@ -315,7 +369,7 @@ def parse_sys(desc):
 		"on":{"sys":None,  "pos":[0,0]},
 		"to":{"sys":None,  "pos":[0,0]},
 	}
-	toks = desc.split(",")
+	toks = utils.split_outside(desc, ",")
 	for i, tok in enumerate(toks):
 		subs = tok.split("=")
 		if i == 0 and len(subs) == 1:
@@ -350,7 +404,7 @@ def _parse_sys_pos(pdesc, default_sys="equ", default_pos=[0,0]):
 		subs = pos[1:-1].split(",")
 		if len(subs) != 2:
 			raise ValueError("Coordinates must be [ra,dec] in degrees, but got '%s'" % str(pos))
-		pos = [float(w)*utils.degree for w in pos.split(",")]
+		pos = [float(sub)*utils.degree for sub in subs]
 	else:
 		# just keep it as a string, that represents the object's name.
 		# This will be evaluated in eval_sys
@@ -364,3 +418,5 @@ def asfarray(arr, default_dtype=np.float64):
 		return arr
 	else:
 		return arr.astype(default_dtype)
+
+def el_in_range(el): return el >= -np.pi/2 and el <= np.pi/2

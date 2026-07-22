@@ -213,7 +213,7 @@ def get_lens_result(res=1.,lmax=400,dtype=np.float64,seed=1):
     ps_lensinput = np.zeros((4,4,ps_cmb.shape[-1]))
     ps_lensinput[0,0] = ps_lens
     ps_lensinput[1:,1:] = ps_cmb
-    lensed = lensing.rand_map(shape, wcs, ps_lensinput, lmax=lmax, maplmax=None, dtype=dtype, seed=seed, phi_seed=None, spin=[0,2], output="lu", geodesic=True, verbose=False, delta_theta=None)
+    lensed = lensing.rand_map(shape, wcs, ps_lensinput, lmax=lmax, dtype=dtype, seed=seed, phi_seed=None, spin=[0,2], output="lu", geodesic=True, verbose=False, delta_theta=None)
     return lensed
 
 # Helper functions for adjointness tests
@@ -274,6 +274,30 @@ def alm_bash(fun, shape, wcs, ncomp, lmax, dtype=np.float64):
 
 class PixelTests(unittest.TestCase):
 
+    def test_slice(self):
+
+        # Single map
+        shape,wcs = enmap.geometry(shape=(301,301),res=0.5*u.arcmin,pos=(0,0))
+        a = enmap.enmap(np.ones(shape),wcs)
+        sel = np.s_[1:-50,3:-41]
+        aslice = a[sel]
+        oshape,owcs = enmap.slice_geometry(shape,wcs,sel)
+        assert oshape==aslice.shape
+        assert wcsutils.equal(owcs,aslice.wcs)
+
+        # Multi-component map
+        shape,wcs = enmap.geometry(shape=(6,301,301),res=0.5*u.arcmin,pos=(0,0))
+        a = enmap.enmap(np.ones(shape),wcs)
+
+        sel = np.s_[1:3,1:-50,3:-41]
+        aslice = a[sel]
+        oshape,owcs = enmap.slice_geometry(shape,wcs,sel)
+        # assert oshape==aslice.shape # Does not work due to a bug in slice_geometry
+        assert wcsutils.equal(owcs,aslice.wcs)
+
+        
+        
+        
 
     def test_almxfl(self):
         import healpy as hp
@@ -845,93 +869,100 @@ class PixelTests(unittest.TestCase):
 
     def test_alm2map_2d_roundtrip(self):
         # Test curvedsky's alm2map/map2alm.
-        lmax = 30
-        ainfo = curvedsky.alm_info(lmax)
+        for use_oalm in [False, True]:
+            lmax = 30
+            ainfo = curvedsky.alm_info(lmax)
 
-        nrings = lmax + 2
-        nphi = 2 * lmax + 1
-        shape, wcs = enmap.fullsky_geometry(shape=(nrings,nphi))
+            nrings = lmax + 2
+            nphi = 2 * lmax + 1
+            shape, wcs = enmap.fullsky_geometry(shape=(nrings,nphi))
 
-        # Test different input shapes and dtypes.
-        # Case 1a: 1d double precision.
-        spin = 0
-        alm = np.zeros((ainfo.nelem), dtype=np.complex128)
-        i   = ainfo.lm2ind(lmax,lmax)
-        alm[i] = 1. + 1.j
+            # Test different input shapes and dtypes.
+            # Case 1a: 1d double precision.
+            spin = 0
+            alm = np.zeros((ainfo.nelem), dtype=np.complex128)
+            i   = ainfo.lm2ind(lmax,lmax)
+            alm[i] = 1. + 1.j
 
-        omap = enmap.zeros(shape, wcs, np.float64)
-        curvedsky.alm2map(alm, omap, spin=spin)
-        alm_out = curvedsky.map2alm(omap, spin=spin, ainfo=ainfo)
+            omap = enmap.zeros(shape, wcs, np.float64)
+            curvedsky.alm2map(alm, omap, spin=spin)
+            alm_out = np.zeros_like(alm) if use_oalm else None
+            alm_out = curvedsky.map2alm(omap, alm=alm_out, spin=spin, ainfo=ainfo)
 
-        np.testing.assert_array_almost_equal(alm_out, alm)
+            np.testing.assert_array_almost_equal(alm_out, alm)
 
-        # Case 1b: 1d single precision.
-        spin = 0
-        alm = np.zeros((ainfo.nelem), dtype=np.complex64)
-        alm[i] = 1. + 1.j
+            # Case 1b: 1d single precision.
+            spin = 0
+            alm = np.zeros((ainfo.nelem), dtype=np.complex64)
+            alm[i] = 1. + 1.j
 
-        omap = enmap.zeros(shape, wcs, np.float32)
-        curvedsky.alm2map(alm, omap, spin=spin)
-        alm_out = curvedsky.map2alm(omap, spin=spin, ainfo=ainfo)
-        np.testing.assert_array_almost_equal(alm_out, alm)
+            omap = enmap.zeros(shape, wcs, np.float32)
+            curvedsky.alm2map(alm, omap, spin=spin)
+            alm_out = np.zeros_like(alm) if use_oalm else None
+            alm_out = curvedsky.map2alm(omap, alm=alm_out, spin=spin, ainfo=ainfo)
+            np.testing.assert_array_almost_equal(alm_out, alm)
 
-        # Case 2a: 2d double precision.
-        spin = 1
-        nspin = 2
-        alm = np.zeros((nspin, ainfo.nelem), dtype=np.complex128)
-        alm[0,i] = 1. + 1.j
-        alm[1,i] = 2. - 2.j
+            # Case 2a: 2d double precision.
+            spin = 1
+            nspin = 2
+            alm = np.zeros((nspin, ainfo.nelem), dtype=np.complex128)
+            alm[0,i] = 1. + 1.j
+            alm[1,i] = 2. - 2.j
 
-        omap = enmap.zeros((nspin,)+shape, wcs, np.float64)
-        curvedsky.alm2map(alm, omap, spin=spin)
-        alm_out = curvedsky.map2alm(omap, spin=spin, ainfo=ainfo)
-        np.testing.assert_array_almost_equal(alm_out, alm)
+            omap = enmap.zeros((nspin,)+shape, wcs, np.float64)
+            curvedsky.alm2map(alm, omap, spin=spin)
+            alm_out = np.zeros_like(alm) if use_oalm else None
+            alm_out = curvedsky.map2alm(omap, alm=alm_out, spin=spin, ainfo=ainfo)
+            np.testing.assert_array_almost_equal(alm_out, alm)
 
-        # Case 2b: 2d single precision.
-        spin = 1
-        nspin = 2
-        alm = np.zeros((nspin, ainfo.nelem), dtype=np.complex64)
-        alm[0,i] = 1. + 1.j
-        alm[1,i] = 2. - 2.j
+            # Case 2b: 2d single precision.
+            spin = 1
+            nspin = 2
+            alm = np.zeros((nspin, ainfo.nelem), dtype=np.complex64)
+            alm[0,i] = 1. + 1.j
+            alm[1,i] = 2. - 2.j
 
-        omap = enmap.zeros((nspin,)+shape, wcs, np.float32)
-        curvedsky.alm2map(alm, omap, spin=spin)
-        alm_out = curvedsky.map2alm(omap, spin=spin, ainfo=ainfo)
-        np.testing.assert_array_almost_equal(alm_out, alm)
+            omap = enmap.zeros((nspin,)+shape, wcs, np.float32)
+            curvedsky.alm2map(alm, omap, spin=spin)
+            alm_out = np.zeros_like(alm) if use_oalm else None
+            alm_out = curvedsky.map2alm(omap, alm=alm_out, spin=spin, ainfo=ainfo)
+            np.testing.assert_array_almost_equal(alm_out, alm)
 
-        # Case 3a: 3d double precision.
-        spin = 1
-        nspin = 2
-        ntrans = 3
-        alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=np.complex128)
-        alm[0,0,i] = 1. + 1.j
-        alm[0,1,i] = 2. - 2.j
-        alm[1,0,i] = 3. + 3.j
-        alm[1,1,i] = 4. - 4.j
-        alm[2,0,i] = 5. + 5.j
-        alm[2,1,i] = 6. - 6.j
+            # Case 3a: 3d double precision.
+            spin = 1
+            nspin = 2
+            ntrans = 3
+            alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=np.complex128)
+            alm[0,0,i] = 1. + 1.j
+            alm[0,1,i] = 2. - 2.j
+            alm[1,0,i] = 3. + 3.j
+            alm[1,1,i] = 4. - 4.j
+            alm[2,0,i] = 5. + 5.j
+            alm[2,1,i] = 6. - 6.j
 
-        omap = enmap.zeros((ntrans,nspin)+shape, wcs, np.float64)
-        curvedsky.alm2map(alm, omap, spin=spin)
-        alm_out = curvedsky.map2alm(omap, spin=spin, ainfo=ainfo)
-        np.testing.assert_array_almost_equal(alm_out, alm)
+            omap = enmap.zeros((ntrans,nspin)+shape, wcs, np.float64)
+            curvedsky.alm2map(alm, omap, spin=spin)
+            alm_out = np.zeros_like(alm) if use_oalm else None
+            alm_out = curvedsky.map2alm(omap, alm=alm_out, spin=spin, ainfo=ainfo)
+            np.testing.assert_array_almost_equal(alm_out, alm)
 
-        # Case 3b: 3d single precision.
-        spin = 1
-        nspin = 2
-        ntrans = 3
-        alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=np.complex64)
-        alm[0,0,i] = 1. + 1.j
-        alm[0,1,i] = 2. - 2.j
-        alm[1,0,i] = 3. + 3.j
-        alm[1,1,i] = 4. - 4.j
-        alm[2,0,i] = 5. + 5.j
-        alm[2,1,i] = 6. - 6.j
+            # Case 3b: 3d single precision.
+            spin = 1
+            nspin = 2
+            ntrans = 3
+            alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=np.complex64)
+            alm[0,0,i] = 1. + 1.j
+            alm[0,1,i] = 2. - 2.j
+            alm[1,0,i] = 3. + 3.j
+            alm[1,1,i] = 4. - 4.j
+            alm[2,0,i] = 5. + 5.j
+            alm[2,1,i] = 6. - 6.j
 
-        omap = enmap.zeros((ntrans,nspin)+shape, wcs, np.float32)
-        curvedsky.alm2map(alm, omap, spin=spin)
-        alm_out = curvedsky.map2alm(omap, spin=spin, ainfo=ainfo)
-        np.testing.assert_array_almost_equal(alm_out, alm)
+            omap = enmap.zeros((ntrans,nspin)+shape, wcs, np.float32)
+            curvedsky.alm2map(alm, omap, spin=spin)
+            alm_out = np.zeros_like(alm) if use_oalm else None
+            alm_out = curvedsky.map2alm(omap, alm=alm_out, spin=spin, ainfo=ainfo)
+            np.testing.assert_array_almost_equal(alm_out, alm)
 
     def test_alm2map_healpix_roundtrip(self):
         # Test curvedsky's alm2map/map2alm.
@@ -945,49 +976,74 @@ class PixelTests(unittest.TestCase):
         # in healpy and the 0 default in pixell
         niter = 7
 
-        for dtype in [np.float64, np.float32]:
-            ctype = utils.complex_dtype(dtype)
+        for use_oalm in [False, True]:
+            for dtype in [np.float64, np.float32]:
+                ctype = utils.complex_dtype(dtype)
 
-            # Case 1: 1d
-            spin = 0
-            alm = np.zeros((ainfo.nelem), dtype=ctype)
-            i   = ainfo.lm2ind(lmax,lmax)
-            alm[i] = 1. + 1.j
+                # Case 1: 1d
+                spin = 0
+                alm = np.zeros((ainfo.nelem), dtype=ctype)
+                i   = ainfo.lm2ind(lmax,lmax)
+                alm[i] = 1. + 1.j
 
-            omap = np.zeros(npix, dtype)
-            curvedsky.alm2map_healpix(alm, omap, spin=spin)
-            alm_out = curvedsky.map2alm_healpix(omap, spin=spin, ainfo=ainfo, niter=niter)
+                omap = np.zeros(npix, dtype)
+                curvedsky.alm2map_healpix(alm, omap, spin=spin)
+                alm_out = np.zeros_like(alm) if use_oalm else None
 
-            np.testing.assert_array_almost_equal(alm_out, alm)
+                alm_out = curvedsky.map2alm_healpix(omap, alm=alm_out, spin=spin, ainfo=ainfo, niter=niter)
 
-            # Case 2: 2d
-            spin = 1
-            nspin = 2
-            alm = np.zeros((nspin, ainfo.nelem), dtype=ctype)
-            alm[0,i] = 1. + 1.j
-            alm[1,i] = 2. - 2.j
+                np.testing.assert_array_almost_equal(alm_out, alm)
 
-            omap = np.zeros((nspin,npix), dtype)
-            curvedsky.alm2map_healpix(alm, omap, spin=spin)
-            alm_out = curvedsky.map2alm_healpix(omap, spin=spin, ainfo=ainfo, niter=niter)
-            np.testing.assert_array_almost_equal(alm_out, alm)
+                # Case 2: 2d
+                spin = 1
+                nspin = 2
+                alm = np.zeros((nspin, ainfo.nelem), dtype=ctype)
+                alm[0,i] = 1. + 1.j
+                alm[1,i] = 2. - 2.j
 
-            # Case 3: 3d
-            spin = 1
-            nspin = 2
-            ntrans = 3
-            alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=ctype)
-            alm[0,0,i] = 1. + 1.j
-            alm[0,1,i] = 2. - 2.j
-            alm[1,0,i] = 3. + 3.j
-            alm[1,1,i] = 4. - 4.j
-            alm[2,0,i] = 5. + 5.j
-            alm[2,1,i] = 6. - 6.j
+                omap = np.zeros((nspin,npix), dtype)
+                curvedsky.alm2map_healpix(alm, omap, spin=spin)
+                alm_out = np.zeros_like(alm) if use_oalm else None
+                alm_out = curvedsky.map2alm_healpix(omap, alm=alm_out, spin=spin, ainfo=ainfo, niter=niter)
+                np.testing.assert_array_almost_equal(alm_out, alm)
 
-            omap = np.zeros((ntrans,nspin,npix), dtype)
-            curvedsky.alm2map_healpix(alm, omap, spin=spin)
-            alm_out = curvedsky.map2alm_healpix(omap, spin=spin, ainfo=ainfo, niter=niter)
-            np.testing.assert_array_almost_equal(alm_out, alm)
+                # Case 3: 3d
+                spin = 1
+                nspin = 2
+                ntrans = 3
+                alm = np.zeros((ntrans, nspin, ainfo.nelem), dtype=ctype)
+                alm[0,0,i] = 1. + 1.j
+                alm[0,1,i] = 2. - 2.j
+                alm[1,0,i] = 3. + 3.j
+                alm[1,1,i] = 4. - 4.j
+                alm[2,0,i] = 5. + 5.j
+                alm[2,1,i] = 6. - 6.j
+
+                omap = np.zeros((ntrans,nspin,npix), dtype)
+                curvedsky.alm2map_healpix(alm, omap, spin=spin)
+                alm_out = np.zeros_like(alm) if use_oalm else None
+                alm_out = curvedsky.map2alm_healpix(omap, alm=alm_out, spin=spin, ainfo=ainfo, niter=niter)
+                np.testing.assert_array_almost_equal(alm_out, alm)
+
+    def test_alm_conversion(self):
+        # Set up single-precision alm
+        lmax  = 30; spin = 0; nrings = lmax+2; nphi=2*lmax+1
+        ainfo = curvedsky.alm_info(lmax)
+        alm   = np.zeros((ainfo.nelem), dtype=np.complex64)
+        i     = ainfo.lm2ind(lmax,lmax)
+        alm[i] = 1. + 1.j
+        # Set up double-precision map
+        shape, wcs = enmap.fullsky_geometry(shape=(nrings,nphi))
+        map = enmap.zeros(shape, wcs, np.float64)
+        # Check that the input alm is expanded as necessary
+        curvedsky.alm2map(alm, map, spin=spin)
+        # Check that we get an exception when the output alm has the
+        # wrong type. It's always the map data type that determines
+        # the transform type in curvedsky, though maybe that should
+        # change and instead be determined by the input type. That
+        # would requrie even more adjointness logic though.
+        with self.assertRaises(ValueError):
+            curvedsky.map2alm(map, alm, spin=spin)
 
     # MM: Re-enabled 09/17/2024
     # --Disabled for now because the version of ducc currently on pypi

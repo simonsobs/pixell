@@ -5,10 +5,29 @@ cumbersome to get at otherwise"""
 import sqlite3, pprint, contextlib, tempfile, os
 
 class SQL:
-	def __init__(self, fname=":memory:"):
+	def __init__(self, fname=":memory:", mode="ro"):
+		"""Open an sqlite database.
+		Arguments:
+		* fname: Either a path to an sqlite file, or a file:-url, or :memory:
+		  to create a memory-only database. If non-memory-only, the database
+		  will be readable and writable. For the url-format, the format specifies
+		  the mode. For a normal file name, the mode is controlled by the mode
+		  argument.
+		* mode:
+		  * ro  = read-only (default)
+		  * rw  = read+write, but file must already exist
+		  * rwc = read+write, create file if it doesn't exist
+		"""
 		# Is it a file name?
 		if isinstance(fname, str):
-			self.conn = sqlite3.connect(fname)
+			try:
+				if fname == ":memory:" or fname.startswith("file:") or mode is None:
+					self.conn = sqlite3.connect(fname)
+				else:
+					self.conn = sqlite3.connect("file:%s?mode=%s" % (fname, mode), uri=True)
+			except sqlite3.OperationalError as e:
+				# Make sqlite3 exception more informative
+				raise sqlite3.OperationalError(str(e) + " " + fname)
 			self.fname= fname
 			self.own  = True
 		# Is it an SQL or similar?
@@ -86,6 +105,7 @@ def format_result(result, limit=None):
 	return "\n".join(lines)
 
 def get_fname(conn):
+	if isinstance(conn, str): return conn
 	row = next(conn.execute("pragma database_list"))
 	return row[2]
 
@@ -115,7 +135,7 @@ def attach(conn_base, conn_other, name="other", mode="r"):
 			conn_base.execute("detach database %s" % name)
 	else:
 		with tempfile.NamedTemporaryFile(suffix=".sqlite") as tfile:
-			with SQL(tfile.name) as tmp_db: # this ensures it's auto-closed
+			with SQL(tfile.name, mode="rwc") as tmp_db: # this ensures it's auto-closed
 				if "r" in mode: backup(conn_other, tmp_db)
 				conn_base.execute("attach database '%s' as %s" % (tfile.name, name))
 				try:
@@ -167,4 +187,16 @@ keywords = set([
 	"rows", "savepoint", "select", "set", "table", "temp", "temporary", "then", "ties",
 	"to", "transaction", "trigger", "unbounded", "union", "unique", "update", "using",
 	"vacuum", "values", "view", "virtual", "when", "where", "window", "with", "without",
+])
+
+functions = set(["abs", "changes", "char", "coalesce", "concat", "concat_ws", "format", 
+	"glob", "hex", "if", "ifnull", "iif", "instr", "last_insert_rowid", "length", 
+	"like", "like", "likelihood", "likely", "load_extension", "load_extension", 
+	"lower", "ltrim", "ltrim", "max", "min", "nullif", "octet_length", "printf", 
+	"quote", "random", "randomblob", "replace", "round", "round", "rtrim", 
+	"rtrim", "sign", "soundex", "sqlite_compileoption_get", "sqlite_compileoption_used", 
+	"sqlite_offset", "sqlite_source_id", "sqlite_version", "substr", "substr", 
+	"substring", "substring", "total_changes", "trim", "trim", "typeof", "unhex", 
+	"unhex", "unicode", "unistr", "unistr_quote", "unlikely", "upper", 
+	"zeroblob",
 ])

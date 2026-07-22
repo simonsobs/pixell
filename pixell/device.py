@@ -6,7 +6,9 @@ class Device:
 		self.pools = None # Memory pools
 		self.np    = None # numpy or equivalent
 		self.lib   = bunch.Bunch() # place to store library functions
-	def get(self, arr): raise NotImplementedError # copy device array to cpu
+	def get(self, arr):
+		"""Return arr on the CPU, copying it from the device if necessary"""
+		raise NotImplementedError # copy device array to cpu
 	def ptr(self, arr): return getptr(arr)
 	def synchronize(self): raise NotImplementedError
 	def garbage_collect(self): raise NotImplementedError
@@ -17,15 +19,19 @@ class Device:
 		return time.time()
 
 class DeviceCpu(Device):
-	def __init__(self, align=None, alloc_factory=None, verbose=False):
+	def __init__(self, align=None, alloc_factory=None, logger=None):
 		super().__init__()
 		if align is None: align = 16
 		if alloc_factory is None:
 			def alloc_factory(name):
-				return ArrayPoolCpu(AllocAligned(AllocCpu(), align=align), name=name, verbose=verbose)
+				return ArrayPoolCpu(AllocAligned(AllocCpu(), align=align), name=name, logger=logger)
 		self.pools = ArrayMultipool(alloc_factory)
 		self.np    = np
-	def get(self, arr): return arr.copy()
+	def get(self, arr):
+		# Doing it this way lets us call get generically, even when it might not be
+		# an array
+		try: return arr.copy()
+		except AttributeError: return arr
 	def synchronize(self): pass
 	def garbage_collect(self):
 		import gc
@@ -44,18 +50,22 @@ class DeviceCpu(Device):
 		ato[:] = afrom
 
 class DeviceGpu(Device):
-	def __init__(self, align=None, alloc_factory=None, verbose=False):
+	def __init__(self, align=None, alloc_factory=None, logger=None):
 		super().__init__()
 		if align is None: align = 512
 		import cupy
 		if alloc_factory is None:
 			def alloc_factory(name):
-				return ArrayPoolGpu(AllocAligned(AllocGpu(), align=align), name=name, verbose=verbose)
+				return ArrayPoolGpu(AllocAligned(AllocGpu(), align=align), name=name, logger=logger)
 		self.pools = ArrayMultipool(alloc_factory)
 		self.np    = cupy
 		self.heap  = cupy.get_default_memory_pool()
 		self.nvhandle = None
-	def get(self, arr): return arr.get()
+	def get(self, arr):
+		# Doing it this way lets us call get generically, even when it might not be
+		# an array on the gpu
+		try: return arr.get()
+		except AttributeError: return arr
 	def synchronize(self):
 		import cupy
 		cupy.cuda.runtime.deviceSynchronize()
@@ -124,11 +134,12 @@ class AllocAligned:
 		return buf[off:off+n]
 
 class Mempool:
-	def __init__(self, aligned_alloc, name="[unnamed]", verbose=False):
+	def __init__(self, aligned_alloc, name="[unnamed]", logger=None):
 		self.allocator = aligned_alloc
 		self.name      = name
-		self.verbose   = verbose
-		self.free()
+		self.logger    = logger
+		self.arenas    = []
+		self.used      = 0
 	def alloc(self, n):
 		n       = int(n)
 		effsize = round_up(n, self.allocator.align)
@@ -137,20 +148,29 @@ class Mempool:
 		#    This is only active when len(arenas) == 1
 		# 2. append new arenas
 		if len(self.arenas) != 1 or self.arenas[0].size < self.used + n:
-			if self.verbose:
-				print("Growing pool %s to size %d by %d. %s" % (self.name, self.used + n, n, str([a.size for a in self.arenas])))
-			# We're in mode 1
-			self.arenas.append(self.allocator.alloc(n))
+			if len(self.arenas) == 0:
+				msg = "init  mode 1   mempool {:s} to {:,d}".format(self.name, n)
+			elif len(self.arenas) == 1:
+				msg = "grow  mode 1→2 mempool {:s} by {:,d} (size {:,d}, used {:,d})".format(self.name, n, self.arenas[0].size, self.used)
+			else:
+				msg = "grow  mode 2   mempool {:s} by {:,d} (arenas {:s})".format(self.name, n, str([len(a) for a in self.arenas]))
+			# Mode 2
+			if self.logger: self.logger(msg)
+			try:
+				self.arenas.append(self.allocator.alloc(n))
+			except MemoryError as e:
+				raise MemoryError("Error: " + msg)
 			buf = self.arenas[-1][0:n]
 			self.used += effsize
 		else:
-			# We're in mode 2. Hand out some more memory
+			# We're in mode 1. Hand out some more memory
 			buf        = self.arenas[-1][self.used:self.used+n]
 			self.used += effsize
 		return buf
 	@property
 	def capacity(self): return self.arenas[0].size if len(self.arenas) == 1 else self.used
 	def free(self):
+		if self.logger: self.logger("free mempool {:s}".format(self.name))
 		self.arenas = []
 		self.used   = 0
 	def reset(self):
@@ -159,9 +179,13 @@ class Mempool:
 		as long as they don't exceed its capacity. If the capacity is exceeded, then
 		it will start requesting new memory again."""
 		if len(self.arenas) != 1:
-			# Go to from mode 1 to mode 2
+			# Go to from mode 2 to mode 1. Since len(arenas) != 1, .capacity
+			# wont't be changed by setting it to empty, as it would be if len was 1
 			self.arenas = []
-			self.arenas = [self.allocator.alloc(self.capacity)]
+			if self.capacity > 0:
+				if self.logger:
+					self.logger("reset mode 2→1 mempool {:s} to size {:,d}".format(self.name, self.capacity))
+				self.arenas = [self.allocator.alloc(self.capacity)]
 		self.used = 0
 		return self
 	def reserve(self, n):
@@ -175,14 +199,17 @@ class Mempool:
 		return "%s(name='%s', capacity=%.3fG, used=%.3fG, align=%d, arenas=%s)" % (self.__class__.__name__, self.name, self.capacity/1024**3, self.used/1024**3, self.allocator.align, arenas)
 	def swap(self, other):
 		"""Swap internal buffers with other. Useful for avoiding
-		copies in some cases. The name and verbose status is not swapped"""
+		copies in some cases. The name and logger are not swapped"""
 		self.arenas,    other.arenas    = other.arenas,    self.arenas
 		self.used,      other.used      = other.used,      self.used
 		self.allocator, other.allocator = other.allocator, self.allocator
+		# self.name, other.name = other.name, self.name
+	def proxy(self, name):
+		return ArrayPoolProxy(self, name=name)
 
 class ArrayPoolCpu(Mempool):
-	def array(self, arr, reset=True, verbose=False):
-		self.verbose = verbose
+	def array(self, arr, reset=True, logger=None):
+		self.logger = logger
 		arr  = np.asarray(arr)
 		oarr = self.empty(arr.shape, dtype=arr.dtype, reset=True)
 		oarr[:] = arr
@@ -209,10 +236,10 @@ class ArrayPoolCpu(Mempool):
 		finally: pass
 
 class ArrayPoolGpu(Mempool):
-	def array(self, arr, reset=True, verbose=False):
+	def array(self, arr, reset=True, logger=None):
 		# Make sure the array is contiguous, which our memcpy needs
 		import cupy
-		self.verbose = verbose
+		self.logger = logger
 		ap   = cupy if isinstance(arr, cupy.ndarray) else np
 		arr  = ap.ascontiguousarray(arr)
 		oarr = self.empty(arr.shape, dtype=arr.dtype, reset=True)
@@ -236,19 +263,39 @@ class ArrayPoolGpu(Mempool):
 		if reset: self.reset()
 		old_allocator = cupy.cuda.get_allocator()
 		try:
-			# This causes a crash. I think it happens because
-			# reset() can end up freeing the memory we handed
-			# out here. In the old design, things were done a bit
-			# differently. The memory needed was pre-allocated
-			# and parseled out. However, if a later to was bigger than
-			# an earlier, then memory would still be reallocated, so I
-			# don't see why that worked.
-			# TODO: Make a small test case that demonstrates the problem
-			# without all this abstraction.
 			cupy.cuda.set_allocator(self.alloc_raw)
 			yield
 		finally:
 			cupy.cuda.set_allocator(old_allocator)
+
+class ArrayPoolProxy(Mempool):
+	def __init__(self, pool, name="[unnamed]"):
+		self.name = name
+		self.pool = pool
+		self.arenas = []
+		self.used = 0
+	@property
+	def capacity(self): return 0
+	@property
+	def logger(self): return self.pool.logger
+	def alloc(self, n): return self.pool.alloc(n)
+	# Don't free because another pool manages this
+	def free(self): pass
+	def reset(self): self.pool.reset()
+	def reserve(self, n): self.poo.reserve(n)
+	def __repr__(self):
+		return "%s(name='%s', pool='%s')" % (self.__class__.__name__, self.name, self.pool.name)
+	def swap(self, other): raise NotImplementedError
+	def array(self, arr, reset=True, logger=None): return self.pool.array(arr, reset=reset, logger=logger)
+	def empty(self, shape, dtype=np.float32, reset=True): return self.pool.empty(shape, dtype=dtype, reset=reset)
+	def full(self, shape, val, dtype=np.float32, reset=True): return self.pool.full(shape, val, dtype=dtype, reset=reset)
+	def zeros(self, shape, dtype=np.float32, reset=True): return self.pool.zeros(shape, dtype=dtype, reset=reset)
+	def ones(self, shape, dtype=np.float32, reset=True): return self.pool.ones(shape, dtype=dtype, reset=reset)
+	def alloc_raw(self, n): return self.pool.alloc_raw(n)
+	@contextlib.contextmanager
+	def as_allocator(self, reset=True):
+		with self.pool.as_allocator(reset=reset):
+			yield
 
 class ArrayMultipool:
 	def __init__(self, factory):
