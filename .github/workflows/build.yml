@@ -24,7 +24,7 @@ jobs:
           python -m pip install --no-build-isolation --editable '.[test]'
           pytest --cov --cov-report html --cov-report xml --cov-report annotate -s
 
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
           verbose: true # optional (default = false)
@@ -84,7 +84,7 @@ jobs:
           CIBW_ENVIRONMENT: "PIP_ONLY_BINARY=h5py"
           CIBW_MANYLINUX_X86_64_IMAGE: quay.io/pypa/manylinux_2_28_x86_64
           
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
           path: ./wheelhouse/*.whl
@@ -111,7 +111,7 @@ jobs:
           CIBW_TEST_EXTRAS: "test"
           CIBW_ENVIRONMENT: "PIP_ONLY_BINARY=h5py"
           
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
           path: ./wheelhouse/*.whl
@@ -138,7 +138,7 @@ jobs:
           python -m pip install build
           python -m build . --sdist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cibw-sdist
           path: dist/*.tar.gz
@@ -151,7 +151,7 @@ jobs:
     # alternatively, to publish when a GitHub Release is created, use the following rule:
     # if: github.event_name == 'release' && github.event.action == 'published'
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: cibw-*
           path: dist
