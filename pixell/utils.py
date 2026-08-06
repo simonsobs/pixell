@@ -2877,7 +2877,8 @@ def build_conditional(ps, inds, axes=[0,1]):
 	cov    = partial_expand(Ciuui, ps.shape, axes)
 	return A, cov
 
-def nint(a, mul=1):
+def nint(a): return round(a)
+def round(a, mul=1):
 	"""Return a rounded to the nearest integer, as an integer."""
 	if mul==1: return np.round(a).astype(int)
 	else:      return np.round(a/a).astype(int)*mul
