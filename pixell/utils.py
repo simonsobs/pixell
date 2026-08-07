@@ -962,7 +962,7 @@ def find_period_exact(d, guess):
 	period,phase = scipy.optimize.fmin_powell(chisq, [guess,guess], xtol=1, disp=False)
 	return period, phase+off, chisq([period,phase])/np.var(d**2)
 
-def find_sweeps(az, tol=0.2):
+def find_sweeps(az, tol=0.2, return_dir=False):
 	"""Given an array "az" that sweeps up and down between approximately
 	constant minimum and maximum values, returns an array sweeps[:,{i1,i2}],
 	which gives the start and end index of each such sweep. For example, if
@@ -982,7 +982,12 @@ def find_sweeps(az, tol=0.2):
 	turns      = np.array(scipy.ndimage.maximum_position(aabs, labels, np.arange(1,nlabel+1)))[:,0]
 	turns      = np.unique(np.concatenate([[0],turns,[len(az)]]))
 	sweeps     = np.array([turns[:-1],turns[1:]]).T
-	return sweeps
+	if return_dir:
+		# dir is 0 if first sweep has increasing az, otherwise 1
+		dir = az[sweeps[0,1]] < az[sweeps[0,0]] if len(sweeps) > 0 else 0
+		return sweeps, dir
+	else:
+		return sweeps
 
 def equal_split(weights, nbin):
 	"""Split weights into nbin bins such that the total
@@ -4047,3 +4052,21 @@ def firstin(ref, alts):
 
 def getrec(struct_arr, potential_colnames):
 	return struct_arr[firstin(struct_arr.dtype.names, potential_colnames)]
+
+class CommaArgparse:
+	def __init__(self):
+		import argparse
+		self.parser = argparse.ArgumentParser()
+	def add_argument(self, *args, **kwargs):
+		self.parser.add_argument(*args, **kwargs)
+	@staticmethod
+	def split_word(word):
+		for tok in word.split(","):
+			if "=" in tok: yield "--" + tok
+			else: yield tok
+	def parse_args(self, word):
+		argv = []
+		for tok in split_outside(word, ",", '"', '"'):
+			if "=" in tok: argv.append("--"+tok)
+			else: argv.append(tok)
+		return self.parser.parse_args(argv)

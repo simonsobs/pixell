@@ -208,10 +208,10 @@ class Mempool:
 		return ArrayPoolProxy(self, name=name)
 
 class ArrayPoolCpu(Mempool):
-	def array(self, arr, reset=True, logger=None):
+	def array(self, arr, reset=True, dtype=None, logger=None):
 		self.logger = logger
 		arr  = np.asarray(arr)
-		oarr = self.empty(arr.shape, dtype=arr.dtype, reset=True)
+		oarr = self.empty(arr.shape, dtype=dtype or arr.dtype, reset=True)
 		oarr[:] = arr
 		return oarr
 	def empty(self, shape, dtype=np.float32, reset=True):
@@ -236,13 +236,13 @@ class ArrayPoolCpu(Mempool):
 		finally: pass
 
 class ArrayPoolGpu(Mempool):
-	def array(self, arr, reset=True, logger=None):
+	def array(self, arr, reset=True, dtype=None, logger=None):
 		# Make sure the array is contiguous, which our memcpy needs
 		import cupy
 		self.logger = logger
 		ap   = cupy if isinstance(arr, cupy.ndarray) else np
 		arr  = ap.ascontiguousarray(arr)
-		oarr = self.empty(arr.shape, dtype=arr.dtype, reset=True)
+		oarr = self.empty(arr.shape, dtype=dytpe or arr.dtype, reset=True)
 		cuda_memcpy(arr, oarr)
 		return oarr
 	def empty(self, shape, dtype=np.float32, reset=True):
@@ -286,7 +286,7 @@ class ArrayPoolProxy(Mempool):
 	def __repr__(self):
 		return "%s(name='%s', pool='%s')" % (self.__class__.__name__, self.name, self.pool.name)
 	def swap(self, other): raise NotImplementedError
-	def array(self, arr, reset=True, logger=None): return self.pool.array(arr, reset=reset, logger=logger)
+	def array(self, arr, reset=True, dtype=None, logger=None): return self.pool.array(arr, reset=reset, dtype=dtype, logger=logger)
 	def empty(self, shape, dtype=np.float32, reset=True): return self.pool.empty(shape, dtype=dtype, reset=reset)
 	def full(self, shape, val, dtype=np.float32, reset=True): return self.pool.full(shape, val, dtype=dtype, reset=reset)
 	def zeros(self, shape, dtype=np.float32, reset=True): return self.pool.zeros(shape, dtype=dtype, reset=reset)
