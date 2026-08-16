@@ -7,6 +7,27 @@ import quaternion
 import copy
 from . import bunch, warray, sites, ephem, utils
 
+# Sidelobe mapping
+# ----------------
+# Normally coords have some transform applied to them, but
+# for sidelobe maps, I instead want the coords to be the transform
+# applied to some object's coordinates. This didn't fit into my
+# old system of having all the recentering etc. be baked into a
+# quaternion that's applied or unapplied to the coordinates.
+#
+# What I normally do is
+#   q * coords = (iup*to)/(iup*on) * iup*coords
+# where iup rotates to the new up direction, on is the pos we want to center on,
+# and to is where that should end up. We can break this into steps:
+# 1. Apply iup to everying:
+#    coords → iup*coords
+#    on     → iup*on
+#    to     → iup*to
+# 2. If in switch mode (so centering on coords instead of "on"), do
+#    on, coords = coords, on
+# 3. coords = to/on * coords
+# Normally, to and on will be much smaller than coords
+
 DEG = np.pi/180
 
 def transform(isys, osys, coords, ctime=None, site=None, weather=None, bore=None):
@@ -16,18 +37,16 @@ def transform(isys, osys, coords, ctime=None, site=None, weather=None, bore=None
 	osys = expand_sys(osys, ctime=ctime, site=site, weather=weather, bore=bore)
 	# expand_sys should return something with .base and .q properties, where .q can be None
 	# 1. Undo any input rotation.
-	if not trivial_quat(isys.q):
-		coords = 1/isys.q * coords
+	coords = unorient(coords, isys)
 	# 2. Rotate to the target system
 	for atom in find_path(atoms, isys.base, osys.base):
 		coords = atom.apply(coords, ctime=ctime, site=site, weather=weather, bore=bore)
 	# 3. Apply any output rotation
-	if not trivial_quat(osys.q):
-		coords = osys.q * coords
+	coords = orient(coords, osys)
 	# Done!
 	return coords
 
-sys_map = {"hor":"hor", "equ":"equ", "cel":"equ", "gal":"gal", "sidelobe":"sidelobe"}
+sys_map = {"hor":"hor", "equ":"equ", "cel":"equ", "gal":"gal"}
 
 # Complicated transforms
 def hor2equ(coords, ctime, site=None, weather=None, **kwargs):
@@ -81,18 +100,6 @@ def equ2hor(coords, ctime, site=None, weather=None, **kwargs):
 	# Recover correct shape
 	az, el, pa = [a.reshape(shape) for a in [az, el, pa]]
 	return Coords(az=az*DEG, el=el*DEG, roll=pa*DEG-np.pi)
-
-def hor2sidelobe(coords, bore, **kwargs):
-	"""Transform to a coordinate system where the center of the focal plane is at the north pole
-	and up is in the +eta direction (so it rotates with the telescope roll). This is useful
-	for sidelobe mapping when combined with on=Sun or similar."""
-	return euler(1,np.pi/2)/bore * coords
-
-def sidelobe2hor(coords, bore, **kwargs):
-	"""Transform from a coordinate system where the center of the focal plane is at the north pole
-	and up is in the +eta direction (so it rotates with the telescope roll) to normal horizontal
-	coordinates."""
-	return bore/euler(1,np.pi/2) * coords
 
 # Building blocks all supported transforms are built from
 class Atom:
@@ -318,7 +325,7 @@ def expand_sys(sys, ctime=None, site=None, weather=None, bore=None):
 	if isinstance(sys, str):
 		sys = parse_sys(sys)
 	# Already expanded?
-	if "base" in sys and "q" in sys:
+	if "base" in sys and "iup" in sys and "iupon" in sys and "iupto" in sys and "swap" in sys:
 		return sys
 	# Our base coordinate system
 	base = sys["up"]["sys"]
@@ -343,40 +350,64 @@ def expand_sys(sys, ctime=None, site=None, weather=None, bore=None):
 		# Set psi angle to zero, since we just want points at this stage
 		coords.psi = 0
 		qs[key] = coords.q
+	# Precompute iup*on and iup*to
+	iup   = 1/qs["up"]
+	iupon = iup*qs["on"]
+	iupto = iup*qs["to"]
+	return bunch.Bunch(base=base, iup=iup, iupon=iupon, iupto=iupto, swap=sys["swap"])
 
-	# Build up the full rotation from the qs.
-	# Each quaternion represents the euler rotation ZY
-	q = np.quaternion(1,0,0,0)
-	# 1. Rotate the up point to the north pole, both for our
-	# actual coordinates and our other points
-	if not trivial_quat(qs["up"]):
-		iup      = 1/qs["up"]
-		q        = iup*q
-		qs["on"] = iup*qs["on"]
-		qs["to"] = iup*qs["to"]
-	# 2. now that the up point is up, we can now do our recentering
-	qrec = qs["to"]/qs["on"]
-	if not trivial_quat(qrec):
-		q = qrec*q
-	# Tell the user if the result is trivial, so they don't waste tme
-	if trivial_quat(q):
-		q = None
-	return bunch.Bunch(base=base, q=q)
+# Forward
+# normal: qout = to/on*(iup*q)
+# swap:   qout = to/(iup*q)*on
+#
+# Backward:
+# normal: q = 1/iup*on/to * qout
+# swap:   1/iup * 1/(1/to*qout/on) = 1/iup*on/qout*to
+
+# These check if the multiplication or division are trivial
+# if it is cheap to do so, and if it is trivial, skips it
+
+def mul(a, b, check=0.1):
+	if a.size < b.size*check and trivial_quat(a): return b
+	if b.size < a.size*check and trivial_quat(b): return a
+	return a*b
+def div(a, b, check=0.1):
+	if b.size < a.size*check and trivial_quat(b): return a
+	return a/b
+
+def orient(coords, sys):
+	if sys.swap: return Coords(q=mul(div(sys.iupto,mul(sys.iup, coords.q)),sys.iupon))
+	else:        return Coords(q=mul(sys.iupto/sys.iupon, mul(sys.iup, coords.q)))
+
+def unorient(coords, sys):
+	if sys.swap: return Coords(q=mul(mul(1/sys.iup,sys.iupon/coords.q),sys.iupto))
+	else:        return Coords(q=mul(1/sys.iup*sys.iupon/sys.iupto, coords.q))
 
 def parse_sys(desc):
 	info = {
 		"up":{"sys":"equ", "pos":[0,np.pi/2]},
 		"on":{"sys":None,  "pos":[0,0]},
 		"to":{"sys":None,  "pos":[0,0]},
+		"swap": False,
 	}
 	toks = utils.split_outside(desc, ",")
 	for i, tok in enumerate(toks):
 		subs = tok.split("=")
+		if subs[0] == "swap":
+			info["swap"] = True if len(subs) == 1 else bool(int(subs[1]))
+			continue
 		if i == 0 and len(subs) == 1:
 			subs = ["up"]+subs
 		if len(subs) != 2:
 			raise ValueError("Error parsing coordinate system description '%s'" % str(desc))
 		key, val = subs
+		# Implement "sidelobe" system, which is just a shortcut for hor+swap
+		if val == "sidelobe":
+			if key == "up":
+				val = "hor"
+				info["swap"] = not info["swap"]
+			else:
+				raise ValueError("'sidelobe' system not supported for 'on' or 'to' coordinate specification")
 		if key not in ["up", "on", "to"]:
 			raise ValueError("Only up, on and to can be used when building a coordinate system, but got '%s'" % str(key))
 		info[key] = _parse_sys_pos(val, default_sys=info["up"]["sys"], default_pos=info[key]["pos"])
