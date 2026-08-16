@@ -127,8 +127,6 @@ atoms = [
 	AtomQuat("gal","equ",1/np.quaternion(-0.488947507617903,0.483210683963407,-0.196253758294796,-0.699229741968278)),
 	AtomFun ("equ","hor",  equ2hor),
 	AtomFun ("hor","equ",  hor2equ),
-	AtomFun ("hor","sidelobe", hor2sidelobe),
-	AtomFun ("sidelobe","hor", sidelobe2hor),
 ]
 
 def find_path(atoms, ibase, obase):

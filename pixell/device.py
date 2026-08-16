@@ -241,8 +241,8 @@ class ArrayPoolGpu(Mempool):
 		import cupy
 		self.logger = logger
 		ap   = cupy if isinstance(arr, cupy.ndarray) else np
-		arr  = ap.ascontiguousarray(arr)
-		oarr = self.empty(arr.shape, dtype=dytpe or arr.dtype, reset=True)
+		arr  = ap.ascontiguousarray(arr, dtype=dtype)
+		oarr = self.empty(arr.shape, dtype=dtype or arr.dtype, reset=True)
 		cuda_memcpy(arr, oarr)
 		return oarr
 	def empty(self, shape, dtype=np.float32, reset=True):
