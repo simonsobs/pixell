@@ -7,40 +7,19 @@ import quaternion
 import copy
 from . import bunch, warray, sites, ephem, utils
 
-# Sidelobe mapping
-# ----------------
-# Normally coords have some transform applied to them, but
-# for sidelobe maps, I instead want the coords to be the transform
-# applied to some object's coordinates. This didn't fit into my
-# old system of having all the recentering etc. be baked into a
-# quaternion that's applied or unapplied to the coordinates.
-#
-# What I normally do is
-#   q * coords = (iup*to)/(iup*on) * iup*coords
-# where iup rotates to the new up direction, on is the pos we want to center on,
-# and to is where that should end up. We can break this into steps:
-# 1. Apply iup to everying:
-#    coords → iup*coords
-#    on     → iup*on
-#    to     → iup*to
-# 2. If in switch mode (so centering on coords instead of "on"), do
-#    on, coords = coords, on
-# 3. coords = to/on * coords
-# Normally, to and on will be much smaller than coords
-
 DEG = np.pi/180
 
-def transform(isys, osys, coords, ctime=None, site=None, weather=None, bore=None):
+def transform(isys, osys, coords, ctime=None, site=None, weather=None):
 	if isys == osys: return coords
 	if site is None: site = sites.default_site
-	isys = expand_sys(isys, ctime=ctime, site=site, weather=weather, bore=bore)
-	osys = expand_sys(osys, ctime=ctime, site=site, weather=weather, bore=bore)
+	isys = expand_sys(isys, ctime=ctime, site=site, weather=weather)
+	osys = expand_sys(osys, ctime=ctime, site=site, weather=weather)
 	# expand_sys should return something with .base and .q properties, where .q can be None
 	# 1. Undo any input rotation.
 	coords = unorient(coords, isys)
 	# 2. Rotate to the target system
 	for atom in find_path(atoms, isys.base, osys.base):
-		coords = atom.apply(coords, ctime=ctime, site=site, weather=weather, bore=bore)
+		coords = atom.apply(coords, ctime=ctime, site=site, weather=weather)
 	# 3. Apply any output rotation
 	coords = orient(coords, osys)
 	# Done!
@@ -87,12 +66,10 @@ def equ2hor(coords, ctime, site=None, weather=None, **kwargs):
 	weather = sites.expand_weather(weather, site)
 	qp = qpoint.QPoint(accuracy="high", fast_math=True, mean_aber=True,
 		rate_ref="always", **weather)
-	# Get the shape here and not after ascontiguousarray because that
-	# function will turn a 0d array into a 1d one
-	shape = coords.ra.shape
 	# I don't recover the original roll exactly here. It's off by about half a degree
 	ra, dec, ctime, psi = [np.ascontiguousarray(arr) for arr in
 		np.broadcast_arrays(coords.ra/DEG, coords.dec/DEG, ctime, coords.psi)]
+	shape = ra.shape if coords.ra.ndim > 0 else ()
 	if ra.size == 0: return coords
 	for arr in [ra, dec, ctime, psi]:
 		arr.flags["WRITEABLE"] = False
@@ -318,12 +295,12 @@ def decompose_xieta(q):
 	eta   = -np.cos(lon)*r
 	return xi, eta, gamma
 
-def expand_sys(sys, ctime=None, site=None, weather=None, bore=None):
+def expand_sys(sys, ctime=None, site=None, weather=None):
 	# Parse if necessary
 	if isinstance(sys, str):
 		sys = parse_sys(sys)
 	# Already expanded?
-	if "base" in sys and "iup" in sys and "iupon" in sys and "iupto" in sys and "swap" in sys:
+	if "base" in sys and "iup" in sys and "iupon" in sys and "iupto" in sys and "inverse" in sys and "leak" in sys and "postroll" in sys:
 		return sys
 	# Our base coordinate system
 	base = sys["up"]["sys"]
@@ -344,7 +321,7 @@ def expand_sys(sys, ctime=None, site=None, weather=None, bore=None):
 				coords = Coords(ra=pos[0], dec=pos[1])
 			csys = sys[key]["sys"]
 		# Transform it to our base system
-		coords = transform(csys, base, coords, ctime=ctime, site=site, weather=weather, bore=bore)
+		coords = transform(csys, base, coords, ctime=ctime, site=site, weather=weather)
 		# Set psi angle to zero, since we just want points at this stage
 		coords.psi = 0
 		qs[key] = coords.q
@@ -352,18 +329,16 @@ def expand_sys(sys, ctime=None, site=None, weather=None, bore=None):
 	iup   = 1/qs["up"]
 	iupon = iup*qs["on"]
 	iupto = iup*qs["to"]
-	return bunch.Bunch(base=base, iup=iup, iupon=iupon, iupto=iupto, swap=sys["swap"])
+	return bunch.Bunch(base=base, iup=iup, iupon=iupon, iupto=iupto, inverse=sys["inverse"], leak=sys["leak"], postroll=sys["postroll"])
 
 # Forward
-# normal: qout = to/on*(iup*q)
-# swap:   qout = to/(iup*q)*on
+# normal:   qout = to*(1/on*iupq) = to/on*(iup*q)
+# inverse:  qout = to/(1/on*iupq) = to/(iup*q)*on
+# That is, aside from to, they are simple inverses of each other
 #
-# Backward:
-# normal: q = 1/iup*on/to * qout
-# swap:   1/iup * 1/(1/to*qout/on) = 1/iup*on/qout*to
-
-# These check if the multiplication or division are trivial
-# if it is cheap to do so, and if it is trivial, skips it
+# Backward
+# normal:   iupq = on*(1/to*qout) => q = 1/iup*on/to*qout
+# inverse:  iupq = on/(1/to*quot) => q = 1/iup/qout*to
 
 def mul(a, b, check=0.1):
 	if a.size < b.size*check and trivial_quat(a): return b
@@ -374,36 +349,47 @@ def div(a, b, check=0.1):
 	return a/b
 
 def orient(coords, sys):
-	if sys.swap: return Coords(q=mul(div(sys.iupto,mul(sys.iup, coords.q)),sys.iupon))
-	else:        return Coords(q=mul(sys.iupto/sys.iupon, mul(sys.iup, coords.q)))
+	if sys.inverse: return Coords(q=mul(div(sys.iupto,mul(sys.iup, coords.q)),sys.iupon))
+	else:           return Coords(q=mul(sys.iupto/sys.iupon, mul(sys.iup, coords.q)))
 
 def unorient(coords, sys):
-	if sys.swap: return Coords(q=mul(mul(1/sys.iup,sys.iupon/coords.q),sys.iupto))
-	else:        return Coords(q=mul(1/sys.iup*sys.iupon/sys.iupto, coords.q))
+	if sys.inverse: return Coords(q=mul(mul(1/sys.iup,sys.iupon/coords.q),sys.iupto))
+	else:           return Coords(q=mul(1/sys.iup*sys.iupon/sys.iupto, coords.q))
 
 def parse_sys(desc):
 	info = {
 		"up":{"sys":"equ", "pos":[0,np.pi/2]},
 		"on":{"sys":None,  "pos":[0,0]},
 		"to":{"sys":None,  "pos":[0,0]},
-		"swap": False,
+		# The fields below are somewhat hacky, and are only there to implement instrument-centered coordinates
+		"inverse": False, # Centering on detector instead of object
+		"leak":    False, # Want pol-resp to unpol obj instead of unpol-resp to pol obj. No direct effect here
+		"postroll":False, # Want system after receiver roll, but before the mirrors. No direct effect here
 	}
 	toks = utils.split_outside(desc, ",")
 	for i, tok in enumerate(toks):
 		subs = tok.split("=")
-		if subs[0] == "swap":
-			info["swap"] = True if len(subs) == 1 else bool(int(subs[1]))
+		if subs[0] in ["inverse", "inv"]:
+			info["inverse"] = True if len(subs) == 1 else bool(int(subs[1]))
+			continue
+		if subs[0] == "leak":
+			info["leak"] = True if len(subs) == 1 else bool(int(subs[1]))
+			continue
+		if subs[0] == "postroll":
+			info["postroll"] = True if len(subs) == 1 else bool(int(subs[1]))
 			continue
 		if i == 0 and len(subs) == 1:
 			subs = ["up"]+subs
 		if len(subs) != 2:
 			raise ValueError("Error parsing coordinate system description '%s'" % str(desc))
 		key, val = subs
-		# Implement "sidelobe" system, which is just a shortcut for hor+swap
+		# Implement "sidelobe" system, which is just a shortcut for hor+inverse
 		if val == "sidelobe":
 			if key == "up":
 				val = "hor"
-				info["swap"] = not info["swap"]
+				info["inverse"] = not info["inverse"]
+				info["leak"]    = not info["leak"]
+				info["postroll"]= not info["postroll"]
 			else:
 				raise ValueError("'sidelobe' system not supported for 'on' or 'to' coordinate specification")
 		if key not in ["up", "on", "to"]:
