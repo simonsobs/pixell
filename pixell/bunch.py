@@ -1,5 +1,11 @@
 """My own version of bunch, since the standard one lacks tab completion
 and has trouble printing sometimes."""
+
+# getitem and getattr is a bit slow - a factor 10 overhead, but still only 100 ns.
+# Also annoying to have to step through __getattr__ all the time in pdb. Could speed
+# up by maintaining both an internal dict *and* real attributes. This makes writes
+# slightly slower, but is probably worth it overall.
+
 import os
 class Bunch:
 	def __init__(self, *args, **kwargs):

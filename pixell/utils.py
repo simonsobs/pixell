@@ -870,30 +870,27 @@ def pixwin_1d(f, order=0):
 		raise ValueError("Unsupported order '%s'" % str(order))
 
 def nearest_product(n, factors, direction="below"):
-	"""Compute the highest product of positive integer powers of the specified
-	factors that is lower than or equal to n. This is done using a simple,
-	O(n) brute-force algorithm."""
-	below = direction=="below"
-	ni = floor(n) if below else ceil(n)
-	if 1 in factors: return ni
-	nmax = ni+1 if below else ni*min(factors)+1
-	# a keeps track of all the visited multiples
-	a = np.zeros(nmax+1,dtype=bool)
-	a[1] = True
-	best = None
-	for i in range(ni+1):
-		if not a[i]: continue
-		for f in factors:
-			m = i*f
-			if below:
-				if m > n: continue
-				else: best = m
-			else:
-				if m >= n and (best is None or best > m):
-					best = m
-			if m < a.size:
-				a[m] = True
-	return best
+	"""If direction = "below", then for each n calculate the highest product
+	of the factors that's <= to n. If direction = "above", calculate the
+	smallest product thats >= n. Vectorized over n. Scales as O(len(n)*log(max(n)))"""
+	below = direction == "below"
+	if below: vmax = np.max(n)+1
+	else:     vmax = np.max(n)*np.min(factors)
+	# Generate all possible products
+	products = {1}
+	queue    = [1]
+	while queue:
+		val = queue.pop()
+		for factor in factors:
+			prod = val*factor
+			if prod < vmax and prod not in products:
+				products.add(prod)
+				queue.append(prod)
+	# Can now look up each of our numbers
+	products = np.sort(list(products))
+	inds     = np.searchsorted(products, n, side="right")-1
+	if not below: inds += products[inds]!=n
+	return products[inds]
 
 def mkdir(path):
 	# It's useful to be able to do mkdir(os.path.dirname(fname)) to create the directory

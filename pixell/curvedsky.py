@@ -500,7 +500,7 @@ def quad_weights(shape, wcs, pix_tol=1e-6):
 	ny      = shape[-2]+np.sum(minfo.ypad)
 	weights = ducc0.sht.experimental.get_gridweights(minfo.ducc_geo.name, ny)
 	weights = weights[minfo.ypad[0]:len(weights)-minfo.ypad[1]]
-	if minfo.flip: weights = weights[::-1]
+	if minfo.flip[0]: weights = weights[::-1]
 	weights/= minfo.ducc_geo.nx
 	return weights
 
@@ -857,7 +857,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], we
 			weights/= minfo.ducc_geo.nx
 		else:
 			weights = map.pixsizemap(separable=True, broadcastable=True)[:,0]
-			if minfo.flip: weights = weights[::-1]
+			if minfo.flip[0]: weights = weights[::-1]
 		weights = weights.astype(map.dtype, copy=False)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap

@@ -91,6 +91,9 @@ class Bench:
 	def set_tfun(self, tfun):
 		self.tfun = tfun
 
+# Would be nice to have a concept of sub-benches, but the most elegant implementation that just
+# forwards with a prefix is cumbersome to implement because self.t etc. also must forward
+
 # Global interface
 _default = Bench()
 mark  = _default.mark

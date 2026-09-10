@@ -591,6 +591,44 @@ class PixelTests(unittest.TestCase):
         nmap = reproject.populate(shape,wcs,ofunc,maxpixy = 400,maxpixx = 400)
         assert np.all(np.isclose(nmap/omap,2.))
 
+    def test_weight_flip(self):
+        # Generate geometry covering an asymmetric dec range
+        geo1 = enmap.fullsky_geometry(res=10*utils.degree, proj="car", variant="fejer1")
+        geo1 = enmap.slice_geometry(*geo1, np.s_[:10,:])
+        # Generate dec-flipped version
+        geo2 = enmap.slice_geometry(*geo1, np.s_[::-1,:])
+        # Check that their quad-weights are flipped with respect to each other
+        w1   = curvedsky.quad_weights(*geo1)
+        w2   = curvedsky.quad_weights(*geo2)
+        assert np.allclose(w1, w2[::-1])
+
+    def test_map2alm_flip(self):
+        # Map covering asymmetric dec range
+        shape, wcs = enmap.band_geometry([-80*utils.degree, 10*utils.degree], res=1*utils.degree, proj="car", variant="fejer1")
+        # Fill it with some stuff. Not that important what
+        lmax= 100
+        ps  = powspec.read_spectrum(DATA_PREFIX+"test_scalCls.dat")[0,0]
+        map = curvedsky.rand_map(shape, wcs, ps, lmax=lmax)
+        # Calculate alm. This uses ring weights, which is the main thing we want to test here
+        alm  = curvedsky.map2alm_cyl(map, lmax=lmax, niter=0)
+        # Check that it's the same as what we get for a flipped map
+        alm2 = curvedsky.map2alm_cyl(map[::-1], lmax=lmax, niter=0)
+        assert np.allclose(alm, alm2)
+
+    def test_map2alm_approxweight_flip(self):
+        # Same as test_map2alm_flip, but for a cylindrical geometry where ducc doesn't have any
+        # built-in weights
+        shape, wcs = enmap.geometry2(res=1*utils.degree, proj="cea")
+        shape, wcs = enmap.slice_geometry(shape, wcs, np.s_[:100,:])
+        # Fill it with some stuff. Not that important what
+        lmax= 100
+        ps  = powspec.read_spectrum(DATA_PREFIX+"test_scalCls.dat")[0,0]
+        map = curvedsky.rand_map(shape, wcs, ps, lmax=lmax)
+        # Calculate alm. This uses ring weights, which is the main thing we want to test here
+        alm  = curvedsky.map2alm_cyl(map, lmax=lmax, niter=0)
+        # Check that it's the same as what we get for a flipped map
+        alm2 = curvedsky.map2alm_cyl(map[::-1], lmax=lmax, niter=0)
+        assert np.allclose(alm, alm2)
 
     # This is currently broken, but it's always been broken. For doubly-even
     # dimensions, the double-nyquist frequency entry has inconsistent sign.
