@@ -117,7 +117,7 @@ Deploying
 Only maintainers, who have access to the master branch, are able to
 deploy the package. To 'bump' the version of the package, you will need
 to change the value of `version` in `pyproject.toml`. Pushing this new
-verison, along with associated wheels for all supported platforms,
+version, along with associated wheels for all supported platforms,
 is handled through GitHub Actions, which is triggered when a new
 release is made. To make a new release, create a new git tag with
 the name of your new version (i.e. vX.Y.Z, e.g. v21.0.2), and push
