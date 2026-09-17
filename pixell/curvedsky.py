@@ -826,7 +826,7 @@ def map2alm_2d(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], der
 	else:
 		if copy and alm is not None: alm = alm.copy()
 	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=utils.native_dtype(map.dtype), convert=adjoint)
-	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
+	if minfo is None: minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Loop over pre-pre-dimensions. ducc usually doesn't do anything clever with
 	# these, so looping in python is cheap
 	for I in utils.nditer(map.shape[:-3]):
@@ -847,7 +847,7 @@ def map2alm_cyl(map, alm=None, ainfo=None, minfo=None, lmax=None, spin=[0,2], we
 	else:
 		if copy and alm is not None: alm = alm.copy()
 	alm, ainfo = prepare_alm(alm=alm, ainfo=ainfo, lmax=lmax, pre=map.shape[:-2], dtype=utils.native_dtype(map.dtype), convert=adjoint)
-	minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
+	if minfo is None: minfo = analyse_geometry(map.shape, map.wcs, tol=pix_tol)
 	# Get our weights, approximate or not
 	if weights is None:
 		if minfo.ducc_geo is not None and minfo.ducc_geo.name is not None:
