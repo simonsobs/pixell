@@ -109,25 +109,6 @@ def kappa_to_phi(kappa_alm,kappa_ainfo=None):
 	"""
 	from . import curvedsky
 	with utils.nowarn():
-		oalm = curvedsky.almxfl(alm=kappa_alm,lfilter=lambda l: 1./(l*(l+1)/2) ,ainfo=kappa_ainfo)
-	return utils.remove_nan(oalm)
-
-
-def kappa_to_phi(kappa_alm,kappa_ainfo=None):
-	"""Convert lensing convergence alms kappa_alm to
-	lensing potential alms phi_alm, i.e.
-	kappa_alm / ( l * (l+1) / 2 )
-
-	Args:
-	    kappa_alm: (...,N) ndarray of spherical harmonic alms of lensing convergence
-	    kappa_ainfo: If ainfo is provided, it is an alm_info describing the layout 
-	of the input alm. Otherwise it will be inferred from the alm itself.
-
-	Returns:
-	    phi_alm: The filtered alms kappa_alm / ( l * (l+1) / 2 )
-	"""
-	from . import curvedsky
-	with utils.nowarn():
 		oalm = curvedsky.almxfl(alm=kappa_alm,lfilter=lambda x: 1./(x*(x+1)/2) ,ainfo=kappa_ainfo)
 	utils.remove_nan(oalm)
 	return oalm
