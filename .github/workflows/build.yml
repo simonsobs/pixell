@@ -80,7 +80,6 @@ jobs:
         env:
           FC: gfortran-12
           CC: gcc-12
-          CIBW_TEST_EXTRAS: "test"
           CIBW_ENVIRONMENT: "PIP_ONLY_BINARY=h5py"
           CIBW_MANYLINUX_X86_64_IMAGE: quay.io/pypa/manylinux_2_28_x86_64
           
@@ -108,7 +107,6 @@ jobs:
           CXX: g++-14
           FC: gfortran-14
           MACOSX_DEPLOYMENT_TARGET: "26.0"
-          CIBW_TEST_EXTRAS: "test"
           CIBW_ENVIRONMENT: "PIP_ONLY_BINARY=h5py"
           
       - uses: actions/upload-artifact@v7

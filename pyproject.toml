@@ -68,7 +68,7 @@ testpaths = [
 ]
 
 [tool.cibuildwheel]
-test-requires = "pytest"
+test-requires = "pytest h5py pyyaml"
 test-command = "pytest {project}/tests"
 build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
 skip = "*i686* *musllinux*"
