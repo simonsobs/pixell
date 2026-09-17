@@ -4,7 +4,7 @@ requires = ['meson-python', 'numpy', 'cython', 'versioneer[toml]', 'build', 'pyt
 
 [project]
 name = 'pixell'
-version = "0.32.6"
+version = "0.32.7"
 description = "A rectangular pixel map manipulation and harmonic analysis library derived from Sigurd Naess' enlib."
 readme = 'README.rst'
 requires-python = '>=3.10'
@@ -68,7 +68,7 @@ testpaths = [
 ]
 
 [tool.cibuildwheel]
-test-requires = "pytest"
+test-requires = "pytest h5py pyyaml"
 test-command = "pytest {project}/tests"
 build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
 skip = "*i686* *musllinux*"
