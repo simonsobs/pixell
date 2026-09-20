@@ -364,7 +364,7 @@ def rot2euler(rot):
 	"""Given a coordinate rotation description, return the [rotz,roty,rotz] euler
 	angles it corresponds to. The rotation desciption can either be those angles
 	directly, or a string of the form isys,osys"""
-	gal2cel = np.array([57.06793215,  62.87115487, -167.14056929])*utils.degree
+	gal2cel = np.array([57.06807474,  62.87174759, -167.14052211])*utils.degree
 	if isinstance(rot, basestring):
 		try: isys, osys = rot.split(",")
 		except ValueError:

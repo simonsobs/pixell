@@ -712,7 +712,7 @@ def alm2cl(alm, alm2=None, ainfo=None, dtype=None):
 	return ainfo.alm2cl(alm, alm2=alm2, dtype=dtype)
 
 euler_angs={}
-euler_angs[("gal","equ")] = np.array([57.06793215,  62.87115487, -167.14056929])*utils.degree
+euler_angs[("gal","equ")] = np.array([57.06807474,  62.87174759, -167.14052211])*utils.degree
 euler_angs[("equ","gal")] = -euler_angs[("gal","equ")][::-1]
 def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=None, inplace=False):
 	"""Rotate the given alm[...,:] via the zyz rotations given by euler angles
