@@ -363,8 +363,10 @@ def healpix2map(iheal, shape=None, wcs=None, lmax=None, out=None, rot=None, spin
 def rot2euler(rot):
 	"""Given a coordinate rotation description, return the [rotz,roty,rotz] euler
 	angles it corresponds to. The rotation desciption can either be those angles
-	directly, or a string of the form isys,osys"""
-	gal2cel = np.array([57.06807474,  62.87174759, -167.14052211])*utils.degree
+	directly, or a string of the form isys,osys. The celestial aliases
+	"cel" and "equ" refer to ICRS, as in coordinates.transform. The Euler
+	angles follow the healpy.rotate_alm convention (extrinsic zyz)."""
+	gal2cel = coordinates.gal2cel_euler()
 	if isinstance(rot, basestring):
 		try: isys, osys = rot.split(",")
 		except ValueError:
