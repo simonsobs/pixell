@@ -299,7 +299,7 @@ class WaveletTransform:
 	@property
 	def shape(self): return self.uht.shape
 	@property
-	def wcs(self): return self.uht.shape
+	def wcs(self): return self.uht.wcs
 	@property
 	def geometry(self): return self.shape, self.wcs
 	@property
