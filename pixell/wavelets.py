@@ -338,8 +338,7 @@ class WaveletTransform:
 					owave.maps[i] = enmap.ifft(fsmall, normalize=False).real
 				else:
 					owave.maps[i] = enmap.zeros(shape,wcs)
-					if fill_value is not None: owave.maps[i][:] = np.nan
-					
+					if fill_value is not None: owave.maps[i][:] = fill_value
 		else:
 			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
 			alm   = curvedsky.map2alm(map, ainfo=ainfo)
