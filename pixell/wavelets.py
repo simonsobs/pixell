@@ -423,7 +423,8 @@ class WaveletTransform:
 		"""Get the multipole indices for wavelet scale i. This will be an enmap
 		in if the uht is flat, otherwise it's a 1d array"""
 		if self.uht.mode == "flat":
-			return enmap.resample_fft(self.uht.l, self.geometries[i][0], norm=None, corner=True)
+			# corner=False: no phase shift, which would scramble l values
+			return enmap.resample_fft(self.uht.l, self.geometries[i][0], norm=None, corner=False)
 		else:
 			return self.uht.l
 	def get_variance_transform(self):
