@@ -13,8 +13,16 @@ def curved_wt():
     return wavelets.WaveletTransform(uht, basis=wavelets.CosineNeedlet(lpeaks=LPEAKS))
 
 
+def flat_wt():
+    shape, wcs = enmap.geometry(np.array([[-5, -5], [5, 5]]) * utils.degree, res=2 * utils.arcmin)
+    basis = wavelets.CosineNeedlet(lpeaks=[0, 300, 600, 1200, 2400, 4800])
+    return wavelets.WaveletTransform(uharm.UHT(shape, wcs, mode="flat"), basis=basis)
+
+
 def rand_map(shape, wcs):
-    return enmap.rand_gauss((3,) + shape[-2:], wcs, dtype=np.float64)
+    # One component: for maps with pre-dimensions, map2wave uses spin [0, 2] alms on the
+    # curved sky and scalar Fourier transforms on the flat sky, while uht uses spin 0
+    return enmap.rand_gauss(shape[-2:], wcs, dtype=np.float64)
 
 
 def assert_wave_close(wa, wb, rtol=1e-10):
@@ -23,15 +31,27 @@ def assert_wave_close(wa, wb, rtol=1e-10):
 
 
 class WaveletTests(unittest.TestCase):
-    def test_alm2wave_matches_map2wave(self):
+    def test_harm2wave_matches_map2wave(self):
+        for wt in (curved_wt(), flat_wt()):
+            imap = rand_map(*wt.geometry)
+            if wt.uht.mode == "curved":
+                # Band-limited to the basis, so that the alms of uht (to uht.lmax) and of
+                # map2wave (to basis.lmax) agree below basis.lmax
+                imap = wt.uht.harm2map(curvedsky.transfer_alm(
+                    curvedsky.alm_info(lmax=wt.basis.lmax),
+                    curvedsky.rand_alm(np.ones(wt.basis.lmax + 1), seed=3),
+                    wt.uht.ainfo,
+                ))
+            assert_wave_close(wt.harm2wave(wt.uht.map2harm(imap)), wt.map2wave(imap))
+
+    def test_harm2wave_filter(self):
         wt = curved_wt()
         imap = rand_map(*wt.geometry)
         alm = curvedsky.map2alm(imap, lmax=wt.basis.lmax)
         fl = np.exp(-np.arange(wt.basis.lmax + 1) / 200.0)
-        assert_wave_close(wt.alm2wave(alm), wt.map2wave(imap))
-        assert_wave_close(wt.alm2wave(alm, fl=fl), wt.map2wave(imap, fl=fl))
+        assert_wave_close(wt.harm2wave(alm, fl=fl), wt.map2wave(imap, fl=fl))
 
-    def test_alm2wave_any_lmax(self):
+    def test_harm2wave_any_lmax(self):
         wt = curved_wt()
         lmax = wt.basis.lmax
         alm = curvedsky.rand_alm(np.ones(lmax + 101), lmax=lmax + 100, seed=1)
@@ -39,12 +59,16 @@ class WaveletTests(unittest.TestCase):
             curvedsky.alm_info(lmax=lmax + 100), alm, curvedsky.alm_info(lmax=lmax)
         )
         # Multipoles above basis.lmax are ignored
-        assert_wave_close(wt.alm2wave(alm), wt.alm2wave(cut))
+        assert_wave_close(wt.harm2wave(alm), wt.harm2wave(cut))
 
-    def test_alm2wave_scales_fill_value(self):
+    def test_scales_fill_value(self):
         wt = curved_wt()
         alm = curvedsky.rand_alm(np.ones(wt.basis.lmax + 1), seed=2)
-        wave = wt.alm2wave(alm, scales=[0], fill_value=7.0)
+        wave = wt.harm2wave(alm, scales=[0], fill_value=7.0)
+        self.assertTrue(np.all(wave.maps[1] == 7.0))
+        self.assertFalse(np.all(wave.maps[0] == 7.0))
+        wt = flat_wt()
+        wave = wt.map2wave(rand_map(*wt.geometry), scales=[0], fill_value=7.0)
         self.assertTrue(np.all(wave.maps[1] == 7.0))
         self.assertFalse(np.all(wave.maps[0] == 7.0))
 
@@ -54,23 +78,25 @@ class WaveletTests(unittest.TestCase):
         self.assertEqual(shape, wt.uht.shape)
         self.assertIs(wcs, wt.uht.wcs)
 
-    def test_wave2alm_matches_wave2map(self):
-        wt = curved_wt()
-        wave = wt.map2wave(rand_map(*wt.geometry))
-        oalm = wt.wave2alm(wave)
-        self.assertEqual(curvedsky.nalm2lmax(oalm.shape[-1]), wt.basis.lmax)
-        omap = curvedsky.alm2map(oalm, enmap.zeros(wave.pre + wt.shape[-2:], wt.wcs))
-        np.testing.assert_allclose(omap, wt.wave2map(wave), rtol=0, atol=1e-12)
+    def test_wave2harm_matches_wave2map(self):
+        for wt in (curved_wt(), flat_wt()):
+            wave = wt.map2wave(rand_map(*wt.geometry))
+            omap = wt.wave2map(wave)
+            harm = wt.wave2harm(wave)
+            if wt.uht.mode == "curved":
+                # alms to basis.lmax, padded with zeros to the lmax of uht
+                self.assertEqual(curvedsky.nalm2lmax(harm.shape[-1]), wt.basis.lmax)
+                harm = curvedsky.transfer_alm(
+                    curvedsky.alm_info(lmax=wt.basis.lmax), harm, wt.uht.ainfo
+                )
+            np.testing.assert_allclose(
+                wt.uht.harm2map(harm), omap, rtol=0, atol=1e-10 * np.abs(omap).max()
+            )
 
-    def test_flat_fill_value(self):
-        shape, wcs = enmap.geometry(np.array([[-5, -5], [5, 5]]) * utils.degree, res=2 * utils.arcmin)
-        wt = wavelets.WaveletTransform(uharm.UHT(shape, wcs, mode="flat"))
-        wave = wt.map2wave(enmap.rand_gauss(shape, wcs), scales=[0], fill_value=7.0)
-        self.assertTrue(np.all(wave.maps[1] == 7.0))
+    def test_flat_filter_not_implemented(self):
+        wt = flat_wt()
         with self.assertRaises(NotImplementedError):
-            wt.alm2wave(np.zeros(10, dtype=np.complex128))
-        with self.assertRaises(NotImplementedError):
-            wt.wave2alm(wave)
+            wt.harm2wave(wt.uht.map2harm(rand_map(*wt.geometry)), fl=np.ones(10))
 
 
 if __name__ == "__main__":
