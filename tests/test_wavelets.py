@@ -93,6 +93,26 @@ class WaveletTests(unittest.TestCase):
                 wt.uht.harm2map(harm), omap, rtol=0, atol=1e-10 * np.abs(omap).max()
             )
 
+    def test_flat_roundtrip(self):
+        # The default basis covers all multipoles of the map, so the transform is invertible
+        shape, wcs = flat_wt().geometry
+        wt = wavelets.WaveletTransform(uharm.UHT(shape, wcs, mode="flat"))
+        imap = rand_map(shape, wcs)
+        omap = wt.wave2map(wt.map2wave(imap))
+        self.assertTrue(np.all(np.isfinite(omap)))
+        np.testing.assert_allclose(omap, imap, rtol=0, atol=1e-10 * np.abs(imap).max())
+
+    def test_resample_fft_accumulate(self):
+        # Summing into fomap with op=np.add must not re-shift what is already there
+        imap = rand_map(*flat_wt().geometry)
+        fmap = enmap.fft(imap, normalize=False)
+        oshape = (imap.shape[-2] // 2, imap.shape[-1] // 2)
+        once = enmap.resample_fft(fmap, oshape, corner=True)
+        twice = enmap.resample_fft(fmap, oshape, corner=True)
+        enmap.resample_fft(fmap, oshape, fomap=twice, corner=True, op=np.add)
+        self.assertTrue(np.any(once != 0))
+        np.testing.assert_allclose(twice, 2 * once, rtol=0, atol=1e-12 * np.abs(once).max())
+
     def test_flat_filter_not_implemented(self):
         wt = flat_wt()
         with self.assertRaises(NotImplementedError):
