@@ -114,7 +114,7 @@ print("%-15s %8.3f %8.3f %8.3f" % ("lowcorr full emp", flux, dflux, flux/dflux))
 
 import numpy as np, time
 from scipy import ndimage
-from . import enmap, utils, uharm, wavelets, bunch
+from . import enmap, utils, uharm, wavelets, bunch, multimap
 
 # TODO: Figure out the proper way to handle fourier-space
 # linear operators. Currently I have a mess of map2harm, harm2map
@@ -494,7 +494,7 @@ class NmatWavelet(Nmat):
 		# Then get kappa
 		fkappa = enmap.zeros(self.wiN.pre + map.shape[-2:], map.wcs, utils.complex_dtype(map.dtype))
 		for i in range(self.wt.nlevel):
-			sub_Q  = self.wt.filters[i]*enmap.resample_fft(beam, self.wt.geometries[i][0], norm=None, corner=True)
+			sub_Q  = self.wt.filters[i]*enmap.resample_fft(beam, self.wt.geometries[i][0], norm=None, corner=False)
 			# Is it right to do this component-wise?
 			sub_Q2 = rop(sub_Q, op=lambda a: a[:,None]*a[None,:])
 			fsmall = sub_Q2*enmap.fft(self.wiN.maps[i], normalize=False)/self.wiN.npixs[i]

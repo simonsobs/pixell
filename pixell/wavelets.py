@@ -206,7 +206,11 @@ class VarButter:
 class WaveletTransform:
 	"""This class implements a wavelet tansform. It provides thw forwards and
 	backwards wavelet transforms map2wave and wave2map, where map is a normal enmap
-	and the wavelet coefficients are represented as multimaps.
+	and the wavelet coefficients are represented as multimaps. harm2wave and wave2harm
+	do the same starting from or ending at the harmonic coefficients of the map (in the
+	convention of uht.map2harm: alms on the curved sky, 2d Fourier coefficients on the
+	flat sky), which avoids a harmonic transform of the full-resolution map when these
+	coefficients are already available or are what is needed.
 
 	Example usage:
 
@@ -299,7 +303,7 @@ class WaveletTransform:
 	@property
 	def shape(self): return self.uht.shape
 	@property
-	def wcs(self): return self.uht.shape
+	def wcs(self): return self.uht.wcs
 	@property
 	def geometry(self): return self.shape, self.wcs
 	@property
@@ -321,71 +325,105 @@ class WaveletTransform:
 		harmonic to real space transform. Alternatively, a fill_value different from zero
 		can be specified.
 		"""
-		scales = range(len(self.geometries)) if scales is None else scales
-		filters, norms, lmids = self.filters, self.norms, self.lmids
-		# Output geometry. Can't just use our existing one because it doesn't know about the
-		# map pre-dimensions. There should be an easier way to do this.
-		geos = [(map.shape[:-2]+tuple(shape[-2:]), wcs) for (shape, wcs) in self.geometries]
-		if owave is None: owave = multimap.zeros(geos, map.dtype)
 		if self.uht.mode == "flat":
-			fmap = enmap.fft(map, normalize=False)
+			harm = enmap.fft(map, normalize="phys")
+		else:
+			harm = curvedsky.map2alm(map, ainfo=curvedsky.alm_info(lmax=self.basis.lmax))
+		return self.harm2wave(harm, owave=owave, fl=fl, scales=scales, fill_value=fill_value)
+	def harm2wave(self, harm, owave=None, fl=None, scales=None, fill_value=None):
+		"""Transform from harmonic coefficients to a multimap of wavelet coefficients.
+		This gives the same result as map2wave applied to the corresponding map, without
+		needing that map. The harmonic coefficients are those of self.uht.map2harm:
+		alms harm[...,nelem] for curved-sky transforms, which can have any lmax
+		(multipoles above self.basis.lmax are discarded and missing ones are treated as
+		zero), and the physically normalized 2d Fourier coefficients harm[...,ny,nx]
+		on the geometry of this transform for flat-sky ones. For maps with
+		pre-dimensions, they are as in map2wave: curvedsky.map2alm's default spins on
+		the curved sky (T, E, B alms for a T, Q, U map) and scalar transforms of each
+		component on the flat sky. owave, fl, scales and fill_value are as in map2wave.
+		If owave is not provided, the wavelet maps get the real dtype corresponding to
+		harm.dtype."""
+		scales = range(len(self.geometries)) if scales is None else scales
+		filters, norms = self.filters, self.norms
+		pre = harm.shape[:-2] if self.uht.mode == "flat" else harm.shape[:-1]
+		geos = [(pre+tuple(shape[-2:]), wcs) for (shape, wcs) in self.geometries]
+		if owave is None: owave = multimap.zeros(geos, np.zeros(1, harm.dtype).real.dtype)
+		if self.uht.mode == "flat":
 			if fl is not None:
-				raise NotImplementedError("Pre-filtering not yet implemented for flat-sky wavelets.")				
-			for i, (shape, wcs) in enumerate(self.geometries):
-				if i in scales:
-					fsmall  = enmap.resample_fft(fmap, shape, norm=None, corner=True)
-					fsmall *= filters[i] / (norms[i]*fmap.npix)
-					owave.maps[i] = enmap.ifft(fsmall, normalize=False).real
-				else:
-					owave.maps[i] = enmap.zeros(shape,wcs)
-					if fill_value is not None: owave.maps[i][:] = np.nan
-					
+				raise NotImplementedError("Pre-filtering not yet implemented for flat-sky wavelets.")
+			harm = enmap.enmap(harm, self.uht.wcs, copy=False)
+			# Physical to unnormalized Fourier coefficients, combined with the
+			# 1/npix of the unnormalized inverse FFT
+			area = harm.npix*harm.pixsize()
 		else:
 			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
-			alm   = curvedsky.map2alm(map, ainfo=ainfo)
+			if harm.shape[-1] != ainfo.nelem:
+				harm = curvedsky.transfer_alm(curvedsky.alm_info(nalm=harm.shape[-1]), harm, ainfo)
 			if fl is not None:
-				alm = curvedsky.almxfl(alm,fl)
-			for i, (shape, wcs) in enumerate(self.geometries):
-				if i in scales:
-					smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
-					asmall    = curvedsky.transfer_alm(ainfo, alm, smallinfo)
-					smallinfo.lmul(asmall, filters[i]/norms[i], asmall)
-					curvedsky.alm2map(asmall, owave.maps[i])
-				else:
-					owave.maps[i] = enmap.zeros(shape,wcs)
-					if fill_value is not None: owave.maps[i][:] = fill_value
+				harm = curvedsky.almxfl(harm,fl)
+		for i, (shape, wcs) in enumerate(self.geometries):
+			if i not in scales:
+				owave.maps[i] = enmap.zeros(pre+tuple(shape[-2:]),wcs)
+				if fill_value is not None: owave.maps[i][:] = fill_value
+			elif self.uht.mode == "flat":
+				fsmall  = enmap.resample_fft(harm, shape, norm=None, corner=True)
+				fsmall *= filters[i] / (norms[i]*area**0.5)
+				owave.maps[i] = enmap.ifft(fsmall, normalize=False).real
+			else:
+				smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
+				asmall    = curvedsky.transfer_alm(ainfo, harm, smallinfo)
+				smallinfo.lmul(asmall, filters[i]/norms[i], asmall)
+				curvedsky.alm2map(asmall, owave.maps[i])
 		return owave
 	def wave2map(self, wave, omap=None):
 		"""Transform from the wavelet coefficients wave (multimap), to the corresponding enmap.
 		If omap is provided, it must have the correct geometry (the .geometry member of this class),
 		and will be overwritten with the result. In any case the result is returned."""
-		filters, norms, lmids = self.filters, self.norms, self.lmids
+		harm = self.wave2harm(wave)
 		if self.uht.mode == "flat":
-			fomap = enmap.zeros(wave.pre + self.uht.shape[-2:], self.uht.wcs, np.result_type(wave.dtype,0j))
+			tmp = enmap.ifft(harm, normalize="phys").real
+			if omap is None: omap    = tmp
+			else:            omap[:] = tmp
+			return omap
+		if omap is None:
+			omap = enmap.zeros(wave.pre + self.uht.shape[-2:], self.uht.wcs, wave.dtype)
+		return curvedsky.alm2map(harm, omap)
+	def wave2harm(self, wave, oharm=None):
+		"""Transform from the wavelet coefficients wave (multimap) to the harmonic
+		coefficients of the corresponding map, in the convention of self.uht.map2harm:
+		alms up to self.basis.lmax for curved-sky transforms, physically normalized 2d
+		Fourier coefficients on the geometry of this transform for flat-sky ones. This
+		gives the harmonic coefficients of wave2map's output without making that map. If
+		oharm is provided, it must have the right shape and the result is added to it.
+		In any case the result is returned."""
+		filters, norms = self.filters, self.norms
+		ctype = np.result_type(wave.dtype,0j)
+		if self.uht.mode == "flat":
+			if oharm is None:
+				oharm = enmap.zeros(wave.pre + self.uht.shape[-2:], self.uht.wcs, ctype)
+			fomap = enmap.zeros(oharm.shape, oharm.wcs, ctype)
 			for i, (shape, wcs) in enumerate(self.geometries):
 				fsmall  = enmap.fft(wave.maps[i], normalize=False)
 				fsmall *= filters[i] * (norms[i]/fsmall.npix)
 				enmap.resample_fft(fsmall, self.uht.shape, fomap=fomap, norm=None, corner=True, op=np.add)
-			tmp = enmap.ifft(fomap, normalize=False).real
-			if omap is None: omap    = tmp
-			else:            omap[:] = tmp
-			return omap
-		else:
-			ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
-			oalm  = np.zeros(wave.pre + (ainfo.nelem,), dtype=np.result_type(wave.dtype,0j))
-			for i, (shape, wcs) in enumerate(self.geometries):
-				smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
-				asmall    = curvedsky.map2alm(wave.maps[i], ainfo=smallinfo)
-				smallinfo.lmul(asmall, filters[i]*norms[i], asmall)
-				curvedsky.transfer_alm(smallinfo, asmall, ainfo, oalm, op=np.add)
-			if omap is None:
-				omap = enmap.zeros(wave.pre + self.uht.shape[-2:], self.uht.wcs, wave.dtype)
-			return curvedsky.alm2map(oalm, omap)
+			# Unnormalized to physical Fourier coefficients
+			fomap *= (fomap.npix*fomap.pixsize())**0.5
+			oharm += fomap
+			return oharm
+		ainfo = curvedsky.alm_info(lmax=self.basis.lmax)
+		if oharm is None:
+			oharm = np.zeros(wave.pre + (ainfo.nelem,), dtype=ctype)
+		for i, (shape, wcs) in enumerate(self.geometries):
+			smallinfo = curvedsky.alm_info(lmax=self.basis.lmaxs[i])
+			asmall    = curvedsky.map2alm(wave.maps[i], ainfo=smallinfo)
+			smallinfo.lmul(asmall, filters[i]*norms[i], asmall)
+			curvedsky.transfer_alm(smallinfo, asmall, ainfo, oharm, op=np.add)
+		return oharm
 	def get_ls(self, i):
 		"""Get the multipole indices for wavelet scale i. This will be an enmap
 		in if the uht is flat, otherwise it's a 1d array"""
 		if self.uht.mode == "flat":
-			return enmap.resample_fft(self.uht.l, self.geometries[i][0], norm=None, corner=True)
+			return enmap.resample_fft(self.uht.l, self.geometries[i][0], norm=None, corner=False)
 		else:
 			return self.uht.l
 	def get_variance_transform(self):

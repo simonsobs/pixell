@@ -3330,7 +3330,7 @@ def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=True, norm="pix", 
 	unit specifies which fourier-space unit is used. "pix" corresponds to
 	the standard enmap normalization (normalize=True in enmap.fft). "phys" corresponds
 	to physical normalization (normalize="phys"). The fourier-units matter because some
-	fourier-space units need rescaline when going from one resolution to another.
+	fourier-space units need rescaling when going from one resolution to another.
 	"""
 	# Construct the output shape and wcs
 	oshape = fimap.shape[:-2] + tuple(oshape)[-2:]
@@ -3355,24 +3355,29 @@ def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=True, norm="pix", 
 		elif norm == "plain":  norm = fomap.npix/fimap.npix # Corresponds to normalize=False in enmap.ifft
 		elif norm == "pix":    norm = (fomap.npix/fimap.npix)**0.5 # Corresponds to normalize=True, enmap.fft default
 		elif norm == "phys":   norm = 1 # Corresponds to normalize="phys"
-		else: raise ValueError("Unrecognized fourier unit '%s'" % str(unit))
+		else: raise ValueError("Unrecognized fourier unit '%s'" % str(norm))
+	# Phase shift to be applied only to the copied modes so that existing fomap content is not shifted.
+	# Not using enfft.shift (that takes frequencies from the length of the, here partial, array)
+	shift = np.any(off != 0) and np.iscomplexobj(fomap)
+	py = np.exp(-2j*np.pi*np.fft.fftfreq(oshape[-2])*off[0])[:,None]
+	px = np.exp(-2j*np.pi*np.fft.fftfreq(oshape[-1])*off[1])[None,:]
 	# copy over all 4 quadrants. This would have been a single operation if the
 	# fourier center had been in the middle. This could be acieved using fftshift,
 	# but that would require two extra full-array shifts
 	cny, cnx = np.minimum(fimap.shape[-2:], oshape[-2:])
 	hny, hnx = cny//2, cnx//2
 	# This function is used to avoid paying the cost of multiplying by norm when it's one
-	def transfer(dest, source, norm, op):
-		if norm != 1: source = source*norm
+	def transfer(dest, source, norm, op, py, px):
+		if norm != 1 or shift: source = source.copy()
+		if norm != 1: source *= norm
+		if shift:
+			source *= py
+			source *= px
 		dest[:] = op(dest, source)
-	transfer(fomap[...,:hny,       :hnx       ],fimap[...,:hny,       :hnx       ], norm, op)
-	transfer(fomap[...,:hny,       -(cnx-hnx):],fimap[...,:hny,       -(cnx-hnx):], norm, op)
-	transfer(fomap[...,-(cny-hny):,:hnx       ],fimap[...,-(cny-hny):,:hnx       ], norm, op)
-	transfer(fomap[...,-(cny-hny):,-(cnx-hnx):],fimap[...,-(cny-hny):,-(cnx-hnx):], norm, op)
-	if np.any(off != 0):
-		# It's fastest to do this here when downsampling, but when upsampling
-		# it's faster to do so in the fimap. And for a mix it's bad to do it both places.
-		fomap[:] = enfft.shift(fomap, off, axes=(-2,-1), nofft=True)
+	transfer(fomap[...,:hny,       :hnx       ],fimap[...,:hny,       :hnx       ], norm, op, py[:hny],        px[:,:hnx]       )
+	transfer(fomap[...,:hny,       -(cnx-hnx):],fimap[...,:hny,       -(cnx-hnx):], norm, op, py[:hny],        px[:,-(cnx-hnx):])
+	transfer(fomap[...,-(cny-hny):,:hnx       ],fimap[...,-(cny-hny):,:hnx       ], norm, op, py[-(cny-hny):], px[:,:hnx]       )
+	transfer(fomap[...,-(cny-hny):,-(cnx-hnx):],fimap[...,-(cny-hny):,-(cnx-hnx):], norm, op, py[-(cny-hny):], px[:,-(cnx-hnx):])
 	return fomap
 
 def spin_helper(spin, n):
