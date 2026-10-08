@@ -3358,7 +3358,7 @@ def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=True, norm="pix", 
 		else: raise ValueError("Unrecognized fourier unit '%s'" % str(norm))
 	# Phase shift to be applied only to the copied modes so that existing fomap content is not shifted.
 	# Not using enfft.shift (that takes frequencies from the length of the, here partial, array)
-	shift = np.any(off != 0) and np.iscomplexobject(fomap)
+	shift = np.any(off != 0) and np.iscomplexobj(fomap)
 	py = np.exp(-2j*np.pi*np.fft.fftfreq(oshape[-2])*off[0])[:,None]
 	px = np.exp(-2j*np.pi*np.fft.fftfreq(oshape[-1])*off[1])[None,:]
 	# copy over all 4 quadrants. This would have been a single operation if the
@@ -3373,7 +3373,7 @@ def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=True, norm="pix", 
 		if shift:
 			source *= py
 			source *= px
-		dest[:] = op(source, dest)
+		dest[:] = op(dest, source)
 	transfer(fomap[...,:hny,       :hnx       ],fimap[...,:hny,       :hnx       ], norm, op, py[:hny],        px[:,:hnx]       )
 	transfer(fomap[...,:hny,       -(cnx-hnx):],fimap[...,:hny,       -(cnx-hnx):], norm, op, py[:hny],        px[:,-(cnx-hnx):])
 	transfer(fomap[...,-(cny-hny):,:hnx       ],fimap[...,-(cny-hny):,:hnx       ], norm, op, py[-(cny-hny):], px[:,:hnx]       )
