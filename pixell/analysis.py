@@ -494,7 +494,7 @@ class NmatWavelet(Nmat):
 		# Then get kappa
 		fkappa = enmap.zeros(self.wiN.pre + map.shape[-2:], map.wcs, utils.complex_dtype(map.dtype))
 		for i in range(self.wt.nlevel):
-			sub_Q  = self.wt.filters[i]*enmap.resample_fft(beam, self.wt.geometries[i][0], norm=None, corner=True)
+			sub_Q  = self.wt.filters[i]*enmap.resample_fft(beam, self.wt.geometries[i][0], norm=None, corner=False)
 			# Is it right to do this component-wise?
 			sub_Q2 = rop(sub_Q, op=lambda a: a[:,None]*a[None,:])
 			fsmall = sub_Q2*enmap.fft(self.wiN.maps[i], normalize=False)/self.wiN.npixs[i]
