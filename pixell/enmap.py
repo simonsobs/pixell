@@ -3330,7 +3330,7 @@ def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=True, norm="pix", 
 	unit specifies which fourier-space unit is used. "pix" corresponds to
 	the standard enmap normalization (normalize=True in enmap.fft). "phys" corresponds
 	to physical normalization (normalize="phys"). The fourier-units matter because some
-	fourier-space units need rescaline when going from one resolution to another.
+	fourier-space units need rescaling when going from one resolution to another.
 	"""
 	# Construct the output shape and wcs
 	oshape = fimap.shape[:-2] + tuple(oshape)[-2:]
@@ -3355,7 +3355,7 @@ def resample_fft(fimap, oshape, fomap=None, off=(0,0), corner=True, norm="pix", 
 		elif norm == "plain":  norm = fomap.npix/fimap.npix # Corresponds to normalize=False in enmap.ifft
 		elif norm == "pix":    norm = (fomap.npix/fimap.npix)**0.5 # Corresponds to normalize=True, enmap.fft default
 		elif norm == "phys":   norm = 1 # Corresponds to normalize="phys"
-		else: raise ValueError("Unrecognized fourier unit '%s'" % str(unit))
+		else: raise ValueError("Unrecognized fourier unit '%s'" % str(norm))
 	# Phase shift to be applied only to the copied modes so that existing fomap content is not shifted.
 	# Not using enfft.shift (that takes frequencies from the length of the, here partial, array)
 	shift = np.any(off != 0)
