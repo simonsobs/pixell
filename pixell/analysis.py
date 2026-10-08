@@ -114,7 +114,7 @@ print("%-15s %8.3f %8.3f %8.3f" % ("lowcorr full emp", flux, dflux, flux/dflux))
 
 import numpy as np, time
 from scipy import ndimage
-from . import enmap, utils, uharm, wavelets, bunch
+from . import enmap, utils, uharm, wavelets, bunch, multimap
 
 # TODO: Figure out the proper way to handle fourier-space
 # linear operators. Currently I have a mess of map2harm, harm2map
