@@ -1,5 +1,7 @@
 from __future__ import print_function
+from functools import lru_cache
 import numpy as np
+from scipy import spatial
 from . import utils
 import astropy.coordinates as c, astropy.units as u
 # Optional dependencies are imported in the functions that
@@ -191,6 +193,19 @@ def transform_astropy(from_sys, to_sys, coords):
 	return np.asarray([
 		getattr(getattr(coords, names[0]),unit.name),
 		getattr(getattr(coords, names[1]),unit.name)])
+
+@lru_cache(maxsize=1)
+def gal2cel_euler():
+	"""Return Galactic-to-ICRS Euler angles in radians, in healpy.rotate_alm order.
+
+	Transform the three Cartesian basis vectors with Astropy, as used by
+	transform for cel/equ, to obtain the columns of the rotation matrix.
+	SciPy's extrinsic "zyz" order matches healpy.rotate_alm; reverse these
+	angles when passing them to transform_euler. The cached tuple is immutable.
+	"""
+	basis = c.Galactic(c.CartesianRepresentation(np.eye(3), unit=u.one))
+	matrix = basis.transform_to(c.ICRS()).cartesian.xyz.value
+	return tuple(spatial.transform.Rotation.from_matrix(matrix).as_euler("zyz"))
 
 def transform_euler(euler, coords, pol=None, mag=None):
 	"""Like transform, but for a set of zyz euler angles instead"""

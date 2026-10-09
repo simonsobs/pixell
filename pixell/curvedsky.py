@@ -2,7 +2,7 @@
 full sky."""
 from __future__ import print_function, division
 import numpy as np, os, warnings
-from . import enmap, powspec, wcsutils, utils, bunch
+from . import enmap, powspec, wcsutils, utils, bunch, coordinates
 
 from . import cmisc
 # Initialize DUCC's thread num variable from OMP's if it's not already set.
@@ -712,7 +712,7 @@ def alm2cl(alm, alm2=None, ainfo=None, dtype=None):
 	return ainfo.alm2cl(alm, alm2=alm2, dtype=dtype)
 
 euler_angs={}
-euler_angs[("gal","equ")] = np.array([57.06793215,  62.87115487, -167.14056929])*utils.degree
+euler_angs[("gal","equ")] = np.array(coordinates.gal2cel_euler())
 euler_angs[("equ","gal")] = -euler_angs[("gal","equ")][::-1]
 def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=None, inplace=False):
 	"""Rotate the given alm[...,:] via the zyz rotations given by euler angles

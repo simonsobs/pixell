@@ -2,6 +2,10 @@
 
 import unittest
 
+# healpy and ducc0 both initialize FFTW. Import healpy before pixell.curvedsky
+# or curvedsky.rotate_alm(method="healpy") aborts.
+import healpy  # noqa: F401
+
 from pixell import enmap
 from pixell import curvedsky
 from pixell import lensing
@@ -9,6 +13,7 @@ from pixell import array_ops
 from pixell import enplot
 from pixell import powspec
 from pixell import reproject
+from pixell import coordinates
 from pixell import pointsrcs
 from pixell import wcsutils
 from pixell import utils as u
@@ -1001,6 +1006,89 @@ class PixelTests(unittest.TestCase):
             alm_out = np.zeros_like(alm) if use_oalm else None
             alm_out = curvedsky.map2alm(omap, alm=alm_out, spin=spin, ainfo=ainfo)
             np.testing.assert_array_almost_equal(alm_out, alm)
+
+    def _galcel_sky_positions(self):
+        # Include the issue #337 position, longitude wrapping and both poles,
+        # plus reproducible directions distributed over the sphere.
+        fixed = np.deg2rad([
+            [4.442941, 0, 90, 180, 270, 359.999999, 0.000001, 42, 42],
+            [4.312485, 0, 0, 0, 0, 30, -30, 90, -90],
+        ])
+        rng = np.random.default_rng(337)
+        random = np.array([
+            rng.uniform(0, 2 * np.pi, 128),
+            np.arcsin(rng.uniform(-1, 1, 128)),
+        ])
+        return np.concatenate([fixed, random], axis=1)
+
+    def test_galcel_euler(self):
+        from astropy.coordinates import angular_separation
+        for celestial, reverse in itertools.product(["cel", "equ"], [False, True]):
+            with self.subTest(celestial=celestial, reverse=reverse):
+                source, target = (celestial, "gal") if reverse else ("gal", celestial)
+                pos = self._galcel_sky_positions()
+                expected = coordinates.transform(source, target, pos)
+                # transform_euler uses the opposite angle order from rotate_alm.
+                euler = reproject.rot2euler(source + "," + target)
+                actual = coordinates.transform_euler(euler[::-1], pos, pol=False)
+                separation = angular_separation(*expected, *actual)
+                # arccos(dot) loses precision below ~0.003 arcsec in float64.
+                assert np.max(separation / utils.arcsec) < 1e-6
+                restored = coordinates.transform_euler(
+                    reproject.inv_euler(euler)[::-1], actual, pol=False)
+                assert np.max(angular_separation(*pos, *restored) / utils.arcsec) < 1e-6
+
+    def test_galcel_rotate_alm(self):
+        import healpy as hp
+        for (source, target), method in itertools.product(
+                [("gal", "equ"), ("equ", "gal")], ["ducc0", "healpy"]):
+            with self.subTest(source=source, target=target, method=method):
+                lmax = 8
+                rng = np.random.default_rng(344)
+                alm = rng.normal(size=hp.Alm.getsize(lmax)).astype(complex)
+                alm += 1j * rng.normal(size=alm.size)
+                alm[:lmax + 1] = alm[:lmax + 1].real
+                pos = self._galcel_sky_positions()
+                input_pos = coordinates.transform(target, source, pos)
+                expected = curvedsky.alm2map_pos(alm, pos=input_pos[::-1], spin=0)
+                rotated = curvedsky.rotate_alm(
+                    alm, *curvedsky.euler_angs[(source, target)], method=method, nthread=1)
+                actual = curvedsky.alm2map_pos(rotated, pos=pos[::-1], spin=0)
+                np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-9)
+
+    def test_galcel_healpix2map(self):
+        import healpy as hp
+        for rotation in ["gal,cel", "cel,gal"]:
+            with self.subTest(rotation=rotation):
+                source, target = rotation.split(",")
+                rng = np.random.default_rng(337)
+                iheal = rng.normal(size=hp.nside2npix(16))
+                shape, wcs = enmap.geometry(
+                    pos=np.deg2rad([[2, 2], [7, 7]]), res=0.25 * utils.degree, proj="car")
+                output_pos = enmap.posmap(shape, wcs)[::-1]
+                input_pos = coordinates.transform(target, source, output_pos)
+                expected = hp.get_interp_val(iheal, np.pi / 2 - input_pos[1], input_pos[0])
+                actual = reproject.healpix2map(
+                    iheal, shape, wcs, rot=rotation, method="spline", order=1, spin=0)
+                np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-10)
+
+    def test_galcel_identity(self):
+        import warnings
+        from astropy.coordinates import angular_separation
+        for rotation in ["gal,gal", "cel,cel", "equ,cel", "cel,equ"]:
+            with self.subTest(rotation=rotation):
+                # scipy warns about Euler non-uniqueness for identity rotations.
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", message="Gimbal lock", category=UserWarning)
+                    euler = reproject.rot2euler(rotation)
+                pos = self._galcel_sky_positions()
+                actual = coordinates.transform_euler(euler[::-1], pos, pol=False)
+                assert np.max(angular_separation(*pos, *actual) / utils.arcsec) < 1e-6
+
+    def test_galcel_explicit_euler(self):
+        # Historical outputs can still be reproduced using explicit angles.
+        legacy = np.deg2rad([57.06793215, 62.87115487, -167.14056929])
+        np.testing.assert_array_equal(reproject.rot2euler(legacy), legacy)
 
     def test_alm2map_healpix_roundtrip(self):
         # Test curvedsky's alm2map/map2alm.
