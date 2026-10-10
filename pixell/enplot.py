@@ -184,7 +184,7 @@ def plot_iterator(*arglist, **kwargs):
 			oname = args.oname.format(**oinfo)
 			# Draw the map
 			if args.driver.lower() == "pil":
-				img, info = draw_map_field(map_field, args, crange[:,gi*gsize:(gi+1)*gsize], return_info=True, return_layers=args.layers, printer=subprint, cache=cache)
+				img, info = draw_map_field(map_field, args, crange[:,gi*gsize:(gi+1)*gsize], return_info=True, return_layers=args.layers, printer=subprint, cache=cache, ci=gi)
 				padding = np.array([-info.bounds[0,::-1],info.bounds[1,::-1]-map_field.shape[-2:]],dtype=int)
 				printer.write("padded by %d %d %d %d" % tuple(padding.reshape(-1)), 4)
 				typ = "vid" if is_vid else "pil"
@@ -291,7 +291,8 @@ def define_arg_parser(nodefault=False):
 	add_argument("--nolabels", action="store_true", help="Disable the generation of coordinate labels outside the map when using the grid.")
 	add_argument("--xlabel", type=str, default=None, help="Text to draw below the map as a label for the horizontal axis, for example 'RA (deg)'. Uses the same font and color as the coordinate labels. See --label-font-size for the size.")
 	add_argument("--ylabel", type=str, default=None, help="Text to draw to the left of the map as a label for the vertical axis, for example 'Dec (deg)'. See --xlabel.")
-	add_argument("--label-font-size", type=int, default=None, help="Font size to use for --xlabel and --ylabel. Defaults to --font-size.")
+	add_argument("--colorbar-label", type=str, default=None, help="Text to draw below the color bar as a label (e.g. units of the map). To give each component of a multidimensional map its own label, use a colon-separated list (e.g. 'T (uK):Q (uK):U (uK)'). If there are fewer labels than components, the last one is reused, and an empty entry leaves that component without a label. From python a list of strings can be passed instead. Only used when the color bar is enabled. See --xlabel.")
+	add_argument("--label-font-size", type=int, default=None, help="Font size to use for --xlabel, --ylabel and --colorbar-label. Defaults to --font-size.")
 	add_argument("--nstep", type=int, default=200, help="The number of steps to use when drawing grid lines. Higher numbers result in smoother curves.")
 	add_argument("--subticks", type=float, default=0, help="Subtick spacing. Only supported by matplotlib driver.")
 	add_argument("-b", "--colorbar", default=0, action="count", help="Whether to draw the color bar or not")
@@ -502,12 +503,15 @@ def get_cache(cache, key, fun):
 	if key not in cache: cache[key] = fun()
 	return cache[key]
 
-def draw_map_field(map, args, crange=None, return_layers=False, return_info=False, printer=noprint, cache=None):
+def draw_map_field(map, args, crange=None, return_layers=False, return_info=False, printer=noprint, cache=None, ci=0):
 	"""Draw a single map field, resulting in a single image. Adds a coordinate grid
 	and lables as specified by args. If return_layers is True, an array will be
 	returned instead of an image, wich each entry being a component of the image,
-	such as the base image, the coordinate grid, the labels, etc. If return_bounds
-	is True, then the """
+	such as the base image, the coordinate grid, the labels, etc. If return_info
+	is True, then an info object with the bounds of the image relative to the map
+	and the names of the layers is returned too. ci is the index of this field
+	among those being plotted, and selects which color bar label to use when
+	args.colorbar_label holds one per component."""
 	map, color = prepare_map_field(map, args, crange, printer=printer)
 	tag    = (tuple(map.shape), map.wcs.to_header_string(), repr(args))
 	layers = []
@@ -549,12 +553,14 @@ def draw_map_field(map, args, crange=None, return_layers=False, return_info=Fals
 				layers.append((labels,bounds))
 				names.append("tics")
 	# Axis labels
-	if args.xlabel or args.ylabel:
-		with printer.time("draw axis labels", 3):
-			for name, limg, bounds in draw_axis_labels(map.shape, [xoff,yoff], args):
-				if name == "xlabel": yoff = bounds[1,1]
-				layers.append((limg,bounds))
-				names.append(name)
+	off = [xoff,yoff]
+	for name in ["xlabel","ylabel"]:
+		if not args[name]: continue
+		with printer.time("draw " + name, 3):
+			limg, bounds = draw_label(args[name], map.shape, off, args, left=name=="ylabel")
+			if name == "xlabel": yoff = bounds[1,1]
+			layers.append((limg,bounds))
+			names.append(name)
 	if args.colorbar % 2:
 		with printer.time("draw colorbar", 3):
 			bimg, bounds = draw_colorbar(crange, map.shape[-1], args)
@@ -562,6 +568,12 @@ def draw_map_field(map, args, crange=None, return_layers=False, return_info=Fals
 			yoff = bounds[1,1]
 			layers.append((bimg,bounds))
 			names.append("colorbar")
+		clabels = parse_list(args.colorbar_label or "", str, ":")
+		clabel  = clabels[min(ci,len(clabels)-1)]
+		if clabel:
+			with printer.time("draw colorbar label", 3):
+				layers.append(draw_label(clabel, map.shape, [0,yoff], args))
+				names.append("colorbar_label")
 	 # Possibly other stuff too, like point source circles
 	 # or contours
 	with printer.time("stack layers", 3):
@@ -741,22 +753,18 @@ def draw_grid_labels(ginfo, args):
 	labels, bounds = cgrid.draw_labels(canvas, linfo, fname=args.font, fsize=args.font_size, color=args.font_color, return_bounds=True)
 	return labels, bounds
 
-def draw_axis_labels(shape, off, args):
-	"""Draw args.xlabel centered below a map with the given shape, and args.ylabel
-	centered to the left of it, reading from bottom to top. off[{x,y}] is the left
-	and bottom edge of what has already been drawn there (e.g. coordinate labels).
-	Labels too long to be centered are anchored at the bottom left corner instead.
-	Returns a list of (name,image,bounds), with bounds relative to the map."""
+def draw_label(text, shape, off, args, left=False):
+	"""Draw text as a label centered below a map with the given shape, or, if left
+	is True, centered to the left of it and reading from bottom to top. off[{x,y}]
+	is the left and bottom edge of what has already been drawn there (e.g. 
+	coordinate labels). A label too long to be centered is anchored at the bottom
+	left corner instead. Returns the label image and its bounds relative to the map."""
 	size = args.label_font_size or args.font_size
-	pad, res = size//2, []
-	for name, text, rot in [("xlabel",args.xlabel,False),("ylabel",args.ylabel,True)]:
-		if not text: continue
-		img  = cgrid.draw_text(text, args.font, size, args.font_color, rotate=rot)
-		w, h = img.size
-		if rot: pos = [off[0]-pad-w, min((shape[-2]-h)//2, off[1]-h)]
-		else:   pos = [max((shape[-1]-w)//2, off[0]), off[1]+pad]
-		res.append((name, img, np.array([pos, [pos[0]+w,pos[1]+h]])))
-	return res
+	img  = cgrid.draw_text(text, args.font, size, args.font_color, rotate=left)
+	w, h = img.size
+	if left: pos = [off[0]-size//2-w, min((shape[-2]-h)//2, off[1]-h)]
+	else:    pos = [max((shape[-1]-w)//2, off[0]), off[1]+size//2]
+	return img, np.array([pos, [pos[0]+w,pos[1]+h]])
 
 def calc_contours(crange, args):
 	"""Returns a list of values at which to place contours based on

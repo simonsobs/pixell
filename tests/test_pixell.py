@@ -377,6 +377,14 @@ class PixelTests(unittest.TestCase):
         assert p.img.size[0] > p0.img.size[0] and p.img.size[1] > p0.img.size[1]
         q = enplot.plot(a, xlabel="RA (deg)", ylabel="Dec (deg)", label_font_size=40)[0]
         assert q.img.size[0] > p.img.size[0] and q.img.size[1] > p.img.size[1]
+        # colorbar label
+        p = enplot.plot(a, colorbar=True)[0]
+        q = enplot.plot(a, colorbar=True, colorbar_label="uK", layers=True)
+        assert q[-1].layer == "_colorbar_label" and q[-1].img.size[1] > p.img.size[1]
+        # per-component colorbar labels, with the last one reused
+        q = enplot.plot(a, colorbar=True, colorbar_label="T (uK):Q (uK)", layers=True)
+        q = [x.img for x in q if x.layer == "_colorbar_label"]
+        assert len(q) == 3 and q[0] != q[1] and q[1] == q[2]
 
     def test_fft(self):
         # Tests that ifft(ifft(imap))==imap, i.e. default normalizations are consistent
