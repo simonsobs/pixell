@@ -289,10 +289,13 @@ def define_arg_parser(nodefault=False):
 	add_argument("-t", "--ticks", type=str, default="1", help="The grid spacing in degrees. Either a single number to be used for both axis, or ty,tx.")
 	add_argument("--tick-unit", "--tu", type=str, default=None, help="Units for tick axis. Can be the unit size in degrees, or the word 'degree', 'arcmin' or 'arcsec' or the shorter 'd','m','s'.")
 	add_argument("--nolabels", action="store_true", help="Disable the generation of coordinate labels outside the map when using the grid.")
+	add_argument("--xlabel", type=str, default=None, help="Text to draw below the map as a label for the horizontal axis, for example 'RA (deg)'. Uses the same font and color as the coordinate labels. See --label-font-size for the size.")
+	add_argument("--ylabel", type=str, default=None, help="Text to draw to the left of the map as a label for the vertical axis, for example 'Dec (deg)'. See --xlabel.")
+	add_argument("--label-font-size", type=int, default=None, help="Font size to use for --xlabel and --ylabel. Defaults to --font-size.")
 	add_argument("--nstep", type=int, default=200, help="The number of steps to use when drawing grid lines. Higher numbers result in smoother curves.")
 	add_argument("--subticks", type=float, default=0, help="Subtick spacing. Only supported by matplotlib driver.")
 	add_argument("-b", "--colorbar", default=0, action="count", help="Whether to draw the color bar or not")
-	add_argument("--font", type=str, default="arial.ttf", help="The font to use for text.")
+	add_argument("--font", type=str, default="arial.ttf", help="The font to use for all text in the plot. Either the name of an installed font or the path to a font file.")
 	add_argument("--font-size", type=int, default=20, help="Font size to use for text.")
 	add_argument("--font-color", type=str, default="000000", help="Font color to use for text.")
 	add_argument("-D", "--driver", type=str, default="pil", help="The driver to use for plotting. Can be pil (the default) or mpl. pil cleanly maps input pixels to output pixels, and has better coordiante system support, but doesn't have as pretty grid lines or axis labels.")
@@ -509,7 +512,7 @@ def draw_map_field(map, args, crange=None, return_layers=False, return_info=Fals
 	tag    = (tuple(map.shape), map.wcs.to_header_string(), repr(args))
 	layers = []
 	names  = []
-	yoff   = map.shape[-2]
+	xoff, yoff = 0, map.shape[-2]
 	# Image layer
 	if not args.no_image:
 		with printer.time("to image", 3):
@@ -542,9 +545,16 @@ def draw_map_field(map, args, crange=None, return_layers=False, return_info=Fals
 		if not args.nolabels:
 			with printer.time("draw labels", 3):
 				labels, bounds = get_cache(cache, ("labels",tag), lambda: draw_grid_labels(ginfo, args))
-				yoff = bounds[1][1]
+				xoff, yoff = bounds[0][0], bounds[1][1]
 				layers.append((labels,bounds))
 				names.append("tics")
+	# Axis labels
+	if args.xlabel or args.ylabel:
+		with printer.time("draw axis labels", 3):
+			for name, limg, bounds in draw_axis_labels(map.shape, [xoff,yoff], args):
+				if name == "xlabel": yoff = bounds[1,1]
+				layers.append((limg,bounds))
+				names.append(name)
 	if args.colorbar % 2:
 		with printer.time("draw colorbar", 3):
 			bimg, bounds = draw_colorbar(crange, map.shape[-1], args)
@@ -562,8 +572,8 @@ def draw_map_field(map, args, crange=None, return_layers=False, return_info=Fals
 	else: return layers
 
 def draw_colorbar(crange, width, args):
-	col  = tuple([int(args.font_color[i:i+2],16) for i in range(0,len(args.font_color),2)])
-	font = cgrid.get_font(args.font_size)
+	col  = cgrid.parse_color(args.font_color)
+	font = cgrid.get_font(args.font_size, args.font)
 	fmt  = "%g"
 	labels, boxes = [], []
 	for val in crange:
@@ -731,6 +741,23 @@ def draw_grid_labels(ginfo, args):
 	labels, bounds = cgrid.draw_labels(canvas, linfo, fname=args.font, fsize=args.font_size, color=args.font_color, return_bounds=True)
 	return labels, bounds
 
+def draw_axis_labels(shape, off, args):
+	"""Draw args.xlabel centered below a map with the given shape, and args.ylabel
+	centered to the left of it, reading from bottom to top. off[{x,y}] is the left
+	and bottom edge of what has already been drawn there (e.g. coordinate labels).
+	Labels too long to be centered are anchored at the bottom left corner instead.
+	Returns a list of (name,image,bounds), with bounds relative to the map."""
+	size = args.label_font_size or args.font_size
+	pad, res = size//2, []
+	for name, text, rot in [("xlabel",args.xlabel,False),("ylabel",args.ylabel,True)]:
+		if not text: continue
+		img  = cgrid.draw_text(text, args.font, size, args.font_color, rotate=rot)
+		w, h = img.size
+		if rot: pos = [off[0]-pad-w, min((shape[-2]-h)//2, off[1]-h)]
+		else:   pos = [max((shape[-1]-w)//2, off[0]), off[1]+pad]
+		res.append((name, img, np.array([pos, [pos[0]+w,pos[1]+h]])))
+	return res
+
 def calc_contours(crange, args):
 	"""Returns a list of values at which to place contours based on
 	the valure range of the map crange[{from,to}] and the contour
@@ -856,7 +883,7 @@ def draw_annotations(map, annots, args):
 			if len(annot) > 6: size  = int(annot[6])
 			if len(annot) > 7: color = annot[7]
 			if font is None or size != font_size_prev:
-				font = cgrid.get_font(size)
+				font = cgrid.get_font(size, args.font)
 				font_size_prev = size
 			tbox = font.getbbox(text)[-2:]
 			draw.text((x-tbox[0]/2, y-tbox[1]/2), text, color, font=font)

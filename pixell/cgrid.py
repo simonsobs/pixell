@@ -106,8 +106,12 @@ def calc_gridinfo(shape, wcs, steps=[2,2], nstep=[200,200], zenith=False, unit=1
 		gridinfo.lat.append((theta/unit,prune_bad_segs(calc_line_segs(pixs),shape)))
 	return gridinfo
 
+def parse_color(color):
+	"""Convert a hex color string like "rrggbb" or "rrggbbaa" to a tuple of ints."""
+	return tuple([int(color[i:i+2],16) for i in range(0,len(color),2)])
+
 def draw_grid(gridinfo, color="00000020", width=1, background=None):
-	col = tuple([int(color[i:i+2],16) for i in range(0,len(color),2)])
+	col = parse_color(color)
 	grid = Image.new("RGBA", gridinfo.shape[-2:][::-1])
 	if width > 0:
 		draw = ImageDraw.Draw(grid, "RGBA")
@@ -241,11 +245,31 @@ def get_font(fsize=16, fname="arial.ttf"):
 		font = ImageFont.truetype(os.path.join(os.path.dirname(__file__), "arial.ttf"), size=fsize)
 	return font
 
+def draw_text(text, fname="arial.ttf", fsize=16, color="000000", rotate=False):
+	"""Render a text string as an image cropped tightly around the text.
+
+	Arguments:
+	* text: The string to draw. Newlines give centered multi-line text.
+	* fname: The font to use. This can be the name of an installed font
+	  or the path to a font file. See get_font.
+	* fsize: The font size.
+	* color: The text color as a hex string ()either "rrggbb" or "rrggbbaa").
+	* rotate: If True, the text is rotated to read from bottom to top.
+
+	Returns a PIL RGBA image with a transparent background."""
+	font = get_font(fsize, fname)
+	box  = np.array(ImageDraw.Draw(Image.new("RGBA", (1,1))).textbbox((0,0), text, font=font, align="center"))
+	pos  = np.floor(box[:2]).astype(int)
+	img  = Image.new("RGBA", tuple(np.ceil(box[2:]).astype(int)-pos))
+	ImageDraw.Draw(img).text(tuple(-pos), text, parse_color(color), font=font, align="center")
+	if rotate: img = img.rotate(90, expand=True)
+	return img
+
 def draw_labels(img, label_pos, fname="arial.ttf", fsize=16, fmt="%g", color="000000", return_bounds=False):
 	# For each label, determine the size the text would be, and
 	# displace it left, right, up or down depending on which edge
 	# of the image it is at
-	col = tuple([int(color[i:i+2],16) for i in range(0,len(color),2)])
+	col = parse_color(color)
 	font = get_font(fsize, fname)
 	labels = []
 	boxes  = []

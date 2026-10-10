@@ -369,6 +369,14 @@ class PixelTests(unittest.TestCase):
         p = enplot.plot(a, colorbar=True)
         # annotation
         p = enplot.plot(a, annotate=DATA_PREFIX+"annot.txt")
+        # axis labels
+        p0 = enplot.plot(a)[0]
+        p = enplot.plot(a, xlabel="RA (deg)", ylabel="Dec (deg)", layers=True)
+        assert [q.layer for q in p[-2:]] == ["_xlabel", "_ylabel"]
+        p = enplot.plot(a, "--xlabel 'RA (deg)' --ylabel 'Dec (deg)'")[0]
+        assert p.img.size[0] > p0.img.size[0] and p.img.size[1] > p0.img.size[1]
+        q = enplot.plot(a, xlabel="RA (deg)", ylabel="Dec (deg)", label_font_size=40)[0]
+        assert q.img.size[0] > p.img.size[0] and q.img.size[1] > p.img.size[1]
 
     def test_fft(self):
         # Tests that ifft(ifft(imap))==imap, i.e. default normalizations are consistent
