@@ -289,6 +289,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("-t", "--ticks", type=str, default="1", help="The grid spacing in degrees. Either a single number to be used for both axis, or ty,tx.")
 	add_argument("--tick-unit", "--tu", type=str, default=None, help="Units for tick axis. Can be the unit size in degrees, or the word 'degree', 'arcmin' or 'arcsec' or the shorter 'd','m','s'.")
 	add_argument("--nolabels", action="store_true", help="Disable the generation of coordinate labels outside the map when using the grid.")
+	add_argument("--ra-format", type=str, default=None, choices=["h:m","h:m:s","hm","hms"], help="Show the right ascension tick values as hours, minutes and seconds instead of degrees. Can be h:m (giving e.g. 23:20), h:m:s (23:20:00), hm (23h20m) or hms (23h20m00s).")
 	add_argument("--xlabel", type=str, default=None, help="Text to draw below the map as a label for the horizontal axis, for example 'RA (deg)'. Uses the same font and color as the coordinate labels. See --label-font-size for the size.")
 	add_argument("--ylabel", type=str, default=None, help="Text to draw to the left of the map as a label for the vertical axis, for example 'Dec (deg)'. See --xlabel.")
 	add_argument("--colorbar-label", type=str, default=None, help="Text to draw below the color bar as a label (e.g. units of the map). To give each component of a multidimensional map its own label, use a colon-separated list (e.g. 'T (uK):Q (uK):U (uK)'). If there are fewer labels than components, the last one is reused, and an empty entry leaves that component without a label. From python a list of strings can be passed instead. Only used when the color bar is enabled. See --xlabel.")
@@ -555,9 +556,10 @@ def draw_map_field(map, args, crange=None, return_layers=False, return_info=Fals
 	# Axis labels
 	off = [xoff,yoff]
 	for name in ["xlabel","ylabel"]:
-		if not args[name]: continue
+		text = getattr(args, name)
+		if not text: continue
 		with printer.time("draw " + name, 3):
-			limg, bounds = draw_label(args[name], map.shape, off, args, left=name=="ylabel")
+			limg, bounds = draw_label(text, map.shape, off, args, left=name=="ylabel")
 			if name == "xlabel": yoff = bounds[1,1]
 			layers.append((limg,bounds))
 			names.append(name)
@@ -568,7 +570,7 @@ def draw_map_field(map, args, crange=None, return_layers=False, return_info=Fals
 			yoff = bounds[1,1]
 			layers.append((bimg,bounds))
 			names.append("colorbar")
-		clabels = parse_list(args.colorbar_label or "", str, ":")
+		clabels = parse_list(args.colorbar_label or "", lambda w: str(w or ""), ":")
 		clabel  = clabels[min(ci,len(clabels)-1)]
 		if clabel:
 			with printer.time("draw colorbar label", 3):
@@ -745,10 +747,12 @@ def draw_grid(ginfo, args):
 def draw_grid_labels(ginfo, args):
 	"""Return an image with a coordinate grid, along with abounds of this
 	image relative to the coordinate shape stored in ginfo. Depends
-	on the following args members: args.font, args.font_size, args.font_color"""
-	linfo = []
-	for gi in [ginfo.lat, ginfo.lon]:
-		linfo += cgrid.calc_label_pos(gi, ginfo.shape[::-1])
+	on the following args members: args.font, args.font_size, args.font_color,
+	args.ra_format"""
+	lat, lon = [cgrid.calc_label_pos(gi, ginfo.shape[::-1]) for gi in [ginfo.lat, ginfo.lon]]
+	if args.ra_format:
+		for l, ra in zip(lon, cgrid.format_ra([l[0]*ginfo.unit for l in lon], args.ra_format)): l[0] = ra
+	linfo  = lat + lon
 	canvas = PIL.Image.new("RGBA", ginfo.shape[::-1])
 	labels, bounds = cgrid.draw_labels(canvas, linfo, fname=args.font, fsize=args.font_size, color=args.font_color, return_bounds=True)
 	return labels, bounds
@@ -756,7 +760,7 @@ def draw_grid_labels(ginfo, args):
 def draw_label(text, shape, off, args, left=False):
 	"""Draw text as a label centered below a map with the given shape, or, if left
 	is True, centered to the left of it and reading from bottom to top. off[{x,y}]
-	is the left and bottom edge of what has already been drawn there (e.g. 
+	is the left and bottom edge of what has already been drawn there (e.g.
 	coordinate labels). A label too long to be centered is anchored at the bottom
 	left corner instead. Returns the label image and its bounds relative to the map."""
 	size = args.label_font_size or args.font_size

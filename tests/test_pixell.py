@@ -388,10 +388,17 @@ class PixelTests(unittest.TestCase):
         for alias, name in [("sans", "Roboto"), ("SansSerif", "Roboto"), ("Serif", "DejaVu Serif")]:
             assert cgrid.get_font(fname=alias).getname()[0] == name
         p = enplot.plot(a, colorbar=True, font="serif")
+        # right ascension tick values as hours and minutes
+        assert cgrid.format_ra([5, -5, 187.5]) == ["0:20", "23:40", "12:30"]
+        assert cgrid.format_ra([5, 5.1], "hm") == ["0h20m00s", "0h20m24s"]
+        p = enplot.plot(a, ticks=15, ra_format="h:m")
         # per-component colorbar labels, with the last one reused
         q = enplot.plot(a, colorbar=True, colorbar_label="T (uK):Q (uK)", layers=True)
         q = [x.img for x in q if x.layer == "_colorbar_label"]
         assert len(q) == 3 and q[0] != q[1] and q[1] == q[2]
+        # plot size does not depend on the text of the labels
+        q = enplot.plot(a, colorbar=True, colorbar_label="a:T:g", xlabel="RA", ylabel="g")
+        assert len({x.img.size for x in q}) == 1
 
     def test_fft(self):
         # Tests that ifft(ifft(imap))==imap, i.e. default normalizations are consistent
