@@ -184,7 +184,7 @@ def plot_iterator(*arglist, **kwargs):
 			oname = args.oname.format(**oinfo)
 			# Draw the map
 			if args.driver.lower() == "pil":
-				img, info = draw_map_field(map_field, args, crange[:,gi*gsize:(gi+1)*gsize], return_info=True, return_layers=args.layers, printer=subprint, cache=cache)
+				img, info = draw_map_field(map_field, args, crange[:,gi*gsize:(gi+1)*gsize], return_info=True, return_layers=args.layers, printer=subprint, cache=cache, ci=gi)
 				padding = np.array([-info.bounds[0,::-1],info.bounds[1,::-1]-map_field.shape[-2:]],dtype=int)
 				printer.write("padded by %d %d %d %d" % tuple(padding.reshape(-1)), 4)
 				typ = "vid" if is_vid else "pil"
@@ -289,12 +289,18 @@ def define_arg_parser(nodefault=False):
 	add_argument("-t", "--ticks", type=str, default="1", help="The grid spacing in degrees. Either a single number to be used for both axis, or ty,tx.")
 	add_argument("--tick-unit", "--tu", type=str, default=None, help="Units for tick axis. Can be the unit size in degrees, or the word 'degree', 'arcmin' or 'arcsec' or the shorter 'd','m','s'.")
 	add_argument("--nolabels", action="store_true", help="Disable the generation of coordinate labels outside the map when using the grid.")
+	add_argument("--ra-format", type=str, default=None, choices=["h:m","h:m:s","hm","hms"], help="Show the right ascension tick values as hours, minutes and seconds instead of degrees. Can be h:m (giving e.g. 23:20), h:m:s (23:20:00), hm (23h20m) or hms (23h20m00s).")
+	add_argument("--xlabel", type=str, default=None, help="Text to draw below the map as a label for the horizontal axis, for example 'RA (deg)'. Uses the same font and color as the coordinate labels. See --label-font-size for the size.")
+	add_argument("--ylabel", type=str, default=None, help="Text to draw to the left of the map as a label for the vertical axis, for example 'Dec (deg)'. See --xlabel.")
+	add_argument("--colorbar-label", type=str, default=None, help="Text to draw below the color bar as a label (e.g. units of the map). To give each component of a multidimensional map its own label, use a colon-separated list (e.g. 'T (uK):Q (uK):U (uK)'). If there are fewer labels than components, the last one is reused, and an empty entry leaves that component without a label. From python a list of strings can be passed instead. Only used when the color bar is enabled. See --xlabel.")
+	add_argument("--label-font-size", type=int, default=None, help="Font size to use for --xlabel, --ylabel and --colorbar-label. Defaults to --font-size.")
 	add_argument("--nstep", type=int, default=200, help="The number of steps to use when drawing grid lines. Higher numbers result in smoother curves.")
 	add_argument("--subticks", type=float, default=0, help="Subtick spacing. Only supported by matplotlib driver.")
 	add_argument("-b", "--colorbar", default=0, action="count", help="Whether to draw the color bar or not")
-	add_argument("--font", type=str, default="arial.ttf", help="The font to use for text.")
+	add_argument("--font", type=str, default=cgrid.default_font, help="The font to use for all text in the plot. Can be Roboto-Regular.ttf (the default) or DejaVuSerif.ttf, which come with pixell and can also be selected with sans and serif, the name of an installed font, or the path to a font file.")
 	add_argument("--font-size", type=int, default=20, help="Font size to use for text.")
 	add_argument("--font-color", type=str, default="000000", help="Font color to use for text.")
+	add_argument("--background", type=str, default=None, help="Background color of the plot as rrggbb or rrggbbaa hex digits or a color name (e.g. ffffff or white). The default is a transparent background. Formats without transparency, such as jpeg, get a white background unless another one is given.")
 	add_argument("-D", "--driver", type=str, default="pil", help="The driver to use for plotting. Can be pil (the default) or mpl. pil cleanly maps input pixels to output pixels, and has better coordiante system support, but doesn't have as pretty grid lines or axis labels.")
 	add_argument("--mpl-dpi", type=float, default=75, help="The resolution to use for the mpl driver.")
 	add_argument("--mpl-pad", type=float, default=1.6, help="The padding to use for the mpl driver.")
@@ -499,17 +505,20 @@ def get_cache(cache, key, fun):
 	if key not in cache: cache[key] = fun()
 	return cache[key]
 
-def draw_map_field(map, args, crange=None, return_layers=False, return_info=False, printer=noprint, cache=None):
+def draw_map_field(map, args, crange=None, return_layers=False, return_info=False, printer=noprint, cache=None, ci=0):
 	"""Draw a single map field, resulting in a single image. Adds a coordinate grid
 	and lables as specified by args. If return_layers is True, an array will be
 	returned instead of an image, wich each entry being a component of the image,
-	such as the base image, the coordinate grid, the labels, etc. If return_bounds
-	is True, then the """
+	such as the base image, the coordinate grid, the labels, etc. If return_info
+	is True, then an info object with the bounds of the image relative to the map
+	and the names of the layers is returned too. ci is the index of this field
+	among those being plotted, and selects which color bar label to use when
+	args.colorbar_label holds one per component."""
 	map, color = prepare_map_field(map, args, crange, printer=printer)
 	tag    = (tuple(map.shape), map.wcs.to_header_string(), repr(args))
 	layers = []
 	names  = []
-	yoff   = map.shape[-2]
+	xoff, yoff = 0, map.shape[-2]
 	# Image layer
 	if not args.no_image:
 		with printer.time("to image", 3):
@@ -542,9 +551,19 @@ def draw_map_field(map, args, crange=None, return_layers=False, return_info=Fals
 		if not args.nolabels:
 			with printer.time("draw labels", 3):
 				labels, bounds = get_cache(cache, ("labels",tag), lambda: draw_grid_labels(ginfo, args))
-				yoff = bounds[1][1]
+				xoff, yoff = bounds[0][0], bounds[1][1]
 				layers.append((labels,bounds))
 				names.append("tics")
+	# Axis labels
+	off = [xoff,yoff]
+	for name in ["xlabel","ylabel"]:
+		text = getattr(args, name)
+		if not text: continue
+		with printer.time("draw " + name, 3):
+			limg, bounds = draw_label(text, map.shape, off, args, left=name=="ylabel")
+			if name == "xlabel": yoff = bounds[1,1]
+			layers.append((limg,bounds))
+			names.append(name)
 	if args.colorbar % 2:
 		with printer.time("draw colorbar", 3):
 			bimg, bounds = draw_colorbar(crange, map.shape[-1], args)
@@ -552,18 +571,29 @@ def draw_map_field(map, args, crange=None, return_layers=False, return_info=Fals
 			yoff = bounds[1,1]
 			layers.append((bimg,bounds))
 			names.append("colorbar")
+		clabels = parse_list(args.colorbar_label or "", lambda w: str(w or ""), ":")
+		clabel  = clabels[min(ci,len(clabels)-1)]
+		if clabel:
+			with printer.time("draw colorbar label", 3):
+				layers.append(draw_label(clabel, map.shape, [0,yoff], args))
+				names.append("colorbar_label")
 	 # Possibly other stuff too, like point source circles
 	 # or contours
 	with printer.time("stack layers", 3):
 		layers, bounds = standardize_images(layers)
+		if args.background:
+			try:               color = cgrid.parse_color(args.background)
+			except ValueError: color = args.background
+			layers.insert(0, PIL.Image.new("RGBA", layers[0].size, color))
+			names.insert(0, "background")
 		if not return_layers: layers = merge_images(layers)
 	info = bunch.Bunch(bounds=bounds, names=names)
 	if return_info: return layers, info
 	else: return layers
 
 def draw_colorbar(crange, width, args):
-	col  = tuple([int(args.font_color[i:i+2],16) for i in range(0,len(args.font_color),2)])
-	font = cgrid.get_font(args.font_size)
+	col  = cgrid.parse_color(args.font_color)
+	font = cgrid.get_font(args.font_size, args.font)
 	fmt  = "%g"
 	labels, boxes = [], []
 	for val in crange:
@@ -723,13 +753,28 @@ def draw_grid(ginfo, args):
 def draw_grid_labels(ginfo, args):
 	"""Return an image with a coordinate grid, along with abounds of this
 	image relative to the coordinate shape stored in ginfo. Depends
-	on the following args members: args.font, args.font_size, args.font_color"""
-	linfo = []
-	for gi in [ginfo.lat, ginfo.lon]:
-		linfo += cgrid.calc_label_pos(gi, ginfo.shape[::-1])
+	on the following args members: args.font, args.font_size, args.font_color,
+	args.ra_format"""
+	lat, lon = [cgrid.calc_label_pos(gi, ginfo.shape[::-1]) for gi in [ginfo.lat, ginfo.lon]]
+	if args.ra_format:
+		for l, ra in zip(lon, cgrid.format_ra([l[0]*ginfo.unit for l in lon], args.ra_format)): l[0] = ra
+	linfo  = lat + lon
 	canvas = PIL.Image.new("RGBA", ginfo.shape[::-1])
 	labels, bounds = cgrid.draw_labels(canvas, linfo, fname=args.font, fsize=args.font_size, color=args.font_color, return_bounds=True)
 	return labels, bounds
+
+def draw_label(text, shape, off, args, left=False):
+	"""Draw text as a label centered below a map with the given shape, or, if left
+	is True, centered to the left of it and reading from bottom to top. off[{x,y}]
+	is the left and bottom edge of what has already been drawn there (e.g.
+	coordinate labels). A label too long to be centered is anchored at the bottom
+	left corner instead. Returns the label image and its bounds relative to the map."""
+	size = args.label_font_size or args.font_size
+	img  = cgrid.draw_text(text, args.font, size, args.font_color, rotate=left)
+	w, h = img.size
+	if left: pos = [off[0]-size//2-w, min((shape[-2]-h)//2, off[1]-h)]
+	else:    pos = [max((shape[-1]-w)//2, off[0]), off[1]+size//2]
+	return img, np.array([pos, [pos[0]+w,pos[1]+h]])
 
 def calc_contours(crange, args):
 	"""Returns a list of values at which to place contours based on
@@ -856,7 +901,7 @@ def draw_annotations(map, annots, args):
 			if len(annot) > 6: size  = int(annot[6])
 			if len(annot) > 7: color = annot[7]
 			if font is None or size != font_size_prev:
-				font = cgrid.get_font(size)
+				font = cgrid.get_font(size, args.font)
 				font_size_prev = size
 			tbox = font.getbbox(text)[-2:]
 			draw.text((x-tbox[0]/2, y-tbox[1]/2), text, color, font=font)
@@ -1128,7 +1173,10 @@ class PlotWriter(Writer):
 		if plot.type == "vid":
 			self.vid_writer.process(plot, prefix=prefix)
 		elif plot.type == "pil":
-			plot.img.save(prefix + plot.name)
+			try: plot.img.save(prefix + plot.name)
+			except OSError:
+				bg = PIL.Image.new("RGBA", plot.img.size, "WHITE")
+				merge_images([bg, plot.img]).convert("RGB").save(prefix + plot.name)
 		elif plot.type == "mpl":
 			plot.img.savefig(prefix + plot.name,bbox_inches="tight",dpi=plot.dpi)
 		else:

@@ -369,6 +369,40 @@ class PixelTests(unittest.TestCase):
         p = enplot.plot(a, colorbar=True)
         # annotation
         p = enplot.plot(a, annotate=DATA_PREFIX+"annot.txt")
+        # axis labels
+        p0 = enplot.plot(a)[0]
+        p = enplot.plot(a, xlabel="RA (deg)", ylabel="Dec (deg)", layers=True)
+        assert [q.layer for q in p[-2:]] == ["_xlabel", "_ylabel"]
+        p = enplot.plot(a, "--xlabel 'RA (deg)' --ylabel 'Dec (deg)'")[0]
+        assert p.img.size[0] > p0.img.size[0] and p.img.size[1] > p0.img.size[1]
+        q = enplot.plot(a, xlabel="RA (deg)", ylabel="Dec (deg)", label_font_size=40)[0]
+        assert q.img.size[0] > p.img.size[0] and q.img.size[1] > p.img.size[1]
+        # colorbar label
+        p = enplot.plot(a, colorbar=True)[0]
+        q = enplot.plot(a, colorbar=True, colorbar_label="uK", layers=True)
+        assert q[-1].layer == "_colorbar_label" and q[-1].img.size[1] > p.img.size[1]
+        # fonts that come with pixell
+        from pixell import cgrid
+        assert cgrid.get_font().getname()[0] == "Roboto"
+        assert cgrid.get_font(fname="DejaVuSerif.ttf").getname()[0] == "DejaVu Serif"
+        for alias, name in [("sans", "Roboto"), ("SansSerif", "Roboto"), ("Serif", "DejaVu Serif")]:
+            assert cgrid.get_font(fname=alias).getname()[0] == name
+        p = enplot.plot(a, colorbar=True, font="serif")
+        # right ascension tick values as hours and minutes
+        assert cgrid.format_ra([5, -5, 187.5]) == ["0:20", "23:40", "12:30"]
+        assert cgrid.format_ra([5, 5.1], "hm") == ["0h20m00s", "0h20m24s"]
+        p = enplot.plot(a, ticks=15, ra_format="h:m")
+        # per-component colorbar labels, with the last one reused
+        q = enplot.plot(a, colorbar=True, colorbar_label="T (uK):Q (uK)", layers=True)
+        q = [x.img for x in q if x.layer == "_colorbar_label"]
+        assert len(q) == 3 and q[0] != q[1] and q[1] == q[2]
+        # background color
+        assert enplot.plot(a)[0].img.getpixel((0, 0))[3] == 0
+        for bg in ["ffffff", "white"]:
+            assert enplot.plot(a, background=bg)[0].img.getpixel((0, 0)) == (255, 255, 255, 255)
+        # plot size does not depend on the text of the labels
+        q = enplot.plot(a, colorbar=True, colorbar_label="a:T:g", xlabel="RA", ylabel="g")
+        assert len({x.img.size for x in q}) == 1
 
     def test_fft(self):
         # Tests that ifft(ifft(imap))==imap, i.e. default normalizations are consistent
