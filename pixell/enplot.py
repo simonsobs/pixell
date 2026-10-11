@@ -300,6 +300,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("--font", type=str, default=cgrid.default_font, help="The font to use for all text in the plot. Can be Roboto-Regular.ttf (the default) or DejaVuSerif.ttf, which come with pixell and can also be selected with sans and serif, the name of an installed font, or the path to a font file.")
 	add_argument("--font-size", type=int, default=20, help="Font size to use for text.")
 	add_argument("--font-color", type=str, default="000000", help="Font color to use for text.")
+	add_argument("--background", type=str, default=None, help="Background color of the plot as rrggbb or rrggbbaa hex digits or a color name (e.g. ffffff or white). The default is a transparent background. Formats without transparency, such as jpeg, get a white background unless another one is given.")
 	add_argument("-D", "--driver", type=str, default="pil", help="The driver to use for plotting. Can be pil (the default) or mpl. pil cleanly maps input pixels to output pixels, and has better coordiante system support, but doesn't have as pretty grid lines or axis labels.")
 	add_argument("--mpl-dpi", type=float, default=75, help="The resolution to use for the mpl driver.")
 	add_argument("--mpl-pad", type=float, default=1.6, help="The padding to use for the mpl driver.")
@@ -580,6 +581,11 @@ def draw_map_field(map, args, crange=None, return_layers=False, return_info=Fals
 	 # or contours
 	with printer.time("stack layers", 3):
 		layers, bounds = standardize_images(layers)
+		if args.background:
+			try:               color = cgrid.parse_color(args.background)
+			except ValueError: color = args.background
+			layers.insert(0, PIL.Image.new("RGBA", layers[0].size, color))
+			names.insert(0, "background")
 		if not return_layers: layers = merge_images(layers)
 	info = bunch.Bunch(bounds=bounds, names=names)
 	if return_info: return layers, info
@@ -1167,7 +1173,10 @@ class PlotWriter(Writer):
 		if plot.type == "vid":
 			self.vid_writer.process(plot, prefix=prefix)
 		elif plot.type == "pil":
-			plot.img.save(prefix + plot.name)
+			try: plot.img.save(prefix + plot.name)
+			except OSError:
+				bg = PIL.Image.new("RGBA", plot.img.size, "WHITE")
+				merge_images([bg, plot.img]).convert("RGB").save(prefix + plot.name)
 		elif plot.type == "mpl":
 			plot.img.savefig(prefix + plot.name,bbox_inches="tight",dpi=plot.dpi)
 		else:

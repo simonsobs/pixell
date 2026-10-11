@@ -396,6 +396,10 @@ class PixelTests(unittest.TestCase):
         q = enplot.plot(a, colorbar=True, colorbar_label="T (uK):Q (uK)", layers=True)
         q = [x.img for x in q if x.layer == "_colorbar_label"]
         assert len(q) == 3 and q[0] != q[1] and q[1] == q[2]
+        # background color
+        assert enplot.plot(a)[0].img.getpixel((0, 0))[3] == 0
+        for bg in ["ffffff", "white"]:
+            assert enplot.plot(a, background=bg)[0].img.getpixel((0, 0)) == (255, 255, 255, 255)
         # plot size does not depend on the text of the labels
         q = enplot.plot(a, colorbar=True, colorbar_label="a:T:g", xlabel="RA", ylabel="g")
         assert len({x.img.size for x in q}) == 1
