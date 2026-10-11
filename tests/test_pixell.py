@@ -381,6 +381,13 @@ class PixelTests(unittest.TestCase):
         p = enplot.plot(a, colorbar=True)[0]
         q = enplot.plot(a, colorbar=True, colorbar_label="uK", layers=True)
         assert q[-1].layer == "_colorbar_label" and q[-1].img.size[1] > p.img.size[1]
+        # fonts that come with pixell
+        from pixell import cgrid
+        assert cgrid.get_font().getname()[0] == "Roboto"
+        assert cgrid.get_font(fname="DejaVuSerif.ttf").getname()[0] == "DejaVu Serif"
+        for alias, name in [("sans", "Roboto"), ("SansSerif", "Roboto"), ("Serif", "DejaVu Serif")]:
+            assert cgrid.get_font(fname=alias).getname()[0] == name
+        p = enplot.plot(a, colorbar=True, font="serif")
         # per-component colorbar labels, with the last one reused
         q = enplot.plot(a, colorbar=True, colorbar_label="T (uK):Q (uK)", layers=True)
         q = [x.img for x in q if x.layer == "_colorbar_label"]

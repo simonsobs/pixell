@@ -237,21 +237,31 @@ def expand_image(img, bounds):
 	res.paste(img, tuple(-bounds[0]))
 	return res
 
-def get_font(fsize=16, fname="arial.ttf"):
-	try:
-		font = ImageFont.truetype(fname, size=fsize)
-	except IOError:
-		# Load fallback font
-		font = ImageFont.truetype(os.path.join(os.path.dirname(__file__), "arial.ttf"), size=fsize)
-	return font
+font_dir     = os.path.join(os.path.dirname(__file__), "fonts")
+default_font = "Roboto-Regular.ttf"
+font_aliases = {"sans": default_font, "sansserif": default_font, "sans-serif": default_font, "serif": "DejaVuSerif.ttf"}
 
-def draw_text(text, fname="arial.ttf", fsize=16, color="000000", rotate=False):
+def get_font(fsize=16, fname=default_font):
+	"""Return a PIL font with size fsize. fname can be the name of one of the
+	fonts that come with pixell (Roboto-Regular.ttf or DejaVuSerif.ttf, found
+	in cgrid.font_dir), the name of a font installed on the system, or the
+	path to a font file. They are tried in that order. If the font can't be
+	found, the default, Roboto-Regular.ttf, is used. The fonts that come with
+	pixell can also be selected with the aliases "sans" or "sansserif" for
+	Roboto and "serif" for DejaVu Serif, ignoring case."""
+	fname = font_aliases.get(str(fname).lower(), fname)
+	for path in [os.path.join(font_dir, fname), fname]:
+		try: return ImageFont.truetype(path, size=fsize)
+		except IOError: pass
+	return ImageFont.truetype(os.path.join(font_dir, default_font), size=fsize)
+
+def draw_text(text, fname=default_font, fsize=16, color="000000", rotate=False):
 	"""Render a text string as an image cropped tightly around the text.
 
 	Arguments:
 	* text: The string to draw. Newlines give centered multi-line text.
-	* fname: The font to use. This can be the name of an installed font
-	  or the path to a font file. See get_font.
+	* fname: The font to use. This can be a font that comes with pixell,
+	  the name of an installed font or the path to a font file. See get_font.
 	* fsize: The font size.
 	* color: The text color as a hex string ()either "rrggbb" or "rrggbbaa").
 	* rotate: If True, the text is rotated to read from bottom to top.
@@ -265,7 +275,7 @@ def draw_text(text, fname="arial.ttf", fsize=16, color="000000", rotate=False):
 	if rotate: img = img.rotate(90, expand=True)
 	return img
 
-def draw_labels(img, label_pos, fname="arial.ttf", fsize=16, fmt="%g", color="000000", return_bounds=False):
+def draw_labels(img, label_pos, fname=default_font, fsize=16, fmt="%g", color="000000", return_bounds=False):
 	# For each label, determine the size the text would be, and
 	# displace it left, right, up or down depending on which edge
 	# of the image it is at

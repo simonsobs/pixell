@@ -296,7 +296,7 @@ def define_arg_parser(nodefault=False):
 	add_argument("--nstep", type=int, default=200, help="The number of steps to use when drawing grid lines. Higher numbers result in smoother curves.")
 	add_argument("--subticks", type=float, default=0, help="Subtick spacing. Only supported by matplotlib driver.")
 	add_argument("-b", "--colorbar", default=0, action="count", help="Whether to draw the color bar or not")
-	add_argument("--font", type=str, default="arial.ttf", help="The font to use for all text in the plot. Either the name of an installed font or the path to a font file.")
+	add_argument("--font", type=str, default=cgrid.default_font, help="The font to use for all text in the plot. Can be Roboto-Regular.ttf (the default) or DejaVuSerif.ttf, which come with pixell and can also be selected with sans and serif, the name of an installed font, or the path to a font file.")
 	add_argument("--font-size", type=int, default=20, help="Font size to use for text.")
 	add_argument("--font-color", type=str, default="000000", help="Font color to use for text.")
 	add_argument("-D", "--driver", type=str, default="pil", help="The driver to use for plotting. Can be pil (the default) or mpl. pil cleanly maps input pixels to output pixels, and has better coordiante system support, but doesn't have as pretty grid lines or axis labels.")
