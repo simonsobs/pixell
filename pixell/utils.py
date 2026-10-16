@@ -2187,6 +2187,10 @@ def find_equal_groups(a, tol=0):
 				done[j] = True
 	return res
 
+# I should have made this return uvals, groups instead. It would have been no
+# slower, just saving me from doing order[edges[i]:edges[i+1]] all the time.
+# Should make a unified function to replace all of these functions
+
 def find_equal_groups_fast(vals):
 	"""Group 1d array vals[n] into equal groups. Returns uvals, order, edges
 	Using these, group #i is made up of the values with index order[edges[i]:edges[i+1]],
@@ -2262,6 +2266,25 @@ def label_multi(valss, return_index=False, return_nlabel=False):
 	# labels were asked for
 	if len(res) == 1: return res[0]
 	else: return tuple(res)
+
+def aranges(ns):
+	"""Generate np.concatenate([np.arange(n) for n in ns]) without looping"""
+	inew = cumsum(ns)
+	ntot = inew[-1]+ns[-1]
+	res  = np.arange(ntot)
+	res -= np.repeat(res[inew], ns)
+	return res
+
+def label_runs(vals, return_index=False):
+	"""Return a unique label for each group of consequtive equal values.
+	If return_index is True, then the index of each value within each
+	group is also returned"""
+	vals   = np.asarray(vals)
+	jumps  = np.concatenate([[0], np.where(vals[1:]!=vals[:-1])[0]+1, [len(vals)]])
+	lens   = jumps[1:]-jumps[:-1]
+	labels = np.repeat(np.arange(len(jumps)-1), lens)
+	if return_index: return labels, aranges(lens)
+	else: return labels
 
 def pathsplit(path):
 	"""Like os.path.split, but for all components, not just the last one.
