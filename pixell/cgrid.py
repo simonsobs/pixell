@@ -92,6 +92,7 @@ def calc_gridinfo(shape, wcs, steps=[2,2], nstep=[200,200], zenith=False, unit=1
 	gridinfo.lat = []
 	gridinfo.shape = shape[-2:]
 	gridinfo.wcs = wcs
+	gridinfo.unit = unit
 	# Draw lines of longitude
 	for phi in start[1] + np.arange(nline[1])*steps[1]:
 		# Loop over theta
@@ -106,8 +107,12 @@ def calc_gridinfo(shape, wcs, steps=[2,2], nstep=[200,200], zenith=False, unit=1
 		gridinfo.lat.append((theta/unit,prune_bad_segs(calc_line_segs(pixs),shape)))
 	return gridinfo
 
+def parse_color(color):
+	"""Convert a hex color string like "rrggbb" or "rrggbbaa" to a tuple of ints."""
+	return tuple([int(color[i:i+2],16) for i in range(0,len(color),2)])
+
 def draw_grid(gridinfo, color="00000020", width=1, background=None):
-	col = tuple([int(color[i:i+2],16) for i in range(0,len(color),2)])
+	col = parse_color(color)
 	grid = Image.new("RGBA", gridinfo.shape[-2:][::-1])
 	if width > 0:
 		draw = ImageDraw.Draw(grid, "RGBA")
@@ -233,25 +238,68 @@ def expand_image(img, bounds):
 	res.paste(img, tuple(-bounds[0]))
 	return res
 
-def get_font(fsize=16, fname="arial.ttf"):
-	try:
-		font = ImageFont.truetype(fname, size=fsize)
-	except IOError:
-		# Load fallback font
-		font = ImageFont.truetype(os.path.join(os.path.dirname(__file__), "arial.ttf"), size=fsize)
-	return font
+font_dir     = os.path.join(os.path.dirname(__file__), "fonts")
+default_font = "Roboto-Regular.ttf"
+font_aliases = {"sans": default_font, "sansserif": default_font, "sans-serif": default_font, "serif": "DejaVuSerif.ttf"}
 
-def draw_labels(img, label_pos, fname="arial.ttf", fsize=16, fmt="%g", color="000000", return_bounds=False):
+def get_font(fsize=16, fname=default_font):
+	"""Return a PIL font with size fsize. fname can be the name of one of the
+	fonts that come with pixell (Roboto-Regular.ttf or DejaVuSerif.ttf, found
+	in cgrid.font_dir), the name of a font installed on the system, or the
+	path to a font file. They are tried in that order. If the font can't be
+	found, the default, Roboto-Regular.ttf, is used. The fonts that come with
+	pixell can also be selected with the aliases "sans" or "sansserif" for
+	Roboto and "serif" for DejaVu Serif, ignoring case."""
+	fname = font_aliases.get(str(fname).lower(), fname)
+	for path in [os.path.join(font_dir, fname), fname]:
+		try: return ImageFont.truetype(path, size=fsize)
+		except IOError: pass
+	return ImageFont.truetype(os.path.join(font_dir, default_font), size=fsize)
+
+def draw_text(text, fname=default_font, fsize=16, color="000000", rotate=False):
+	"""Render a text string as an image. 
+
+	Arguments:
+	* text: The string to draw. Newlines give centered multi-line text.
+	* fname: The font to use. This can be a font that comes with pixell,
+	  the name of an installed font or the path to a font file. See get_font.
+	* fsize: The font size.
+	* color: The text color as a hex string (either "rrggbb" or "rrggbbaa").
+	* rotate: If True, the text is rotated to read from bottom to top.
+
+	Returns a PIL RGBA image with a transparent background."""
+	font = get_font(fsize, fname)
+	draw = ImageDraw.Draw(Image.new("RGBA", (1,1)))
+	x1, y1, x2, y2 = draw.textbbox((0,0), text, font=font, align="center")
+	# The bottom of the last line is its baseline plus the descent of the font
+	base = draw.textbbox((0,0), "\n"*text.count("\n")+"A", font=font)[3]
+	pos  = np.floor([x1, min(y1,0)]).astype(int)
+	img  = Image.new("RGBA", tuple(np.ceil([x2, max(y2,base+font.getmetrics()[1])]).astype(int)-pos))
+	ImageDraw.Draw(img).text(tuple(-pos), text, parse_color(color), font=font, align="center")
+	if rotate: img = img.rotate(90, expand=True)
+	return img
+
+def format_ra(ras, fmt="h:m"):
+	"""Format the right ascensions ras, in degrees, as hours, minutes and seconds.
+	fmt can be "h:m" (giving e.g. 23:20), "h:m:s" (23:20:00), "hm" (23h20m) or
+	"hms" (23h20m00s). Seconds are shown even when fmt leaves them out if some
+	of the values are not a whole number of minutes. Returns a list of strings."""
+	tmpls = {"h:m":"%d:%02d", "h:m:s":"%d:%02d:%02d", "hm":"%dh%02dm", "hms":"%dh%02dm%02ds"}
+	secs  = np.round(np.atleast_1d(ras)%360*240).astype(int)%86400
+	if "s" not in fmt and np.any(secs%60): fmt += ":s" if ":" in fmt else "s"
+	return [tmpls[fmt] % (s//3600, s//60%60, s%60)[:tmpls[fmt].count("%")] for s in secs]
+
+def draw_labels(img, label_pos, fname=default_font, fsize=16, fmt="%g", color="000000", return_bounds=False):
 	# For each label, determine the size the text would be, and
 	# displace it left, right, up or down depending on which edge
 	# of the image it is at
-	col = tuple([int(color[i:i+2],16) for i in range(0,len(color),2)])
+	col = parse_color(color)
 	font = get_font(fsize, fname)
 	labels = []
 	boxes  = []
 	for cval, x, y in label_pos:
 		pos   = np.array([x,y])
-		label = fmt % cval
+		label = cval if isinstance(cval, str) else fmt % cval
 		lsize = np.array(font.getbbox(label)[-2:])
 		if   x == 0:           box = np.array([pos-[lsize[0],lsize[1]/2],pos+[0,lsize[1]/2]])
 		elif x == img.size[0]: box = np.array([pos-[0,lsize[1]/2],pos+[lsize[0],lsize[1]/2]])

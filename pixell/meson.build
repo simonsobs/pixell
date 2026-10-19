@@ -36,11 +36,20 @@ python_sources = [
     'sites.py',
     'warray.py',
     'sqlite.py',
-    # Not technically a python source file, but is required for pixell
-    'arial.ttf',
 ]
 
 py.install_sources(
     python_sources,
     subdir: 'pixell'
+)
+
+# Fonts used for plotting, with the licenses they are distributed under
+py.install_sources(
+    [
+        'fonts/Roboto-Regular.ttf',
+        'fonts/DejaVuSerif.ttf',
+        'fonts/LICENSE_ROBOTO',
+        'fonts/LICENSE_DEJAVU',
+    ],
+    subdir: 'pixell/fonts'
 )
