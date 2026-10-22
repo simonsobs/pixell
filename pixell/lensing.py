@@ -1,4 +1,4 @@
-import numpy as np
+import numpy as np, ducc0
 from . import enmap, utils, powspec, curvedsky
 try: from . import interpol
 except ImportError: pass
@@ -347,7 +347,7 @@ def _lens_map_curved_lenspyx(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None,
 
 def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, dtype=np.float64,
 		spin=[0,2], output="l", method='pixell', geodesic=True, delta_theta=None,
-		epsilon=1e-7, nthreads=0, verbose=False):
+		epsilon=None, nthreads=0, verbose=False):
 	"""
 	Lenses a CMB map given the lensing potential harmonic transform and the CMB 
 	harmonic transform.  By default, T,E,B spherical harmonic coefficients are
@@ -395,7 +395,8 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, dtype=np.float
 	delta_theta : float, optional
 		Step size for the theta coordinate. Only for 'pixell' method.
 	epsilon : float, optional
-		Target result accuracy, by default 1e-7. Only for 'lenspyx' method.
+		Target result accuracy, by default 1e-7 for 'lenspyx' and that of
+		curvedsky.alm2map_pos for 'pixell'.
 	nthreads : int, optional
 		number of threads to use, by default 0 (os.cpu_count()). Only for 'lenspyx' method.
 	verbose : bool, optional
@@ -420,6 +421,7 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, dtype=np.float
 	"""
 	assert method in ('pixell', 'lenspyx'), \
 		"method must be one of 'pixell' or 'lenspyx'"
+	if epsilon is None and method == 'lenspyx': epsilon = 1e-7
 
 	if method=='pixell':
 		warnings.warn('In the future, the default will be switched to lenspyx')
@@ -456,20 +458,25 @@ def lens_map_curved(shape, wcs, phi_alm, cmb_alm, phi_ainfo=None, dtype=np.float
 			if "a" in output: grad = grad_map[...,i1:i2,:]
 			else: grad = enmap.zeros((2,)+lshape[-2:], lwcs, dtype=dtype)
 			curvedsky.alm2map(phi_alm, grad, deriv=True)
+			if "u" in output:
+				if verbose: print("Computing unlensed map")
+				curvedsky.alm2map(cmb_alm, cmb_raw[...,i1:i2,:], spin=spin)
 			if "l" not in output: continue
 			if verbose: print("Computing observed coordinates")
 			obs_pos = enmap.posmap(lshape, lwcs)
 			if verbose: print("Computing alpha map")
 			raw_pos = enmap.samewcs(offset_by_grad(obs_pos, grad, pol=shape[-3]>1, geodesic=geodesic), obs_pos)
 			del obs_pos, grad
-			if "u" in output:
-				if verbose: print("Computing unlensed map")
-				curvedsky.alm2map(cmb_alm, cmb_raw[...,i1:i2,:], spin=spin)
 			if verbose: print("Computing lensed map")
-			cmb_obs[...,i1:i2,:] = curvedsky.alm2map_pos(cmb_alm, raw_pos[:2], spin=spin)
+			cmb_obs[...,i1:i2,:] = curvedsky.alm2map_pos(cmb_alm, raw_pos[:2], spin=spin, epsilon=epsilon)
 			if raw_pos.shape[0] > 2 and np.any(raw_pos[2]):
 				if verbose: print("Rotating polarization")
-				cmb_obs[...,i1:i2,:] = enmap.rotate_pol(cmb_obs[...,i1:i2,:], raw_pos[2])
+				obs = cmb_obs[...,i1:i2,:]
+				for s, j1, j2 in enmap.spin_helper(spin, obs.shape[0]):
+					if s == 0: continue
+					c = obs[j1] + 1j*obs[j1+1]
+					ducc0.misc.lensing_rotate(c, raw_pos[2].astype(c.real.dtype), int(s), 0)
+					obs[j1], obs[j1+1] = c.real, c.imag
 			del raw_pos
 
 		del cmb_alm, phi_alm
@@ -551,15 +558,13 @@ def offset_by_grad(ipos, grad, geodesic=True, pol=None):
 			# The helper function assumes zenith coordinates
 			small_grad = gflat[:,i:i+step].copy(); small_grad[0] = -small_grad[0]
 			small_ipos = iflat[:,i:i+step].copy(); small_ipos[0] = np.pi/2-small_ipos[0]
-			# Compute the offset position and polarization rotation, the latter in the
-			# form of cos and sin of the polarization rotation angle
+			# Compute the offset position and polarization rotation angle
 			small_opos, small_orot = offset_by_grad_helper(small_ipos, small_grad, ncomp>2)
 			oflat[0,i:i+step] = np.pi/2 - small_opos[0]
 			oflat[1,i:i+step] = small_opos[1]
 			# Handle rotation if necessary
 			if oflat.shape[0] > 2:
-				# Recover angle from cos and sin
-				oflat[2,i:i+step] = np.arctan2(small_orot[1],small_orot[0])
+				oflat[2,i:i+step] = small_orot
 				if iflat.shape[0] > 2:
 					oflat[2,i:i+step] += iflat[2,i:i+step]
 	else:
@@ -572,34 +577,16 @@ def offset_by_grad(ipos, grad, geodesic=True, pol=None):
 def offset_by_grad_helper(ipos, grad, pol):
 	"""Find the new position and induced rotation
 	from offseting the input positions ipos[2,nsamp]
-	by grad[2,nsamp]."""
-	grad = np.array(grad)
-	# Decompose grad into direction and length.
-	# Fix zero-length gradients first, to avoid
-	# division by zero.
-	grad[:,np.all(grad==0,0)] = 1e-20
-	d = np.sum(grad**2,0)**0.5
-	grad  /=d
-	# Perform the position offset using spherical
-	# trigonometry
-	cosd, sind = np.cos(d), np.sin(d)
-	cost, sint = np.cos(ipos[0]), np.sin(ipos[0])
-	ocost  = cosd*cost-sind*sint*grad[0]
-	osint  = (1-ocost**2)**0.5
-	ophi   = ipos[1] + np.arcsin(sind*grad[1]/osint)
-	if not pol:
-		return np.array([np.arccos(ocost), ophi]), None
-	# Compute the induced polarization rotation.
-	with utils.nowarn():
-		# If sint is zero then we get a divide by zero here, but
-		# the final result is still finite
-		A    = grad[1]/(sind*cost/sint+grad[0]*cosd)
-	nom1   = grad[0]+grad[1]*A
-	denom  = 1+A**2
-	cosgam = 2*nom1**2/denom-1
-	singam = 2*nom1*(grad[1]-grad[0]*A)/denom
-	res = np.array([np.arccos(ocost), ophi]), np.array([cosgam,singam])
-	return res
+	by grad[2,nsamp]. The rotation is returned as an angle. This uses
+	ducc0 which stays exact for offsets that pass close to or over a pole."""
+	n   = ipos.shape[1]
+	# With phi0 = 0, ducc0 returns the longitude step wrapped to [0,2pi)
+	ptg = ducc0.misc.get_deflected_angles(theta=ipos[0], phi0=np.zeros(n),
+		nphi=np.ones(n, np.uintp), ringstart=np.arange(n, dtype=np.uintp),
+		deflect=np.asarray(grad[:2], dtype=np.float64).T, calc_rotation=bool(pol), nthreads=0)
+	ptg[ptg[:,1] > np.pi, 1] -= 2*np.pi
+	ptg[:,1] += ipos[1]
+	return ptg[:,:2].T, (ptg[:,2] if pol else None)
 
 def pole_wrap(pos):
 	"""Handle pole wraparound."""
