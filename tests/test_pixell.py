@@ -194,7 +194,7 @@ def get_extraction_test_results(yaml_file):
     os.remove(filename)
     return results,config['result_name']
 
-lens_version = '071123'
+lens_version = '261022'
 
 def get_offset_result(res=1.,dtype=np.float64,seed=1):
     shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res), variant="CC")
@@ -347,6 +347,21 @@ class PixelTests(unittest.TestCase):
         assert wcsutils.equal(grad.wcs,grad0.wcs)
         assert wcsutils.equal(obs_pos.wcs,obs_pos0.wcs)
         assert wcsutils.equal(raw_pos.wcs,raw_pos0.wcs)
+
+    def test_offset_analytic(self):
+        # Tests two offsets:
+        # a 5 deg offset due east at dec 60 deg, along a great circle (cos(dec)*sin(heading)
+        # is constant)
+        # a 2' offset north from 0.5' below the pole
+        dec, d, eps = np.deg2rad(60), np.deg2rad(5), 0.5*utils.arcmin
+        ipos = np.array([[dec, np.pi/2-eps], [0, 0.3]])
+        grad = np.array([[0, 4*eps], [d, 0]])
+        opos = lensing.offset_by_grad(ipos, grad, geodesic=True, pol=True)
+        odec = np.arcsin(np.cos(d)*np.sin(dec))
+        assert np.allclose(opos[:,0], [odec, np.arctan2(np.sin(d), np.cos(d)*np.cos(dec)),
+            np.pi/2 - np.arcsin(np.cos(dec)/np.cos(odec))], rtol=0, atol=1e-12)
+        assert np.allclose([opos[0,1], np.cos(opos[1,1]-0.3), np.cos(opos[2,1])],
+            [np.pi/2-3*eps, -1, -1], rtol=0, atol=1e-12)
 
     def test_lensing(self):
         lensed,unlensed = get_lens_result(1.,400,np.float64)

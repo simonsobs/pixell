@@ -189,8 +189,8 @@ def alm2map_pos(alm, pos=None, loc=None, ainfo=None, map=None, spin=[0,2], deriv
 		# This should use less memory than writing loc[:,0] = np.pi/2-loc[:,0]
 		loc[...,0] *= -1
 		loc[...,0] += np.pi/2
-		# Should use rewind here, but this is more efficient
-		loc[loc[...,1]<0,1] += 2*np.pi
+		# ducc0 needs longitudes within [0,2pi]
+		loc[...,1] %= 2*np.pi
 		# Support arbitrary pre-dimensions for loc (post-dimensions for pos)
 	lpre = loc.shape[:-1]
 	loc  = loc.reshape(-1,2)
