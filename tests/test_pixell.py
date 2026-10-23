@@ -363,6 +363,16 @@ class PixelTests(unittest.TestCase):
         assert np.allclose([opos[0,1], np.cos(opos[1,1]-0.3), np.cos(opos[2,1])],
             [np.pi/2-3*eps, -1, -1], rtol=0, atol=1e-12)
 
+    def test_gal2equ(self):
+        # The Galactic to equatorial rotation should match astropy's Galactic to ICRS
+        from astropy.coordinates import SkyCoord
+        from pixell import coordinates
+        rng = np.random.default_rng(1)
+        pos = np.array([rng.uniform(0, 2*np.pi, 100), np.arcsin(rng.uniform(-1, 1, 100))])
+        opos = coordinates.transform_euler(reproject.rot2euler("gal,equ")[::-1], pos)
+        ref = SkyCoord(*pos, unit="rad", frame="galactic").icrs
+        assert np.max(ref.separation(SkyCoord(*opos, unit="rad")).arcsec) < 1e-3
+
     def test_lensing(self):
         lensed,unlensed = get_lens_result(1.,400,np.float64)
         lensed0 = enmap.read_map(DATA_PREFIX+"MM_lensed_%s.fits"  % lens_version)
