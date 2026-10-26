@@ -18,7 +18,6 @@ python_sources = [
     'mpi.py',
     'mpiutils.py',
     'multimap.py',
-    'old_aberration.py',
     'pointsrcs.py',
     'powspec.py',
     'reproject.py',
