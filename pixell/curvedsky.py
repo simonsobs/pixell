@@ -189,8 +189,8 @@ def alm2map_pos(alm, pos=None, loc=None, ainfo=None, map=None, spin=[0,2], deriv
 		# This should use less memory than writing loc[:,0] = np.pi/2-loc[:,0]
 		loc[...,0] *= -1
 		loc[...,0] += np.pi/2
-		# Should use rewind here, but this is more efficient
-		loc[loc[...,1]<0,1] += 2*np.pi
+		# ducc0 needs longitudes within [0,2pi]
+		loc[...,1] %= 2*np.pi
 		# Support arbitrary pre-dimensions for loc (post-dimensions for pos)
 	lpre = loc.shape[:-1]
 	loc  = loc.reshape(-1,2)
@@ -712,7 +712,7 @@ def alm2cl(alm, alm2=None, ainfo=None, dtype=None):
 	return ainfo.alm2cl(alm, alm2=alm2, dtype=dtype)
 
 euler_angs={}
-euler_angs[("gal","equ")] = np.array([57.06793215,  62.87115487, -167.14056929])*utils.degree
+euler_angs[("gal","equ")] = np.array([57.06807474,  62.87174759, -167.14052211])*utils.degree # Galactic to ICRS
 euler_angs[("equ","gal")] = -euler_angs[("gal","equ")][::-1]
 def rotate_alm(alm, psi, theta, phi, lmax=None, method="auto", nthread=None, inplace=False):
 	"""Rotate the given alm[...,:] via the zyz rotations given by euler angles

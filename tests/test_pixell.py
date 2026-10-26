@@ -194,7 +194,7 @@ def get_extraction_test_results(yaml_file):
     os.remove(filename)
     return results,config['result_name']
 
-lens_version = '071123'
+lens_version = '261022'
 
 def get_offset_result(res=1.,dtype=np.float64,seed=1):
     shape,wcs  = enmap.fullsky_geometry(res=np.deg2rad(res), variant="CC")
@@ -348,6 +348,31 @@ class PixelTests(unittest.TestCase):
         assert wcsutils.equal(obs_pos.wcs,obs_pos0.wcs)
         assert wcsutils.equal(raw_pos.wcs,raw_pos0.wcs)
 
+    def test_offset_analytic(self):
+        # Tests two offsets:
+        # a 5 deg offset due east at dec 60 deg, along a great circle (cos(dec)*sin(heading)
+        # is constant)
+        # a 2' offset north from 0.5' below the pole
+        dec, d, eps = np.deg2rad(60), np.deg2rad(5), 0.5*utils.arcmin
+        ipos = np.array([[dec, np.pi/2-eps], [0, 0.3]])
+        grad = np.array([[0, 4*eps], [d, 0]])
+        opos = lensing.offset_by_grad(ipos, grad, geodesic=True, pol=True)
+        odec = np.arcsin(np.cos(d)*np.sin(dec))
+        assert np.allclose(opos[:,0], [odec, np.arctan2(np.sin(d), np.cos(d)*np.cos(dec)),
+            np.pi/2 - np.arcsin(np.cos(dec)/np.cos(odec))], rtol=0, atol=1e-12)
+        assert np.allclose([opos[0,1], np.cos(opos[1,1]-0.3), np.cos(opos[2,1])],
+            [np.pi/2-3*eps, -1, -1], rtol=0, atol=1e-12)
+
+    def test_gal2equ(self):
+        # The Galactic to equatorial rotation should match astropy's Galactic to ICRS
+        from astropy.coordinates import SkyCoord
+        from pixell import coordinates
+        rng = np.random.default_rng(1)
+        pos = np.array([rng.uniform(0, 2*np.pi, 100), np.arcsin(rng.uniform(-1, 1, 100))])
+        opos = coordinates.transform_euler(reproject.rot2euler("gal,equ")[::-1], pos)
+        ref = SkyCoord(*pos, unit="rad", frame="galactic").icrs
+        assert np.max(ref.separation(SkyCoord(*opos, unit="rad")).arcsec) < 1e-3
+
     def test_lensing(self):
         lensed,unlensed = get_lens_result(1.,400,np.float64)
         lensed0 = enmap.read_map(DATA_PREFIX+"MM_lensed_%s.fits"  % lens_version)
@@ -369,6 +394,40 @@ class PixelTests(unittest.TestCase):
         p = enplot.plot(a, colorbar=True)
         # annotation
         p = enplot.plot(a, annotate=DATA_PREFIX+"annot.txt")
+        # axis labels
+        p0 = enplot.plot(a)[0]
+        p = enplot.plot(a, xlabel="RA (deg)", ylabel="Dec (deg)", layers=True)
+        assert [q.layer for q in p[-2:]] == ["_xlabel", "_ylabel"]
+        p = enplot.plot(a, "--xlabel 'RA (deg)' --ylabel 'Dec (deg)'")[0]
+        assert p.img.size[0] > p0.img.size[0] and p.img.size[1] > p0.img.size[1]
+        q = enplot.plot(a, xlabel="RA (deg)", ylabel="Dec (deg)", label_font_size=40)[0]
+        assert q.img.size[0] > p.img.size[0] and q.img.size[1] > p.img.size[1]
+        # colorbar label
+        p = enplot.plot(a, colorbar=True)[0]
+        q = enplot.plot(a, colorbar=True, colorbar_label="uK", layers=True)
+        assert q[-1].layer == "_colorbar_label" and q[-1].img.size[1] > p.img.size[1]
+        # fonts that come with pixell
+        from pixell import cgrid
+        assert cgrid.get_font().getname()[0] == "Roboto"
+        assert cgrid.get_font(fname="DejaVuSerif.ttf").getname()[0] == "DejaVu Serif"
+        for alias, name in [("sans", "Roboto"), ("SansSerif", "Roboto"), ("Serif", "DejaVu Serif")]:
+            assert cgrid.get_font(fname=alias).getname()[0] == name
+        p = enplot.plot(a, colorbar=True, font="serif")
+        # right ascension tick values as hours and minutes
+        assert cgrid.format_ra([5, -5, 187.5]) == ["0:20", "23:40", "12:30"]
+        assert cgrid.format_ra([5, 5.1], "hm") == ["0h20m00s", "0h20m24s"]
+        p = enplot.plot(a, ticks=15, ra_format="h:m")
+        # per-component colorbar labels, with the last one reused
+        q = enplot.plot(a, colorbar=True, colorbar_label="T (uK):Q (uK)", layers=True)
+        q = [x.img for x in q if x.layer == "_colorbar_label"]
+        assert len(q) == 3 and q[0] != q[1] and q[1] == q[2]
+        # background color
+        assert enplot.plot(a)[0].img.getpixel((0, 0))[3] == 0
+        for bg in ["ffffff", "white"]:
+            assert enplot.plot(a, background=bg)[0].img.getpixel((0, 0)) == (255, 255, 255, 255)
+        # plot size does not depend on the text of the labels
+        q = enplot.plot(a, colorbar=True, colorbar_label="a:T:g", xlabel="RA", ylabel="g")
+        assert len({x.img.size for x in q}) == 1
 
     def test_fft(self):
         # Tests that ifft(ifft(imap))==imap, i.e. default normalizations are consistent
