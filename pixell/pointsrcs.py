@@ -247,7 +247,7 @@ def sim_srcs(shape, wcs, srcs, beam, omap=None, dtype=None, nsigma=5, rmax=None,
 		amps  = amps.reshape(shape[:-2]+(nobj,))
 		# Handle beam = float, in which case a gaussian beam is made
 		beam  = expand_beam(beam, nsigma, rmax)
-		return sim_objects(shape, wcs, poss, amps, beam, omap=omap, vmin=vmin, rmax=rmax, op=op, pixwin=pixwin, pixwin_order=0, separable=separable, cache=cache)
+		return sim_objects(shape, wcs, poss, amps, beam, omap=omap, vmin=vmin, rmax=rmax, op=op, pixwin=pixwin, pixwin_order=pixwin_order, separable=separable, cache=cache)
 	elif method == "python":
 		return sim_srcs_python(shape, wcs, srcs, beam, omap=omap, dtype=dtype, nsigma=nsigma, rmax=rmax, smul=smul, return_padded=return_padded, pixwin=pixwin, pixwin_order=pixwin_order, op=op, wrap=wrap, verbose=verbose, cache=cache, separable=separable)
 
